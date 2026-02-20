@@ -1,0 +1,31 @@
+{
+    "name": "@world-bingo/web",
+    "version": "0.0.1",
+    "private": true,
+    "scripts": {
+        "dev": "nuxt dev --port 3000",
+        "build": "nuxt build",
+        "start": "node .output/server/index.mjs",
+        "typecheck": "nuxt typecheck",
+        "lint": "eslint ."
+    },
+    "dependencies": {
+        "@world-bingo/shared-types": "workspace:*",
+        "@world-bingo/ui": "workspace:*",
+        "@world-bingo/game-logic": "workspace:*",
+        "pinia": "^2.3.0",
+        "socket.io-client": "^4.8.0",
+        "motion": "^12.0.0",
+        "vee-validate": "^4.15.0",
+        "zod": "^3.24.0",
+        "@vee-validate/zod": "^4.15.0"
+    },
+    "devDependencies": {
+        "@nuxt/eslint": "^1.0.0",
+        "@vite-pwa/nuxt": "^0.10.0",
+        "@nuxt/image": "^1.9.0",
+        "nuxt": "^3.15.0",
+        "vue": "^3.5.0",
+        "vue-tsc": "^2.0.0"
+    }
+}

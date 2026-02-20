@@ -1,0 +1,14 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - "@parcel/watcher"
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "esbuild"
+  - "msgpackr-extract"
+  - "prisma"
+  - "sharp"
+  - "unrs-resolver"
+  - "vue-demi"

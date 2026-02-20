@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  phone        String        @unique
+  passwordHash String
+  role         UserRole      @default(PLAYER)
+  avatarUrl    String?
+  wallet       Wallet?
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("users")
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  currency  String   @default("ETB")
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model Game {
+  id             String      @id @default(uuid())
+  title          String
+  status         GameStatus  @default(WAITING)
+  ticketPrice    Decimal     @db.Decimal(10, 2)
+  maxPlayers     Int
+  houseEdgePct   Decimal     @default(10) @db.Decimal(5, 2)
+  pattern        PatternType
+  calledBalls    Int[]
+  entries        GameEntry[]
+  createdAt      DateTime    @default(now())
+  startedAt      DateTime?
+  endedAt        DateTime?
+  winnerId       String?
+
+  @@map("games")
+}
+
+model Cartela {
+  id      String      @id @default(uuid())
+  serial  String      @unique
+  grid    Json
+  entries GameEntry[]
+
+  @@map("cartelas")
+}
+
+model GameEntry {
+  id        String   @id @default(uuid())
+  gameId    String
+  userId    String
+  cartelaId String
+  game      Game     @relation(fields: [gameId], references: [id])
+  cartela   Cartela  @relation(fields: [cartelaId], references: [id])
+  joinedAt  DateTime @default(now())
+
+  @@unique([gameId, userId])
+  @@map("game_entries")
+}
+
+model Transaction {
+  id          String            @id @default(uuid())
+  userId      String
+  type        TransactionType
+  amount      Decimal           @db.Decimal(12, 2)
+  status      PaymentStatus     @default(PENDING)
+  referenceId String?
+  receiptUrl  String?
+  note        String?
+  user        User              @relation(fields: [userId], references: [id])
+  createdAt   DateTime          @default(now())
+
+  @@map("transactions")
+}
+
+enum UserRole {
+  PLAYER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum GameStatus {
+  WAITING
+  STARTING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  GAME_ENTRY
+  PRIZE_WIN
+  REFUND
+}
+
+enum PaymentStatus {
+  PENDING
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum PatternType {
+  ANY_LINE
+  DIAGONAL
+  FULL_CARD
+  X_PATTERN
+  CORNERS
+}
