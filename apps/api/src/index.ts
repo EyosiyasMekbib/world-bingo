@@ -10,6 +10,7 @@ import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import './@types/fastify'
+import { registerGameHandlers } from './gateways/game.gateway'
 
 dotenv.config()
 
@@ -71,7 +72,9 @@ const host = process.env.HOST ?? '0.0.0.0'
 
 try {
     await server.ready()
-    initSocket(server.server, process.env.REDIS_URL || 'redis://localhost:6379')
+    const io = initSocket(server.server, process.env.REDIS_URL || 'redis://localhost:6379')
+    registerGameHandlers(io)
+    
     await server.listen({ port, host })
 } catch (err) {
     server.log.error(err)
