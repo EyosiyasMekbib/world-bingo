@@ -2,7 +2,7 @@ export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
 
-    modules: ['@pinia/nuxt', '@nuxt/image', '@vite-pwa/nuxt', 'nuxt-icon'],
+    modules: ['@pinia/nuxt', '@nuxt/image', '@vite-pwa/nuxt', 'nuxt-icon', 'pinia-plugin-persistedstate/nuxt'],
 
     css: ['@world-bingo/ui/styles/tokens.css'],
 
