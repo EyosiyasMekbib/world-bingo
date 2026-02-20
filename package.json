@@ -7,9 +7,11 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,vue,js,json,md,css}\""
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.4.0",
