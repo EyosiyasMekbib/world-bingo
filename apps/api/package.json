@@ -17,15 +17,19 @@
     },
     "dependencies": {
         "@fastify/cors": "^10.0.0",
+        "@fastify/formbody": "^8.0.2",
         "@fastify/jwt": "^9.0.0",
         "@fastify/multipart": "^9.0.0",
         "@fastify/rate-limit": "^10.0.0",
         "@fastify/swagger": "^9.0.0",
         "@fastify/swagger-ui": "^5.0.0",
         "@prisma/client": "^5.22.0",
+        "@socket.io/redis-adapter": "^8.3.0",
         "@world-bingo/game-logic": "workspace:*",
         "@world-bingo/shared-types": "workspace:*",
+        "bcryptjs": "^3.0.3",
         "bullmq": "^5.0.0",
+        "dotenv": "^17.3.1",
         "fastify": "^5.2.0",
         "ioredis": "^5.4.0",
         "pino": "^9.0.0",
@@ -34,6 +38,7 @@
         "zod": "^3.24.0"
     },
     "devDependencies": {
+        "@types/bcryptjs": "^3.0.0",
         "@types/node": "^22.0.0",
         "prisma": "^5.22.0",
         "tsx": "^4.0.0",
