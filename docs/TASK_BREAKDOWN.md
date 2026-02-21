@@ -39,7 +39,12 @@ The project uses a Turborepo architecture with `apps` (`api`, `web`, `admin`) an
 ### ❌ What NEEDS TO BE DONE (Pending)
 
 #### **Phase 1: MVP Finishers**
-- [ ] **Admin Dashboard (`apps/admin`)**: Currently an empty shell. Needs implementation for payment/deposit verification and game management interfaces.
+- [x] Admin Dashboard
+    - [x] Global Stats Dashboard (Approved Deposits, Profit, Users, etc.)
+    - [x] Pending Deposits Review (Receipt viewing, Approve/Decline)
+    - [x] Withdrawal Management (Manual fulfillment flow)
+    - [x] Orders History (Deposit/Withdrawal logs)
+    - [x] Manager Profile & Security Settings (Password change, 2FA placeholder)
 - [ ] **File Uploads**: Implement receipt upload for manual deposits via Google Cloud Storage (or a local mock for now).
 - [ ] **Refund System**: Automated handling/jobs to auto-refund users upon game cancellation.
 

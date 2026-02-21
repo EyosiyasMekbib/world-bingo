@@ -9,8 +9,14 @@ import { initSocket } from './lib/socket'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
-import './@types/fastify'
+import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
+import z from 'zod'
+
+// Add Zod schema converter for Fastify
+const zodToJsonSchema = (zodSchema: z.ZodType<any>) => {
+    return zodSchema
+}
 
 dotenv.config()
 

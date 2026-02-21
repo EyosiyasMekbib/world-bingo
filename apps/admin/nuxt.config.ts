@@ -13,12 +13,10 @@ export default defineNuxtConfig({
         },
     },
 
-    routeMiddleware: ['auth'],
-
     vite: {
         resolve: {
             alias: {
-                '@world-bingo/ui': '../../../packages/ui/src',
+                '@world-bingo/ui': '../../packages/ui/src',
             },
         },
     },

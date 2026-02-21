@@ -17,6 +17,13 @@ export class WalletController {
         return transaction
     }
 
+    static async withdraw(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
+        // @ts-ignore
+        const userId = request.user.id
+        const transaction = await WalletService.requestWithdrawal(userId, request.body)
+        return transaction
+    }
+
     // Admin only
     static async reviewDeposit(request: FastifyRequest, reply: FastifyReply) {
         // Implementation for admin to approve/reject

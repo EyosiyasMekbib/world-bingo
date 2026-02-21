@@ -1,13 +1,14 @@
 import { FastifyPluginAsync } from 'fastify'
-import { CreateGameSchema } from '@world-bingo/shared-types'
+import { CreateGameSchema, JoinGameSchema, ClaimBingoSchema } from '@world-bingo/shared-types'
 import { GameController } from '../../controllers/game.controller'
 import { GameService } from '../../services'
+import zodToJsonSchema from 'zod-to-json-schema'
 
 const gameRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/', {
         preValidation: [fastify.authenticate],
         schema: {
-            body: CreateGameSchema,
+            body: zodToJsonSchema(CreateGameSchema),
         },
         handler: GameController.create,
     })

@@ -23,7 +23,7 @@ export class WalletService {
         })
         return transaction
     }
-    
+
     // Called by Admin
     static async approveDeposit(transactionId: string) {
         return await prisma.$transaction(async (tx) => {
@@ -43,7 +43,34 @@ export class WalletService {
                 where: { userId: transaction.userId },
                 data: { balance: { increment: transaction.amount } },
             })
-            
+
+            return transaction
+        })
+    }
+
+    static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
+        return await prisma.$transaction(async (tx) => {
+            const wallet = await tx.wallet.findUnique({ where: { userId } })
+            if (!wallet || wallet.balance < data.amount) {
+                throw new Error('Insufficient balance')
+            }
+
+            // Lock the balance immediately
+            await tx.wallet.update({
+                where: { userId },
+                data: { balance: { decrement: data.amount } }
+            })
+
+            // Create a pending withdrawal
+            const transaction = await tx.transaction.create({
+                data: {
+                    userId,
+                    type: TransactionType.WITHDRAWAL,
+                    amount: data.amount,
+                    status: PaymentStatus.PENDING_REVIEW,
+                    note: `${data.paymentMethod}: ${data.accountNumber}`
+                },
+            })
             return transaction
         })
     }

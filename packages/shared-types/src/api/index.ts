@@ -25,6 +25,12 @@ export const DepositSchema = z.object({
     receiptUrl: z.string().url(),
 })
 
+export const WithdrawalSchema = z.object({
+    amount: z.number().positive(),
+    paymentMethod: z.string().min(3),
+    accountNumber: z.string().min(5),
+})
+
 export const ReviewDepositSchema = z.object({
     transactionId: z.string().uuid(),
     status: z.enum([PaymentStatus.APPROVED, PaymentStatus.REJECTED]),
@@ -45,6 +51,7 @@ export type LoginDto = z.infer<typeof LoginSchema>
 export type RegisterDto = z.infer<typeof RegisterSchema>
 export type CreateGameDto = z.infer<typeof CreateGameSchema>
 export type DepositDto = z.infer<typeof DepositSchema>
+export type WithdrawalDto = z.infer<typeof WithdrawalSchema>
 export type ReviewDepositDto = z.infer<typeof ReviewDepositSchema>
 export type JoinGameDto = z.infer<typeof JoinGameSchema>
 export type ClaimBingoDto = z.infer<typeof ClaimBingoSchema>
