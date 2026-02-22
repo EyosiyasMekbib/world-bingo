@@ -17,6 +17,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/transactions/:id/approve', AdminController.approveTransaction)
     fastify.post('/transactions/:id/decline', AdminController.declineTransaction)
+
+    // User management (T21 / T43)
+    fastify.get('/users', AdminController.getUsers)
+    fastify.patch('/users/:id/status', AdminController.updateUserStatus)
+
+    // Game management (T21 / T42)
+    fastify.get('/games', AdminController.getGames)
 }
 
 export default adminRoutes
+

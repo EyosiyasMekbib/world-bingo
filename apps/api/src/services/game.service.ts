@@ -5,11 +5,17 @@ import { drawBall, createBallPool, checkPattern, PatternName } from '@world-bing
 import { Decimal } from '@prisma/client/runtime/library'
 
 export class GameService {
-    static async joinGame(userId: string, gameId: string, cartelaId: string) {
+    /**
+     * Join a game with one or more cartelas.
+     * T8: Multi-cartela support — accepts cartelaSerials array.
+     */
+    static async joinGame(userId: string, gameId: string, cartelaSerials: string[]) {
+        if (!cartelaSerials.length) throw new Error('At least one cartela is required')
+
         return await prisma.$transaction(async (tx) => {
             const game = await tx.game.findUnique({ 
                 where: { id: gameId },
-                include: { entries: true } 
+                include: { _count: { select: { entries: true } } }
             })
             if (!game) throw new Error('Game not found')
             
@@ -17,42 +23,52 @@ export class GameService {
                 throw new Error('Game is already in progress or finished')
             }
 
-            const existingEntry = await tx.gameEntry.findFirst({
-                where: {
-                    gameId,
-                    OR: [{ userId }, { cartelaId }]
-                }
+            // Resolve cartela IDs from serials
+            const cartelas = await tx.cartela.findMany({
+                where: { serial: { in: cartelaSerials } },
             })
 
-            if (existingEntry) {
-                 if (existingEntry.userId === userId) throw new Error('You already joined this game')
-                 throw new Error('Cartela already taken')
+            if (cartelas.length !== cartelaSerials.length) {
+                throw new Error('One or more cartela serials are invalid')
             }
+
+            const cartelaIds = cartelas.map((c) => c.id)
+
+            // Check none of these cartelas are already taken in this game
+            const takenEntries = await tx.gameEntry.findMany({
+                where: { gameId, cartelaId: { in: cartelaIds } },
+            })
+
+            if (takenEntries.length > 0) {
+                throw new Error('One or more selected cartelas are already taken')
+            }
+
+            const totalCost = new Decimal(game.ticketPrice).times(cartelaSerials.length)
 
             // Lock the wallet row to prevent concurrent joins depleting balance
             const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
                 SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
-            if (!wallet || new Decimal(wallet.balance).lessThan(new Decimal(game.ticketPrice))) {
+            if (!wallet || new Decimal(wallet.balance).lessThan(totalCost)) {
                 throw new Error('Insufficient funds')
             }
 
             const balanceBefore = new Decimal(wallet.balance)
-            const balanceAfter = balanceBefore.minus(new Decimal(game.ticketPrice))
+            const balanceAfter = balanceBefore.minus(totalCost)
 
             // Deduct balance
             await tx.wallet.update({
                 where: { userId },
-                data: { balance: { decrement: game.ticketPrice } }
+                data: { balance: { decrement: totalCost } }
             })
 
-            // Create Transaction Record with balance snapshot
+            // Create a single transaction record for the total entry cost
             await tx.transaction.create({
                 data: {
                     userId,
                     type: TransactionType.GAME_ENTRY,
-                    amount: game.ticketPrice,
+                    amount: totalCost,
                     status: PaymentStatus.APPROVED,
                     referenceId: gameId,
                     balanceBefore: balanceBefore,
@@ -60,23 +76,21 @@ export class GameService {
                 }
             })
 
-            // Create Entry
-            const entry = await tx.gameEntry.create({
-                data: {
-                    gameId,
-                    userId,
-                    cartelaId
-                },
-                include: {
-                    cartela: true,
-                }
-            })
+            // Create one GameEntry per cartela
+            const entries = await Promise.all(
+                cartelaIds.map((cartelaId) =>
+                    tx.gameEntry.create({
+                        data: { gameId, userId, cartelaId },
+                        include: { cartela: true },
+                    })
+                )
+            )
             
-            // Notify room
+            // Notify room of updated player count
             const io = getIo()
-            io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: (game.entries?.length || 0) + 1 } as any)
+            io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: game._count.entries + 1 } as any)
             
-            return entry
+            return entries
         })
     }
 
@@ -93,7 +107,7 @@ export class GameService {
         io.to(`game:${gameId}`).emit('game:started', game as any)
         
         // Use a timeout to switch to ACTIVE and start calling balls
-        // In production, use BullMQ for robustness
+        // In production, use BullMQ for robustness (T48)
         setTimeout(() => {
              this.runGameLoop(gameId)
         }, 5000) // 5 seconds grace period
@@ -110,23 +124,19 @@ export class GameService {
         const interval = setInterval(async () => {
              const game = await prisma.game.findUnique({
                 where: { id: gameId },
-                include: { entries: true } 
+                include: { _count: { select: { entries: true } } }
              })
              if (!game || game.status !== GameStatus.IN_PROGRESS || game.winnerId) {
                  clearInterval(interval)
                  return
              }
 
-             // Logic to pick a ball
-             // We need to know which balls remain.
-             // Ideally we store available balls in Redis or DB.
-             // For simplicity, let's recalculate from calledBalls (inefficient but works for MVP)
              const allBalls = createBallPool()
              const calledSet = new Set(game.calledBalls)
              const remaining = allBalls.filter(b => !calledSet.has(b))
              
              if (remaining.length === 0) {
-                 clearInterval(interval) // Game over, no winner?
+                 clearInterval(interval)
                  return
              }
 
@@ -145,16 +155,7 @@ export class GameService {
                  ball,
                  calledBalls: updatedGame.calledBalls
              })
-
-             // Check for winner? 
-             // Usually clients claim bingo, but server can also auto-win if preferred.
-             // Bible says "Server-authoritative winner detection".
-             // We could check all players here, but that's heavy for every ball.
-             // Let's rely on client claiming OR run a background job.
-             // "Winner detection" usually means verification.
-             // However, "Auto-marked cards" suggests server knows state.
-             
-        }, 3000) // Call ball every 3 seconds
+        }, 3000)
     }
 
     static async claimBingo(userId: string, gameId: string, cartelaId: string) {
@@ -162,6 +163,7 @@ export class GameService {
             const game = await tx.game.findUnique({ where: { id: gameId } })
             if (!game || game.status !== GameStatus.IN_PROGRESS) throw new Error('Game not active')
 
+            // Verify the user actually has this cartela in this game
             const entry = await tx.gameEntry.findFirst({
                 where: { gameId, userId, cartelaId },
                 include: { cartela: true }
@@ -180,7 +182,7 @@ export class GameService {
                 throw new Error('False Bingo!')
             }
 
-            // Winner found! Calculate prize
+            // Winner found! Calculate prize based on all entries in the game
             const totalEntries = await tx.gameEntry.count({ where: { gameId } })
             const totalPot = Number(game.ticketPrice) * totalEntries
             const prize = totalPot * (1 - Number(game.houseEdgePct) / 100)
@@ -235,3 +237,4 @@ export class GameService {
         })
     }
 }
+

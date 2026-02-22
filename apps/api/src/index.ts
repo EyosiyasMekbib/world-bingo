@@ -5,12 +5,15 @@ import rateLimit from '@fastify/rate-limit'
 import helmet from '@fastify/helmet'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
+import staticFiles from '@fastify/static'
 import * as dotenv from 'dotenv'
+import path from 'path'
 import { initSocket } from './lib/socket'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import adminRoutes from './routes/admin'
+import notificationRoutes from './routes/user/index.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 
@@ -108,6 +111,20 @@ await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
 await server.register(adminRoutes, { prefix: '/admin' })
+await server.register(notificationRoutes, { prefix: '/user' })
+
+// Serve local uploads directory (dev only)
+if (!isProd) {
+    const uploadsDir = new URL('../uploads', import.meta.url).pathname
+    const fs = await import('fs')
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true })
+    }
+    await server.register(staticFiles, {
+        root: uploadsDir,
+        prefix: '/uploads/',
+    })
+}
 
 server.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 

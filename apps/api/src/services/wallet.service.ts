@@ -64,6 +64,10 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
+        if (data.amount < 100) {
+            throw new Error('Minimum withdrawal amount is 100 Birr')
+        }
+
         return await prisma.$transaction(async (tx) => {
             // Lock the wallet row to prevent concurrent withdrawals from passing the balance check
             const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
@@ -98,4 +102,42 @@ export class WalletService {
             return transaction
         })
     }
+
+    static async getTransactions(
+        userId: string,
+        params: { type?: TransactionType; page?: number; limit?: number },
+    ) {
+        const page = params.page ?? 1
+        const limit = params.limit ?? 20
+        const skip = (page - 1) * limit
+
+        const [transactions, total] = await Promise.all([
+            prisma.transaction.findMany({
+                where: {
+                    userId,
+                    ...(params.type && { type: params.type }),
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            prisma.transaction.count({
+                where: {
+                    userId,
+                    ...(params.type && { type: params.type }),
+                },
+            }),
+        ])
+
+        return {
+            data: transactions,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        }
+    }
 }
+

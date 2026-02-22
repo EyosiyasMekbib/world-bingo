@@ -13,34 +13,40 @@ export const prisma = new PrismaClient({
 beforeAll(async () => {
     // Connect to test database
     await prisma.$connect()
-    
-    // Clean database before tests
-    await prisma.transaction.deleteMany()
-    await prisma.gameEntry.deleteMany()
-    await prisma.cartela.deleteMany()
-    await prisma.game.deleteMany()
-    await prisma.wallet.deleteMany()
-    await prisma.user.deleteMany()
+    await cleanDb()
 })
 
 afterEach(async () => {
-    // Clean database after each test
-    await prisma.transaction.deleteMany()
-    await prisma.gameEntry.deleteMany()
-    await prisma.cartela.deleteMany()
-    await prisma.game.deleteMany()
-    await prisma.wallet.deleteMany()
-    await prisma.user.deleteMany()
+    await cleanDb()
 })
 
 afterAll(async () => {
     await prisma.$disconnect()
 })
 
+async function cleanDb() {
+    await prisma.notification.deleteMany()
+    await prisma.refreshToken.deleteMany()
+    await prisma.transaction.deleteMany()
+    await prisma.gameEntry.deleteMany()
+    await prisma.cartela.deleteMany()
+    await prisma.game.deleteMany()
+    await prisma.wallet.deleteMany()
+    await prisma.user.deleteMany()
+}
+
 // Mock external dependencies
+// hash always returns 'hashed_password'; compare returns true only when
+// the plain-text value matches what was "hashed" (i.e. 'hashed_password' itself
+// is never a real input — we simulate correctness by checking the stored hash).
 vi.mock('bcryptjs', () => ({
     default: {
-        hash: vi.fn().mockResolvedValue('hashed_password'),
-        compare: vi.fn().mockResolvedValue(true),
+        hash: vi.fn().mockImplementation((password: string) =>
+            Promise.resolve(`hashed:${password}`),
+        ),
+        compare: vi.fn().mockImplementation((password: string, hash: string) =>
+            Promise.resolve(hash === `hashed:${password}`),
+        ),
     },
 }))
+

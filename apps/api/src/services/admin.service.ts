@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma'
-import { PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-types'
+import { GameStatus, PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 
 export class AdminService {
@@ -27,10 +27,6 @@ export class AdminService {
             prisma.game.count({ where: { status: 'COMPLETED' } }),
         ])
 
-        // Simplified profit calculation: 
-        // In a real bingo app, profit comes from house edge on games.
-        // For now, let's assume profit is house fees from completed games.
-        // This is just a placeholder logic as requested by userflows.
         const games = await prisma.game.findMany({
             where: { status: 'COMPLETED' },
             include: {
@@ -52,6 +48,7 @@ export class AdminService {
             approvedWithdrawalSum: Number(approvedWithdrawals._sum.amount || 0),
             totalProfit: totalProfit,
             usersCount: totalUsers,
+            gamesCount: gamesCount,
             commission: 0, // Placeholder
         }
     }
@@ -77,7 +74,6 @@ export class AdminService {
 
     static async reviewTransaction(transactionId: string, status: PaymentStatus, note?: string) {
         if (status === PaymentStatus.APPROVED) {
-            // Use WalletService for side-effects (incrementing balance)
             return await WalletService.approveDeposit(transactionId)
         }
 
@@ -86,4 +82,79 @@ export class AdminService {
             data: { status, note },
         })
     }
+
+    static async getUsers(params: { page?: number; limit?: number; search?: string }) {
+        const page = params.page ?? 1
+        const limit = params.limit ?? 20
+        const skip = (page - 1) * limit
+
+        const where = params.search
+            ? {
+                  OR: [
+                      { username: { contains: params.search, mode: 'insensitive' as const } },
+                      { phone: { contains: params.search } },
+                  ],
+              }
+            : {}
+
+        const [users, total] = await Promise.all([
+            prisma.user.findMany({
+                where,
+                select: {
+                    id: true,
+                    username: true,
+                    phone: true,
+                    role: true,
+                    createdAt: true,
+                    wallet: { select: { balance: true } },
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            prisma.user.count({ where }),
+        ])
+
+        return {
+            data: users,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        }
+    }
+
+    static async getGames(params: { status?: GameStatus; page?: number; limit?: number }) {
+        const page = params.page ?? 1
+        const limit = params.limit ?? 20
+        const skip = (page - 1) * limit
+
+        const where = params.status ? { status: params.status } : {}
+
+        const [games, total] = await Promise.all([
+            prisma.game.findMany({
+                where,
+                include: {
+                    _count: { select: { entries: true } },
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            prisma.game.count({ where }),
+        ])
+
+        return {
+            data: games,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        }
+    }
 }
+

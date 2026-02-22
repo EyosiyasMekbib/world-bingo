@@ -78,10 +78,8 @@ describe('AuthService', () => {
 
             const user = await AuthService.register(userData)
 
-            // Verify password hash is not in response
             expect(user).not.toHaveProperty('passwordHash')
-            
-            // But it exists in the database
+
             const dbUser = await prisma.user.findUnique({
                 where: { id: user.id },
             })
@@ -90,7 +88,7 @@ describe('AuthService', () => {
     })
 
     describe('login', () => {
-        it('should login with valid phone', async () => {
+        it('should login with valid phone and return user + refreshToken', async () => {
             const userData = {
                 username: 'logintest',
                 phone: '+251912345684',
@@ -99,14 +97,15 @@ describe('AuthService', () => {
 
             await AuthService.register(userData)
 
-            const user = await AuthService.login({
+            const { user, refreshToken } = await AuthService.login({
                 identifier: userData.phone,
                 password: userData.password,
             })
 
             expect(user.phone).toBe(userData.phone)
-            // passwordHash should not exist on the returned user object
             expect('passwordHash' in user).toBe(false)
+            expect(refreshToken).toBeDefined()
+            expect(typeof refreshToken).toBe('string')
         })
 
         it('should login with valid username', async () => {
@@ -118,13 +117,35 @@ describe('AuthService', () => {
 
             await AuthService.register(userData)
 
-            const user = await AuthService.login({
+            const { user } = await AuthService.login({
                 identifier: userData.username,
                 password: userData.password,
             })
 
             expect(user.username).toBe(userData.username)
             expect('passwordHash' in user).toBe(false)
+        })
+
+        it('should store refresh token hash in DB', async () => {
+            const userData = {
+                username: 'refreshtest',
+                phone: '+251912300001',
+                password: 'password123',
+            }
+
+            await AuthService.register(userData)
+
+            const { refreshToken } = await AuthService.login({
+                identifier: userData.phone,
+                password: userData.password,
+            })
+
+            const stored = await prisma.refreshToken.findFirst({
+                where: { user: { phone: userData.phone } },
+            })
+
+            expect(stored).toBeDefined()
+            expect(stored?.tokenHash).not.toBe(refreshToken) // stored as hash, not plain
         })
 
         it('should throw error with invalid identifier', async () => {
@@ -152,22 +173,121 @@ describe('AuthService', () => {
                 })
             ).rejects.toThrow('Invalid credentials')
         })
+    })
 
-        it('should not return password hash in response', async () => {
+    describe('refreshToken', () => {
+        it('should issue a new access token and rotate the refresh token', async () => {
             const userData = {
-                username: 'logintest3',
-                phone: '+251912345686',
+                username: 'refreshuser',
+                phone: '+251912300010',
                 password: 'password123',
             }
 
             await AuthService.register(userData)
-
-            const user = await AuthService.login({
+            const { refreshToken: oldToken } = await AuthService.login({
                 identifier: userData.phone,
                 password: userData.password,
             })
 
-            expect(user).not.toHaveProperty('passwordHash')
+            const { user, refreshToken: newToken } = await AuthService.refreshToken(oldToken)
+
+            expect(newToken).toBeDefined()
+            expect(newToken).not.toBe(oldToken)
+            expect(user.phone).toBe(userData.phone)
+        })
+
+        it('should reject an invalid refresh token', async () => {
+            await expect(AuthService.refreshToken('invalid-token')).rejects.toThrow(
+                'Invalid refresh token',
+            )
+        })
+
+        it('should invalidate the old token after rotation', async () => {
+            const userData = {
+                username: 'rotateuser',
+                phone: '+251912300020',
+                password: 'password123',
+            }
+
+            await AuthService.register(userData)
+            const { refreshToken: firstToken } = await AuthService.login({
+                identifier: userData.phone,
+                password: userData.password,
+            })
+
+            // Use the token once
+            await AuthService.refreshToken(firstToken)
+
+            // Try to use the same token again — must fail
+            await expect(AuthService.refreshToken(firstToken)).rejects.toThrow(
+                'Invalid refresh token',
+            )
+        })
+    })
+
+    describe('logout', () => {
+        it('should delete the refresh token from DB', async () => {
+            const userData = {
+                username: 'logoutuser',
+                phone: '+251912300030',
+                password: 'password123',
+            }
+
+            await AuthService.register(userData)
+            const { refreshToken } = await AuthService.login({
+                identifier: userData.phone,
+                password: userData.password,
+            })
+
+            await AuthService.logout(refreshToken)
+
+            // Token must be gone
+            await expect(AuthService.refreshToken(refreshToken)).rejects.toThrow(
+                'Invalid refresh token',
+            )
+        })
+    })
+
+    describe('changePassword', () => {
+        it('should change password and invalidate all refresh tokens', async () => {
+            const userData = {
+                username: 'changepwuser',
+                phone: '+251912300040',
+                password: 'oldpassword',
+            }
+
+            await AuthService.register(userData)
+            const { refreshToken, user } = await AuthService.login({
+                identifier: userData.phone,
+                password: userData.password,
+            })
+
+            await AuthService.changePassword(user.id, {
+                currentPassword: userData.password,
+                newPassword: 'newpassword123',
+            })
+
+            // Old refresh token must be gone
+            await expect(AuthService.refreshToken(refreshToken)).rejects.toThrow(
+                'Invalid refresh token',
+            )
+        })
+
+        it('should reject wrong current password', async () => {
+            const userData = {
+                username: 'changepwuser2',
+                phone: '+251912300050',
+                password: 'correctpassword',
+            }
+
+            const user = await AuthService.register(userData)
+
+            await expect(
+                AuthService.changePassword(user.id, {
+                    currentPassword: 'wrongpassword',
+                    newPassword: 'newpassword123',
+                }),
+            ).rejects.toThrow('Current password is incorrect')
         })
     })
 })

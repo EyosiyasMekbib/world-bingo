@@ -8,17 +8,19 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  username     String        @unique
-  phone        String        @unique
-  passwordHash String
-  role         UserRole      @default(PLAYER)
-  avatarUrl    String?
-  wallet       Wallet?
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  entries      GameEntry[]
+  id             String          @id @default(uuid())
+  username       String          @unique
+  phone          String          @unique
+  passwordHash   String
+  role           UserRole        @default(PLAYER)
+  avatarUrl      String?
+  wallet         Wallet?
+  transactions   Transaction[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  entries        GameEntry[]
+  refreshTokens  RefreshToken[]
+  notifications  Notification[]
 
   @@index([role])
   @@map("users")
@@ -41,6 +43,7 @@ model Game {
   status         GameStatus  @default(WAITING)
   ticketPrice    Decimal     @db.Decimal(10, 2)
   maxPlayers     Int
+  minPlayers     Int         @default(2)
   houseEdgePct   Decimal     @default(10) @db.Decimal(5, 2)
   pattern        PatternType
   calledBalls    Int[]
@@ -69,15 +72,15 @@ model GameEntry {
   gameId    String
   userId    String
   cartelaId String
-  game      Game     @relation(fields: [gameId], references: [id])
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
   cartela   Cartela  @relation(fields: [cartelaId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt  DateTime @default(now())
 
-  @@unique([gameId, userId])
   @@unique([gameId, cartelaId])
   @@index([userId])
   @@index([gameId])
+  @@index([gameId, userId])
   @@map("game_entries")
 }
 
@@ -92,7 +95,7 @@ model Transaction {
   note          String?
   balanceBefore Decimal?          @db.Decimal(12, 2)
   balanceAfter  Decimal?          @db.Decimal(12, 2)
-  user          User              @relation(fields: [userId], references: [id])
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt     DateTime          @default(now())
 
   @@index([userId])
@@ -137,4 +140,43 @@ enum PatternType {
   FULL_CARD
   X_PATTERN
   CORNERS
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  GAME_CANCELLED
+  REFUND_PROCESSED
+  DEPOSIT_APPROVED
+  DEPOSIT_REJECTED
+  WITHDRAWAL_PROCESSED
+  GAME_WON
+  GAME_STARTING
 }

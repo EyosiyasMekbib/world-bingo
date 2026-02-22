@@ -1,17 +1,5 @@
 export const useAdminApi = () => {
-    const config = useRuntimeConfig()
-    const token = useCookie('admin_token')
-
-    const apiFetch = async <T = unknown>(url: string, options: any = {}): Promise<T> => {
-        return await $fetch<T>(url, {
-            baseURL: config.public.apiBase,
-            headers: {
-                ...options.headers,
-                Authorization: token.value ? `Bearer ${token.value}` : '',
-            },
-            ...options,
-        })
-    }
+    const { apiFetch } = useAdminAuth()
 
     return {
         fetch: apiFetch,
@@ -20,6 +8,11 @@ export const useAdminApi = () => {
         getTransactionsHistory: () => apiFetch<any[]>('/admin/transactions/history'),
         getWithdrawals: () => apiFetch<any[]>('/admin/withdrawals'),
         approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
-        declineTransaction: (id: string, note?: string) => apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        declineTransaction: (id: string, note?: string) =>
+            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        getUsers: (params?: { page?: number; limit?: number }) =>
+            apiFetch<any>(`/admin/users${params ? `?page=${params.page ?? 1}&limit=${params.limit ?? 20}` : ''}`),
+        getGames: () => apiFetch<any[]>('/admin/games'),
     }
 }
+

@@ -1,4 +1,4 @@
-import type { GameStatus, UserRole, PatternType, TransactionType, PaymentStatus } from '../enums'
+import type { GameStatus, UserRole, PatternType, TransactionType, PaymentStatus, NotificationType } from '../enums'
 
 export interface User {
     id: string
@@ -31,6 +31,7 @@ export interface Game {
     status: GameStatus
     ticketPrice: number
     maxPlayers: number
+    minPlayers: number
     currentPlayers: number
     prizePool: number
     houseEdgePct: number
@@ -51,5 +52,19 @@ export interface Transaction {
     referenceId?: string
     receiptUrl?: string
     note?: string
+    balanceBefore?: number
+    balanceAfter?: number
     createdAt: Date
 }
+
+export interface Notification {
+    id: string
+    userId: string
+    type: NotificationType
+    title: string
+    body: string
+    isRead: boolean
+    metadata?: Record<string, unknown>
+    createdAt: Date
+}
+

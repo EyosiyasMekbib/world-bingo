@@ -1,11 +1,30 @@
 # World Bingo — Tasks Ordered by Dependency & Ranked by Difficulty
 
 > **Generated:** 2026-02-21  
-> **Last Updated:** 2026-02-22  
+> **Last Updated:** 2026-02-22 (Tier 1 complete + T17, T18, T20, T21 from Tier 2)  
 > **Source:** [ATOMIC_TASK_BREAKDOWN.md](./ATOMIC_TASK_BREAKDOWN.md)
 >
 > Every task is placed in a **dependency tier**. Tasks within a tier can be done in parallel.
 > A task in Tier N can only begin after **all** of its listed dependencies in earlier tiers are complete.
+
+---
+
+## 📊 Progress Summary
+
+| Tier | Tasks | Done | Remaining |
+|------|-------|------|-----------|
+| **Tier 0** — Foundation | 6 | ✅ 6 | 0 |
+| **Tier 1** — Core Fixes | 7 | ✅ 7 | 0 |
+| **Tier 2** — Service Layer | 10 | ✅ 4 (T17, T18, T20, T21) | 6 (T14, T15, T16, T19, T22, T23) |
+| **Tier 3** — Game Engine | 12 | 0 | 12 |
+| **Tier 4** — Player UI & Admin | 9 | 0 | 9 |
+| **Tier 5** — Live Game & Workers | 5 | 0 | 5 |
+| **Tier 6** — Gateways & Testing | 5 | 0 | 5 |
+| **Tier 7** — QA & Growth | 5 | 0 | 5 |
+| **Tier 8** — Advanced Features | 1 | 0 | 1 |
+| **Total** | **60** | **17 (28%)** | **43 (72%)** |
+
+**Next up (Tier 2 remaining):** T16 → T15 → T19 → T14 → T22 → T23
 
 ---
 
@@ -37,38 +56,39 @@
 
 ---
 
-## Tier 1 — Core Fixes (Depends on Tier 0)
+## Tier 1 — Core Fixes (Depends on Tier 0) ✅ COMPLETE
 
-> Foundational schema changes and auth hardening. Many Tier 2+ tasks depend on these.
+> All 7 tasks completed on **2026-02-22**. Tests: 26/26 ✅, TypeScript: zero errors ✅.
 
-| # | Task | Difficulty | ⏱️ | Package | Dependencies |
-|---|------|------------|-----|---------|--------------|
-| **T7** | 0.3 — Auth: Refresh token flow | 🟡 Medium | 3h | `api`, `shared-types`, `web` | → T1 (login fix first) |
-| **T8** | 0.4 — Fix GameEntry schema for multi-cartela | 🟡 Medium | 2h | `api/prisma`, `shared-types` | → T2 (locking must exist before changing entry model) |
-| **T9** | 1.1.1 — File upload: Backend storage module | 🟡 Medium | 2h | `api` | → T2 (wallet locking for deposit safety) |
-| **T10** | 1.4.1 — Notification: DB model + migration | 🟢 Easy | 1h | `api/prisma` | → T3 (indexes should be planned alongside) |
-| **T11** | 1.4.3 — Notification types enum | 🟢 Easy | 0.5h | `shared-types` | → T10 (model must exist) |
-| **T12** | 1.6.1 — Admin auth: Role check + persistence | 🟢 Easy | 1h | `admin` | → T1 (login fix) |
-| **T13** | 1.6.8 — Admin profile: Change password API | 🟢 Easy | 1h | `api`, `admin` | → T7 (auth service changes first) |
+| # | Task | Difficulty | ⏱️ | Package | Status |
+|---|------|------------|-----|---------|--------|
+| **T7** | 0.3 — Auth: Refresh token flow | 🟡 Medium | 3h | `api`, `shared-types`, `web` | ✅ Done |
+| **T8** | 0.4 — Fix GameEntry schema for multi-cartela | 🟡 Medium | 2h | `api/prisma`, `shared-types` | ✅ Done |
+| **T9** | 1.1.1 — File upload: Backend storage module | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T10** | 1.4.1 — Notification: DB model + migration | 🟢 Easy | 1h | `api/prisma` | ✅ Done |
+| **T11** | 1.4.3 — Notification types enum | 🟢 Easy | 0.5h | `shared-types` | ✅ Done |
+| **T12** | 1.6.1 — Admin auth: Role check + persistence | 🟢 Easy | 1h | `admin` | ✅ Done |
+| **T13** | 1.6.8 — Admin profile: Change password API | 🟢 Easy | 1h | `api`, `admin` | ✅ Done |
 
 ---
 
 ## Tier 2 — Service Layer (Depends on Tier 1)
 
 > New services and core business logic that build on the schema and auth fixes.
+> ⚠️ T17, T18, T20, T21 were completed early as part of the Tier 1 implementation pass.
 
-| # | Task | Difficulty | ⏱️ | Package | Dependencies |
-|---|------|------------|-----|---------|--------------|
-| **T14** | 0.5 — Move game state to Redis | 🔴 Hard | 4h | `api` | → T8 (game entry schema finalized) |
-| **T15** | 1.2 — Withdrawal route: Complete flow | 🟡 Medium | 2h | `api` | → T2 (locking), → T7 (auth for protected route) |
-| **T16** | 1.1.2 — Deposit route: Handle file upload | 🟡 Medium | 1.5h | `api` | → T9 (storage module) |
-| **T17** | 1.4.2 — Notification service | 🟡 Medium | 2h | `api` | → T10, → T11 (model + enums) |
-| **T18** | 1.4.4 — Socket events for notifications | 🟢 Easy | 0.5h | `shared-types` | → T11 (enums) |
-| **T19** | 1.3.1 — Refund service | 🔴 Hard | 2h | `api` | → T2 (wallet locking), → T8 (entry schema) |
-| **T20** | 1.4.6 — Notification API routes | 🟢 Easy | 1h | `api` | → T17 (service) |
-| **T21** | 1.6.2 — Admin dashboard: Wire to live API | 🟢 Easy | 1h | `admin` | → T12 (admin auth) |
-| **T22** | 3.3 — Payment gateway abstraction interface | 🟡 Medium | 2h | `api` | → T9 (storage module pattern to follow) |
-| **T23** | 6.1 — CI/CD pipeline (GitHub Actions) | 🟡 Medium | 4h | root | → T6 (Dockerfiles) |
+| # | Task | Difficulty | ⏱️ | Package | Status / Dependencies |
+|---|------|------------|-----|---------|----------------------|
+| **T14** | 0.5 — Move game state to Redis | 🔴 Hard | 4h | `api` | ⏳ Pending → T8 |
+| **T15** | 1.2 — Withdrawal route: Complete flow | 🟡 Medium | 2h | `api` | ⏳ Pending → T2, T7 |
+| **T16** | 1.1.2 — Deposit route: Handle file upload | 🟡 Medium | 1.5h | `api` | ⏳ Pending → T9 |
+| **T17** | 1.4.2 — Notification service | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T18** | 1.4.4 — Socket events for notifications | 🟢 Easy | 0.5h | `shared-types` | ✅ Done |
+| **T19** | 1.3.1 — Refund service | 🔴 Hard | 2h | `api` | ⏳ Pending → T2, T8 |
+| **T20** | 1.4.6 — Notification API routes | 🟢 Easy | 1h | `api` | ✅ Done |
+| **T21** | 1.6.2 — Admin dashboard: Wire to live API | 🟢 Easy | 1h | `admin` | ✅ Done |
+| **T22** | 3.3 — Payment gateway abstraction interface | 🟡 Medium | 2h | `api` | ⏳ Pending → T9 |
+| **T23** | 6.1 — CI/CD pipeline (GitHub Actions) | 🟡 Medium | 4h | root | ⏳ Pending → T6 |
 
 ---
 
@@ -166,7 +186,7 @@
 ## Dependency Graph (Visual)
 
 ```
-TIER 0 (no deps)
+TIER 0 ✅ (no deps)
 ├── T1  Auth: login fix ─────────────────────────────────────────────────┐
 ├── T2  Wallet: row-locking ─────────────────────────────────────────────┤
 ├── T3  DB indexes ──────────────────────────────────────────────────────┤
@@ -174,7 +194,7 @@ TIER 0 (no deps)
 ├── T5  Env config ──────────────────────────────────────────────────────┤
 └── T6  Dockerfiles ─────────────────────────────────────────────────────┤
                                                                          │
-TIER 1 (foundation fixes)                                                │
+TIER 1 ✅ (foundation fixes)                                             │
 ├── T7  Refresh tokens ──────── T1 ──────────────────────────────────────┤
 ├── T8  Multi-cartela schema ── T2 ──────────────────────────────────────┤
 ├── T9  Storage module ──────── T2 ──────────────────────────────────────┤
@@ -183,15 +203,15 @@ TIER 1 (foundation fixes)                                                │
 ├── T12 Admin auth ──────────── T1 ──────────────────────────────────────┤
 └── T13 Change password ─────── T7 ──────────────────────────────────────┤
                                                                          │
-TIER 2 (services)                                                        │
+TIER 2 (services) — T17 ✅ T18 ✅ T20 ✅ T21 ✅ done early              │
 ├── T14 Redis game state ────── T8 ──────────────────────────────────────┤
 ├── T15 Withdrawal route ────── T2, T7 ──────────────────────────────────┤
 ├── T16 Deposit file upload ─── T9 ──────────────────────────────────────┤
-├── T17 Notification service ── T10, T11 ────────────────────────────────┤
-├── T18 Socket events ──────── T11 ──────────────────────────────────────┤
+├── T17 Notification service ── T10, T11 ✅──────────────────────────────┤
+├── T18 Socket events ──────── T11 ✅────────────────────────────────────┤
 ├── T19 Refund service ──────── T2, T8 ──────────────────────────────────┤
-├── T20 Notification routes ─── T17 ─────────────────────────────────────┤
-├── T21 Admin dash wiring ───── T12 ─────────────────────────────────────┤
+├── T20 Notification routes ─── T17 ✅──────────────────────────────────┤
+├── T21 Admin dash wiring ───── T12 ✅──────────────────────────────────┤
 ├── T22 Payment abstraction ─── T9 ──────────────────────────────────────┤
 └── T23 CI/CD ───────────────── T6 ──────────────────────────────────────┤
                                                                          │

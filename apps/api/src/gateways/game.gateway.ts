@@ -29,11 +29,10 @@ export function registerGameHandlers(io: any) {
             if (!socket.data.userId) return socket.emit('error', { message: 'Unauthorized', code: '401' })
             
             try {
-                await GameService.joinGame(socket.data.userId, gameId, cartelaId)
+                // Wrap single cartelaId in array for backward compat with socket event
+                await GameService.joinGame(socket.data.userId, gameId, [cartelaId])
                 socket.join(`game:${gameId}`)
                 socket.data.gameId = gameId
-                socket.emit('error', { message: 'Joined successfully', code: '200' }) // Reuse error for generic msg? No, should strictly follow schema. 
-                // Currently no specific check event in schema, maybe game:updated creates the feedback
             } catch (e: any) {
                 socket.emit('error', { message: e.message, code: '400' })
             }

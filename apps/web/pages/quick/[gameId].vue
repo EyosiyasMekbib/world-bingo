@@ -18,7 +18,7 @@
                      <div v-for="(num, c) in row" :key="c" 
                           class="cell" 
                           :class="{ marked: isMarked(num), center: r===2 && c===2 }"
-                          @click="markCell(entry.cartela.id, r, c)">
+                          @click="markCell(entry.cartela.id, Number(r), Number(c))">
                         {{ num === 0 ? '★' : num }}
                      </div>
                  </div>

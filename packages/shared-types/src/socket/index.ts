@@ -1,4 +1,4 @@
-import type { Game, Cartela, User } from '../entities'
+import type { Game, Cartela, User, Notification } from '../entities'
 
 export interface ServerToClientEvents {
     'game:updated': (game: Game) => void
@@ -6,10 +6,12 @@ export interface ServerToClientEvents {
     'game:winner': (payload: { gameId: string; winner: User; prizeAmount: number }) => void
     'game:started': (game: Game) => void
     'game:ended': (game: Game) => void
+    'game:cancelled': (payload: { gameId: string; reason: string }) => void
     'lobby:game-added': (game: Game) => void
     'lobby:game-removed': (gameId: string) => void
     'cartela:marked': (payload: { cartelaId: string; cell: [number, number] }) => void
     'wallet:updated': (payload: { balance: number }) => void
+    'notification:new': (notification: Notification) => void
     error: (payload: { message: string; code: string }) => void
 }
 
@@ -20,6 +22,7 @@ export interface ClientToServerEvents {
     'game:claim-bingo': (payload: { gameId: string; cartelaId: string }) => void
     'lobby:subscribe': () => void
     'lobby:unsubscribe': () => void
+    'notification:mark-read': (payload: { notificationId: string }) => void
 }
 
 export interface InterServerEvents {
@@ -39,3 +42,4 @@ export interface TypedSocket {
 }
 
 export type { Cartela }
+

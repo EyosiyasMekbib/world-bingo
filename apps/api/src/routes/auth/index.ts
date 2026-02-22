@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
-import { LoginSchema, RegisterSchema } from '@world-bingo/shared-types'
+import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
 
@@ -44,10 +44,45 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         handler: AuthController.adminLogin,
     })
 
+    fastify.post('/refresh', {
+        config: {
+            rateLimit: {
+                max: 20,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(RefreshTokenSchema),
+        },
+        handler: AuthController.refresh,
+    })
+
+    fastify.post('/logout', {
+        schema: {
+            body: zodToJsonSchema(LogoutSchema),
+        },
+        handler: AuthController.logout,
+    })
+
     fastify.get('/me', {
         preValidation: [fastify.authenticate],
         handler: AuthController.me,
     })
+
+    fastify.post('/change-password', {
+        preValidation: [fastify.authenticate],
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(ChangePasswordSchema),
+        },
+        handler: AuthController.changePassword,
+    })
 }
 
 export default authRoutes
+

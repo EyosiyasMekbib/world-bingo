@@ -10,7 +10,8 @@
         "start": "node dist/index.js",
         "typecheck": "tsc --noEmit",
         "lint": "eslint src",
-        "test": "vitest run",
+        "test": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/world_bingo_test?schema=public' vitest run",
+        "test:coverage": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/world_bingo_test?schema=public' vitest run --coverage",
         "db:migrate": "prisma migrate dev",
         "db:seed": "tsx prisma/seed.ts",
         "db:studio": "prisma studio"
@@ -22,6 +23,7 @@
         "@fastify/jwt": "^9.0.0",
         "@fastify/multipart": "^9.0.0",
         "@fastify/rate-limit": "^10.0.0",
+        "@fastify/static": "^9.0.0",
         "@fastify/swagger": "^9.0.0",
         "@fastify/swagger-ui": "^5.0.0",
         "@prisma/client": "^5.22.0",

@@ -12,10 +12,10 @@ describe('WalletService', () => {
             data: {
                 username: 'wallettest',
                 phone: '+251912345700',
-                passwordHash: 'hashed',
+                passwordHash: 'hashed:testpassword',
                 wallet: {
                     create: {
-                        balance: 100,
+                        balance: 500,
                     },
                 },
             },
@@ -30,7 +30,7 @@ describe('WalletService', () => {
         it('should return wallet balance', async () => {
             const wallet = await WalletService.getBalance(testUserId)
             
-            expect(wallet.balance.toString()).toBe('100')
+            expect(wallet.balance.toString()).toBe('500')
         })
 
         it('should throw error for non-existent user', async () => {
@@ -69,7 +69,7 @@ describe('WalletService', () => {
 
             // Check wallet balance was updated
             const wallet = await WalletService.getBalance(testUserId)
-            expect(wallet.balance.toString()).toBe('600') // 100 + 500
+            expect(wallet.balance.toString()).toBe('1000') // 500 + 500
         })
 
         it('should throw error for invalid transaction', async () => {
@@ -97,17 +97,17 @@ describe('WalletService', () => {
     describe('requestWithdrawal', () => {
         it('should deduct balance on withdrawal request', async () => {
             const transaction = await WalletService.requestWithdrawal(testUserId, {
-                amount: 50,
+                amount: 100,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0912345678',
             })
 
-            expect(transaction.amount.toString()).toBe('50')
+            expect(transaction.amount.toString()).toBe('100')
             expect(transaction.status).toBe(PaymentStatus.PENDING_REVIEW)
             expect(transaction.type).toBe(TransactionType.WITHDRAWAL)
 
             const wallet = await WalletService.getBalance(testUserId)
-            expect(wallet.balance.toString()).toBe('50') // 100 - 50
+            expect(wallet.balance.toString()).toBe('400') // 500 - 100
         })
 
         it('should throw on insufficient balance', async () => {
@@ -122,26 +122,26 @@ describe('WalletService', () => {
 
         it('should record balance_before and balance_after on withdrawal', async () => {
             const transaction = await WalletService.requestWithdrawal(testUserId, {
-                amount: 40,
+                amount: 100,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
 
-            expect(transaction.balanceBefore?.toString()).toBe('100')
-            expect(transaction.balanceAfter?.toString()).toBe('60')
+            expect(transaction.balanceBefore?.toString()).toBe('500')
+            expect(transaction.balanceAfter?.toString()).toBe('400')
         })
 
         it('concurrent withdrawals: only one should succeed when total > balance', async () => {
-            // Both requests try to withdraw 80 from a 100 balance.
-            // Only one should succeed; the other should fail.
+            // Both requests try to withdraw 300 from a 500 balance.
+            // Only one should succeed; the other should fail (300+300 > 500).
             const results = await Promise.allSettled([
                 WalletService.requestWithdrawal(testUserId, {
-                    amount: 80,
+                    amount: 300,
                     paymentMethod: 'Telebirr',
                     accountNumber: '0912345678',
                 }),
                 WalletService.requestWithdrawal(testUserId, {
-                    amount: 80,
+                    amount: 300,
                     paymentMethod: 'Telebirr',
                     accountNumber: '0912345678',
                 }),
@@ -154,7 +154,7 @@ describe('WalletService', () => {
             expect(failures.length).toBe(1)
 
             const wallet = await WalletService.getBalance(testUserId)
-            // Balance should be 20 (100 - 80), not negative
+            // Balance should be 200 (500 - 300), not negative
             expect(Number(wallet.balance)).toBeGreaterThanOrEqual(0)
         })
     })

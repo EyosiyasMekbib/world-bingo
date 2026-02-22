@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { WalletService } from '../services'
-import { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
+import type { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
 
 export class WalletController {
     static async getBalance(request: FastifyRequest, reply: FastifyReply) {
@@ -24,9 +24,19 @@ export class WalletController {
         return transaction
     }
 
-    // Admin only
-    static async reviewDeposit(request: FastifyRequest, reply: FastifyReply) {
-        // Implementation for admin to approve/reject
-        return { message: 'Not implemented yet' }
+    static async getTransactions(
+        request: FastifyRequest<{ Querystring: { type?: string; page?: string; limit?: string } }>,
+        reply: FastifyReply,
+    ) {
+        // @ts-ignore
+        const userId = request.user.id
+        const { type, page = '1', limit = '20' } = request.query
+        const transactions = await WalletService.getTransactions(userId, {
+            type: type as any,
+            page: parseInt(page, 10),
+            limit: parseInt(limit, 10),
+        })
+        return transactions
     }
 }
+

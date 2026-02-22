@@ -12,21 +12,35 @@ export const RegisterSchema = z.object({
     password: z.string().min(6),
 })
 
+export const RefreshTokenSchema = z.object({
+    refreshToken: z.string().min(1),
+})
+
+export const LogoutSchema = z.object({
+    refreshToken: z.string().min(1),
+})
+
+export const ChangePasswordSchema = z.object({
+    currentPassword: z.string().min(6),
+    newPassword: z.string().min(6),
+})
+
 export const CreateGameSchema = z.object({
     title: z.string().min(3).max(64),
     ticketPrice: z.number().positive(),
     maxPlayers: z.number().int().min(2).max(500),
+    minPlayers: z.number().int().min(2).default(2),
     houseEdgePct: z.number().min(0).max(50).default(10),
     pattern: z.nativeEnum(PatternType),
 })
 
 export const DepositSchema = z.object({
     amount: z.number().positive(),
-    receiptUrl: z.string().url(),
+    receiptUrl: z.string().url().optional(),
 })
 
 export const WithdrawalSchema = z.object({
-    amount: z.number().positive(),
+    amount: z.number().min(100, 'Minimum withdrawal is 100 Birr'),
     paymentMethod: z.string().min(3),
     accountNumber: z.string().min(5),
 })
@@ -39,7 +53,7 @@ export const ReviewDepositSchema = z.object({
 
 export const JoinGameSchema = z.object({
     gameId: z.string().uuid(),
-    cartelaSerial: z.string(),
+    cartelaSerials: z.array(z.string()).min(1).max(10),
 })
 
 export const ClaimBingoSchema = z.object({
@@ -48,11 +62,14 @@ export const ClaimBingoSchema = z.object({
 })
 
 export type LoginDto = z.infer<typeof LoginSchema>
-
 export type RegisterDto = z.infer<typeof RegisterSchema>
+export type RefreshTokenDto = z.infer<typeof RefreshTokenSchema>
+export type LogoutDto = z.infer<typeof LogoutSchema>
+export type ChangePasswordDto = z.infer<typeof ChangePasswordSchema>
 export type CreateGameDto = z.infer<typeof CreateGameSchema>
 export type DepositDto = z.infer<typeof DepositSchema>
 export type WithdrawalDto = z.infer<typeof WithdrawalSchema>
 export type ReviewDepositDto = z.infer<typeof ReviewDepositSchema>
 export type JoinGameDto = z.infer<typeof JoinGameSchema>
 export type ClaimBingoDto = z.infer<typeof ClaimBingoSchema>
+
