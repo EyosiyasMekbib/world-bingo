@@ -21,6 +21,9 @@ export class WalletService {
                 amount: data.amount,
                 status: PaymentStatus.PENDING_REVIEW, // Needs admin approval
                 receiptUrl: data.receiptUrl,
+                paymentTransactionId: data.transactionId,
+                senderName: data.senderName,
+                senderAccount: data.senderAccount,
             },
         })
         return transaction

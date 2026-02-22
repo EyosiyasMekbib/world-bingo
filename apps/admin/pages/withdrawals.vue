@@ -13,8 +13,8 @@ const toast = useToast()
 
 const columns = [
   { accessorKey: 'id', header: 'ID' },
-  { accessorKey: 'user.username', header: 'User' },
-  { accessorKey: 'user.phone', header: 'Phone' },
+  { accessorKey: 'user.username', header: 'Username' },
+  { accessorKey: 'user.phone', header: 'TeleBirr Number' },
   { accessorKey: 'amount', header: 'Amount (ETB)' },
   { accessorKey: 'note', header: 'Bank/Account' },
   { accessorKey: 'createdAt', header: 'Requested' },
@@ -28,10 +28,21 @@ const showConfirmModal = ref(false)
 const pendingAction = ref<{ id: string; type: 'approve' | 'reject' } | null>(null)
 const declineNote = ref('')
 
+// Stats
+const approvedSum = ref(0)
+const pendingCount = computed(() =>
+  withdrawals.value.filter(w => w.status === 'PENDING_REVIEW').length
+)
+
 const refreshWithdrawals = async () => {
   loading.value = true
   try {
-    withdrawals.value = await getWithdrawals()
+    const [list, stats] = await Promise.all([
+      getWithdrawals(),
+      useAdminApi().getStats(),
+    ])
+    withdrawals.value = list
+    approvedSum.value = stats.approvedWithdrawalSum ?? 0
   } catch {
     toast.add({ title: 'Error', description: 'Failed to fetch withdrawals', color: 'error' })
   } finally {
@@ -74,12 +85,24 @@ onMounted(refreshWithdrawals)
       <UButton icon="i-heroicons-arrow-path" variant="ghost" @click="refreshWithdrawals">Refresh</UButton>
     </div>
 
+    <!-- Summary stats -->
+    <div class="grid grid-cols-2 gap-4">
+      <UCard class="text-center">
+        <div class="text-2xl font-bold text-yellow-500">{{ pendingCount }}</div>
+        <div class="text-xs text-gray-500 mt-1">Awaiting Transfer</div>
+      </UCard>
+      <UCard class="text-center">
+        <div class="text-2xl font-bold text-green-600">{{ approvedSum.toFixed(2) }} ETB</div>
+        <div class="text-xs text-gray-500 mt-1">Total Transferred (all time)</div>
+      </UCard>
+    </div>
+
     <UAlert
       icon="i-heroicons-information-circle"
       color="warning"
       variant="soft"
       title="Manual Settlement"
-      description="Marking a request as transferred will notify the user and update their transaction history. Ensure the transfer is physically made via Telebirr first."
+      description="Send funds via TeleBirr to the player's phone number shown below, then click 'Mark Transferred'. Rejecting a request refunds the balance back to the player."
     />
 
     <UCard>
@@ -87,8 +110,14 @@ onMounted(refreshWithdrawals)
         <template #id-cell="{ row }">
           <span class="font-mono text-xs">{{ (row.original as unknown as WithdrawalTransaction).id.slice(0, 8) }}…</span>
         </template>
+        <template #user.username-cell="{ row }">
+          <span class="font-semibold">{{ (row.original as unknown as WithdrawalTransaction).user.username }}</span>
+        </template>
+        <template #user.phone-cell="{ row }">
+          <span class="font-mono text-sm font-bold text-blue-600">{{ (row.original as unknown as WithdrawalTransaction).user.phone }}</span>
+        </template>
         <template #amount-cell="{ row }">
-          <strong>{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }}</strong>
+          <strong class="text-lg">{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }} ETB</strong>
         </template>
         <template #createdAt-cell="{ row }">
           {{ new Date((row.original as unknown as WithdrawalTransaction).createdAt).toLocaleString() }}
@@ -128,18 +157,18 @@ onMounted(refreshWithdrawals)
         </template>
         <div class="p-4 space-y-3">
           <p v-if="pendingAction?.type === 'approve'" class="text-sm text-gray-600">
-            Confirm that you have physically transferred the funds to the player's account.
+            Confirm that you have physically transferred the funds to the player's TeleBirr account.
           </p>
           <template v-else>
             <p class="text-sm text-gray-600">The withdrawal will be rejected and the balance returned to the player's wallet.</p>
-            <UInput v-model="declineNote" placeholder="Reason (optional)" />
+            <UInput v-model="declineNote" placeholder="Reason for rejection (optional)" />
           </template>
         </div>
         <template #footer>
           <div class="flex justify-end gap-2">
             <UButton color="neutral" variant="ghost" @click="showConfirmModal = false">Cancel</UButton>
             <UButton :color="pendingAction?.type === 'approve' ? 'success' : 'error'" @click="executeAction">
-              {{ pendingAction?.type === 'approve' ? 'Confirm' : 'Reject' }}
+              {{ pendingAction?.type === 'approve' ? 'Confirm' : 'Reject & Refund' }}
             </UButton>
           </div>
         </template>

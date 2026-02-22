@@ -11,6 +11,7 @@ import path from 'path'
 import { initSocket } from './lib/socket'
 import { stopAllEngines } from './lib/game-engine'
 import { closeAllQueues } from './lib/queue'
+import { register as metricsRegistry, httpRequestsTotal } from './lib/metrics'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
@@ -133,6 +134,20 @@ if (!isProd) {
 }
 
 server.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// T52 — Prometheus metrics endpoint (internal/admin use)
+server.get('/metrics', {
+    config: { rateLimit: false },
+}, async (_req, reply) => {
+    reply.header('Content-Type', metricsRegistry.contentType)
+    return reply.send(await metricsRegistry.metrics())
+})
+
+// T52 — Track HTTP request counts
+server.addHook('onResponse', async (request, reply) => {
+    const route = (request as any).routerPath ?? request.url.split('?')[0]
+    httpRequestsTotal.labels(request.method, route, String(reply.statusCode)).inc()
+})
 
 // Graceful shutdown
 const shutdown = async (signal: string) => {

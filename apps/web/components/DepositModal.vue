@@ -8,6 +8,16 @@
         </div>
 
         <div class="modal-body">
+          <!-- TeleBirr Instructions Banner -->
+          <div class="telebirr-banner">
+            <div class="banner-icon">📱</div>
+            <div class="banner-content">
+              <div class="banner-title">⚡ Complete within 15 minutes</div>
+              <div class="banner-detail">Send via <strong>TeleBirr</strong> to merchant number:</div>
+              <div class="merchant-number">0901977670</div>
+            </div>
+          </div>
+
           <!-- Amount -->
           <div class="field">
             <label>Amount (ETB)</label>
@@ -19,20 +29,35 @@
             </div>
           </div>
 
-          <!-- Payment Method -->
+          <!-- Payment Method — static TeleBirr label -->
           <div class="field">
             <label>Payment Method</label>
-            <select v-model="form.paymentMethod" class="input">
-              <option value="telebirr">Telebirr</option>
-              <option value="cbe">CBE Birr</option>
-              <option value="awash">Awash Bank</option>
-              <option value="dashen">Dashen Bank</option>
-            </select>
+            <div class="input static-method">
+              <span class="method-icon">📱</span> TeleBirr
+            </div>
+          </div>
+
+          <!-- TeleBirr Transaction ID -->
+          <div class="field">
+            <label>TeleBirr Transaction ID <span class="required">*</span></label>
+            <input v-model="form.transactionId" type="text" placeholder="e.g. TLB202601011234" class="input" />
+          </div>
+
+          <!-- Sender Name -->
+          <div class="field">
+            <label>Your Name (as shown on TeleBirr receipt) <span class="required">*</span></label>
+            <input v-model="form.senderName" type="text" placeholder="Full name" class="input" />
+          </div>
+
+          <!-- Sender TeleBirr Account -->
+          <div class="field">
+            <label>Your TeleBirr Phone Number <span class="required">*</span></label>
+            <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="input" />
           </div>
 
           <!-- Receipt Upload -->
           <div class="field">
-            <label>Transfer Receipt Screenshot</label>
+            <label>Transfer Receipt Screenshot <span class="required">*</span></label>
             <div
               class="file-drop"
               :class="{ 'has-preview': previewUrl }"
@@ -91,14 +116,22 @@ const uploadProgress = ref(0)
 
 const form = reactive({
   amount: 0,
-  paymentMethod: 'telebirr',
+  transactionId: '',
+  senderName: '',
+  senderAccount: '',
 })
 
 const error = ref('')
 const success = ref(false)
 const loading = ref(false)
 
-const canSubmit = computed(() => form.amount >= 10 && selectedFile.value !== null)
+const canSubmit = computed(() =>
+  form.amount >= 10 &&
+  form.transactionId.trim().length >= 5 &&
+  form.senderName.trim().length >= 1 &&
+  form.senderAccount.trim().length >= 10 &&
+  selectedFile.value !== null,
+)
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -135,7 +168,9 @@ async function submit() {
   try {
     const formData = new FormData()
     formData.append('amount', String(form.amount))
-    formData.append('paymentMethod', form.paymentMethod)
+    formData.append('transactionId', form.transactionId)
+    formData.append('senderName', form.senderName)
+    formData.append('senderAccount', form.senderAccount)
     formData.append('receipt', selectedFile.value)
 
     await auth.apiFetch('/wallet/deposit', {
@@ -159,7 +194,9 @@ async function submit() {
 
 function resetForm() {
   form.amount = 0
-  form.paymentMethod = 'telebirr'
+  form.transactionId = ''
+  form.senderName = ''
+  form.senderAccount = ''
   selectedFile.value = null
   previewUrl.value = null
   uploadProgress.value = 0
@@ -363,5 +400,62 @@ label {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.95rem;
+}
+
+.telebirr-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: rgba(201, 169, 110, 0.1);
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.banner-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.banner-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-primary, #c9a96e);
+}
+
+.banner-detail {
+  font-size: 0.8rem;
+  color: #bbb;
+}
+
+.merchant-number {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+
+.static-method {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ddd;
+  cursor: default;
+}
+
+.method-icon {
+  font-size: 1.1rem;
+}
+
+.required {
+  color: #f87171;
+  margin-left: 2px;
 }
 </style>

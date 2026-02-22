@@ -1,7 +1,7 @@
 # World Bingo — Tasks Ordered by Dependency & Ranked by Difficulty
 
 > **Generated:** 2026-02-21  
-> **Last Updated:** 2026-02-22 (Tier 5 complete — T45, T48, T49)  
+> **Last Updated:** 2026-02-22 (Tier 6 complete — T50, T51, T51b, T51c, T52, T53, T54)  
 > **Source:** [ATOMIC_TASK_BREAKDOWN.md](./ATOMIC_TASK_BREAKDOWN.md)
 >
 > Every task is placed in a **dependency tier**. Tasks within a tier can be done in parallel.
@@ -19,12 +19,12 @@
 | **Tier 3** — Game Engine | 12 | ✅ 11 | 1 (T35 — infra) |
 | **Tier 4** — Player UI & Admin | 9 | ✅ 9 | 0 |
 | **Tier 5** — Live Game & Workers | 5 | ✅ 5 | 0 |
-| **Tier 6** — Manual Payment & Testing | 7 | 0 | 7 |
+| **Tier 6** — Manual Payment & Testing | 7 | ✅ 7 | 0 |
 | **Tier 7** — QA & Growth | 5 | 0 | 5 |
 | **Tier 8** — Advanced Features | 1 | 0 | 1 |
-| **Total** | **62** | **48 (77%)** | **14 (23%)** |
+| **Total** | **62** | **55 (89%)** | **7 (11%)** |
 
-**Next up: Tier 6** — Manual Payment Flow Hardening (T50, T51, T51b, T51c), Monitoring (T52), Integration Tests (T53), E2E Tests (T54)
+**Next up: Tier 7** — Admin E2E tests (T55), Load testing (T56), Referral program (T57), i18n Amharic (T58), Progressive jackpot (T59)
 
 ---
 
@@ -293,7 +293,7 @@ TIER 8 (advanced)                                                        │
 | T40 | Navigation & layout polish | 2h | 4 | ✅ Done |
 | T41 | Admin: Cancel game button | 1h | 4 | ✅ Done |
 | T49 | BullMQ dashboard | 1h | 5 | ✅ Done |
-| T51b | Admin withdrawal fulfillment enhancement | 1h | 6 | ❌ Todo |
+| T51b | Admin withdrawal fulfillment enhancement | 1h | 6 | ✅ Done |
 
 ### 🟡 Medium (36 tasks — ~86h total)
 
@@ -328,10 +328,10 @@ TIER 8 (advanced)                                                        │
 | T44 | BullMQ queue infrastructure | 1.5h | 4 | ✅ Done |
 | T46 | BullMQ: Refund worker | 1.5h | 5 | ✅ Done |
 | T47 | BullMQ: Notification worker | 1.5h | 5 | ✅ Done |
-| T50 | Deposit form: TeleBirr transaction fields | 3h | 6 | ❌ Todo |
-| T51 | Admin deposit verification enhancement | 2h | 6 | ❌ Todo |
-| T51c | Stale request & edge case handling | 2h | 6 | ❌ Todo |
-| T52 | Prometheus + Grafana monitoring | 4h | 6 | ❌ Todo |
+| T50 | Deposit form: TeleBirr transaction fields | 3h | 6 | ✅ Done |
+| T51 | Admin deposit verification enhancement | 2h | 6 | ✅ Done |
+| T51c | Stale request & edge case handling | 2h | 6 | ✅ Done |
+| T52 | Prometheus + Grafana monitoring | 4h | 6 | ✅ Done |
 | T55 | Admin E2E tests | 3h | 7 | ❌ Todo |
 | T56 | Load testing | 3h | 7 | ❌ Todo |
 | T57 | Referral program | 4h | 7 | ❌ Todo |
@@ -346,8 +346,8 @@ TIER 8 (advanced)                                                        │
 | T34 | WebSocket Redis adapter | 3h | 3 | ✅ Done |
 | T45 | Live game play page | 5h | 5 | ✅ Done |
 | T48 | BullMQ: Game engine worker | 2h | 5 | ✅ Done |
-| T53 | API integration tests | 6h | 6 | ❌ Todo |
-| T54 | Web E2E tests (Playwright) | 6h | 6 | ❌ Todo |
+| T53 | API integration tests | 6h | 6 | ✅ Done |
+| T54 | Web E2E tests (Playwright) | 6h | 6 | ✅ Done |
 | T59 | Progressive jackpot | 4h | 7 | ❌ Todo |
 
 ### ⚫ Very Hard (1 task — ~8h total)
@@ -417,3 +417,4 @@ Tiers 0–5 are **complete**. Tier 6 is next. Work in this order:
 | 2026-02-22 | 3 | T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34 | All Tier 3 code tasks complete (T35 skipped — manual infra). Redlock game engine (`lib/game-engine.ts`), cancel/auto-cancel game logic, notification integration, Pinia game store, deposit form, admin deposits/withdrawals/orders pages. Tests: 91/91 ✅ (+18 new). |
 | 2026-02-22 | 4 | T36, T37, T38, T39, T40, T41, T42, T43, T44 | All Tier 4 tasks complete. Real-time lobby, cartela selection, wallet UI modals, notification bell (`NotificationBell.vue`), polished header+layout+auth-middleware, admin game/user management pages, BullMQ queue factory (`lib/queue.ts`). |
 | 2026-02-22 | 5 | T45, T46, T47, T48, T49 | All Tier 5 tasks complete. Live game play page (`pages/quick/[gameId]/play.vue`), game engine worker (`workers/game-engine.worker.ts`), BullMQ dashboard (`/admin/queues` via `@bull-board/fastify`). GameService.startGame() now enqueues via BullMQ instead of setTimeout. Tests: 142/142 ✅. |
+| 2026-02-22 | 6 | T50, T51, T51b, T51c, T52, T53, T54 | All Tier 6 tasks complete. TeleBirr deposit fields (DB migration + shared-types + DepositModal), admin deposit cross-check UI (Txn ID / Sender Name / late-submission badge / predefined decline reasons), admin withdrawal stats + improved UX, Prometheus+Grafana monitoring stack, 15 API integration tests (106/106 ✅), Playwright E2E specs. Also fixed pre-existing bug: withdrawal rejection now uses WITHDRAWAL_PROCESSED notification type. |

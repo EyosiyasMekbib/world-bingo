@@ -85,18 +85,21 @@ model GameEntry {
 }
 
 model Transaction {
-  id            String            @id @default(uuid())
-  userId        String
-  type          TransactionType
-  amount        Decimal           @db.Decimal(12, 2)
-  status        PaymentStatus     @default(PENDING)
-  referenceId   String?
-  receiptUrl    String?
-  note          String?
-  balanceBefore Decimal?          @db.Decimal(12, 2)
-  balanceAfter  Decimal?          @db.Decimal(12, 2)
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt     DateTime          @default(now())
+  id                   String            @id @default(uuid())
+  userId               String
+  type                 TransactionType
+  amount               Decimal           @db.Decimal(12, 2)
+  status               PaymentStatus     @default(PENDING)
+  referenceId          String?
+  receiptUrl           String?
+  note                 String?
+  balanceBefore        Decimal?          @db.Decimal(12, 2)
+  balanceAfter         Decimal?          @db.Decimal(12, 2)
+  paymentTransactionId String?
+  senderName           String?
+  senderAccount        String?
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime          @default(now())
 
   @@index([userId])
   @@index([type, status])

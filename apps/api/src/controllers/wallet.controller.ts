@@ -26,11 +26,20 @@ export class WalletController {
             const parts = request.parts()
             let amount: number | undefined
             let receiptUrl: string | undefined
+            let transactionId: string | undefined
+            let senderName: string | undefined
+            let senderAccount: string | undefined
 
             for await (const part of parts) {
                 if (part.type === 'field') {
                     if (part.fieldname === 'amount') {
                         amount = Number(part.value)
+                    } else if (part.fieldname === 'transactionId') {
+                        transactionId = String(part.value)
+                    } else if (part.fieldname === 'senderName') {
+                        senderName = String(part.value)
+                    } else if (part.fieldname === 'senderAccount') {
+                        senderAccount = String(part.value)
                     }
                 } else if (part.type === 'file' && part.fieldname === 'receipt') {
                     // Validate file type and size
@@ -45,7 +54,13 @@ export class WalletController {
                 return reply.status(400).send({ error: 'Amount is required and must be positive' })
             }
 
-            const transaction = await WalletService.initiateDeposit(userId, { amount, receiptUrl })
+            const transaction = await WalletService.initiateDeposit(userId, {
+                amount,
+                receiptUrl,
+                transactionId,
+                senderName,
+                senderAccount,
+            })
             return reply.status(201).send(transaction)
         }
 

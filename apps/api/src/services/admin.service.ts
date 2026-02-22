@@ -140,7 +140,7 @@ export class AdminService {
                 transaction.userId,
                 transaction.type === TransactionType.DEPOSIT
                     ? NotificationType.DEPOSIT_REJECTED
-                    : NotificationType.DEPOSIT_REJECTED,
+                    : NotificationType.WITHDRAWAL_PROCESSED,
                 `${label} Rejected`,
                 `Your ${label.toLowerCase()} of ${Number(transaction.amount).toFixed(2)} ETB was rejected.${note ? ` Reason: ${note}` : ''}`,
                 { transactionId, amount: Number(transaction.amount), note },

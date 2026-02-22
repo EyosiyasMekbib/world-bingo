@@ -37,6 +37,9 @@ export const CreateGameSchema = z.object({
 export const DepositSchema = z.object({
     amount: z.number().positive(),
     receiptUrl: z.string().url().optional(),
+    transactionId: z.string().min(5).optional(),
+    senderName: z.string().min(1).optional(),
+    senderAccount: z.string().min(10).optional(),
 })
 
 export const WithdrawalSchema = z.object({
