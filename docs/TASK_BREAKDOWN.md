@@ -56,10 +56,13 @@ The project uses a Turborepo architecture with `apps` (`api`, `web`, `admin`) an
 - [x] **WebSocket Redis Adapter**: Implemented and tested for horizontal scaling.
 - [ ] **Monitoring & Grafana**: Set up Prometheus/Grafana basic stack in Docker configuration.
 
-#### **Phase 3: Payment Automation Integration**
-- [ ] Incorporate Chapa API for deposits.
-- [ ] Incorporate Telebirr API integration.
-- [ ] Establish automated webhooks for deposit success/fail states.
+#### **Phase 3: Manual Payment Flow Hardening**
+- [x] Manual deposit flow: User transfers via TeleBirr to merchant (0901977670), then submits form with Amount, Transaction ID, Name, TeleBirr Account Number, and receipt screenshot.
+- [x] Admin receipt verification: Admin views uploaded receipt, cross-checks with form data, approves or declines.
+- [x] Manual withdrawal fulfillment: Admin sends funds via TeleBirr, marks request as approved.
+- [ ] Add Transaction ID and TeleBirr Account Number fields to deposit form and schema.
+- [ ] Add 15-minute transfer deadline display and stale request handling.
+- [ ] Add input mismatch detection helpers for admin review.
 
 #### **Phase 4: Growth / Expansion**
 - [ ] Implement referral program features.
@@ -69,7 +72,7 @@ The project uses a Turborepo architecture with `apps` (`api`, `web`, `admin`) an
 ---
 
 ## 🎯 Immediate Next Steps
-1. **Payment Gateway Integration** (Chapa + Telebirr) for automated deposits.
+1. **Manual Payment Flow Hardening** — Add Transaction ID, Name, TeleBirr Account Number fields to deposit form; add 15-min transfer deadline display; admin receipt-vs-form cross-check UX.
 2. **API Integration Tests** to validate end-to-end flows with a test database.
 3. **Web App E2E Tests** (Playwright) covering auth, game, and wallet flows.
 4. **Monitoring** (Prometheus + Grafana) for production observability.

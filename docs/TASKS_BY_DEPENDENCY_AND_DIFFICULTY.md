@@ -19,12 +19,12 @@
 | **Tier 3** — Game Engine | 12 | ✅ 11 | 1 (T35 — infra) |
 | **Tier 4** — Player UI & Admin | 9 | ✅ 9 | 0 |
 | **Tier 5** — Live Game & Workers | 5 | ✅ 5 | 0 |
-| **Tier 6** — Gateways & Testing | 5 | 0 | 5 |
+| **Tier 6** — Manual Payment & Testing | 7 | 0 | 7 |
 | **Tier 7** — QA & Growth | 5 | 0 | 5 |
 | **Tier 8** — Advanced Features | 1 | 0 | 1 |
-| **Total** | **60** | **48 (80%)** | **12 (20%)** |
+| **Total** | **62** | **48 (77%)** | **14 (23%)** |
 
-**Next up: Tier 6** — Payment Gateways (T50, T51), Monitoring (T52), Integration Tests (T53), E2E Tests (T54)
+**Next up: Tier 6** — Manual Payment Flow Hardening (T50, T51, T51b, T51c), Monitoring (T52), Integration Tests (T53), E2E Tests (T54)
 
 ---
 
@@ -146,14 +146,16 @@
 
 ---
 
-## Tier 6 — Payment Gateways & Monitoring (Depends on Tier 5)
+## Tier 6 — Manual Payment Hardening & Testing (Depends on Tier 5)
 
-> External integrations and observability. The system must be stable before adding these.
+> Manual deposit/withdrawal flow enhancement and test coverage. No Chapa or Telebirr API integration.
 
 | # | Task | Difficulty | ⏱️ | Package | Dependencies |
 |---|------|------------|-----|---------|--------------|
-| **T50** | 3.1 — Chapa payment gateway | ⚫ Very Hard | 5h | `api`, `web` | → T22 (gateway abstraction), → T29 (deposit UI), → T47 (notif worker) |
-| **T51** | 3.2 — Telebirr API integration | ⚫ Very Hard | 5h | `api`, `web` | → T22 (gateway abstraction), → T29 (deposit UI), → T47 (notif worker) |
+| **T50** | 3.1 — Deposit form: Add TeleBirr transaction fields (Transaction ID, Name, Account Number) | 🟡 Medium | 3h | `api`, `web`, `shared-types` | → T22 (gateway abstraction), → T29 (deposit UI) |
+| **T51** | 3.2 — Admin deposit verification: Cross-check receipt vs form data | 🟡 Medium | 2h | `admin`, `api` | → T30 (receipt viewer), → T31 (deposits page) |
+| **T51b** | 3.3 — Admin withdrawal fulfillment enhancement | 🟢 Easy | 1h | `admin` | → T32 (withdrawals page) |
+| **T51c** | 3.4 — Stale request & edge case handling (15-min deadline, decline reasons) | 🟡 Medium | 2h | `api`, `web`, `admin` | → T50, → T51 |
 | **T52** | 2.3 — Prometheus + Grafana monitoring | 🟡 Medium | 4h | `api`, `infra` | → T6 (Docker), → T44 (queues to monitor) |
 | **T53** | 5.1 — API integration tests | 🔴 Hard | 6h | `api` | → T24, → T19, → T17, → T15 (all services must be complete) |
 | **T54** | 5.2 — Web app E2E tests (Playwright) | 🔴 Hard | 6h | `web` | → T45 (live game page), → T38 (wallet UI) |
@@ -248,9 +250,11 @@ TIER 5 (live game + workers) — ALL ✅ COMPLETE                           │
 ├── T48 Game engine worker ─── T44, T24 ✅──────────────────────────────┤
 └── T49 BullMQ dashboard ───── T44 ✅───────────────────────────────────┤
                                                                          │
-TIER 6 (external integrations + testing)                                 │
-├── T50 Chapa gateway ──────── T22, T29, T47 ────────────────────────────┤
-├── T51 Telebirr gateway ───── T22, T29, T47 ────────────────────────────┤
+TIER 6 (manual payment hardening + testing)                             │
+├── T50 Deposit form fields ──── T22, T29 ────────────────────────────────┤
+├── T51 Admin deposit verify ── T30, T31 ─────────────────────────────────┤
+├── T51b Admin withdrawal ───── T32 ──────────────────────────────────────┤
+├── T51c Stale/edge cases ───── T50, T51 ─────────────────────────────────┤
 ├── T52 Prometheus/Grafana ─── T6, T44 ──────────────────────────────────┤
 ├── T53 API integration tests─ T24, T19, T17, T15 ───────────────────────┤
 └── T54 Web E2E tests ──────── T45, T38 ─────────────────────────────────┤
@@ -270,7 +274,7 @@ TIER 8 (advanced)                                                        │
 
 ## All 60 Tasks: Sorted by Difficulty
 
-### 🟢 Easy (13 tasks — ~12.5h total)
+### 🟢 Easy (14 tasks — ~13.5h total)
 
 | # | Task | ⏱️ | Tier | Status |
 |---|------|----|------|--------|
@@ -289,8 +293,9 @@ TIER 8 (advanced)                                                        │
 | T40 | Navigation & layout polish | 2h | 4 | ✅ Done |
 | T41 | Admin: Cancel game button | 1h | 4 | ✅ Done |
 | T49 | BullMQ dashboard | 1h | 5 | ✅ Done |
+| T51b | Admin withdrawal fulfillment enhancement | 1h | 6 | ❌ Todo |
 
-### 🟡 Medium (33 tasks — ~79h total)
+### 🟡 Medium (36 tasks — ~86h total)
 
 | # | Task | ⏱️ | Tier | Status |
 |---|------|----|------|--------|
@@ -323,6 +328,9 @@ TIER 8 (advanced)                                                        │
 | T44 | BullMQ queue infrastructure | 1.5h | 4 | ✅ Done |
 | T46 | BullMQ: Refund worker | 1.5h | 5 | ✅ Done |
 | T47 | BullMQ: Notification worker | 1.5h | 5 | ✅ Done |
+| T50 | Deposit form: TeleBirr transaction fields | 3h | 6 | ❌ Todo |
+| T51 | Admin deposit verification enhancement | 2h | 6 | ❌ Todo |
+| T51c | Stale request & edge case handling | 2h | 6 | ❌ Todo |
 | T52 | Prometheus + Grafana monitoring | 4h | 6 | ❌ Todo |
 | T55 | Admin E2E tests | 3h | 7 | ❌ Todo |
 | T56 | Load testing | 3h | 7 | ❌ Todo |
@@ -342,12 +350,10 @@ TIER 8 (advanced)                                                        │
 | T54 | Web E2E tests (Playwright) | 6h | 6 | ❌ Todo |
 | T59 | Progressive jackpot | 4h | 7 | ❌ Todo |
 
-### ⚫ Very Hard (3 tasks — ~18h total)
+### ⚫ Very Hard (1 task — ~8h total)
 
 | # | Task | ⏱️ | Tier | Status |
 |---|------|----|------|--------|
-| T50 | Chapa payment gateway | 5h | 6 | ❌ |
-| T51 | Telebirr API integration | 5h | 6 | ❌ |
 | T60 | Tournament mode | 8h | 8 | ❌ |
 
 ---
@@ -388,13 +394,16 @@ MVP critical path: ✅ COMPLETE
 Tiers 0–5 are **complete**. Tier 6 is next. Work in this order:
 
 1. ~~**T1–T49**~~ ✅ All done
-2. **T53** — API integration tests (6h) 🔴 ← unlocks now (all services complete)
-3. **T54** — Web E2E tests (6h) 🔴 ← unlocks now (T45 complete)
-4. **T50** — Chapa payment gateway (5h) ⚫ ← external integration
-5. **T51** — Telebirr API integration (5h) ⚫ ← external integration
-6. **T52** — Prometheus + Grafana monitoring (4h) � ← observability
+2. **T50** — Deposit form: Add TeleBirr fields (3h) � ← enhances deposit UX
+3. **T51** — Admin deposit verification enhancement (2h) 🟡 ← receipt cross-check
+4. **T51b** — Admin withdrawal fulfillment enhancement (1h) � ← simple polish
+5. **T51c** — Stale request & edge case handling (2h) 🟡 ← 15-min deadline, decline reasons
+6. **T53** — API integration tests (6h) 🔴 ← unlocks now (all services complete)
+7. **T54** — Web E2E tests (6h) 🔴 ← unlocks now (T45 complete)
+8. **T52** — Prometheus + Grafana monitoring (4h) 🟡 ← observability
 
-**The MVP is now feature-complete. Remaining work is testing, payments, and polish.**
+**The MVP is now feature-complete. Remaining work is payment flow polish, testing, and observability.**
+**No Chapa or Telebirr API integration is planned — all payments are manual receipt-based.**
 
 ---
 

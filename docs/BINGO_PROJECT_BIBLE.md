@@ -102,12 +102,14 @@ Make it survive real traffic.
 - [ ] Database read replicas
 - [ ] Monitoring (Grafana + Prometheus)
 
-### Phase 3 — Payment Automation (3 weeks)
-Remove manual work for operators.
+### Phase 3 — Manual Payment Flow Hardening (2 weeks)
+Polish the manual deposit/withdrawal experience.
 
-- [ ] Chapa payment gateway integration
-- [ ] Telebirr API integration
-- [ ] Automated deposit verification
+- [ ] Add TeleBirr transaction details to deposit form (Transaction ID, Name, Account Number)
+- [ ] Admin cross-check: receipt image vs submitted form data
+- [ ] 15-minute transfer deadline display & stale request warnings
+- [ ] Predefined decline reasons for admin (invalid receipt, ID mismatch, etc.)
+- **Note:** No Chapa or Telebirr API integration. All payments are handled manually via TeleBirr merchant transfers.
 
 ### Phase 4 — Growth (4 weeks)
 Player retention and acquisition.

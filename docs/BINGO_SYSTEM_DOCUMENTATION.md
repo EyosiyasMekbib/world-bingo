@@ -54,8 +54,9 @@ CANCELLATION PATH:
 Join Game → Game Cancelled (insufficient players) → Auto-Refund → Return to Lobby
 
 DEPOSIT PATH:
-Open Wallet → Select Deposit → Enter Amount → Select Payment Gateway →
-Upload Receipt Screenshot → Await Manual Verification → Balance Updated
+Open Wallet → Select Deposit → Transfer via TeleBirr to Merchant (0901977670) →
+Enter Amount, Transaction ID, Name, Account Number → Upload Receipt Screenshot →
+Await Admin Verification → Balance Updated
 ```
 
 ---
@@ -198,21 +199,25 @@ WAITING → STARTING → ACTIVE → WINNER_DECLARED → ENDED
 | **Withdraw Button** | Opens withdrawal flow |
 | **Transaction History** | Tabbed/linked section showing all transactions |
 
-#### Deposit Flow
-1. Enter amount (Minimum: 25 Birr)
-2. Quick-add chips: +50, +100, +200, +500
-3. Select payment gateway (Telebirr, CBE Birr, etc.)
-4. View payment instructions (account number/code)
-5. Upload receipt screenshot (image file upload)
-6. Submit → Enters "Pending" state
-7. Admin manually verifies receipt
-8. Balance updated upon approval
+#### Deposit Flow (TeleBirr Manual Transfer)
+1. User sees instruction: **"Transfer Funds Within 15 Minutes"** to merchant number **0901977670** via TeleBirr
+2. User performs the transfer via the TeleBirr app
+3. User returns to web app and fills out the deposit form:
+   - **Amount** (Minimum: 25 Birr)
+   - **Transaction ID** (from TeleBirr receipt, e.g., DAB2Q8G0FC)
+   - **Name** (sender's name as shown on receipt)
+   - **TeleBirr Account Number** (sender's phone number)
+   - **Receipt Image/Screenshot** (upload)
+4. Submit → Enters "Pending" state in admin's Orders History
+5. Admin views receipt, cross-checks form data against receipt image
+6. Admin approves or declines (with reason if declined)
+7. Balance updated upon approval; user notified
 
-#### Withdrawal Flow
+#### Withdrawal Flow (TeleBirr Manual Fulfillment)
 1. Enter amount (Minimum: 100 Birr; Maximum: current balance)
-2. Select bank from dropdown
-3. Enter account number
-4. Submit → Enters "Pending" state
+2. Payment method: TeleBirr
+3. Enter TeleBirr account/phone number
+4. Submit → Enters "Pending" state, balance deducted immediately
 5. Admin processes withdrawal manually
 6. Notification sent on completion
 
@@ -315,10 +320,12 @@ CREATE TABLE payment_requests (
     user_id         UUID NOT NULL REFERENCES users(id),
     type            ENUM('DEPOSIT', 'WITHDRAWAL') NOT NULL,
     amount          DECIMAL(15,2) NOT NULL,
-    gateway         VARCHAR(50),          -- 'TELEBIRR', 'CBE_BIRR', etc.
-    receipt_url     TEXT,                 -- S3/GCS URL for deposit receipt
-    bank_name       VARCHAR(100),         -- for withdrawals
-    account_number  VARCHAR(50),          -- for withdrawals
+    payment_method  VARCHAR(50) DEFAULT 'telebirr',  -- 'telebirr' (manual transfer)
+    payment_tx_id   VARCHAR(100),         -- TeleBirr transaction ID from receipt
+    sender_name     VARCHAR(200),         -- Name on the TeleBirr transfer
+    sender_account  VARCHAR(50),          -- TeleBirr phone number of the sender
+    receipt_url     TEXT,                 -- S3/GCS URL for deposit receipt screenshot
+    account_number  VARCHAR(50),          -- for withdrawals (recipient phone number)
     status          ENUM('PENDING', 'APPROVED', 'REJECTED') DEFAULT 'PENDING',
     processed_by    UUID REFERENCES users(id),
     processed_at    TIMESTAMPTZ,
@@ -503,14 +510,16 @@ Content-Type: multipart/form-data
 
 Fields:
   amount: 100.00
-  gateway: "TELEBIRR"
-  receipt: <file>
+  transactionId: "DAB2Q8G0FC"       // TeleBirr transaction ID from receipt
+  senderName: "Abebe Bikila"         // Name as shown on the TeleBirr receipt
+  senderAccount: "0912345678"        // Sender's TeleBirr phone number
+  receipt: <file>                    // Screenshot of TeleBirr receipt (JPG/PNG, max 5MB)
 
 // Response 201
 {
   "payment_request_id": "uuid",
   "status": "PENDING",
-  "message": "Deposit request submitted. Awaiting verification."
+  "message": "Deposit request submitted. Awaiting admin verification."
 }
 ```
 
@@ -1025,28 +1034,63 @@ Example (10 Birr game, 6 entries, 2 cartelas each):
 
 ## 9. Payment System Design
 
-### 9.1 Manual Payment Flow (Current System)
+### 9.1 Manual Payment Flow (TeleBirr)
+
+> All payments are handled manually via TeleBirr merchant transfers.
+> No Chapa or Telebirr API integration is used.
 
 ```
 DEPOSIT:
-User → Enters amount → Selects gateway (Telebirr/CBE Birr) → 
-Sends money to operator's account → Uploads screenshot →
-Admin reviews screenshot → Approves → Wallet credited
+1. User navigates to "Payment Methods" / Deposit tab
+2. User sees instruction: "Transfer Funds Within 15 Minutes"
+   to merchant number 0901977670 via TeleBirr
+3. User performs the transfer via the TeleBirr app
+4. User returns to web app and fills out the deposit form:
+   - Amount (e.g., 200 ETB)
+   - Transaction ID (e.g., DAB2Q8G0FC)
+   - Name (sender's name on the receipt)
+   - TeleBirr Account Number (sender's phone, e.g., +251912345678)
+   - Receipt Screenshot (uploaded image)
+5. User submits → request appears as "Pending" in admin Orders History
+
+DEPOSIT VERIFICATION (Admin):
+1. Admin opens "Deposits" menu, selects a "Pending" entry
+2. Admin clicks receipt icon to view the uploaded image
+3. Admin cross-checks submitted data (Transaction ID, Name, Account)
+   against the official TeleBirr receipt image
+4. Admin clicks "Approved" → wallet credited, user notified
+   OR Admin clicks "Declined" with reason → user notified
 
 WITHDRAWAL:
-User → Enters amount + bank details → 
-Admin reviews → Sends money manually → Marks as complete →
-User wallet debited → Notification sent
+1. User enters withdrawal amount (min 100 ETB) + TeleBirr phone number
+2. Submit → balance deducted immediately, request enters "Pending" state
+3. Admin views pending withdrawals with Username (+251...) and Amount
+4. Admin manually sends funds via TeleBirr
+5. Admin clicks "Approved" → status updated, user notified
+   OR Admin clicks "Rejected" → held balance refunded to user wallet
 ```
 
-### 9.2 Payment Gateway Integration (Future)
+### 9.2 Edge Cases
 
-For automation, integrate via:
-- **Chapa** (Ethiopia's leading payment API): `chapa.co`
-- **Telebirr API**: Direct integration for Telebirr transfers
-- **Yenepay**: E-commerce payment gateway for Ethiopia
+| Scenario | Handling |
+|---|---|
+| **Invalid receipt** | User uploads corrupted/unrelated image. Admin declines with reason "Invalid receipt". |
+| **Stale request** | User transfers but doesn't submit form within 15 minutes. Admin sees "Late submission" badge. Manual reconciliation required. |
+| **Input mismatch** | Transaction ID in form doesn't match receipt image. Admin declines with reason "Transaction ID mismatch". |
+| **Duplicate submission** | User submits same Transaction ID twice. Backend should flag/warn admin of duplicate `paymentTransactionId`. |
 
-### 9.3 Financial Controls
+### 9.3 Dashboard Statistics
+
+| Stat | Description |
+|---|---|
+| **Approved Deposit Sum** | Total ETB of approved deposits (e.g., 21,495 ETB) |
+| **Declined Deposit Sum** | Total ETB of declined deposits (e.g., 6,490 ETB) |
+| **Approved Withdrawal Sum** | Total ETB of approved withdrawals (e.g., 11,981 ETB) |
+| **Total Profit** | House edge earnings |
+| **Users Count** | Total registered users |
+| **Commission** | Platform commission percentage |
+
+### 9.4 Financial Controls
 
 | Control | Implementation |
 |---|---|

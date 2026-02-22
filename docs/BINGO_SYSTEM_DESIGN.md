@@ -29,8 +29,8 @@ The World Bingo platform is a **real-time, real-money multiplayer game** that de
 │   [Admin/Operator] ─────────────────────────────►               │
 │   (Verifies payments, manages games)            │                │
 │                                                 │                │
-│   [Payment Provider]  ◄─────────────────────────               │
-│   (Telebirr, CBE Birr, Chapa)                                   │
+│   [Payment Method]  ◄─────────────────────────                 │
+│   (TeleBirr — manual merchant transfer)                          │
 │                                                                  │
 │   [Email/SMS Provider] ◄────────────────────────                │
 │   (Twilio SMS, SendGrid Email)                                   │
@@ -573,11 +573,12 @@ Recovery Time: 2–5 seconds per client (transparent to user)
 - [ ] Game history and statistics page
 - [ ] Mobile responsive optimization
 
-### Phase 3 — Payment Automation (3 weeks)
-- [ ] Chapa payment gateway integration
-- [ ] Telebirr API direct integration
-- [ ] Automated deposit verification
-- [ ] Automated withdrawal processing
+### Phase 3 — Manual Payment Flow Hardening (2 weeks)
+- [ ] Add TeleBirr transaction details to deposit form (Transaction ID, Name, Account Number)
+- [ ] Admin cross-check: receipt image vs submitted form data
+- [ ] 15-minute transfer deadline display & stale request warnings
+- [ ] Predefined decline reasons for admin review
+- **Note:** No Chapa or Telebirr API integration. All payments are manual receipt-based via TeleBirr merchant transfers.
 
 ### Phase 4 — Growth Features (4 weeks)
 - [ ] Referral system

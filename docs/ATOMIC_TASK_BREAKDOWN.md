@@ -155,11 +155,12 @@
 #### 1.1.3 Frontend: Deposit form with file picker
 - [ ] Create `components/DepositModal.vue` in `apps/web`
 - [ ] Add amount input field with quick-add chips (+50, +100, +200, +500)
-- [ ] Add payment gateway selector (Telebirr, CBE Birr, etc.)
+- [ ] Add TeleBirr transfer instructions (merchant number, 15-min deadline)
 - [ ] Add file input for receipt screenshot with image preview
 - [ ] Submit via `FormData` to `POST /wallet/deposit`
 - [ ] Show upload progress indicator
 - [ ] Show success state with "Pending verification" message
+- **Note:** Additional fields (Transaction ID, Name, Account Number) added in Phase 3 (Task 3.1)
 
 #### 1.1.4 Admin: View receipt images
 - [ ] In `apps/admin/pages/deposits.vue`, display receipt image thumbnail per pending deposit
@@ -534,61 +535,89 @@
 
 ---
 
-## Phase 3 — Payment Automation
+## Phase 3 — Manual Payment Flow Hardening
 
-### 3.1 Chapa Payment Gateway ⏱️ 5h ❌
+> **Note:** No Chapa or Telebirr API integration. All payments are handled manually:
+> the user transfers funds via TeleBirr to merchant number **0901977670**, then submits
+> a deposit form with proof. The admin reviews and approves/declines.
+
+### 3.1 Deposit Form Enhancement ⏱️ 3h ❌
+
+**Package:** `apps/web`, `apps/api`, `packages/shared-types`
+
+#### 3.1.1 Update DepositSchema to include TeleBirr transaction details
+- [ ] Add `transactionId` field (string, required, min 5 chars) to `DepositSchema` in `shared-types/src/api/index.ts`
+- [ ] Add `senderName` field (string, required) to `DepositSchema`
+- [ ] Add `senderAccount` field (string, required, min 10 chars — TeleBirr phone number) to `DepositSchema`
+- [ ] Update `DepositDto` type accordingly
+- [ ] Update `WalletService.initiateDeposit()` to persist `transactionId`, `senderName`, and `senderAccount` in the `Transaction` record (use the `note` field or new DB columns)
+
+#### 3.1.2 Update Transaction model for TeleBirr details
+- [ ] Add `paymentTransactionId` field (String, optional) to `Transaction` model in `schema.prisma`
+- [ ] Add `senderName` field (String, optional) to `Transaction` model
+- [ ] Add `senderAccount` field (String, optional) to `Transaction` model
+- [ ] Generate and apply Prisma migration
+- [ ] Update `WalletService.initiateDeposit()` to save these fields
+
+#### 3.1.3 Frontend: Enhanced deposit form with TeleBirr instructions
+- [ ] In `DepositModal.vue`, display a prominent instruction banner:
+  - **"Transfer Funds Within 15 Minutes"**
+  - **Merchant Number: 0901977670**
+  - **Payment Method: TeleBirr**
+- [ ] Replace the generic payment method dropdown with a static "TeleBirr" label (single payment method)
+- [ ] Add `Transaction ID` input field (required)
+- [ ] Add `Name` input field (required — the sender's name on the TeleBirr receipt)
+- [ ] Add `TeleBirr Account Number` input field (required — sender's phone number)
+- [ ] Keep receipt image upload (required)
+- [ ] Submit all fields via `FormData` to `POST /wallet/deposit`
+- [ ] Show "Pending" status message after submission
+
+### 3.2 Admin Deposit Verification Enhancement ⏱️ 2h ❌
+
+**Package:** `apps/admin`, `apps/api`
+
+#### 3.2.1 Admin API: Return TeleBirr details in pending deposits
+- [ ] Update `GET /admin/transactions/pending` to include `paymentTransactionId`, `senderName`, `senderAccount` fields
+- [ ] Update `GET /admin/transactions/history` to include these fields
+
+#### 3.2.2 Admin UI: Cross-check receipt against form data
+- [ ] In `deposits.vue`, display `Transaction ID`, `Name`, and `TeleBirr Account Number` columns alongside the receipt thumbnail
+- [ ] Admin clicks receipt icon → opens full-size receipt image in a modal
+- [ ] Admin visually compares form data (Transaction ID, Name, Account) with the uploaded receipt
+- [ ] "Approve" button → credits user wallet, status → `APPROVED`
+- [ ] "Decline" button with reason input (e.g., "Transaction ID mismatch", "Invalid receipt") → status → `REJECTED`, user notified
+- [ ] Add summary stats at top: Approved Deposit Sum, Declined Deposit Sum, Pending count
+
+### 3.3 Admin Withdrawal Fulfillment Enhancement ⏱️ 1h ❌
+
+**Package:** `apps/admin`
+
+- [ ] In `withdrawals.vue`, clearly display the user's **Username** (phone number) and **Amount** so admin can manually send via TeleBirr
+- [ ] After admin sends funds manually via TeleBirr, admin clicks "Approved" to mark as fulfilled
+- [ ] Add Approved Withdrawal Sum stat to dashboard
+- [ ] "Reject" button refunds the held balance back to the user's wallet
+
+### 3.4 Stale Request & Edge Case Handling ⏱️ 2h ❌
 
 **Package:** `apps/api`, `apps/web`
 
-#### 3.1.1 Chapa SDK integration
-- [ ] Create `lib/payment/chapa.ts`
-- [ ] Implement `initializePayment(amount, email, txRef)` → returns checkout URL
-- [ ] Implement `verifyPayment(txRef)` → returns payment status
-- [ ] Add env vars: `CHAPA_SECRET_KEY`, `CHAPA_PUBLIC_KEY`, `CHAPA_WEBHOOK_SECRET`
+#### 3.4.1 Transfer deadline display
+- [ ] In `DepositModal.vue`, show a visible countdown or deadline note: "Complete transfer within 15 minutes"
+- [ ] Record `createdAt` timestamp on the transaction (already exists)
+- [ ] In admin `deposits.vue`, highlight requests older than 15 minutes with a warning badge ("Late submission")
 
-#### 3.1.2 Webhook handler
-- [ ] Add `POST /webhooks/chapa` route (no auth — verify via HMAC signature)
-- [ ] On `success` event: auto-approve deposit, credit wallet, create notification
-- [ ] On `failed` event: update transaction status to REJECTED, notify user
-- [ ] Make webhook handler idempotent (check if already processed by `txRef`)
+#### 3.4.2 Invalid receipt / input mismatch handling
+- [ ] Admin can decline with predefined reasons: "Invalid receipt", "Transaction ID mismatch", "Unrelated image", "Corrupted file"
+- [ ] Declined deposits trigger a `DEPOSIT_REJECTED` notification to the user with the reason
+- [ ] User sees the decline reason in their transaction history
 
-#### 3.1.3 Frontend: Chapa checkout
-- [ ] Add "Pay with Chapa" option in `DepositModal.vue`
-- [ ] Redirect to Chapa checkout URL
-- [ ] Handle return URL — show deposit status page
-- [ ] Fallback to manual receipt upload if Chapa is unavailable
-
-### 3.2 Telebirr API Integration ⏱️ 5h ❌
-
-**Package:** `apps/api`, `apps/web`
-
-#### 3.2.1 Telebirr SDK integration
-- [ ] Create `lib/payment/telebirr.ts`
-- [ ] Implement Telebirr H5 payment flow
-- [ ] Add env vars: `TELEBIRR_APP_ID`, `TELEBIRR_APP_KEY`, `TELEBIRR_PUBLIC_KEY`
-
-#### 3.2.2 Webhook handler
-- [ ] Add `POST /webhooks/telebirr` route
-- [ ] Parse Telebirr callback payload
-- [ ] Auto-approve/reject based on payment status
-- [ ] Idempotency via transaction reference check
-
-#### 3.2.3 Frontend: Telebirr option
-- [ ] Add "Pay with Telebirr" option in `DepositModal.vue`
-- [ ] Handle Telebirr redirect flow
-- [ ] Show payment status on return
-
-### 3.3 Payment Gateway Abstraction ⏱️ 2h ❌
+### 3.5 ~~Payment Gateway Abstraction~~ (Already Done) ✅
 
 **Package:** `apps/api`
-- [ ] Create `lib/payment/index.ts` — `PaymentGateway` interface
-  - `initiate(amount, userId, metadata): Promise<{ checkoutUrl, txRef }>`
-  - `verify(txRef): Promise<PaymentResult>`
-  - `handleWebhook(payload, signature): Promise<WebhookResult>`
-- [ ] Implement `ChapaGateway implements PaymentGateway`
-- [ ] Implement `TelebirrGateway implements PaymentGateway`
-- [ ] Implement `ManualGateway implements PaymentGateway` (current receipt flow)
-- [ ] Factory function: `getGateway(name: string): PaymentGateway`
+- [x] `PaymentGateway` interface exists at `gateways/payment/payment-gateway.interface.ts`
+- [x] `ManualPaymentGateway` implementation exists at `gateways/payment/manual.gateway.ts`
+- [x] Gateway registry with fallback to `manual` exists at `gateways/payment/index.ts`
+- **Note:** Chapa and Telebirr API gateways are **not planned**. All payments go through the manual receipt-based flow.
 
 ---
 
@@ -789,7 +818,7 @@
 | **Phase 1.5** | Web app real-time UI | ~18h | ✅ Complete |
 | **Phase 1.6** | Admin dashboard completion | ~12h | ✅ Complete |
 | **Phase 2** | Scale & infrastructure | ~18h | ✅ 2.1–2.5 done; 2.3 (monitoring) pending |
-| **Phase 3** | Payment automation | ~12h | ❌ Not Started |
+| **Phase 3** | Manual payment flow hardening | ~8h | ❌ Not Started |
 | **Phase 4** | Growth & expansion | ~22h | ❌ Not Started |
 | **Phase 5** | Testing & quality | ~18h | ❌ Not Started |
 | **Phase 6** | Deployment & DevOps | ~12h | ✅ 6.1–6.3 done; 6.4 pending |
