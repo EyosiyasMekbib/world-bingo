@@ -4,7 +4,14 @@ import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
+    // Strict rate limit for auth endpoints to prevent brute-force
     fastify.post('/register', {
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '1 minute',
+            },
+        },
         schema: {
             body: zodToJsonSchema(RegisterSchema),
         },
@@ -12,10 +19,29 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     fastify.post('/login', {
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute',
+            },
+        },
         schema: {
             body: zodToJsonSchema(LoginSchema),
         },
         handler: AuthController.login,
+    })
+
+    fastify.post('/admin/login', {
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(LoginSchema),
+        },
+        handler: AuthController.adminLogin,
     })
 
     fastify.get('/me', {

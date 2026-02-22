@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { PatternType, PaymentStatus } from '../enums'
 
 export const LoginSchema = z.object({
-    phone: z.string().min(9).max(15),
+    identifier: z.string().min(2).max(32).describe('Username or phone number'),
     password: z.string().min(6),
 })
 
@@ -48,6 +48,7 @@ export const ClaimBingoSchema = z.object({
 })
 
 export type LoginDto = z.infer<typeof LoginSchema>
+
 export type RegisterDto = z.infer<typeof RegisterSchema>
 export type CreateGameDto = z.infer<typeof CreateGameSchema>
 export type DepositDto = z.infer<typeof DepositSchema>

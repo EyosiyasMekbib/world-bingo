@@ -15,6 +15,7 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
     'game:join': (payload: { gameId: string; cartelaId: string }) => void
+    'game:join-room': (payload: { gameId: string }) => void
     'game:leave': (payload: { gameId: string }) => void
     'game:claim-bingo': (payload: { gameId: string; cartelaId: string }) => void
     'lobby:subscribe': () => void

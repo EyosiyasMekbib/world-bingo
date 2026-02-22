@@ -34,8 +34,14 @@ export class AuthService {
     }
 
     static async login(data: LoginDto) {
-        const user = await prisma.user.findUnique({
-            where: { phone: data.phone },
+        // Support login by username OR phone
+        const user = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { phone: data.identifier },
+                    { username: data.identifier },
+                ],
+            },
         })
 
         if (!user) {

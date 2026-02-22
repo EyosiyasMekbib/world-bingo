@@ -5,11 +5,11 @@
         "rootDir": "./src"
     },
     "include": [
-        "src",
-        "prisma"
+        "src"
     ],
     "exclude": [
         "node_modules",
-        "dist"
+        "dist",
+        "prisma"
     ]
 }

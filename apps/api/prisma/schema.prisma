@@ -20,6 +20,7 @@ model User {
   updatedAt    DateTime      @updatedAt
   entries      GameEntry[]
 
+  @@index([role])
   @@map("users")
 }
 
@@ -49,6 +50,8 @@ model Game {
   endedAt        DateTime?
   winnerId       String?
 
+  @@index([status])
+  @@index([status, createdAt])
   @@map("games")
 }
 
@@ -73,21 +76,29 @@ model GameEntry {
 
   @@unique([gameId, userId])
   @@unique([gameId, cartelaId])
+  @@index([userId])
+  @@index([gameId])
   @@map("game_entries")
 }
 
 model Transaction {
-  id          String            @id @default(uuid())
-  userId      String
-  type        TransactionType
-  amount      Decimal           @db.Decimal(12, 2)
-  status      PaymentStatus     @default(PENDING)
-  referenceId String?
-  receiptUrl  String?
-  note        String?
-  user        User              @relation(fields: [userId], references: [id])
-  createdAt   DateTime          @default(now())
+  id            String            @id @default(uuid())
+  userId        String
+  type          TransactionType
+  amount        Decimal           @db.Decimal(12, 2)
+  status        PaymentStatus     @default(PENDING)
+  referenceId   String?
+  receiptUrl    String?
+  note          String?
+  balanceBefore Decimal?          @db.Decimal(12, 2)
+  balanceAfter  Decimal?          @db.Decimal(12, 2)
+  user          User              @relation(fields: [userId], references: [id])
+  createdAt     DateTime          @default(now())
 
+  @@index([userId])
+  @@index([type, status])
+  @@index([userId, type])
+  @@index([createdAt])
   @@map("transactions")
 }
 

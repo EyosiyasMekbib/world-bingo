@@ -1,4 +1,13 @@
 <script setup lang="ts">
+interface OrderTransaction {
+  id: string
+  amount: number
+  type: string
+  status: string
+  createdAt: string
+  user: { username: string }
+}
+
 const { getTransactionsHistory } = useAdminApi()
 const toast = useToast()
 
@@ -11,14 +20,13 @@ const columns = [
   { accessorKey: 'status', header: 'Status' }
 ]
 
-const history = ref([])
+const history = ref<OrderTransaction[]>([])
 const loading = ref(false)
 
 const refreshHistory = async () => {
   loading.value = true
   try {
-    const data: any = await getTransactionsHistory()
-    history.value = data
+    history.value = await getTransactionsHistory()
   } catch (error) {
     toast.add({ title: 'Error', description: 'Failed to fetch history', color: 'error' })
   } finally {
@@ -38,10 +46,10 @@ onMounted(refreshHistory)
     <UCard>
       <UTable :columns="columns" :rows="history" :loading="loading">
         <template #createdAt-cell="{ row }">
-          {{ new Date(row.original.createdAt).toLocaleString() }}
+          {{ new Date((row.original as unknown as OrderTransaction).createdAt).toLocaleString() }}
         </template>
         <template #status-cell="{ row }">
-          <UBadge :color="row.original.status === 'APPROVED' ? 'success' : 'error'" variant="soft">{{ row.original.status }}</UBadge>
+          <UBadge :color="(row.original as unknown as OrderTransaction).status === 'APPROVED' ? 'success' : 'error'" variant="soft">{{ (row.original as unknown as OrderTransaction).status }}</UBadge>
         </template>
       </UTable>
     </UCard>

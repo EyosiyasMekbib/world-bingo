@@ -30,7 +30,7 @@ onMounted(refreshStats)
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-      <UButton icon="i-heroicons-arrow-path" color="gray" variant="ghost" />
+      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" />
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

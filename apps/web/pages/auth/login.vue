@@ -2,7 +2,7 @@
   <div class="auth-page">
     <h2>Login</h2>
     <form @submit.prevent="handleLogin">
-      <input v-model="form.phone" type="text" placeholder="Phone Number" required />
+      <input v-model="form.identifier" type="text" placeholder="Phone or Username" required />
       <input v-model="form.password" type="password" placeholder="Password" required />
       <button type="submit">Login</button>
     </form>
@@ -17,7 +17,7 @@ const auth = useAuth()
 const router = useRouter()
 
 const form = ref({
-  phone: '',
+  identifier: '',
   password: ''
 })
 

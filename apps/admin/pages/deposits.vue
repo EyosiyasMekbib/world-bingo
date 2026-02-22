@@ -1,4 +1,13 @@
 <script setup lang="ts">
+interface DepositTransaction {
+  id: string
+  amount: number
+  status: string
+  createdAt: string
+  receiptUrl: string
+  user: { username: string }
+}
+
 const { getPendingDeposits, approveTransaction, declineTransaction } = useAdminApi()
 const toast = useToast()
 
@@ -11,7 +20,7 @@ const columns = [
   { accessorKey: 'actions', header: 'Actions' }
 ]
 
-const pendingDeposits = ref<any[]>([])
+const pendingDeposits = ref<DepositTransaction[]>([])
 const loading = ref(false)
 
 const refreshDeposits = async () => {
@@ -66,16 +75,16 @@ onMounted(refreshDeposits)
     <UCard>
       <UTable :columns="columns" :rows="pendingDeposits" :loading="loading">
         <template #createdAt-cell="{ row }">
-          {{ new Date(row.original.createdAt).toLocaleString() }}
+          {{ new Date((row.original as unknown as DepositTransaction).createdAt).toLocaleString() }}
         </template>
         <template #status-cell="{ row }">
-          <UBadge :color="row.original.status === 'PENDING_REVIEW' ? 'warning' : 'neutral'" variant="soft">{{ row.original.status }}</UBadge>
+          <UBadge :color="(row.original as unknown as DepositTransaction).status === 'PENDING_REVIEW' ? 'warning' : 'neutral'" variant="soft">{{ (row.original as unknown as DepositTransaction).status }}</UBadge>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
-            <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-photo" title="View Receipt" @click="openReceipt(row.original.receiptUrl)" />
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove(row.original.id)">Approve</UButton>
-            <UButton size="xs" color="error" variant="soft" icon="i-heroicons-x-mark" @click="handleDecline(row.original.id)">Decline</UButton>
+            <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-photo" title="View Receipt" @click="openReceipt((row.original as unknown as DepositTransaction).receiptUrl)" />
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove((row.original as unknown as DepositTransaction).id)">Approve</UButton>
+            <UButton size="xs" color="error" variant="soft" icon="i-heroicons-x-mark" @click="handleDecline((row.original as unknown as DepositTransaction).id)">Decline</UButton>
           </div>
         </template>
       </UTable>
@@ -83,13 +92,13 @@ onMounted(refreshDeposits)
 
     <!-- Receipt Modal -->
     <UModal v-model="isReceiptOpen">
-      <UCard :ui="{ ring: '', divide: 'divide-y divide-gray-100 dark:divide-gray-800' }">
+      <UCard>
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
               Transfer Receipt Proof
             </h3>
-            <UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" class="-my-1" @click="isReceiptOpen = false" />
+            <UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" class="-my-1" @click="isReceiptOpen = false" />
           </div>
         </template>
 

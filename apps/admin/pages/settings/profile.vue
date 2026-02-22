@@ -42,7 +42,7 @@ const handleSavePassword = () => {
             <p class="font-medium text-gray-900">Two Step Verification Status</p>
             <p class="text-sm text-gray-500">{{ isTwoFactorEnabled ? 'Enabled' : 'Disabled' }}</p>
           </div>
-          <UButton :color="isTwoFactorEnabled ? 'red' : 'primary'" label="ENABLE" @click="isTwoFactorEnabled = !isTwoFactorEnabled" />
+          <UButton :color="isTwoFactorEnabled ? 'error' : 'primary'" label="ENABLE" @click="isTwoFactorEnabled = !isTwoFactorEnabled" />
         </div>
 
         <UDivider />
@@ -51,7 +51,7 @@ const handleSavePassword = () => {
           <UFormGroup label="Change Password">
             <UInput type="password" placeholder="New Password" icon="i-heroicons-key" />
           </UFormGroup>
-          <UButton color="black" label="CHANGE PASSWORD" @click="handleSavePassword" />
+          <UButton color="neutral" label="CHANGE PASSWORD" @click="handleSavePassword" />
         </div>
       </div>
     </UCard>

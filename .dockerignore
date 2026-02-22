@@ -1,0 +1,34 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (rebuilt inside Docker)
+node_modules
+**/node_modules
+
+# Build outputs
+**/dist
+**/.output
+**/.nuxt
+
+# Environment files (injected at runtime)
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Test artifacts
+**/coverage
+**/.nyc_output
+**/playwright-report
+**/test-results
+
+# Dev tools
+**/.turbo
+**/.eslintcache
+**/tsconfig.tsbuildinfo
+
+# Editor & OS
+.DS_Store
+.vscode
+*.log

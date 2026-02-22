@@ -90,7 +90,7 @@ describe('AuthService', () => {
     })
 
     describe('login', () => {
-        it('should login with valid credentials', async () => {
+        it('should login with valid phone', async () => {
             const userData = {
                 username: 'logintest',
                 phone: '+251912345684',
@@ -100,7 +100,7 @@ describe('AuthService', () => {
             await AuthService.register(userData)
 
             const user = await AuthService.login({
-                phone: userData.phone,
+                identifier: userData.phone,
                 password: userData.password,
             })
 
@@ -109,10 +109,28 @@ describe('AuthService', () => {
             expect('passwordHash' in user).toBe(false)
         })
 
-        it('should throw error with invalid phone', async () => {
+        it('should login with valid username', async () => {
+            const userData = {
+                username: 'logintest_username',
+                phone: '+251912345694',
+                password: 'password123',
+            }
+
+            await AuthService.register(userData)
+
+            const user = await AuthService.login({
+                identifier: userData.username,
+                password: userData.password,
+            })
+
+            expect(user.username).toBe(userData.username)
+            expect('passwordHash' in user).toBe(false)
+        })
+
+        it('should throw error with invalid identifier', async () => {
             await expect(
                 AuthService.login({
-                    phone: '+251999999999',
+                    identifier: '+251999999999',
                     password: 'password123',
                 })
             ).rejects.toThrow('Invalid credentials')
@@ -129,7 +147,7 @@ describe('AuthService', () => {
 
             await expect(
                 AuthService.login({
-                    phone: userData.phone,
+                    identifier: userData.phone,
                     password: 'wrongpassword',
                 })
             ).rejects.toThrow('Invalid credentials')
@@ -145,7 +163,7 @@ describe('AuthService', () => {
             await AuthService.register(userData)
 
             const user = await AuthService.login({
-                phone: userData.phone,
+                identifier: userData.phone,
                 password: userData.password,
             })
 

@@ -2,6 +2,7 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
+import helmet from '@fastify/helmet'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import * as dotenv from 'dotenv'
@@ -9,41 +10,67 @@ import { initSocket } from './lib/socket'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
+import adminRoutes from './routes/admin'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
-import z from 'zod'
-
-// Add Zod schema converter for Fastify
-const zodToJsonSchema = (zodSchema: z.ZodType<any>) => {
-    return zodSchema
-}
 
 dotenv.config()
 
+const isProd = process.env.NODE_ENV === 'production'
+
 const server = Fastify({
-    logger: {
-        transport: {
-            target: 'pino-pretty',
+    logger: isProd
+        ? true
+        : {
+            transport: {
+                target: 'pino-pretty',
+            },
         },
-    },
+    // Prevent server information leakage
+    disableRequestLogging: false,
+    trustProxy: true, // Required when behind nginx/load balancer for correct IP in rate limiting
 })
 
+// Security headers
+await server.register(helmet, {
+    // Allow WebSocket upgrade
+    contentSecurityPolicy: isProd
+        ? undefined
+        : false,
+})
+
+// CORS — strict in production, permissive in dev
 await server.register(cors, {
     origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000', 'http://localhost:3001'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 })
 
 await server.register(jwt, {
     secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production',
 })
 
+// Global rate limiting: 100 requests / minute per IP
 await server.register(rateLimit, {
+    global: true,
     max: 100,
     timeWindow: '1 minute',
+    keyGenerator: (req) => {
+        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+    },
+    errorResponseBuilder: () => ({
+        statusCode: 429,
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please slow down.',
+    }),
 })
 
 await server.register(import('@fastify/formbody'))
-await server.register(import('@fastify/multipart'))
+await server.register(import('@fastify/multipart'), {
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5 MB max upload
+    },
+})
 
 await server.register(swagger, {
     openapi: {
@@ -51,6 +78,15 @@ await server.register(swagger, {
             title: 'World Bingo API',
             description: 'REST + WebSocket API for World Bingo',
             version: '1.0.0',
+        },
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
+                },
+            },
         },
     },
 })
@@ -67,11 +103,29 @@ server.decorate('authenticate', async function (request: any, reply: any) {
     }
 })
 
+// Register route prefixes
 await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
+await server.register(adminRoutes, { prefix: '/admin' })
 
 server.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// Graceful shutdown
+const shutdown = async (signal: string) => {
+    server.log.info(`Received ${signal}. Starting graceful shutdown...`)
+    try {
+        await server.close()
+        server.log.info('Server closed cleanly.')
+        process.exit(0)
+    } catch (err) {
+        server.log.error(err, 'Error during graceful shutdown')
+        process.exit(1)
+    }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))
 
 const port = Number(process.env.PORT) || 8080
 const host = process.env.HOST ?? '0.0.0.0'

@@ -1,4 +1,12 @@
 <script setup lang="ts">
+interface WithdrawalTransaction {
+  id: string
+  amount: number
+  status: string
+  createdAt: string
+  user: { username: string }
+}
+
 const { getWithdrawals, approveTransaction } = useAdminApi()
 const toast = useToast()
 
@@ -11,7 +19,7 @@ const columns = [
   { accessorKey: 'actions', header: 'Actions' }
 ]
 
-const withdrawals = ref<any[]>([])
+const withdrawals = ref<WithdrawalTransaction[]>([])
 const loading = ref(false)
 
 const refreshWithdrawals = async () => {
@@ -55,14 +63,14 @@ onMounted(refreshWithdrawals)
     <UCard>
       <UTable :columns="columns" :rows="withdrawals" :loading="loading">
         <template #createdAt-cell="{ row }">
-          {{ new Date(row.original.createdAt).toLocaleString() }}
+          {{ new Date((row.original as unknown as WithdrawalTransaction).createdAt).toLocaleString() }}
         </template>
         <template #status-cell="{ row }">
-          <UBadge :color="row.original.status === 'PENDING' ? 'warning' : 'neutral'" variant="soft">{{ row.original.status }}</UBadge>
+          <UBadge :color="(row.original as unknown as WithdrawalTransaction).status === 'PENDING' ? 'warning' : 'neutral'" variant="soft">{{ (row.original as unknown as WithdrawalTransaction).status }}</UBadge>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove(row.original.id)">Mark as Transferred</UButton>
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove((row.original as unknown as WithdrawalTransaction).id)">Mark as Transferred</UButton>
           </div>
         </template>
       </UTable>

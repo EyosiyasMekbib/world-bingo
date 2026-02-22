@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { getIo } from '../lib/socket'
 import { GameStatus, TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { drawBall, createBallPool, checkPattern, PatternName } from '@world-bingo/game-logic'
+import { Decimal } from '@prisma/client/runtime/library'
 
 export class GameService {
     static async joinGame(userId: string, gameId: string, cartelaId: string) {
@@ -25,14 +26,20 @@ export class GameService {
 
             if (existingEntry) {
                  if (existingEntry.userId === userId) throw new Error('You already joined this game')
-                 // This check should ideally be handled by UI not showing taken cards, but good for safety
                  throw new Error('Cartela already taken')
             }
 
-            const wallet = await tx.wallet.findUnique({ where: { userId } })
-            if (!wallet || wallet.balance.lessThan(game.ticketPrice)) {
+            // Lock the wallet row to prevent concurrent joins depleting balance
+            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
+                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            if (!wallet || new Decimal(wallet.balance).lessThan(new Decimal(game.ticketPrice))) {
                 throw new Error('Insufficient funds')
             }
+
+            const balanceBefore = new Decimal(wallet.balance)
+            const balanceAfter = balanceBefore.minus(new Decimal(game.ticketPrice))
 
             // Deduct balance
             await tx.wallet.update({
@@ -40,14 +47,16 @@ export class GameService {
                 data: { balance: { decrement: game.ticketPrice } }
             })
 
-            // Create Transaction Record
+            // Create Transaction Record with balance snapshot
             await tx.transaction.create({
                 data: {
                     userId,
                     type: TransactionType.GAME_ENTRY,
-                    amount: game.ticketPrice, // negative? or just type implies it
+                    amount: game.ticketPrice,
                     status: PaymentStatus.APPROVED,
-                    referenceId: gameId
+                    referenceId: gameId,
+                    balanceBefore: balanceBefore,
+                    balanceAfter: balanceAfter,
                 }
             })
 
@@ -60,8 +69,6 @@ export class GameService {
                 },
                 include: {
                     cartela: true,
-                    // Fix: Prisma relation to User is not defined in GameEntry model in previous schema edit?
-                    // Let's check schema.
                 }
             })
             
@@ -155,11 +162,8 @@ export class GameService {
             const game = await tx.game.findUnique({ where: { id: gameId } })
             if (!game || game.status !== GameStatus.IN_PROGRESS) throw new Error('Game not active')
 
-            const entry = await tx.gameEntry.findUnique({
-                where: {
-                    gameId_userId: { gameId, userId },
-                    cartelaId: cartelaId // Ensure user owns this cartela in this game
-                },
+            const entry = await tx.gameEntry.findFirst({
+                where: { gameId, userId, cartelaId },
                 include: { cartela: true }
             })
 
@@ -176,14 +180,18 @@ export class GameService {
                 throw new Error('False Bingo!')
             }
 
-            // Winner found!
-            // Calculate prize
-            const totalPot = Number(game.ticketPrice) * (await tx.gameEntry.count({ where: { gameId } }))
-            const houseData = { entries: 1, ticketPrice: Number(game.ticketPrice), houseEdgePct: Number(game.houseEdgePct) } // simplifies
-            
-             // We should store total entries to calculate correctly
+            // Winner found! Calculate prize
             const totalEntries = await tx.gameEntry.count({ where: { gameId } })
+            const totalPot = Number(game.ticketPrice) * totalEntries
             const prize = totalPot * (1 - Number(game.houseEdgePct) / 100)
+
+            // Lock winner wallet row before crediting prize
+            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
+                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
+            const balanceAfter = balanceBefore.plus(new Decimal(prize))
 
             // Update Game
             const endedGame = await tx.game.update({
@@ -201,14 +209,16 @@ export class GameService {
                 data: { balance: { increment: prize } }
             })
 
-            // Record Transaction
+            // Record Transaction with balance snapshot
             await tx.transaction.create({
                 data: {
                     userId,
                     type: TransactionType.PRIZE_WIN,
                     amount: prize,
                     status: PaymentStatus.APPROVED,
-                    referenceId: gameId
+                    referenceId: gameId,
+                    balanceBefore: balanceBefore,
+                    balanceAfter: balanceAfter,
                 }
             })
             
@@ -217,7 +227,7 @@ export class GameService {
             const io = getIo()
             io.to(`game:${gameId}`).emit('game:winner', {
                 gameId,
-                winner: user as any, // Sanitized user ideally
+                winner: user as any,
                 prizeAmount: prize
             })
             

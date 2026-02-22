@@ -1,6 +1,7 @@
 # World Bingo — Tasks Ordered by Dependency & Ranked by Difficulty
 
-> **Generated:** 2026-02-21
+> **Generated:** 2026-02-21  
+> **Last Updated:** 2026-02-22  
 > **Source:** [ATOMIC_TASK_BREAKDOWN.md](./ATOMIC_TASK_BREAKDOWN.md)
 >
 > Every task is placed in a **dependency tier**. Tasks within a tier can be done in parallel.
@@ -21,18 +22,18 @@
 
 ---
 
-## Tier 0 — Foundation (No Dependencies)
+## Tier 0 — Foundation (No Dependencies) ✅ COMPLETE
 
-> These tasks have **zero** dependencies on other pending tasks. Start here.
+> All 6 tasks completed on **2026-02-22**.
 
-| # | Task | Difficulty | ⏱️ | Package | Why No Deps |
-|---|------|------------|-----|---------|-------------|
-| **T1** | 0.2 — Auth: Login by username OR phone | 🟢 Easy | 1h | `api`, `shared-types` | Pure logic change in existing service |
-| **T2** | 0.1 — Wallet: `SELECT FOR UPDATE` row-locking | 🟡 Medium | 2h | `api` | Fixes existing code, no new features needed |
-| **T3** | 2.4 — Database index optimization | 🟢 Easy | 1h | `api/prisma` | Schema-only, no code deps |
-| **T4** | 2.5 — Rate limiting & security hardening | 🟡 Medium | 2h | `api` | Config-level changes to existing plugins |
-| **T5** | 6.3 — Environment config (`.env.example`) | 🟢 Easy | 1h | root | Documentation task |
-| **T6** | 6.2 — Dockerfiles for api/web/admin | 🟡 Medium | 3h | root | Standalone infra task |
+| # | Task | Difficulty | ⏱️ | Package | Status |
+|---|------|------------|-----|---------|--------|
+| **T1** | 0.2 — Auth: Login by username OR phone | 🟢 Easy | 1h | `api`, `shared-types` | ✅ Done |
+| **T2** | 0.1 — Wallet: `SELECT FOR UPDATE` row-locking | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T3** | 2.4 — Database index optimization | 🟢 Easy | 1h | `api/prisma` | ✅ Done |
+| **T4** | 2.5 — Rate limiting & security hardening | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T5** | 6.3 — Environment config (`.env.example`) | 🟢 Easy | 1h | root | ✅ Done |
+| **T6** | 6.2 — Dockerfiles for api/web/admin | 🟡 Medium | 3h | root | ✅ Done |
 
 ---
 
@@ -250,83 +251,83 @@ TIER 8 (advanced)                                                        │
 
 ### 🟢 Easy (13 tasks — ~12.5h total)
 
-| # | Task | ⏱️ | Tier | Dependencies |
-|---|------|----|------|--------------|
-| T1 | Auth: Login by username OR phone | 1h | 0 | None |
-| T3 | Database index optimization | 1h | 0 | None |
-| T5 | Environment config `.env.example` | 1h | 0 | None |
-| T10 | Notification DB model + migration | 1h | 1 | T3 |
-| T11 | Notification types enum | 0.5h | 1 | T10 |
-| T12 | Admin auth: Role check | 1h | 1 | T1 |
-| T13 | Admin change password API | 1h | 1 | T7 |
-| T18 | Socket events for notifications | 0.5h | 2 | T11 |
-| T20 | Notification API routes | 1h | 2 | T17 |
-| T21 | Admin dashboard: Wire to API | 1h | 2 | T12 |
-| T30 | Admin: Receipt image viewer | 1h | 3 | T16 |
-| T33 | Admin: Orders/history wiring | 1h | 3 | T21 |
-| T49 | BullMQ dashboard | 1h | 5 | T44 |
+| # | Task | ⏱️ | Tier | Status |
+|---|------|----|------|--------|
+| T1 | Auth: Login by username OR phone | 1h | 0 | ✅ Done |
+| T3 | Database index optimization | 1h | 0 | ✅ Done |
+| T5 | Environment config `.env.example` | 1h | 0 | ✅ Done |
+| T10 | Notification DB model + migration | 1h | 1 | ❌ |
+| T11 | Notification types enum | 0.5h | 1 | ❌ |
+| T12 | Admin auth: Role check | 1h | 1 | ❌ |
+| T13 | Admin change password API | 1h | 1 | ❌ |
+| T18 | Socket events for notifications | 0.5h | 2 | ❌ |
+| T20 | Notification API routes | 1h | 2 | ❌ |
+| T21 | Admin dashboard: Wire to API | 1h | 2 | ❌ |
+| T30 | Admin: Receipt image viewer | 1h | 3 | ❌ |
+| T33 | Admin: Orders/history wiring | 1h | 3 | ❌ |
+| T49 | BullMQ dashboard | 1h | 5 | ❌ |
 
 ### 🟡 Medium (33 tasks — ~79h total)
 
-| # | Task | ⏱️ | Tier | Dependencies |
-|---|------|----|------|--------------|
-| T2 | Wallet: `SELECT FOR UPDATE` locking | 2h | 0 | None |
-| T4 | Rate limiting & security hardening | 2h | 0 | None |
-| T6 | Dockerfiles | 3h | 0 | None |
-| T7 | Auth: Refresh token flow | 3h | 1 | T1 |
-| T8 | Fix GameEntry for multi-cartela | 2h | 1 | T2 |
-| T9 | File upload: Storage module | 2h | 1 | T2 |
-| T15 | Withdrawal route completion | 2h | 2 | T2, T7 |
-| T16 | Deposit route: File upload | 1.5h | 2 | T9 |
-| T17 | Notification service | 2h | 2 | T10, T11 |
-| T19 | Refund service | 2h | 2 | T2, T8 |
-| T22 | Payment gateway abstraction | 2h | 2 | T9 |
-| T23 | CI/CD pipeline | 4h | 2 | T6 |
-| T25 | Game cancellation trigger | 1.5h | 3 | T19 |
-| T26 | Auto-cancel insufficient players | 1.5h | 3 | T24, T25 |
-| T27 | Integrate notifications into flows | 2h | 3 | T17, T19 |
-| T28 | Pinia game store | 3h | 3 | T7, T8 |
-| T29 | Frontend: Deposit form | 2h | 3 | T16 |
-| T31 | Admin: Pending deposits wiring | 2h | 3 | T30, T21 |
-| T32 | Admin: Withdrawals wiring | 2h | 3 | T15, T21 |
-| T35 | Production database | 2h | 3 | T3, T6 |
-| T36 | Lobby page: Real-time | 2h | 4 | T28 |
-| T37 | Cartela selection page | 3h | 4 | T28, T8 |
-| T38 | Wallet UI (web) | 3h | 4 | T29, T15 |
-| T39 | Notification bell component | 2h | 4 | T20, T18 |
-| T40 | Navigation & layout polish | 2h | 4 | T39, T38 |
-| T42 | Admin: Game management page | 3h | 4 | T24, T21 |
-| T43 | Admin: User management page | 3h | 4 | T21, T7 |
-| T44 | BullMQ queue infrastructure | 1.5h | 4 | T14 |
-| T46 | BullMQ: Refund worker | 1.5h | 5 | T44, T19 |
-| T47 | BullMQ: Notification worker | 1.5h | 5 | T44, T17 |
-| T52 | Prometheus + Grafana monitoring | 4h | 6 | T6, T44 |
-| T55 | Admin E2E tests | 3h | 7 | T42, T43 |
-| T56 | Load testing | 3h | 7 | T34, T48 |
-| T57 | Referral program | 4h | 7 | T7, T2 |
-| T58 | i18n Amharic support | 6h | 7 | T40, T45 |
-| T41 | Admin: Cancel game button | 1h | 4 | T25, T42 |
+| # | Task | ⏱️ | Tier | Status |
+|---|------|----|------|--------|
+| T2 | Wallet: `SELECT FOR UPDATE` locking | 2h | 0 | ✅ Done |
+| T4 | Rate limiting & security hardening | 2h | 0 | ✅ Done |
+| T6 | Dockerfiles | 3h | 0 | ✅ Done |
+| T7 | Auth: Refresh token flow | 3h | 1 | ❌ |
+| T8 | Fix GameEntry for multi-cartela | 2h | 1 | ❌ |
+| T9 | File upload: Storage module | 2h | 1 | ❌ |
+| T15 | Withdrawal route completion | 2h | 2 | ❌ |
+| T16 | Deposit route: File upload | 1.5h | 2 | ❌ |
+| T17 | Notification service | 2h | 2 | ❌ |
+| T19 | Refund service | 2h | 2 | ❌ |
+| T22 | Payment gateway abstraction | 2h | 2 | ❌ |
+| T23 | CI/CD pipeline | 4h | 2 | ❌ |
+| T25 | Game cancellation trigger | 1.5h | 3 | ❌ |
+| T26 | Auto-cancel insufficient players | 1.5h | 3 | ❌ |
+| T27 | Integrate notifications into flows | 2h | 3 | ❌ |
+| T28 | Pinia game store | 3h | 3 | ❌ |
+| T29 | Frontend: Deposit form | 2h | 3 | ❌ |
+| T31 | Admin: Pending deposits wiring | 2h | 3 | ❌ |
+| T32 | Admin: Withdrawals wiring | 2h | 3 | ❌ |
+| T35 | Production database | 2h | 3 | ❌ |
+| T36 | Lobby page: Real-time | 2h | 4 | ❌ |
+| T37 | Cartela selection page | 3h | 4 | ❌ |
+| T38 | Wallet UI (web) | 3h | 4 | ❌ |
+| T39 | Notification bell component | 2h | 4 | ❌ |
+| T40 | Navigation & layout polish | 2h | 4 | ❌ |
+| T41 | Admin: Cancel game button | 1h | 4 | ❌ |
+| T42 | Admin: Game management page | 3h | 4 | ❌ |
+| T43 | Admin: User management page | 3h | 4 | ❌ |
+| T44 | BullMQ queue infrastructure | 1.5h | 4 | ❌ |
+| T46 | BullMQ: Refund worker | 1.5h | 5 | ❌ |
+| T47 | BullMQ: Notification worker | 1.5h | 5 | ❌ |
+| T52 | Prometheus + Grafana monitoring | 4h | 6 | ❌ |
+| T55 | Admin E2E tests | 3h | 7 | ❌ |
+| T56 | Load testing | 3h | 7 | ❌ |
+| T57 | Referral program | 4h | 7 | ❌ |
+| T58 | i18n Amharic support | 6h | 7 | ❌ |
 
 ### 🔴 Hard (10 tasks — ~39h total)
 
-| # | Task | ⏱️ | Tier | Dependencies |
-|---|------|----|------|--------------|
-| T14 | Move game state to Redis | 4h | 2 | T8 |
-| T24 | Game engine with Redlock | 3h | 3 | T14 |
-| T34 | WebSocket Redis adapter | 3h | 3 | T14 |
-| T45 | Live game play page | 5h | 5 | T36, T37, T24, T28 |
-| T48 | BullMQ: Game engine worker | 2h | 5 | T44, T24 |
-| T53 | API integration tests | 6h | 6 | T24, T19, T17, T15 |
-| T54 | Web E2E tests (Playwright) | 6h | 6 | T45, T38 |
-| T59 | Progressive jackpot | 4h | 7 | T24, T2 |
+| # | Task | ⏱️ | Tier | Status |
+|---|------|----|------|--------|
+| T14 | Move game state to Redis | 4h | 2 | ❌ |
+| T24 | Game engine with Redlock | 3h | 3 | ❌ |
+| T34 | WebSocket Redis adapter | 3h | 3 | ❌ |
+| T45 | Live game play page | 5h | 5 | ❌ |
+| T48 | BullMQ: Game engine worker | 2h | 5 | ❌ |
+| T53 | API integration tests | 6h | 6 | ❌ |
+| T54 | Web E2E tests (Playwright) | 6h | 6 | ❌ |
+| T59 | Progressive jackpot | 4h | 7 | ❌ |
 
 ### ⚫ Very Hard (3 tasks — ~18h total)
 
-| # | Task | ⏱️ | Tier | Dependencies |
-|---|------|----|------|--------------|
-| T50 | Chapa payment gateway | 5h | 6 | T22, T29, T47 |
-| T51 | Telebirr API integration | 5h | 6 | T22, T29, T47 |
-| T60 | Tournament mode | 8h | 8 | T24, T48, T45 |
+| # | Task | ⏱️ | Tier | Status |
+|---|------|----|------|--------|
+| T50 | Chapa payment gateway | 5h | 6 | ❌ |
+| T51 | Telebirr API integration | 5h | 6 | ❌ |
+| T60 | Tournament mode | 8h | 8 | ❌ |
 
 ---
 
@@ -335,7 +336,7 @@ TIER 8 (advanced)                                                        │
 The **critical path** — the longest chain that determines minimum project duration:
 
 ```
-T2 (locking, 2h)
+T2 ✅ (locking, 2h)
   → T8 (multi-cartela, 2h)
     → T14 (Redis game state, 4h)
       → T24 (game engine, 3h)
@@ -344,36 +345,44 @@ T2 (locking, 2h)
             → T56 (load testing, 3h)
               → T60 (tournament mode, 8h)
 
-Total critical path: ~25.5h of sequential work
+Remaining critical path: ~23.5h of sequential work
 ```
 
 For the **MVP-only critical path** (through live game play):
 
 ```
-T2 (2h) → T8 (2h) → T14 (4h) → T24 (3h)
-                                     ↓
-T1 (1h) → T7 (3h) → T28 (3h) → T36 (2h) → T45 (5h)
-                                     ↑
-                               T37 (3h) ←── T28
+T2 ✅ → T8 (2h) → T14 (4h) → T24 (3h)
+                                   ↓
+T1 ✅ → T7 (3h) → T28 (3h) → T36 (2h) → T45 (5h)
+                                   ↑
+                             T37 (3h) ←── T28
 
-MVP critical path: ~28h sequential (with parallelism: ~18h)
+MVP remaining critical path: ~22h sequential (with parallelism: ~16h)
 ```
 
 ---
 
 ## Quick Start: What to Work on RIGHT NOW
 
-If you're one developer, do these **in this exact order**:
+Tier 0 is **complete**. Next up is Tier 1. Work in this order:
 
-1. **T1** — Login fix (1h) 🟢
-2. **T2** — Wallet locking (2h) 🟡
-3. **T3** — DB indexes (1h) 🟢
-4. **T7** — Refresh tokens (3h) 🟡
-5. **T8** — Multi-cartela schema (2h) 🟡
-6. **T9** — Storage module (2h) 🟡
-7. **T10+T11** — Notification model + enums (1.5h) 🟢
-8. **T14** — Redis game state (4h) 🔴
-9. **T19** — Refund service (2h) 🔴
-10. **T24** — Game engine rebuild (3h) 🔴
+1. ~~**T1** — Login fix (1h) 🟢~~ ✅ Done
+2. ~~**T2** — Wallet locking (2h) 🟡~~ ✅ Done
+3. ~~**T3** — DB indexes (1h) 🟢~~ ✅ Done
+4. **T7** — Refresh tokens (3h) 🟡 ← **START HERE**
+5. **T8** — Multi-cartela schema (2h) 🟡 ← can parallel with T7
+6. **T9** — Storage module (2h) 🟡 ← can parallel with T7+T8
+7. **T10+T11** — Notification model + enums (1.5h) 🟢 ← can parallel
+8. **T14** — Redis game state (4h) 🔴 ← after T8
+9. **T19** — Refund service (2h) 🔴 ← after T2 ✅ + T8
+10. **T24** — Game engine rebuild (3h) 🔴 ← after T14
 
-**After these 10 tasks (~21.5h), the entire backend foundation is solid.**
+**After these remaining tasks (~21.5h), the entire backend foundation is solid.**
+
+---
+
+## Progress Log
+
+| Date | Tier | Tasks Completed | Notes |
+|------|------|----------------|-------|
+| 2026-02-22 | 0 | T1, T2, T3, T4, T5, T6 | All Tier 0 tasks complete. Prisma migration `20260221210704_t2_wallet_locking_t3_indexes` applied. `@fastify/helmet` installed. |

@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { WalletService } from '../services'
-import { DepositDto } from '@world-bingo/shared-types'
+import { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
 
 export class WalletController {
     static async getBalance(request: FastifyRequest, reply: FastifyReply) {
@@ -17,7 +17,7 @@ export class WalletController {
         return transaction
     }
 
-    static async withdraw(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
+    static async withdraw(request: FastifyRequest<{ Body: WithdrawalDto }>, reply: FastifyReply) {
         // @ts-ignore
         const userId = request.user.id
         const transaction = await WalletService.requestWithdrawal(userId, request.body)

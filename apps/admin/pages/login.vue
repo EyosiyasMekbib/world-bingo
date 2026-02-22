@@ -7,7 +7,7 @@ const { login } = useAdminAuth()
 const toast = useToast()
 
 const form = reactive({
-  phone: '',
+  identifier: '',
   password: ''
 })
 
@@ -41,8 +41,8 @@ const handleLogin = async () => {
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
       <UCard>
         <form @submit.prevent="handleLogin" class="space-y-6">
-          <UFormField label="Manager Phone Number" required>
-            <UInput v-model="form.phone" icon="i-heroicons-phone" placeholder="+251..." class="w-full" />
+          <UFormField label="Phone or Username" required>
+            <UInput v-model="form.identifier" icon="i-heroicons-user" placeholder="Username or +251..." class="w-full" />
           </UFormField>
 
           <UFormField label="Password" required>
