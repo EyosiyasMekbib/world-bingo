@@ -173,7 +173,7 @@ function isMarked(num: number): boolean {
 function canClaimBingo(cartela: Cartela): boolean {
   if (gameStore.gameStatus !== 'active') return false
   const grid = getGrid(cartela.grid)
-  const calledSet = new Set(gameStore.calledBalls)
+  const calledSet = new Set<number>(gameStore.calledBalls)
   try {
     return checkPattern(gameStore.currentGame!.pattern as PatternName, grid, calledSet)
   } catch {
@@ -190,6 +190,8 @@ async function joinGame() {
     // Join the socket room after successful join
     const socket = connect()
     socket?.emit('game:join-room', { gameId })
+    // Navigate to the live play page
+    await router.push(`/quick/${gameId}/play`)
   } catch (e: any) {
     joinError.value = e?.data?.message ?? e?.message ?? 'Failed to join game'
   } finally {
@@ -221,12 +223,13 @@ function startRedirectCountdown() {
 await gameStore.fetchGameDetails(gameId)
 await gameStore.fetchAvailableCartelas(gameId)
 
-// Check if player is already in game
+// Check if player is already in game — redirect to play page
 const existingEntries = (gameStore.currentGame as any)?.entries?.filter(
   (e: any) => e.userId === auth.user?.id,
 )
 if (existingEntries?.length) {
   gameStore.myEntries = existingEntries
+  await router.push(`/quick/${gameId}/play`)
 }
 
 onMounted(() => {
@@ -238,19 +241,19 @@ onMounted(() => {
   socket.on('game:updated', gameStore.onGameUpdated)
   socket.on('game:started', gameStore.onGameStarted)
   socket.on('game:ball-called', gameStore.onBallCalled)
-  socket.on('game:winner', (payload) => {
+  socket.on('game:winner', (payload: any) => {
     gameStore.onGameWinner(payload)
     showWinnerOverlay.value = true
     startRedirectCountdown()
   })
-  socket.on('game:ended', (game) => {
+  socket.on('game:ended', (game: any) => {
     gameStore.onGameEnded(game)
     if (!showWinnerOverlay.value) {
       showWinnerOverlay.value = true
       startRedirectCountdown()
     }
   })
-  socket.on('game:cancelled', (payload) => {
+  socket.on('game:cancelled', (payload: any) => {
     gameStore.onGameCancelled(payload)
     showCancelledOverlay.value = true
     startRedirectCountdown()

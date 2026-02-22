@@ -16,6 +16,7 @@ import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import adminRoutes from './routes/admin'
 import notificationRoutes from './routes/user/index.js'
+import { registerBullBoard } from './routes/bull-board.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 
@@ -114,6 +115,9 @@ await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
 await server.register(adminRoutes, { prefix: '/admin' })
 await server.register(notificationRoutes, { prefix: '/user' })
+
+// T49 — BullMQ Dashboard at /admin/queues
+await registerBullBoard(server)
 
 // Serve local uploads directory (dev only)
 if (!isProd) {

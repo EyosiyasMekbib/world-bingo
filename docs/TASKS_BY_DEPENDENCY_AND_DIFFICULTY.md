@@ -1,7 +1,7 @@
 # World Bingo — Tasks Ordered by Dependency & Ranked by Difficulty
 
 > **Generated:** 2026-02-21  
-> **Last Updated:** 2026-02-22 (Tier 3 + Tier 4 complete — T24–T44)  
+> **Last Updated:** 2026-02-22 (Tier 5 complete — T45, T48, T49)  
 > **Source:** [ATOMIC_TASK_BREAKDOWN.md](./ATOMIC_TASK_BREAKDOWN.md)
 >
 > Every task is placed in a **dependency tier**. Tasks within a tier can be done in parallel.
@@ -18,13 +18,13 @@
 | **Tier 2** — Service Layer | 10 | ✅ 10 | 0 |
 | **Tier 3** — Game Engine | 12 | ✅ 11 | 1 (T35 — infra) |
 | **Tier 4** — Player UI & Admin | 9 | ✅ 9 | 0 |
-| **Tier 5** — Live Game & Workers | 5 | ✅ 2 (T46, T47) | 3 |
+| **Tier 5** — Live Game & Workers | 5 | ✅ 5 | 0 |
 | **Tier 6** — Gateways & Testing | 5 | 0 | 5 |
 | **Tier 7** — QA & Growth | 5 | 0 | 5 |
 | **Tier 8** — Advanced Features | 1 | 0 | 1 |
-| **Total** | **60** | **45 (75%)** | **15 (25%)** |
+| **Total** | **60** | **48 (80%)** | **12 (20%)** |
 
-**Next up: Tier 5** — Live Game Play Page (T45) + BullMQ Workers (T48, T49)
+**Next up: Tier 6** — Payment Gateways (T50, T51), Monitoring (T52), Integration Tests (T53), E2E Tests (T54)
 
 ---
 
@@ -132,17 +132,17 @@
 
 ---
 
-## Tier 5 — Live Game & Background Workers (Depends on Tier 4)
+## Tier 5 — Live Game & Background Workers (Depends on Tier 4) ✅ COMPLETE
 
-> The most complex player-facing feature (live game play) and async processing.
+> All 5 tasks completed on **2026-02-22**. Tests: 142/142 ✅.
 
 | # | Task | Difficulty | ⏱️ | Package | Status |
 |---|------|------------|-----|---------|--------|
-| **T45** | 1.5.4 — Live game play page | 🔴 Hard | 5h | `web` | ❌ Todo |
+| **T45** | 1.5.4 — Live game play page | 🔴 Hard | 5h | `web` | ✅ Done |
 | **T46** | 2.1.2 — BullMQ: Refund worker | 🟡 Medium | 1.5h | `api` | ✅ Done |
 | **T47** | 2.1.3 — BullMQ: Notification worker | 🟡 Medium | 1.5h | `api` | ✅ Done |
-| **T48** | 2.1.4 — BullMQ: Game engine worker | 🔴 Hard | 2h | `api` | ❌ Todo |
-| **T49** | 2.1.5 — BullMQ: Dashboard (`/admin/queues`) | 🟢 Easy | 1h | `api` | ❌ Todo |
+| **T48** | 2.1.4 — BullMQ: Game engine worker | 🔴 Hard | 2h | `api` | ✅ Done |
+| **T49** | 2.1.5 — BullMQ: Dashboard (`/admin/queues`) | 🟢 Easy | 1h | `api` | ✅ Done |
 
 ---
 
@@ -241,12 +241,12 @@ TIER 4 (player UI + admin tools) — ALL ✅ COMPLETE                       │
 ├── T43 Admin user mgmt page ── T21, T7 ✅──────────────────────────────┤
 └── T44 BullMQ queue setup ──── T14 ✅──────────────────────────────────┤
                                                                          │
-TIER 5 (live game + workers)                                             │
-├── T45 Live game play page ─── T36, T37, T24, T28 ← START HERE ─────────┤
+TIER 5 (live game + workers) — ALL ✅ COMPLETE                           │
+├── T45 Live game play page ─── T36, T37, T24, T28 ✅───────────────────┤
 ├── T46 Refund worker ──────── T44, T19 ✅──────────────────────────────┤
 ├── T47 Notification worker ── T44, T17 ✅──────────────────────────────┤
-├── T48 Game engine worker ─── T44, T24 ─────────────────────────────────┤
-└── T49 BullMQ dashboard ───── T44 ──────────────────────────────────────┤
+├── T48 Game engine worker ─── T44, T24 ✅──────────────────────────────┤
+└── T49 BullMQ dashboard ───── T44 ✅───────────────────────────────────┤
                                                                          │
 TIER 6 (external integrations + testing)                                 │
 ├── T50 Chapa gateway ──────── T22, T29, T47 ────────────────────────────┤
@@ -288,7 +288,7 @@ TIER 8 (advanced)                                                        │
 | T33 | Admin: Orders/history wiring | 1h | 3 | ✅ Done |
 | T40 | Navigation & layout polish | 2h | 4 | ✅ Done |
 | T41 | Admin: Cancel game button | 1h | 4 | ✅ Done |
-| T49 | BullMQ dashboard | 1h | 5 | ❌ Todo |
+| T49 | BullMQ dashboard | 1h | 5 | ✅ Done |
 
 ### 🟡 Medium (33 tasks — ~79h total)
 
@@ -336,8 +336,8 @@ TIER 8 (advanced)                                                        │
 | T14 | Move game state to Redis | 4h | 2 | ✅ Done |
 | T24 | Game engine with Redlock | 3h | 3 | ✅ Done |
 | T34 | WebSocket Redis adapter | 3h | 3 | ✅ Done |
-| T45 | Live game play page | 5h | 5 | ❌ Todo |
-| T48 | BullMQ: Game engine worker | 2h | 5 | ❌ Todo |
+| T45 | Live game play page | 5h | 5 | ✅ Done |
+| T48 | BullMQ: Game engine worker | 2h | 5 | ✅ Done |
 | T53 | API integration tests | 6h | 6 | ❌ Todo |
 | T54 | Web E2E tests (Playwright) | 6h | 6 | ❌ Todo |
 | T59 | Progressive jackpot | 4h | 7 | ❌ Todo |
@@ -372,29 +372,29 @@ Remaining critical path: ~23.5h of sequential work
 For the **MVP-only critical path** (through live game play):
 
 ```
-T2 ✅ → T8 (2h) → T14 (4h) → T24 (3h)
-                                   ↓
-T1 ✅ → T7 (3h) → T28 (3h) → T36 (2h) → T45 (5h)
-                                   ↑
-                             T37 (3h) ←── T28
+T2 ✅ → T8 ✅ → T14 ✅ → T24 ✅
+                                ↓
+T1 ✅ → T7 ✅ → T28 ✅ → T36 ✅ → T45 ✅
+                                ↑
+                          T37 ✅ ←── T28 ✅
 
-MVP remaining critical path: ~22h sequential (with parallelism: ~16h)
+MVP critical path: ✅ COMPLETE
 ```
 
 ---
 
 ## Quick Start: What to Work on RIGHT NOW
 
-Tiers 0–4 are **complete**. Tier 5 is next. Work in this order:
+Tiers 0–5 are **complete**. Tier 6 is next. Work in this order:
 
-1. ~~**T1–T44**~~ ✅ All done
-2. **T45** — Live game play page (5h) � ← **START HERE** — the main missing player feature
-3. **T48** — BullMQ: Game engine worker (2h) � ← can parallel with T45
-4. **T49** — BullMQ: Dashboard `/admin/queues` (1h) 🟢 ← quick win after T44
-5. **T53** — API integration tests (6h) 🔴 ← unlocks after Tier 5 complete
-6. **T54** — Web E2E tests (6h) 🔴 ← unlocks after T45
+1. ~~**T1–T49**~~ ✅ All done
+2. **T53** — API integration tests (6h) 🔴 ← unlocks now (all services complete)
+3. **T54** — Web E2E tests (6h) 🔴 ← unlocks now (T45 complete)
+4. **T50** — Chapa payment gateway (5h) ⚫ ← external integration
+5. **T51** — Telebirr API integration (5h) ⚫ ← external integration
+6. **T52** — Prometheus + Grafana monitoring (4h) � ← observability
 
-**After these ~15h of work, the entire MVP is feature-complete and test-covered.**
+**The MVP is now feature-complete. Remaining work is testing, payments, and polish.**
 
 ---
 
@@ -407,4 +407,4 @@ Tiers 0–4 are **complete**. Tier 5 is next. Work in this order:
 | 2026-02-22 | 2 | T14, T15, T16, T17, T18, T19, T20, T21, T22, T23 | All Tier 2 tasks complete. Redis game-state module, refund service, file upload deposit route, notification service + routes, payment gateway abstraction, CI/CD pipeline. Tests: 73/73 ✅. |
 | 2026-02-22 | 3 | T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34 | All Tier 3 code tasks complete (T35 skipped — manual infra). Redlock game engine (`lib/game-engine.ts`), cancel/auto-cancel game logic, notification integration, Pinia game store, deposit form, admin deposits/withdrawals/orders pages. Tests: 91/91 ✅ (+18 new). |
 | 2026-02-22 | 4 | T36, T37, T38, T39, T40, T41, T42, T43, T44 | All Tier 4 tasks complete. Real-time lobby, cartela selection, wallet UI modals, notification bell (`NotificationBell.vue`), polished header+layout+auth-middleware, admin game/user management pages, BullMQ queue factory (`lib/queue.ts`). |
-| 2026-02-22 | 5 (partial) | T46, T47 | BullMQ refund + notification workers created (`workers/refund.worker.ts`, `workers/notification.worker.ts`). T45/T48/T49 remain. |
+| 2026-02-22 | 5 | T45, T46, T47, T48, T49 | All Tier 5 tasks complete. Live game play page (`pages/quick/[gameId]/play.vue`), game engine worker (`workers/game-engine.worker.ts`), BullMQ dashboard (`/admin/queues` via `@bull-board/fastify`). GameService.startGame() now enqueues via BullMQ instead of setTimeout. Tests: 142/142 ✅. |

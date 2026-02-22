@@ -17,6 +17,8 @@
         "db:studio": "prisma studio"
     },
     "dependencies": {
+        "@bull-board/api": "^6.19.0",
+        "@bull-board/fastify": "^6.19.0",
         "@fastify/cors": "^10.0.0",
         "@fastify/formbody": "^8.0.2",
         "@fastify/helmet": "^12.0.0",

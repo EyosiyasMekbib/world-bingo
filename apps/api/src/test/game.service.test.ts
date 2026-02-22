@@ -51,6 +51,19 @@ vi.mock('../services/refund.service', () => ({
     },
 }))
 
+const mockQueueAdd = vi.fn().mockResolvedValue({ id: 'job-1' })
+vi.mock('../lib/queue', () => ({
+    getQueue: vi.fn(() => ({
+        add: mockQueueAdd,
+    })),
+    QUEUE_NAMES: {
+        REFUND: 'refund',
+        NOTIFICATION: 'notification',
+        WITHDRAWAL: 'withdrawal',
+        GAME_ENGINE: 'game-engine',
+    },
+}))
+
 // ── Test Helpers ───────────────────────────────────────────────────────────────
 
 async function createUserWithWallet(username: string, phone: string, balance = 500) {
@@ -157,9 +170,8 @@ describe('GameService.joinGame (T8)', () => {
 describe('GameService.startGame (T24/T25)', () => {
     let gameId: string
 
-    it('should mark game STARTING and schedule engine when minPlayers is met', async () => {
-        vi.useFakeTimers()
-        const { startGameEngine } = await import('../lib/game-engine')
+    it('should mark game STARTING and enqueue game engine job when minPlayers is met', async () => {
+        mockQueueAdd.mockClear()
 
         const game = await createGame({ minPlayers: 1 })
         gameId = game.id
@@ -170,11 +182,12 @@ describe('GameService.startGame (T24/T25)', () => {
         const result = await GameService.startGame(gameId)
         expect(result.status).toBe(GameStatus.STARTING)
 
-        // Engine should start after 5 second delay
-        await vi.advanceTimersByTimeAsync(5_100)
-        expect(startGameEngine).toHaveBeenCalledWith(gameId)
-
-        vi.useRealTimers()
+        // T48: Engine is now enqueued via BullMQ instead of setTimeout
+        expect(mockQueueAdd).toHaveBeenCalledWith(
+            `start-game-${gameId}`,
+            { gameId, action: 'start' },
+            expect.objectContaining({ delay: 5_000 }),
+        )
     })
 
     it('should throw if not enough players joined', async () => {

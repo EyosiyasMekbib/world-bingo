@@ -45,12 +45,15 @@ The project uses a Turborepo architecture with `apps` (`api`, `web`, `admin`) an
     - [x] Withdrawal Management (Manual fulfillment flow)
     - [x] Orders History (Deposit/Withdrawal logs)
     - [x] Manager Profile & Security Settings (Password change, 2FA placeholder)
-- [ ] **File Uploads**: Implement receipt upload for manual deposits via Google Cloud Storage (or a local mock for now).
-- [ ] **Refund System**: Automated handling/jobs to auto-refund users upon game cancellation.
+- [x] **File Uploads**: Implement receipt upload for manual deposits via local storage (GCS for prod).
+- [x] **Refund System**: Automated handling/jobs to auto-refund users upon game cancellation.
+- [x] **Live Game Play Page**: Full real-time bingo play with auto-marking, pattern detection, and BINGO claim.
+- [x] **BullMQ Workers**: Background workers for refund, notification, and game engine processing.
+- [x] **BullMQ Dashboard**: Visual monitoring at `/admin/queues`.
 
 #### **Phase 2: Scale and Infrastructure**
-- [ ] **BullMQ Integration**: Implement background workers for handling async refunds and notifications robustly to reduce API bloat.
-- [ ] **WebSocket Redis Adapter Testing**: Test and finalize horizontal scaling capabilities for the Socket.io implementation.
+- [x] **BullMQ Integration**: Implemented background workers for handling async refunds, notifications, and game engine.
+- [x] **WebSocket Redis Adapter**: Implemented and tested for horizontal scaling.
 - [ ] **Monitoring & Grafana**: Set up Prometheus/Grafana basic stack in Docker configuration.
 
 #### **Phase 3: Payment Automation Integration**
@@ -66,6 +69,7 @@ The project uses a Turborepo architecture with `apps` (`api`, `web`, `admin`) an
 ---
 
 ## 🎯 Immediate Next Steps
-1. **Build the Admin Dashboard** (`apps/admin`) to allow real manual approval tests.
-2. **Wire Web App Sockets**, confirming that actual Cartela data flows seamlessly from the Fastify socket backend to the Pinia stores on the frontend.
-3. **Verify Wallet Locking Mechanisms**, ensuring database transactions handle race conditions correctly before real money is simulated.
+1. **Payment Gateway Integration** (Chapa + Telebirr) for automated deposits.
+2. **API Integration Tests** to validate end-to-end flows with a test database.
+3. **Web App E2E Tests** (Playwright) covering auth, game, and wallet flows.
+4. **Monitoring** (Prometheus + Grafana) for production observability.

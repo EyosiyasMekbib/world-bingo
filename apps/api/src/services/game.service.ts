@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { Prisma } from '@prisma/client'
 import { getIo } from '../lib/socket'
 import { GameStatus, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { checkPattern, PatternName } from '@world-bingo/game-logic'
@@ -7,6 +8,7 @@ import { startGameEngine, stopGameEngine } from '../lib/game-engine'
 import { RefundService } from './refund.service'
 import { NotificationService } from './notification.service'
 import { clearGameState } from '../lib/game-state'
+import { getQueue, QUEUE_NAMES } from '../lib/queue'
 
 export class GameService {
     /**
@@ -16,7 +18,7 @@ export class GameService {
     static async joinGame(userId: string, gameId: string, cartelaSerials: string[]) {
         if (!cartelaSerials.length) throw new Error('At least one cartela is required')
 
-        return await prisma.$transaction(async (tx) => {
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const game = await tx.game.findUnique({ 
                 where: { id: gameId },
                 include: { _count: { select: { entries: true } } }
@@ -82,7 +84,7 @@ export class GameService {
 
             // Create one GameEntry per cartela
             const entries = await Promise.all(
-                cartelaIds.map((cartelaId) =>
+                cartelaIds.map((cartelaId: string) =>
                     tx.gameEntry.create({
                         data: { gameId, userId, cartelaId },
                         include: { cartela: true },
@@ -126,9 +128,9 @@ export class GameService {
         io.to(`game:${gameId}`).emit('game:started', updatedGame as any)
 
         // Notify all participants that the game is starting
-        const participantIds = game.entries.map((e) => e.userId)
+        const participantIds = game.entries.map((e: { userId: string }) => e.userId)
         await Promise.all(
-            participantIds.map((userId) =>
+            participantIds.map((userId: string) =>
                 NotificationService.create(
                     userId,
                     NotificationType.GAME_STARTING,
@@ -139,12 +141,19 @@ export class GameService {
             ),
         )
 
-        // 5-second grace period, then start the engine (T24 — Redlock-backed)
-        setTimeout(() => {
-            startGameEngine(gameId).catch((err) => {
-                console.error(`[GameService] startGameEngine failed for ${gameId}:`, err)
-            })
-        }, 5_000)
+        // 5-second grace period, then start the engine via BullMQ worker (T48)
+        const gameEngineQueue = getQueue(QUEUE_NAMES.GAME_ENGINE)
+        await gameEngineQueue.add(
+            `start-game-${gameId}`,
+            { gameId, action: 'start' },
+            {
+                delay: 5_000, // 5-second grace period
+                removeOnComplete: { count: 50 },
+                removeOnFail: { count: 50 },
+                attempts: 2,
+                backoff: { type: 'fixed', delay: 3000 },
+            },
+        )
 
         return updatedGame
     }
@@ -215,7 +224,7 @@ export class GameService {
     }
 
     static async claimBingo(userId: string, gameId: string, cartelaId: string) {
-        return await prisma.$transaction(async (tx) => {
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const game = await tx.game.findUnique({ where: { id: gameId } })
             if (!game || game.status !== GameStatus.IN_PROGRESS) throw new Error('Game not active')
 
@@ -234,7 +243,7 @@ export class GameService {
 
             // @ts-ignore - JSON type issue
             const grid = entry.cartela.grid as number[][]
-            const calledSet = new Set(calledBalls)
+            const calledSet = new Set<number>(calledBalls)
             
             const hasWon = checkPattern(game.pattern as PatternName, grid, calledSet)
             
@@ -300,7 +309,7 @@ export class GameService {
             io.to('lobby').emit('lobby:game-removed', gameId)
             
             return endedGame
-        }).then(async (endedGame) => {
+        }).then(async (endedGame: any) => {
             // Post-transaction: notify winner and clear Redis (non-critical)
             await NotificationService.create(
                 userId,
