@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma'
-import { DepositDto, TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
+import { NotificationService } from './notification.service'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -59,6 +60,16 @@ export class WalletService {
                 data: { balance: { increment: transaction.amount } },
             })
 
+            return transaction
+        }).then(async (transaction) => {
+            // Post-transaction: send notification (non-critical)
+            await NotificationService.create(
+                transaction.userId,
+                NotificationType.DEPOSIT_APPROVED,
+                'Deposit Approved ✅',
+                `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved and added to your wallet.`,
+                { transactionId: transaction.id, amount: Number(transaction.amount) },
+            ).catch(() => {})
             return transaction
         })
     }

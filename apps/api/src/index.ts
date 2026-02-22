@@ -9,6 +9,8 @@ import staticFiles from '@fastify/static'
 import * as dotenv from 'dotenv'
 import path from 'path'
 import { initSocket } from './lib/socket'
+import { stopAllEngines } from './lib/game-engine'
+import { closeAllQueues } from './lib/queue'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
@@ -131,6 +133,8 @@ server.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOSt
 // Graceful shutdown
 const shutdown = async (signal: string) => {
     server.log.info(`Received ${signal}. Starting graceful shutdown...`)
+    stopAllEngines()
+    await closeAllQueues().catch(() => {})
     try {
         await server.close()
         server.log.info('Server closed cleanly.')

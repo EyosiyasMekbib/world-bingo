@@ -1,0 +1,367 @@
+<template>
+  <Teleport to="body">
+    <div v-if="modelValue" class="modal-overlay" @click.self="$emit('update:modelValue', false)">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Deposit Funds</h3>
+          <button class="close-btn" @click="$emit('update:modelValue', false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Amount -->
+          <div class="field">
+            <label>Amount (ETB)</label>
+            <input v-model.number="form.amount" type="number" min="10" placeholder="Enter amount" class="input" />
+            <div class="chips">
+              <button v-for="chip in [50, 100, 200, 500]" :key="chip" class="chip" @click="form.amount = chip">
+                +{{ chip }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Payment Method -->
+          <div class="field">
+            <label>Payment Method</label>
+            <select v-model="form.paymentMethod" class="input">
+              <option value="telebirr">Telebirr</option>
+              <option value="cbe">CBE Birr</option>
+              <option value="awash">Awash Bank</option>
+              <option value="dashen">Dashen Bank</option>
+            </select>
+          </div>
+
+          <!-- Receipt Upload -->
+          <div class="field">
+            <label>Transfer Receipt Screenshot</label>
+            <div
+              class="file-drop"
+              :class="{ 'has-preview': previewUrl }"
+              @click="fileInputRef?.click()"
+              @dragover.prevent
+              @drop.prevent="onFileDrop"
+            >
+              <img v-if="previewUrl" :src="previewUrl" alt="Receipt preview" class="preview-img" />
+              <div v-else class="drop-hint">
+                <span class="icon">📎</span>
+                <span>Click or drag & drop receipt (JPG/PNG, max 5MB)</span>
+              </div>
+            </div>
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png"
+              class="hidden-input"
+              @change="onFileChange"
+            />
+          </div>
+
+          <!-- Error / Success -->
+          <p v-if="error" class="msg error">{{ error }}</p>
+          <p v-if="success" class="msg success">✅ Deposit submitted! Pending admin verification.</p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="$emit('update:modelValue', false)">Cancel</button>
+          <button class="btn-primary" :disabled="loading || !canSubmit" @click="submit">
+            <span v-if="loading">Uploading… {{ uploadProgress }}%</span>
+            <span v-else>Submit Deposit</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>
+
+<script setup lang="ts">
+import { useAuthStore } from '~/store/auth'
+
+const props = defineProps<{ modelValue: boolean }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', val: boolean): void
+  (e: 'deposited'): void
+}>()
+
+const auth = useAuthStore()
+const config = useRuntimeConfig()
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const previewUrl = ref<string | null>(null)
+const selectedFile = ref<File | null>(null)
+const uploadProgress = ref(0)
+
+const form = reactive({
+  amount: 0,
+  paymentMethod: 'telebirr',
+})
+
+const error = ref('')
+const success = ref(false)
+const loading = ref(false)
+
+const canSubmit = computed(() => form.amount >= 10 && selectedFile.value !== null)
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) setFile(file)
+}
+
+function onFileDrop(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0]
+  if (file) setFile(file)
+}
+
+function setFile(file: File) {
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    error.value = 'Only JPG/PNG images are allowed.'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    error.value = 'File size must be under 5 MB.'
+    return
+  }
+  selectedFile.value = file
+  previewUrl.value = URL.createObjectURL(file)
+  error.value = ''
+}
+
+async function submit() {
+  if (!canSubmit.value || !selectedFile.value) return
+  loading.value = true
+  error.value = ''
+  success.value = false
+  uploadProgress.value = 0
+
+  try {
+    const formData = new FormData()
+    formData.append('amount', String(form.amount))
+    formData.append('paymentMethod', form.paymentMethod)
+    formData.append('receipt', selectedFile.value)
+
+    await auth.apiFetch('/wallet/deposit', {
+      method: 'POST',
+      body: formData,
+    })
+
+    success.value = true
+    uploadProgress.value = 100
+    emit('deposited')
+    setTimeout(() => {
+      emit('update:modelValue', false)
+      resetForm()
+    }, 2000)
+  } catch (e: any) {
+    error.value = e?.data?.message ?? e?.message ?? 'Deposit failed. Please try again.'
+  } finally {
+    loading.value = false
+  }
+}
+
+function resetForm() {
+  form.amount = 0
+  form.paymentMethod = 'telebirr'
+  selectedFile.value = null
+  previewUrl.value = null
+  uploadProgress.value = 0
+  success.value = false
+  error.value = ''
+}
+</script>
+
+<style scoped>
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--color-surface, #1a1a2e);
+  border: 1px solid var(--color-primary, #c9a96e);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--color-primary, #c9a96e);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+label {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  padding: 0.6rem 0.8rem;
+  font-size: 1rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: var(--color-primary, #c9a96e);
+}
+
+.chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.chip {
+  padding: 0.3rem 0.75rem;
+  background: rgba(201, 169, 110, 0.12);
+  border: 1px solid rgba(201, 169, 110, 0.4);
+  color: var(--color-primary, #c9a96e);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.chip:hover {
+  background: rgba(201, 169, 110, 0.25);
+}
+
+.file-drop {
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+.file-drop:hover {
+  border-color: var(--color-primary, #c9a96e);
+}
+
+.drop-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #777;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.drop-hint .icon {
+  font-size: 2rem;
+}
+
+.preview-img {
+  max-height: 200px;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.msg {
+  font-size: 0.875rem;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.msg.error {
+  background: rgba(220, 38, 38, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.msg.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary {
+  padding: 0.6rem 1.4rem;
+  background: var(--color-primary, #c9a96e);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 0.6rem 1.2rem;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+</style>

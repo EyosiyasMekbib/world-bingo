@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import { AdminController } from '../../controllers/admin.controller'
+import { GameService } from '../../services/game.service'
 
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // Both hooks will run sequentially
@@ -24,6 +25,13 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Game management (T21 / T42)
     fastify.get('/games', AdminController.getGames)
+    fastify.post('/games/:id/cancel', async (req: any, reply) => {
+        await GameService.cancelGame(req.params.id)
+        return { success: true }
+    })
+    fastify.post('/games/:id/start', async (req: any, reply) => {
+        return await GameService.startGame(req.params.id)
+    })
 }
 
 export default adminRoutes

@@ -38,6 +38,12 @@ export function registerGameHandlers(io: any) {
             }
         })
 
+        // T24: Non-paying spectator room entry (for watching or for players already joined via REST)
+        socket.on('game:join-room', async ({ gameId }) => {
+            socket.join(`game:${gameId}`)
+            socket.data.gameId = gameId
+        })
+
         socket.on('game:claim-bingo', async ({ gameId, cartelaId }) => {
              if (!socket.data.userId) return socket.emit('error', { message: 'Unauthorized', code: '401' })
              try {

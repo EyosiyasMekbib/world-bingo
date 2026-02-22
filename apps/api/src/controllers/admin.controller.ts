@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AdminService } from '../services/admin.service'
-import { PaymentStatus, TransactionType } from '@world-bingo/shared-types'
+import { PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-types'
 
 export class AdminController {
     static async getStats(request: FastifyRequest, reply: FastifyReply) {
@@ -9,25 +9,30 @@ export class AdminController {
     }
 
     static async getPendingDeposits(request: FastifyRequest, reply: FastifyReply) {
-        const transactions = await AdminService.getTransactions({
+        const result = await AdminService.getTransactions({
             type: TransactionType.DEPOSIT,
             status: PaymentStatus.PENDING_REVIEW,
         })
-        return transactions
+        return result.data
     }
 
     static async getOrdersHistory(request: FastifyRequest, reply: FastifyReply) {
+        const query = (request.query as any) ?? {}
+        const { type, page = '1', limit = '20' } = query
         const transactions = await AdminService.getTransactions({
-            type: TransactionType.DEPOSIT,
+            ...(type && type !== 'ALL' ? { type: type as TransactionType } : {}),
+            page: parseInt(page, 10),
+            limit: parseInt(limit, 10),
         })
         return transactions
     }
 
     static async getWithdrawals(request: FastifyRequest, reply: FastifyReply) {
-        const transactions = await AdminService.getTransactions({
+        const result = await AdminService.getTransactions({
             type: TransactionType.WITHDRAWAL,
+            status: PaymentStatus.PENDING_REVIEW,
         })
-        return transactions
+        return result.data
     }
 
     static async approveTransaction(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
@@ -57,11 +62,16 @@ export class AdminController {
     }
 
     static async updateUserStatus(
-        request: FastifyRequest<{ Params: { id: string }; Body: { active: boolean } }>,
+        request: FastifyRequest<{ Params: { id: string }; Body: { role: string } }>,
         reply: FastifyReply,
     ) {
-        // Placeholder for future user suspension feature
-        return { message: 'Not yet implemented' }
+        const { id } = request.params
+        const { role } = request.body
+        if (!Object.values(UserRole).includes(role as UserRole)) {
+            reply.status(400).send({ error: 'Invalid role' })
+            return
+        }
+        return await AdminService.updateUserRole(id, role as UserRole)
     }
 
     static async getGames(

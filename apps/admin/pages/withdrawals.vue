@@ -4,42 +4,63 @@ interface WithdrawalTransaction {
   amount: number
   status: string
   createdAt: string
-  user: { username: string }
+  note?: string
+  user: { username: string; phone: string }
 }
 
-const { getWithdrawals, approveTransaction } = useAdminApi()
+const { getWithdrawals, approveTransaction, declineTransaction } = useAdminApi()
 const toast = useToast()
 
 const columns = [
   { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'user.username', header: 'User' },
-  { accessorKey: 'amount', header: 'Amount' },
-  { accessorKey: 'createdAt', header: 'Timestamp' },
+  { accessorKey: 'user.phone', header: 'Phone' },
+  { accessorKey: 'amount', header: 'Amount (ETB)' },
+  { accessorKey: 'note', header: 'Bank/Account' },
+  { accessorKey: 'createdAt', header: 'Requested' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'actions', header: 'Actions' }
 ]
 
 const withdrawals = ref<WithdrawalTransaction[]>([])
 const loading = ref(false)
+const showConfirmModal = ref(false)
+const pendingAction = ref<{ id: string; type: 'approve' | 'reject' } | null>(null)
+const declineNote = ref('')
 
 const refreshWithdrawals = async () => {
   loading.value = true
   try {
     withdrawals.value = await getWithdrawals()
-  } catch (error) {
+  } catch {
     toast.add({ title: 'Error', description: 'Failed to fetch withdrawals', color: 'error' })
   } finally {
     loading.value = false
   }
 }
 
-const handleApprove = async (id: string) => {
+const confirmAction = (id: string, type: 'approve' | 'reject') => {
+  pendingAction.value = { id, type }
+  declineNote.value = ''
+  showConfirmModal.value = true
+}
+
+const executeAction = async () => {
+  if (!pendingAction.value) return
+  const { id, type } = pendingAction.value
+
   try {
-    await approveTransaction(id)
-    toast.add({ title: 'Approved', description: 'Withdrawal marked as completed', color: 'success' })
+    if (type === 'approve') {
+      await approveTransaction(id)
+      toast.add({ title: 'Marked as Transferred ✅', description: 'Player has been notified', color: 'success' })
+    } else {
+      await declineTransaction(id, declineNote.value || undefined)
+      toast.add({ title: 'Rejected', description: 'Balance refunded to player wallet', color: 'warning' })
+    }
+    showConfirmModal.value = false
     refreshWithdrawals()
-  } catch (error) {
-    toast.add({ title: 'Error', description: 'Failed to approve', color: 'error' })
+  } catch (e: any) {
+    toast.add({ title: 'Error', description: e?.data?.message ?? 'Action failed', color: 'error' })
   }
 }
 
@@ -50,6 +71,7 @@ onMounted(refreshWithdrawals)
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-semibold text-gray-900">Withdrawals Management</h1>
+      <UButton icon="i-heroicons-arrow-path" variant="ghost" @click="refreshWithdrawals">Refresh</UButton>
     </div>
 
     <UAlert
@@ -62,18 +84,66 @@ onMounted(refreshWithdrawals)
 
     <UCard>
       <UTable :columns="columns" :rows="withdrawals" :loading="loading">
+        <template #id-cell="{ row }">
+          <span class="font-mono text-xs">{{ (row.original as unknown as WithdrawalTransaction).id.slice(0, 8) }}…</span>
+        </template>
+        <template #amount-cell="{ row }">
+          <strong>{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }}</strong>
+        </template>
         <template #createdAt-cell="{ row }">
           {{ new Date((row.original as unknown as WithdrawalTransaction).createdAt).toLocaleString() }}
         </template>
         <template #status-cell="{ row }">
-          <UBadge :color="(row.original as unknown as WithdrawalTransaction).status === 'PENDING' ? 'warning' : 'neutral'" variant="soft">{{ (row.original as unknown as WithdrawalTransaction).status }}</UBadge>
+          <UBadge
+            :color="(row.original as unknown as WithdrawalTransaction).status === 'PENDING_REVIEW' ? 'warning' : (row.original as unknown as WithdrawalTransaction).status === 'APPROVED' ? 'success' : 'error'"
+            variant="soft"
+          >
+            {{ (row.original as unknown as WithdrawalTransaction).status }}
+          </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex items-center gap-2">
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove((row.original as unknown as WithdrawalTransaction).id)">Mark as Transferred</UButton>
+          <div
+            v-if="(row.original as unknown as WithdrawalTransaction).status === 'PENDING_REVIEW'"
+            class="flex items-center gap-2"
+          >
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'approve')">
+              Mark Transferred
+            </UButton>
+            <UButton size="xs" color="error" variant="soft" icon="i-heroicons-x-mark" @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'reject')">
+              Reject
+            </UButton>
           </div>
+          <span v-else class="text-gray-400 text-xs">Processed</span>
         </template>
       </UTable>
     </UCard>
+
+    <!-- Confirm Modal -->
+    <UModal v-model="showConfirmModal">
+      <UCard>
+        <template #header>
+          <h3 class="text-base font-semibold">
+            {{ pendingAction?.type === 'approve' ? 'Confirm Transfer' : 'Reject Withdrawal' }}
+          </h3>
+        </template>
+        <div class="p-4 space-y-3">
+          <p v-if="pendingAction?.type === 'approve'" class="text-sm text-gray-600">
+            Confirm that you have physically transferred the funds to the player's account.
+          </p>
+          <template v-else>
+            <p class="text-sm text-gray-600">The withdrawal will be rejected and the balance returned to the player's wallet.</p>
+            <UInput v-model="declineNote" placeholder="Reason (optional)" />
+          </template>
+        </div>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="showConfirmModal = false">Cancel</UButton>
+            <UButton :color="pendingAction?.type === 'approve' ? 'success' : 'error'" @click="executeAction">
+              {{ pendingAction?.type === 'approve' ? 'Confirm' : 'Reject' }}
+            </UButton>
+          </div>
+        </template>
+      </UCard>
+    </UModal>
   </div>
 </template>

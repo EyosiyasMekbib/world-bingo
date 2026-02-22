@@ -23,6 +23,16 @@ const items = [
     to: '/orders'
   },
   {
+    label: 'Games',
+    icon: 'i-heroicons-puzzle-piece',
+    to: '/games'
+  },
+  {
+    label: 'Users',
+    icon: 'i-heroicons-users',
+    to: '/users'
+  },
+  {
     label: 'Profile',
     icon: 'i-heroicons-user',
     to: '/settings/profile'

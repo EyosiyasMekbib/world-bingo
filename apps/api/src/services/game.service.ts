@@ -1,8 +1,12 @@
 import prisma from '../lib/prisma'
 import { getIo } from '../lib/socket'
-import { GameStatus, TransactionType, PaymentStatus } from '@world-bingo/shared-types'
-import { drawBall, createBallPool, checkPattern, PatternName } from '@world-bingo/game-logic'
+import { GameStatus, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
+import { checkPattern, PatternName } from '@world-bingo/game-logic'
 import { Decimal } from '@prisma/client/runtime/library'
+import { startGameEngine, stopGameEngine } from '../lib/game-engine'
+import { RefundService } from './refund.service'
+import { NotificationService } from './notification.service'
+import { clearGameState } from '../lib/game-state'
 
 export class GameService {
     /**
@@ -95,67 +99,119 @@ export class GameService {
     }
 
     static async startGame(gameId: string) {
-        const game = await prisma.game.update({
+        const game = await prisma.game.findUnique({
             where: { id: gameId },
-            data: { 
-                status: GameStatus.STARTING,
-                startedAt: new Date()
-            }
+            include: { entries: { distinct: ['userId'], select: { userId: true } } },
         })
-        
-        const io = getIo()
-        io.to(`game:${gameId}`).emit('game:started', game as any)
-        
-        // Use a timeout to switch to ACTIVE and start calling balls
-        // In production, use BullMQ for robustness (T48)
-        setTimeout(() => {
-             this.runGameLoop(gameId)
-        }, 5000) // 5 seconds grace period
+        if (!game) throw new Error('Game not found')
+        if (game.status !== GameStatus.WAITING && game.status !== GameStatus.STARTING) {
+            throw new Error('Game is not in a startable state')
+        }
 
-        return game
+        // Check minimum player requirement
+        const playerCount = game.entries.length
+        if (playerCount < game.minPlayers) {
+            throw new Error(`Not enough players to start. Need at least ${game.minPlayers}, have ${playerCount}.`)
+        }
+
+        const updatedGame = await prisma.game.update({
+            where: { id: gameId },
+            data: {
+                status: GameStatus.STARTING,
+                startedAt: new Date(),
+            },
+        })
+
+        const io = getIo()
+        io.to(`game:${gameId}`).emit('game:started', updatedGame as any)
+
+        // Notify all participants that the game is starting
+        const participantIds = game.entries.map((e) => e.userId)
+        await Promise.all(
+            participantIds.map((userId) =>
+                NotificationService.create(
+                    userId,
+                    NotificationType.GAME_STARTING,
+                    'Game Starting!',
+                    `Your bingo game is starting in 5 seconds. Get ready!`,
+                    { gameId },
+                ).catch(() => {}),
+            ),
+        )
+
+        // 5-second grace period, then start the engine (T24 — Redlock-backed)
+        setTimeout(() => {
+            startGameEngine(gameId).catch((err) => {
+                console.error(`[GameService] startGameEngine failed for ${gameId}:`, err)
+            })
+        }, 5_000)
+
+        return updatedGame
     }
 
-    private static async runGameLoop(gameId: string) {
+    /**
+     * T25 — Cancel a game. Stops the engine, refunds all players, notifies them.
+     */
+    static async cancelGame(gameId: string): Promise<void> {
+        const game = await prisma.game.findUnique({ where: { id: gameId } })
+        if (!game) throw new Error('Game not found')
+        if (game.status === GameStatus.COMPLETED || game.status === GameStatus.CANCELLED) {
+            throw new Error('Game is already finished or cancelled')
+        }
+
+        // Stop the game engine on this instance if running
+        stopGameEngine(gameId)
+
+        // Mark cancelled in Postgres
         await prisma.game.update({
-             where: { id: gameId },
-             data: { status: GameStatus.IN_PROGRESS }
+            where: { id: gameId },
+            data: { status: GameStatus.CANCELLED, endedAt: new Date() },
         })
 
-        const interval = setInterval(async () => {
-             const game = await prisma.game.findUnique({
-                where: { id: gameId },
-                include: { _count: { select: { entries: true } } }
-             })
-             if (!game || game.status !== GameStatus.IN_PROGRESS || game.winnerId) {
-                 clearInterval(interval)
-                 return
-             }
+        // Clear Redis state
+        await clearGameState(gameId).catch(() => {})
 
-             const allBalls = createBallPool()
-             const calledSet = new Set(game.calledBalls)
-             const remaining = allBalls.filter(b => !calledSet.has(b))
-             
-             if (remaining.length === 0) {
-                 clearInterval(interval)
-                 return
-             }
+        // Refund all players (idempotent)
+        const refunds = await RefundService.refundGame(gameId)
 
-             const { ball } = drawBall(remaining)
-             
-             const updatedGame = await prisma.game.update({
-                 where: { id: gameId },
-                 data: {
-                     calledBalls: { push: ball }
-                 }
-             })
+        // Notify each refunded player
+        await Promise.all(
+            refunds
+                .filter((r) => !r.alreadyRefunded)
+                .map((r) =>
+                    NotificationService.create(
+                        r.userId,
+                        NotificationType.GAME_CANCELLED,
+                        'Game Cancelled',
+                        `Your game was cancelled. ${r.amount} ETB has been refunded to your wallet.`,
+                        { gameId, refundAmount: r.amount },
+                    ).catch(() => {}),
+                ),
+        )
 
-             const io = getIo()
-             io.to(`game:${gameId}`).emit('game:ball-called', {
-                 gameId,
-                 ball,
-                 calledBalls: updatedGame.calledBalls
-             })
-        }, 3000)
+        // Broadcast cancellation via WebSocket
+        const io = getIo()
+        io.to(`game:${gameId}`).emit('game:cancelled', { gameId, reason: 'admin_cancelled' })
+        io.to('lobby').emit('lobby:game-removed', gameId)
+    }
+
+    /**
+     * T26 — Auto-cancel: called when a game's countdown expires but not enough players joined.
+     */
+    static async autoCancelIfUnderFilled(gameId: string): Promise<void> {
+        const game = await prisma.game.findUnique({
+            where: { id: gameId },
+            include: { entries: { distinct: ['userId'], select: { userId: true } } },
+        })
+        if (!game || game.status !== GameStatus.WAITING) return
+
+        const playerCount = game.entries.length
+        if (playerCount < game.minPlayers) {
+            console.log(
+                `[GameService] Auto-cancelling game ${gameId}: only ${playerCount}/${game.minPlayers} players.`,
+            )
+            await GameService.cancelGame(gameId)
+        }
     }
 
     static async claimBingo(userId: string, gameId: string, cartelaId: string) {
@@ -171,16 +227,23 @@ export class GameService {
 
             if (!entry) throw new Error('Invalid entry')
 
-            // Validate Pattern
+            // Validate Pattern using Redis called balls (more up-to-date than Postgres)
+            const { getCalledBalls: getRedisCalledBalls } = await import('../lib/game-state.js')
+            const calledBallsFromRedis = await getRedisCalledBalls(gameId)
+            const calledBalls = calledBallsFromRedis.length > 0 ? calledBallsFromRedis : game.calledBalls
+
             // @ts-ignore - JSON type issue
             const grid = entry.cartela.grid as number[][]
-            const calledSet = new Set(game.calledBalls)
+            const calledSet = new Set(calledBalls)
             
             const hasWon = checkPattern(game.pattern as PatternName, grid, calledSet)
             
             if (!hasWon) {
                 throw new Error('False Bingo!')
             }
+
+            // Stop the engine on this instance
+            stopGameEngine(gameId)
 
             // Winner found! Calculate prize based on all entries in the game
             const totalEntries = await tx.gameEntry.count({ where: { gameId } })
@@ -195,13 +258,14 @@ export class GameService {
             const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
             const balanceAfter = balanceBefore.plus(new Decimal(prize))
 
-            // Update Game
+            // Update Game — persist called balls from Redis
             const endedGame = await tx.game.update({
                 where: { id: gameId },
                 data: {
                     status: GameStatus.COMPLETED,
                     winnerId: userId,
-                    endedAt: new Date()
+                    endedAt: new Date(),
+                    calledBalls: calledBalls,
                 }
             })
 
@@ -232,9 +296,21 @@ export class GameService {
                 winner: user as any,
                 prizeAmount: prize
             })
+            io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
+            io.to('lobby').emit('lobby:game-removed', gameId)
             
+            return endedGame
+        }).then(async (endedGame) => {
+            // Post-transaction: notify winner and clear Redis (non-critical)
+            await NotificationService.create(
+                userId,
+                NotificationType.GAME_WON,
+                '🎉 You Won!',
+                `Congratulations! You won ${((Number(endedGame.ticketPrice) * await prisma.gameEntry.count({ where: { gameId } })) * (1 - Number(endedGame.houseEdgePct) / 100)).toFixed(2)} ETB!`,
+                { gameId },
+            ).catch(() => {})
+            await clearGameState(gameId).catch(() => {})
             return endedGame
         })
     }
 }
-
