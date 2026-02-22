@@ -15,16 +15,16 @@
 |------|-------|------|-----------|
 | **Tier 0** — Foundation | 6 | ✅ 6 | 0 |
 | **Tier 1** — Core Fixes | 7 | ✅ 7 | 0 |
-| **Tier 2** — Service Layer | 10 | ✅ 4 (T17, T18, T20, T21) | 6 (T14, T15, T16, T19, T22, T23) |
+| **Tier 2** — Service Layer | 10 | ✅ 10 | 0 |
 | **Tier 3** — Game Engine | 12 | 0 | 12 |
 | **Tier 4** — Player UI & Admin | 9 | 0 | 9 |
 | **Tier 5** — Live Game & Workers | 5 | 0 | 5 |
 | **Tier 6** — Gateways & Testing | 5 | 0 | 5 |
 | **Tier 7** — QA & Growth | 5 | 0 | 5 |
 | **Tier 8** — Advanced Features | 1 | 0 | 1 |
-| **Total** | **60** | **17 (28%)** | **43 (72%)** |
+| **Total** | **60** | **23 (38%)** | **37 (62%)** |
 
-**Next up (Tier 2 remaining):** T16 → T15 → T19 → T14 → T22 → T23
+**Next up: Tier 3** — Game Engine & Integration
 
 ---
 
@@ -72,23 +72,23 @@
 
 ---
 
-## Tier 2 — Service Layer (Depends on Tier 1)
+## Tier 2 — Service Layer (Depends on Tier 1) ✅ COMPLETE
 
 > New services and core business logic that build on the schema and auth fixes.
-> ⚠️ T17, T18, T20, T21 were completed early as part of the Tier 1 implementation pass.
+> All 10 tasks completed on **2026-02-22**. Tests: 73/73 ✅, TypeScript: zero errors ✅.
 
 | # | Task | Difficulty | ⏱️ | Package | Status / Dependencies |
 |---|------|------------|-----|---------|----------------------|
-| **T14** | 0.5 — Move game state to Redis | 🔴 Hard | 4h | `api` | ⏳ Pending → T8 |
-| **T15** | 1.2 — Withdrawal route: Complete flow | 🟡 Medium | 2h | `api` | ⏳ Pending → T2, T7 |
-| **T16** | 1.1.2 — Deposit route: Handle file upload | 🟡 Medium | 1.5h | `api` | ⏳ Pending → T9 |
+| **T14** | 0.5 — Move game state to Redis | 🔴 Hard | 4h | `api` | ✅ Done |
+| **T15** | 1.2 — Withdrawal route: Complete flow | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T16** | 1.1.2 — Deposit route: Handle file upload | 🟡 Medium | 1.5h | `api` | ✅ Done |
 | **T17** | 1.4.2 — Notification service | 🟡 Medium | 2h | `api` | ✅ Done |
 | **T18** | 1.4.4 — Socket events for notifications | 🟢 Easy | 0.5h | `shared-types` | ✅ Done |
-| **T19** | 1.3.1 — Refund service | 🔴 Hard | 2h | `api` | ⏳ Pending → T2, T8 |
+| **T19** | 1.3.1 — Refund service | 🔴 Hard | 2h | `api` | ✅ Done |
 | **T20** | 1.4.6 — Notification API routes | 🟢 Easy | 1h | `api` | ✅ Done |
 | **T21** | 1.6.2 — Admin dashboard: Wire to live API | 🟢 Easy | 1h | `admin` | ✅ Done |
-| **T22** | 3.3 — Payment gateway abstraction interface | 🟡 Medium | 2h | `api` | ⏳ Pending → T9 |
-| **T23** | 6.1 — CI/CD pipeline (GitHub Actions) | 🟡 Medium | 4h | root | ⏳ Pending → T6 |
+| **T22** | 3.3 — Payment gateway abstraction interface | 🟡 Medium | 2h | `api` | ✅ Done |
+| **T23** | 6.1 — CI/CD pipeline (GitHub Actions) | 🟡 Medium | 4h | root | ✅ Done |
 
 ---
 
@@ -406,3 +406,4 @@ Tier 0 is **complete**. Next up is Tier 1. Work in this order:
 | Date | Tier | Tasks Completed | Notes |
 |------|------|----------------|-------|
 | 2026-02-22 | 0 | T1, T2, T3, T4, T5, T6 | All Tier 0 tasks complete. Prisma migration `20260221210704_t2_wallet_locking_t3_indexes` applied. `@fastify/helmet` installed. |
+| 2026-02-22 | 2 | T14, T15, T16, T19, T22, T23 | All Tier 2 tasks complete. Redis game-state module (`lib/game-state.ts`), refund service, file upload deposit route, payment gateway abstraction, CI/CD pipeline. Tests: 73/73 ✅. |

@@ -10,10 +10,8 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
         handler: WalletController.getBalance,
     })
 
+    // T16: Accept both multipart/form-data (with receipt file) and JSON body
     fastify.post('/deposit', {
-        schema: {
-            body: zodToJsonSchema(DepositSchema),
-        },
         handler: WalletController.deposit,
     })
 
