@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { PatternType, PaymentStatus } from '../enums'
+import { PatternType, PaymentStatus, TournamentStatus } from '../enums'
 
 export const LoginSchema = z.object({
     identifier: z.string().min(2).max(32).describe('Username or phone number'),
@@ -10,6 +10,7 @@ export const RegisterSchema = z.object({
     username: z.string().min(2).max(32),
     phone: z.string().min(9).max(15),
     password: z.string().min(6),
+    referralCode: z.string().min(6).max(12).optional(),
 })
 
 export const RefreshTokenSchema = z.object({
@@ -75,4 +76,64 @@ export type WithdrawalDto = z.infer<typeof WithdrawalSchema>
 export type ReviewDepositDto = z.infer<typeof ReviewDepositSchema>
 export type JoinGameDto = z.infer<typeof JoinGameSchema>
 export type ClaimBingoDto = z.infer<typeof ClaimBingoSchema>
+
+// ─── Referral ─────────────────────────────────────────────────────────────────
+/** Bonus awarded to referrer when their referee completes their first deposit */
+export const REFERRAL_BONUS_ETB = 50
+
+export interface ReferralStatsDto {
+    referralCode: string
+    referralLink: string
+    totalReferrals: number
+    pendingRewards: number
+    paidRewards: number
+    totalEarned: number
+}
+
+// ─── Tournament (T60) ─────────────────────────────────────────────────────────
+export const CreateTournamentSchema = z.object({
+    title: z.string().min(3).max(64),
+    entryFee: z.number().positive(),
+    maxPlayers: z.number().int().min(2).max(128).default(32),
+    houseEdgePct: z.number().min(0).max(50).default(10),
+    scheduledAt: z.string().datetime().optional(),
+})
+
+export type CreateTournamentDto = z.infer<typeof CreateTournamentSchema>
+
+export interface TournamentDto {
+    id: string
+    title: string
+    status: TournamentStatus
+    entryFee: number
+    maxPlayers: number
+    currentPlayers: number
+    prizePool: number
+    houseEdgePct: number
+    winnerId: string | null
+    rounds: number
+    scheduledAt: string | null
+    startedAt: string | null
+    endedAt: string | null
+    createdAt: string
+}
+
+export interface TournamentEntryDto {
+    id: string
+    tournamentId: string
+    userId: string
+    username: string
+    round: number
+    eliminated: boolean
+    score: number
+    joinedAt: string
+}
+
+export interface TournamentLeaderboardEntry {
+    rank: number
+    userId: string
+    username: string
+    score: number
+    eliminated: boolean
+}
 

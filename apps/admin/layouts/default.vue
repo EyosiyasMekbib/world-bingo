@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const { user, logout } = useAdminAuth()
+const { locale, setLocale } = useI18n()
+const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 
 const items = [
   {
@@ -26,6 +28,11 @@ const items = [
     label: 'Games',
     icon: 'i-heroicons-puzzle-piece',
     to: '/games'
+  },
+  {
+    label: 'Tournaments',
+    icon: 'i-heroicons-trophy',
+    to: '/tournaments'
   },
   {
     label: 'Users',
@@ -56,6 +63,15 @@ const dropdownItems = [
         <span class="font-bold text-xl text-neutral-900 tracking-tight">World Bingo Admin</span>
       </div>
       <div class="flex items-center gap-4">
+        <!-- Language switcher -->
+        <UButton
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          :label="locale === 'en' ? 'አማ' : 'EN'"
+          :title="locale === 'en' ? 'Switch to Amharic' : 'Switch to English'"
+          @click="toggleLocale"
+        />
         <UDropdownMenu :items="dropdownItems" :content="{ align: 'end' }">
           <UButton color="neutral" variant="ghost" icon="i-heroicons-user-circle" :label="`Manager: ${user?.username || 'kira'}`" trailing-icon="i-heroicons-chevron-down-20-solid" />
         </UDropdownMenu>

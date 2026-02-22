@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { LoginDto, RegisterDto, ChangePasswordDto } from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
+import { ReferralService } from './referral.service'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
 
@@ -27,11 +28,19 @@ export class AuthService {
 
         const passwordHash = await bcrypt.hash(data.password, 10)
 
+        // Resolve referral code → referrer ID (if provided)
+        let referredById: string | undefined
+        if (data.referralCode) {
+            const referrerId = await ReferralService.resolveCode(data.referralCode)
+            if (referrerId) referredById = referrerId
+        }
+
         const user = await prisma.user.create({
             data: {
                 username: data.username,
                 phone: data.phone,
                 passwordHash,
+                referredById,
                 wallet: {
                     create: {
                         balance: 0,

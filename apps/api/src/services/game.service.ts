@@ -9,6 +9,8 @@ import { RefundService } from './refund.service'
 import { NotificationService } from './notification.service'
 import { clearGameState } from '../lib/game-state'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
+import { JackpotService } from './jackpot.service'
+import { TournamentService } from './tournament.service'
 
 export class GameService {
     /**
@@ -311,13 +313,40 @@ export class GameService {
             return endedGame
         }).then(async (endedGame: any) => {
             // Post-transaction: notify winner and clear Redis (non-critical)
+            const totalEntries = await prisma.gameEntry.count({ where: { gameId } })
+            const totalPot = Number(endedGame.ticketPrice) * totalEntries
+            const prize = totalPot * (1 - Number(endedGame.houseEdgePct) / 100)
+            const ballsCalled = (endedGame.calledBalls as number[]).length
+
             await NotificationService.create(
                 userId,
                 NotificationType.GAME_WON,
                 '🎉 You Won!',
-                `Congratulations! You won ${((Number(endedGame.ticketPrice) * await prisma.gameEntry.count({ where: { gameId } })) * (1 - Number(endedGame.houseEdgePct) / 100)).toFixed(2)} ETB!`,
+                `Congratulations! You won ${prize.toFixed(2)} ETB!`,
                 { gameId },
             ).catch(() => {})
+
+            // T59: Contribute 2% of pot to jackpot
+            await JackpotService.contribute(totalPot).catch(() => {})
+
+            // T59: Check if the win qualifies for a jackpot payout
+            const pattern = endedGame.pattern as string
+            if (JackpotService.isJackpotEligible(pattern, ballsCalled)) {
+                await JackpotService.awardJackpot(userId, gameId, ballsCalled).catch(() => {})
+            }
+
+            // T60: If this game is part of a tournament, advance the tournament
+            const tournamentGame = await prisma.tournamentGame.findUnique({ where: { gameId } }).catch(() => null)
+            if (tournamentGame) {
+                await TournamentService.processRoundResult(
+                    tournamentGame.tournamentId,
+                    gameId,
+                    userId,
+                ).catch((err) => {
+                    console.error('[GameService] Tournament round advancement failed:', err)
+                })
+            }
+
             await clearGameState(gameId).catch(() => {})
             return endedGame
         })

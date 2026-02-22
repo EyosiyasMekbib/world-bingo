@@ -1,0 +1,71 @@
+{
+  "nav": {
+    "dashboard": "ዳሽቦርድ",
+    "deposits": "ተቀማጭ",
+    "withdrawals": "ወጪ",
+    "users": "ተጠቃሚዎች",
+    "games": "ጨዋታዎች",
+    "tournaments": "ውድድሮች",
+    "orders": "ታሪክ",
+    "settings": "ቅንብሮች",
+    "logout": "ውጣ"
+  },
+  "dashboard": {
+    "title": "ዳሽቦርድ",
+    "approvedDeposits": "ጸድቀው የገቡ ብር ድምር",
+    "declinedDeposits": "የተቀቡ ብር ድምር",
+    "approvedWithdrawals": "ጸድቀው የወጡ ብር ድምር",
+    "totalProfit": "ጠቅላላ ትርፍ",
+    "usersCount": "ተጠቃሚ ቁጥር",
+    "commission": "ኮሚሽን"
+  },
+  "deposits": {
+    "title": "ጥያቄ ያለባቸው ተቀማጮች",
+    "pending": "ጥያቄ ላይ",
+    "approvedSum": "ጸድቀዋል (ሁሉም ጊዜ)",
+    "declinedSum": "ተቀቧል (ሁሉም ጊዜ)",
+    "approve": "አጽድቅ",
+    "decline": "ቀቢ",
+    "declineReason": "የቅቢ ምክንያት",
+    "confirmDecline": "ቅቢ አረጋግጥ",
+    "lateSubmission": "⚠ ዘግይቶ የቀረበ ({min} ደቂቃ)",
+    "receiptView": "እይ"
+  },
+  "withdrawals": {
+    "title": "የወጪ አስተዳደር",
+    "awaiting": "ሽግሽግ የሚጠብቅ",
+    "totalTransferred": "ጠቅላላ የተላከ (ሁሉም ጊዜ)",
+    "markTransferred": "እንደተላከ ምልክት አድርግ",
+    "rejectRefund": "ቀቢ & መልስ",
+    "confirmAction": "እርምጃ አረጋግጥ",
+    "telebirrNumber": "የቴሌብር ቁጥር"
+  },
+  "common": {
+    "loading": "እየጫነ ነው…",
+    "error": "ስህተት",
+    "cancel": "ሰርዝ",
+    "confirm": "አረጋግጥ",
+    "refresh": "አድስ",
+    "etb": "ብር"
+  },
+  "tournament": {
+    "title": "ውድድሮች",
+    "create": "ውድድር ፍጠር",
+    "start": "ጀምር",
+    "cancel": "ሰርዝ",
+    "view": "እይ",
+    "registration": "ምዝገባ",
+    "inProgress": "በሂደት ላይ",
+    "completed": "ተጠናቋል",
+    "cancelled": "ተሰርዟል",
+    "entryFee": "የመግቢያ ክፍያ (ብር)",
+    "maxPlayers": "ከፍተኛ ተጫዋቾች",
+    "houseEdge": "የቤት ጠርዝ %",
+    "prizePool": "የሽልማት ድምር (ብር)",
+    "scheduledAt": "የታቀደ መጀመሪያ (አማራጭ)",
+    "totalParticipants": "ጠቅላላ ተሳታፊዎች",
+    "openRegistration": "ክፍት ምዝገባ",
+    "live": "በቀጥታ",
+    "estimatedPrize": "የሽልማት ድምር ግምት"
+  }
+}

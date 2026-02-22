@@ -1,5 +1,18 @@
 <template>
   <div class="lobby-page">
+    <!-- T59 — Progressive Jackpot Banner -->
+    <Transition name="jackpot-fade">
+      <div v-if="jackpotWinner" class="jackpot-win-toast">
+        🎰 JACKPOT! Someone just won <strong>{{ jackpotWinner.amount.toFixed(2) }} ETB</strong>!
+      </div>
+    </Transition>
+
+    <div class="jackpot-banner">
+      <span class="jackpot-label">🎰 Progressive Jackpot</span>
+      <span class="jackpot-amount">{{ jackpotAmount.toFixed(2) }} ETB</span>
+      <span class="jackpot-hint">Win with a full card in ≤ 20 balls!</span>
+    </div>
+
     <div class="lobby-header">
       <h2>Available Games</h2>
       <div class="wallet-summary" v-if="auth.wallet">
@@ -60,12 +73,24 @@ import type { Game } from '@world-bingo/shared-types'
 const auth = useAuthStore()
 const gameStore = useGameStore()
 const { connect } = useSocket()
+const config = useRuntimeConfig()
 
 const showDeposit = ref(false)
 const showWithdraw = ref(false)
 
+// T59 — Progressive jackpot
+const jackpotAmount = ref(0)
+const jackpotWinner = ref<{ winnerId: string; amount: number } | null>(null)
+
+const fetchJackpot = async () => {
+  try {
+    const data = await $fetch<{ amount: number }>(`${config.public.apiBase}/jackpot`)
+    jackpotAmount.value = data.amount
+  } catch { /* non-critical */ }
+}
+
 // Initial fetch
-await gameStore.fetchAvailableGames()
+await Promise.all([gameStore.fetchAvailableGames(), fetchJackpot()])
 
 onMounted(() => {
   const socket = connect()
@@ -83,6 +108,18 @@ onMounted(() => {
 
   socket.on('game:updated', (game: Game) => {
     gameStore.onGameUpdated(game)
+  })
+
+  // T59 — Listen for jackpot updates
+  socket.on('jackpot:update', ({ amount }: { amount: number }) => {
+    jackpotAmount.value = amount
+  })
+
+  socket.on('jackpot:won', (payload: { winnerId: string; amount: number }) => {
+    jackpotWinner.value = payload
+    jackpotAmount.value = 0
+    // Auto-dismiss after 8s
+    setTimeout(() => { jackpotWinner.value = null }, 8000)
   })
 })
 
@@ -241,5 +278,66 @@ onUnmounted(() => {
 
 .join-btn:hover {
   opacity: 0.85;
+}
+
+/* T59 — Jackpot styles */
+.jackpot-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: linear-gradient(135deg, #1a0533, #3b0764);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 12px;
+  padding: 0.875rem 1.25rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.jackpot-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #c4b5fd;
+}
+
+.jackpot-amount {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+.jackpot-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: auto;
+}
+
+.jackpot-win-toast {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: linear-gradient(135deg, #7c3aed, #dc2626);
+  color: white;
+  padding: 0.875rem 1.5rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}
+
+.jackpot-fade-enter-active,
+.jackpot-fade-leave-active {
+  transition: opacity 0.5s, transform 0.5s;
+}
+
+.jackpot-fade-enter-from,
+.jackpot-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
 }
 </style>

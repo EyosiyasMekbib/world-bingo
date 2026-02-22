@@ -17,6 +17,9 @@ import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import adminRoutes from './routes/admin'
 import notificationRoutes from './routes/user/index.js'
+import referralRoutes from './routes/referral'
+import jackpotRoutes from './routes/jackpot'
+import tournamentRoutes from './routes/tournament'
 import { registerBullBoard } from './routes/bull-board.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
@@ -116,6 +119,9 @@ await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
 await server.register(adminRoutes, { prefix: '/admin' })
 await server.register(notificationRoutes, { prefix: '/user' })
+await server.register(referralRoutes, { prefix: '/referral' })
+await server.register(jackpotRoutes, { prefix: '/jackpot' })
+await server.register(tournamentRoutes, { prefix: '/tournaments' })
 
 // T49 — BullMQ Dashboard at /admin/queues
 await registerBullBoard(server)

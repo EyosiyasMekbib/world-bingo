@@ -3,6 +3,7 @@ import { useAuthStore } from '~/store/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { locale, setLocale, t } = useI18n()
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -20,6 +21,9 @@ const formattedBalance = computed(() => {
 
 // Mobile nav toggle
 const mobileNavOpen = ref(false)
+
+// Language toggle helper
+const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 </script>
 
 <template>
@@ -47,7 +51,22 @@ const mobileNavOpen = ref(false)
             class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all"
             active-class="text-amber-400 bg-amber-400/10"
           >
-            🎮 Lobby
+            🎮 {{ t('nav.lobby') }}
+          </NuxtLink>
+          <NuxtLink
+            v-if="auth.isAuthenticated"
+            to="/refer"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all"
+            active-class="text-amber-400 bg-amber-400/10"
+          >
+            🎁 {{ t('nav.refer') }}
+          </NuxtLink>
+          <NuxtLink
+            to="/tournaments"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all"
+            active-class="text-amber-400 bg-amber-400/10"
+          >
+            🏆 {{ t('nav.tournaments') }}
           </NuxtLink>
           <NuxtLink
             v-if="auth.isAuthenticated"
@@ -91,6 +110,15 @@ const mobileNavOpen = ref(false)
 
             <!-- Notification bell -->
             <NotificationBell />
+
+            <!-- Language switcher -->
+            <button
+              class="px-2 py-1 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/8 text-zinc-300 transition-colors"
+              :title="locale === 'en' ? 'Switch to Amharic' : 'Switch to English'"
+              @click="toggleLocale"
+            >
+              {{ locale === 'en' ? 'አማ' : 'EN' }}
+            </button>
 
             <!-- User avatar / menu -->
             <div class="relative group">
@@ -177,14 +205,12 @@ const mobileNavOpen = ref(false)
 
     <!-- ── Modals ─────────────────────────────────────────────────────────── -->
     <DepositModal
-      v-if="showDeposit"
-      @close="showDeposit = false"
+      v-model="showDeposit"
       @deposited="auth.fetchWallet(); showDeposit = false"
     />
     <WithdrawalModal
-      v-if="showWithdrawal"
+      v-model="showWithdrawal"
       :balance="Number(auth.wallet?.balance ?? 0)"
-      @close="showWithdrawal = false"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
   </div>

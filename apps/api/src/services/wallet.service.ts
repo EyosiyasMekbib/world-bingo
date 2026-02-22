@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
+import { ReferralService } from './referral.service'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -73,6 +74,20 @@ export class WalletService {
                 `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved and added to your wallet.`,
                 { transactionId: transaction.id, amount: Number(transaction.amount) },
             ).catch(() => {})
+
+            // Check if this is the player's first approved deposit → award referral bonus
+            const previousApproved = await prisma.transaction.count({
+                where: {
+                    userId: transaction.userId,
+                    type: TransactionType.DEPOSIT,
+                    status: PaymentStatus.APPROVED,
+                    id: { not: transaction.id },
+                },
+            })
+            if (previousApproved === 0) {
+                await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+            }
+
             return transaction
         })
     }

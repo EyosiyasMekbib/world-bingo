@@ -12,6 +12,12 @@ export interface ServerToClientEvents {
     'cartela:marked': (payload: { cartelaId: string; cell: [number, number] }) => void
     'wallet:updated': (payload: { balance: number }) => void
     'notification:new': (notification: Notification) => void
+    'jackpot:update': (payload: { amount: number }) => void
+    'jackpot:won': (payload: { winnerId: string; amount: number }) => void
+    'tournament:updated': (payload: { tournamentId: string; status: string; currentPlayers: number; prizePool: number }) => void
+    'tournament:round-started': (payload: { tournamentId: string; round: number; gameId: string }) => void
+    'tournament:eliminated': (payload: { tournamentId: string; userId: string }) => void
+    'tournament:winner': (payload: { tournamentId: string; winnerId: string; username: string; prizeAmount: number }) => void
     error: (payload: { message: string; code: string }) => void
 }
 

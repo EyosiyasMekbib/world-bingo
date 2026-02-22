@@ -27,10 +27,16 @@ afterAll(async () => {
 async function cleanDb() {
     await prisma.notification.deleteMany()
     await prisma.refreshToken.deleteMany()
+    await prisma.jackpotWin.deleteMany()
+    await prisma.jackpot.deleteMany()
+    await prisma.referralReward.deleteMany()
+    await prisma.tournamentEntry.deleteMany()
+    await prisma.tournamentGame.deleteMany()
     await prisma.transaction.deleteMany()
     await prisma.gameEntry.deleteMany()
     await prisma.cartela.deleteMany()
     await prisma.game.deleteMany()
+    await prisma.tournament.deleteMany()
     await prisma.wallet.deleteMany()
     await prisma.user.deleteMany()
 }
