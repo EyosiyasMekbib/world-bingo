@@ -1,66 +1,81 @@
 <template>
   <div class="lobby-page">
-    <!-- T59 — Progressive Jackpot Banner -->
-    <Transition name="jackpot-fade">
-      <div v-if="jackpotWinner" class="jackpot-win-toast">
-        🎰 JACKPOT! Someone just won <strong>{{ jackpotWinner.amount.toFixed(2) }} ETB</strong>!
+
+    <!-- ── Jackpot Winner Toast ───────────────────────────────────────── -->
+    <Transition name="toast-pop">
+      <div v-if="jackpotWinner" class="jackpot-toast" role="status">
+        🎰 JACKPOT! Someone just won
+        <strong>{{ jackpotWinner.amount.toFixed(2) }} ETB</strong>!
       </div>
     </Transition>
 
+    <!-- ── Progressive Jackpot Banner ───────────────────────────────── -->
     <div class="jackpot-banner">
-      <span class="jackpot-label">🎰 Progressive Jackpot</span>
-      <span class="jackpot-amount">{{ jackpotAmount.toFixed(2) }} ETB</span>
-      <span class="jackpot-hint">Win with a full card in ≤ 20 balls!</span>
-    </div>
-
-    <div class="lobby-header">
-      <h2>Available Games</h2>
-      <div class="wallet-summary" v-if="auth.wallet">
-        <span class="balance-label">Balance:</span>
-        <span class="balance-value">{{ Number(auth.wallet.balance).toFixed(2) }} ETB</span>
-        <button class="btn-deposit" @click="showDeposit = true">+ Deposit</button>
-        <button class="btn-withdraw" @click="showWithdraw = true">Withdraw</button>
+      <div class="jackpot-banner-inner">
+        <span class="jackpot-label">🎰 Progressive Jackpot</span>
+        <span class="jackpot-amount">{{ jackpotAmount.toFixed(2) }} ETB</span>
       </div>
+      <span class="jackpot-hint">Full card in ≤ 20 balls to win!</span>
     </div>
 
-    <div v-if="gameStore.loadingGames" class="state-message">Loading games…</div>
+    <!-- ── Page heading ──────────────────────────────────────────────── -->
+    <div class="lobby-heading">
+      <h2 class="lobby-title">Available Games</h2>
+      <p class="lobby-subtitle">Pick a game and join the action</p>
+    </div>
+
+    <!-- ── States ────────────────────────────────────────────────────── -->
+    <div v-if="gameStore.loadingGames" class="state-message">
+      <span class="spinner-lg" />
+      Loading games…
+    </div>
     <div v-else-if="!gameStore.availableGames.length" class="state-message">
       No games available right now. Check back soon!
     </div>
+
+    <!-- ── Games Grid ─────────────────────────────────────────────────── -->
     <div v-else class="games-grid">
       <div
-        v-for="game in gameStore.availableGames"
+        v-for="(game, idx) in gameStore.availableGames"
         :key="game.id"
         class="game-card"
+        :style="{ '--delay': `${idx * 60}ms` }"
       >
-        <h3>{{ game.title }}</h3>
-        <p>
-          <span class="label">Price:</span>
-          <span class="value">{{ game.ticketPrice }} ETB</span>
-        </p>
-        <p>
-          <span class="label">Players:</span>
-          <span class="value">{{ (game as any).currentPlayers ?? 0 }} / {{ game.maxPlayers }}</span>
-        </p>
-        <p>
-          <span class="label">Pattern:</span>
-          <span class="value">{{ game.pattern }}</span>
-        </p>
-        <p>
-          <span class="label">Status:</span>
-          <span class="badge" :class="game.status.toLowerCase()">{{ game.status }}</span>
-        </p>
-        <NuxtLink :to="`/quick/${game.id}`" class="join-btn">Join Game →</NuxtLink>
+        <!-- Card header ribbon -->
+        <div class="game-card-ribbon">
+          <span class="badge" :class="`badge--${game.status.toLowerCase()}`">{{ game.status }}</span>
+          <span class="game-price">{{ game.ticketPrice }} ETB</span>
+        </div>
+
+        <!-- Title -->
+        <h3 class="game-title">{{ game.title }}</h3>
+
+        <!-- Meta rows -->
+        <ul class="game-meta">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <span>{{ (game as any).currentPlayers ?? 0 }} / {{ game.maxPlayers }} players</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h8" /></svg>
+            <span>{{ game.pattern }}</span>
+          </li>
+        </ul>
+
+        <!-- CTA -->
+        <NuxtLink :to="`/quick/${game.id}`" class="join-btn">
+          Join Game
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+        </NuxtLink>
       </div>
     </div>
 
-    <!-- Deposit Modal (T29) -->
-    <DepositModal v-model="showDeposit" @deposited="auth.fetchWallet()" />
-    <!-- Withdrawal Modal (T38) -->
+    <!-- Modals — triggered from header (default layout) -->
+    <DepositModal v-model="showDeposit" @deposited="(auth as any).fetchWallet()" />
     <WithdrawalModal
       v-model="showWithdraw"
       :balance="Number(auth.wallet?.balance ?? 0)"
-      @withdrawn="auth.fetchWallet()"
+      @withdrawn="(auth as any).fetchWallet()"
     />
   </div>
 </template>
@@ -130,214 +145,232 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ── Page wrapper ────────────────────────────────────────────────────── */
 .lobby-page {
-  padding: 2rem;
+  padding: 1.5rem 2rem 3rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.lobby-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.lobby-header h2 {
-  margin: 0;
-}
-
-.wallet-summary {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.balance-label {
-  color: #aaa;
-  font-size: 0.9rem;
-}
-
-.balance-value {
-  color: var(--color-primary, #c9a96e);
-  font-weight: 700;
-  font-size: 1rem;
-}
-
-.btn-deposit,
-.btn-withdraw {
-  padding: 0.35rem 0.8rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  border: none;
-  font-weight: 600;
-}
-
-.btn-deposit {
-  background: var(--color-primary, #c9a96e);
-  color: #000;
-}
-
-.btn-withdraw {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #ccc;
-}
-
-.state-message {
-  text-align: center;
-  color: #888;
-  padding: 3rem 0;
-  font-size: 1rem;
-}
-
-.games-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 1rem;
-}
-
-.game-card {
-  padding: 1.25rem;
-  background: var(--color-surface, #1a1a2e);
-  border: 1px solid rgba(201, 169, 110, 0.3);
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  transition: border-color 0.2s;
-}
-
-.game-card:hover {
-  border-color: var(--color-primary, #c9a96e);
-}
-
-.game-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #fff;
-}
-
-.game-card p {
-  margin: 0;
-  font-size: 0.875rem;
-  display: flex;
-  gap: 0.4rem;
-}
-
-.label {
-  color: #888;
-}
-
-.value {
-  color: #ddd;
-  font-weight: 600;
-}
-
-.badge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 20px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.badge.waiting {
-  background: rgba(234, 179, 8, 0.15);
-  color: #fbbf24;
-}
-
-.badge.in_progress {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
-}
-
-.badge.starting {
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
-}
-
-.join-btn {
-  display: inline-block;
-  margin-top: 0.75rem;
-  padding: 0.5rem 1rem;
-  background: var(--color-primary, #c9a96e);
-  color: #000;
-  text-decoration: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-align: center;
-  transition: opacity 0.2s;
-}
-
-.join-btn:hover {
-  opacity: 0.85;
-}
-
-/* T59 — Jackpot styles */
-.jackpot-banner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  background: linear-gradient(135deg, #1a0533, #3b0764);
-  border: 1px solid rgba(167, 139, 250, 0.4);
-  border-radius: 12px;
-  padding: 0.875rem 1.25rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.jackpot-label {
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #c4b5fd;
-}
-
-.jackpot-amount {
-  font-size: 1.6rem;
-  font-weight: 900;
-  color: #fbbf24;
-  font-variant-numeric: tabular-nums;
-}
-
-.jackpot-hint {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-left: auto;
-}
-
-.jackpot-win-toast {
+/* ── Jackpot toast ───────────────────────────────────────────────────── */
+.jackpot-toast {
   position: fixed;
-  top: 1rem;
+  top: 4.5rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
   background: linear-gradient(135deg, #7c3aed, #dc2626);
   color: white;
-  padding: 0.875rem 1.5rem;
-  border-radius: 12px;
+  padding: 0.875rem 1.75rem;
+  border-radius: 14px;
   font-size: 1rem;
   font-weight: 600;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  white-space: nowrap;
+}
+.toast-pop-enter-active { transition: opacity 0.4s, transform 0.4s var(--ease-bounce, cubic-bezier(0.34,1.56,0.64,1)); }
+.toast-pop-enter-from   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.9); }
+.toast-pop-leave-active { transition: opacity 0.3s, transform 0.3s; }
+.toast-pop-leave-to     { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+
+/* ── Jackpot banner ──────────────────────────────────────────────────── */
+.jackpot-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: linear-gradient(120deg, rgba(26,5,51,0.85) 0%, rgba(59,7,100,0.85) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 14px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(124, 58, 237, 0.15);
+}
+.jackpot-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.jackpot-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #c4b5fd;
+}
+.jackpot-amount {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-game, 'Rajdhani', sans-serif);
+  text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+}
+.jackpot-hint {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+/* ── Lobby heading ───────────────────────────────────────────────────── */
+.lobby-heading {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.lobby-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.lobby-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #94a3b8);
+  margin: 0;
+}
+
+/* ── Loading / empty state ───────────────────────────────────────────── */
+.state-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
   text-align: center;
+  color: var(--text-secondary, #94a3b8);
+  padding: 4rem 0;
+  font-size: 0.95rem;
+}
+.spinner-lg {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: var(--brand-primary, #f59e0b);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Games grid ──────────────────────────────────────────────────────── */
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
 }
 
-.jackpot-fade-enter-active,
-.jackpot-fade-leave-active {
-  transition: opacity 0.5s, transform 0.5s;
+/* ── Game card ───────────────────────────────────────────────────────── */
+.game-card {
+  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.25s, transform 0.25s var(--ease-out, cubic-bezier(0.16,1,0.3,1)), box-shadow 0.25s;
+  animation: card-fadein 0.4s var(--ease-out) both;
+  animation-delay: var(--delay, 0ms);
+}
+.game-card:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(245,158,11,0.15);
+}
+@keyframes card-fadein {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.jackpot-fade-enter-from,
-.jackpot-fade-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-20px);
+.game-card-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.game-price {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--brand-primary, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+}
+
+.game-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.game-meta {
+  list-style: none;
+  padding: 0; margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.game-meta li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #94a3b8);
+}
+.game-meta li svg {
+  width: 14px; height: 14px;
+  flex-shrink: 0;
+  color: var(--text-disabled, #475569);
+}
+
+/* Status badges */
+.badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge--waiting    { background: rgba(234,179,8,0.12); color: #fbbf24; }
+.badge--in_progress { background: rgba(34,197,94,0.12); color: #4ade80; }
+.badge--starting   { background: rgba(99,102,241,0.12); color: #a5b4fc; }
+.badge--finished   { background: rgba(148,163,184,0.1); color: #94a3b8; }
+
+/* CTA */
+.join-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding: 0.6rem 1.1rem;
+  background: var(--brand-primary, #f59e0b);
+  color: #000;
+  text-decoration: none;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.2);
+}
+.join-btn svg { width: 14px; height: 14px; }
+.join-btn:hover {
+  background: #fbbf24;
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.4);
+  transform: translateY(-1px);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .lobby-page { padding: 1rem 1rem 2rem; }
+  .jackpot-banner { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .jackpot-amount { font-size: 1.4rem; }
 }
 </style>

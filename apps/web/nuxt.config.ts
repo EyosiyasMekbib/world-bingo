@@ -3,6 +3,7 @@ export default defineNuxtConfig({
     devtools: { enabled: true },
 
     modules: [
+        '@nuxtjs/tailwindcss',
         '@pinia/nuxt',
         '@nuxt/image',
         '@vite-pwa/nuxt',
@@ -48,6 +49,11 @@ export default defineNuxtConfig({
             theme_color: '#f59e0b',
             background_color: '#0a0d14',
         },
+    },
+
+    tailwindcss: {
+        configPath: './tailwind.config.ts',
+        exposeConfig: false,
     },
 
     image: {

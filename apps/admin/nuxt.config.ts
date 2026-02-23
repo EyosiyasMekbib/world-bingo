@@ -22,7 +22,7 @@ export default defineNuxtConfig({
         },
     },
 
-    css: ['@world-bingo/ui/styles/tokens.css'],
+    css: ['~/assets/css/main.css', '@world-bingo/ui/styles/tokens.css'],
 
     runtimeConfig: {
         jwtSecret: '',

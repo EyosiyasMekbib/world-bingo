@@ -26,6 +26,7 @@
         "@nuxt/eslint": "^1.0.0",
         "@playwright/test": "^1.48.0",
         "nuxt": "^3.15.0",
+        "tailwindcss": "^4.2.0",
         "vue": "^3.5.0",
         "vue-tsc": "^2.0.0"
     }
