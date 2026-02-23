@@ -1,5 +1,5 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Redlock = require('redlock') as new (clients: unknown[], opts: Record<string, unknown>) => any
+// redlock v4 is CJS-only; import the default export which is the constructor
+import Redlock from 'redlock'
 import redis from './redis'
 import prisma from './prisma'
 import { getIo } from './socket'

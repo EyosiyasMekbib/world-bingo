@@ -2,7 +2,11 @@ export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
 
-    modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxtjs/i18n'],
+    modules: [
+        ['@nuxt/ui', { fonts: false }],
+        '@pinia/nuxt',
+        '@nuxtjs/i18n',
+    ],
 
     i18n: {
         locales: [
@@ -10,7 +14,6 @@ export default defineNuxtConfig({
             { code: 'am', name: 'አማርኛ', file: 'am.json' },
         ],
         defaultLocale: 'en',
-        langDir: 'locales/',
         strategy: 'no_prefix',
         detectBrowserLanguage: {
             useCookie: true,
@@ -32,6 +35,7 @@ export default defineNuxtConfig({
         resolve: {
             alias: {
                 '@world-bingo/ui': '../../packages/ui/src',
+                '@world-bingo/shared-types': '../../packages/shared-types/src/index.ts',
             },
         },
     },

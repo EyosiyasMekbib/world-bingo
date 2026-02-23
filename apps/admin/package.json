@@ -14,6 +14,7 @@
     "dependencies": {
         "@nuxt/ui": "^3.0.0",
         "@nuxtjs/i18n": "^10.2.3",
+        "@pinia/nuxt": "^0.11.3",
         "@world-bingo/shared-types": "workspace:*",
         "@world-bingo/ui": "workspace:*",
         "chart.js": "^4.4.0",

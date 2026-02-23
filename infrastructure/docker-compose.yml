@@ -34,6 +34,8 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+      network: host
+    image: world-bingo-api
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -64,6 +66,8 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      network: host
+    image: world-bingo-web
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -77,6 +81,8 @@ services:
     build:
       context: ..
       dockerfile: apps/admin/Dockerfile
+      network: host
+    image: world-bingo-admin
     restart: unless-stopped
     ports:
       - "3001:3001"

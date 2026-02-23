@@ -1,0 +1,71 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "deposits": "Deposits",
+    "withdrawals": "Withdrawals",
+    "users": "Users",
+    "games": "Games",
+    "tournaments": "Tournaments",
+    "orders": "History",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "approvedDeposits": "Approved Deposit Sum",
+    "declinedDeposits": "Declined Deposit Sum",
+    "approvedWithdrawals": "Approved Withdrawal Sum",
+    "totalProfit": "Total Profit",
+    "usersCount": "Users Count",
+    "commission": "Commission"
+  },
+  "deposits": {
+    "title": "Pending Deposits",
+    "pending": "Pending",
+    "approvedSum": "Approved (all time)",
+    "declinedSum": "Declined (all time)",
+    "approve": "Approve",
+    "decline": "Decline",
+    "declineReason": "Decline Reason",
+    "confirmDecline": "Confirm Decline",
+    "lateSubmission": "⚠ Late submission ({min}m)",
+    "receiptView": "View"
+  },
+  "withdrawals": {
+    "title": "Withdrawals Management",
+    "awaiting": "Awaiting Transfer",
+    "totalTransferred": "Total Transferred (all time)",
+    "markTransferred": "Mark Transferred",
+    "rejectRefund": "Reject & Refund",
+    "confirmAction": "Confirm Action",
+    "telebirrNumber": "TeleBirr Number"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Error",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "refresh": "Refresh",
+    "etb": "ETB"
+  },
+  "tournament": {
+    "title": "Tournaments",
+    "create": "Create Tournament",
+    "start": "Start",
+    "cancel": "Cancel",
+    "view": "View",
+    "registration": "Registration",
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "entryFee": "Entry Fee (ETB)",
+    "maxPlayers": "Max Players",
+    "houseEdge": "House Edge %",
+    "prizePool": "Prize Pool (ETB)",
+    "scheduledAt": "Scheduled Start (optional)",
+    "totalParticipants": "Total Participants",
+    "openRegistration": "Open Registration",
+    "live": "Live",
+    "estimatedPrize": "Prize Pool Estimate"
+  }
+}

@@ -14,7 +14,6 @@ export default defineNuxtConfig({
                 { code: 'am', name: 'አማርኛ', file: 'am.json' },
             ],
             defaultLocale: 'en',
-            langDir: 'locales/',
             strategy: 'no_prefix',
             detectBrowserLanguage: {
                 useCookie: true,
@@ -59,7 +58,9 @@ export default defineNuxtConfig({
     vite: {
         resolve: {
             alias: {
-                '@world-bingo/ui': '../../../packages/ui/src',
+                '@world-bingo/ui': '../../packages/ui/src',
+                '@world-bingo/game-logic': '../../packages/game-logic/src/index.ts',
+                '@world-bingo/shared-types': '../../packages/shared-types/src/index.ts',
             },
         },
     },
