@@ -14,15 +14,15 @@
 import { test, expect, type Page } from '@playwright/test'
 
 const API_URL = process.env.API_URL || 'http://localhost:8080'
-const ADMIN_USER = process.env.ADMIN_USER || 'admin'
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin1234!'
+const ADMIN_USER = process.env.ADMIN_USER || 'kira'
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Log in as admin through the UI and wait for the dashboard. */
 async function adminLogin(page: Page, identifier = ADMIN_USER, password = ADMIN_PASSWORD) {
     await page.goto('/login')
-    await page.fill('input[placeholder*="Username"]', identifier)
+    await page.fill('input[placeholder*="Username or"]', identifier)
     await page.fill('input[type="password"]', password)
     await page.click('button[type="submit"]')
     await page.waitForURL('/', { timeout: 15000 })
