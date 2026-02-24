@@ -29,6 +29,13 @@
       <span class="spinner-lg" />
       Loading games…
     </div>
+    <div v-else-if="gameStore.error" class="state-message error-state">
+      <svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      </svg>
+      <span>Could not load games — {{ gameStore.error }}</span>
+      <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
+    </div>
     <div v-else-if="!gameStore.availableGames.length" class="state-message">
       No games available right now. Check back soon!
     </div>
@@ -110,8 +117,10 @@ const fetchJackpot = async () => {
   } catch { /* non-critical */ }
 }
 
-// Initial fetch
-await Promise.all([gameStore.fetchAvailableGames(), fetchJackpot()])
+// Initial fetch — swallow errors so the page still renders when the API is down
+try {
+  await Promise.all([gameStore.fetchAvailableGames(), fetchJackpot()])
+} catch { /* errors are stored in gameStore.error */ }
 
 onMounted(() => {
   const socket = connect()
@@ -255,6 +264,22 @@ onUnmounted(() => {
   padding: 4rem 0;
   font-size: 0.95rem;
 }
+.error-state {
+  color: #f87171;
+  flex-wrap: wrap;
+}
+.retry-btn {
+  padding: 0.3rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.retry-btn:hover { background: rgba(248, 113, 113, 0.25); }
 .spinner-lg {
   width: 20px; height: 20px;
   border: 2px solid rgba(255,255,255,0.1);

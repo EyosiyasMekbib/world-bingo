@@ -89,9 +89,9 @@ export const useAdminAuth = () => {
                 if (!newToken) {
                     return logout()
                 }
-            } else {
-                return logout()
             }
+            // For network errors or other non-auth errors, keep the user logged in
+            // using the data already set from login() — don't logout on transient errors
         }
     }
 

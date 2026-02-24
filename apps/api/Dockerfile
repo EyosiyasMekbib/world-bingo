@@ -63,6 +63,8 @@ COPY packages/game-logic/package.json ./packages/game-logic/
 # Copy compiled output and prisma schema from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/packages/game-logic/dist ./packages/game-logic/dist
+COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
 RUN chown -R appuser:appgroup /app
 USER appuser
@@ -71,5 +73,5 @@ WORKDIR /app/apps/api
 
 EXPOSE 8080
 
-# Run migrations then start server
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/index.js"]
+# Run migrations, seed the database, then start server
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node dist/index.js"]
