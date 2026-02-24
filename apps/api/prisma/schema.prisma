@@ -45,24 +45,48 @@ model Wallet {
 }
 
 model Game {
-  id             String      @id @default(uuid())
+  id             String       @id @default(uuid())
   title          String
-  status         GameStatus  @default(WAITING)
+  status         GameStatus   @default(WAITING)
+  ticketPrice    Decimal      @db.Decimal(10, 2)
+  maxPlayers     Int
+  minPlayers     Int          @default(2)
+  houseEdgePct   Decimal      @default(10) @db.Decimal(5, 2)
+  pattern        PatternType
+  calledBalls    Int[]
+  entries        GameEntry[]
+  createdAt      DateTime     @default(now())
+  startedAt      DateTime?
+  endedAt        DateTime?
+  winnerId       String?
+  templateId     String?
+  template       GameTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([status])
+  @@index([status, createdAt])
+  @@index([templateId, status])
+  @@map("games")
+}
+
+// ─── Preconfigured Game Templates ──────────────────────────────────────────────
+// Always-on game templates. The scheduler ensures at least one WAITING game
+// exists per active template at all times. When minPlayers join, a 60-second
+// countdown auto-starts the game — no manual admin start needed.
+model GameTemplate {
+  id             String      @id @default(uuid())
+  title          String                              // e.g. "Quick 10 ETB"
   ticketPrice    Decimal     @db.Decimal(10, 2)
   maxPlayers     Int
   minPlayers     Int         @default(2)
   houseEdgePct   Decimal     @default(10) @db.Decimal(5, 2)
   pattern        PatternType
-  calledBalls    Int[]
-  entries        GameEntry[]
+  active         Boolean     @default(true)          // toggle template on/off
+  countdownSecs  Int         @default(60)            // seconds to wait after minPlayers join
   createdAt      DateTime    @default(now())
-  startedAt      DateTime?
-  endedAt        DateTime?
-  winnerId       String?
+  updatedAt      DateTime    @updatedAt
+  games          Game[]
 
-  @@index([status])
-  @@index([status, createdAt])
-  @@map("games")
+  @@map("game_templates")
 }
 
 model Cartela {

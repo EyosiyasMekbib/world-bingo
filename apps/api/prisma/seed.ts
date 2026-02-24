@@ -1,6 +1,8 @@
-import prisma from '../src/lib/prisma'
+import { PrismaClient } from '@prisma/client'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 import bcrypt from 'bcryptjs'
+
+const prisma = new PrismaClient()
 
 async function main() {
     console.log('Seeding Database...')
@@ -42,6 +44,59 @@ async function main() {
         }
         await prisma.cartela.createMany({ data: batch })
         console.log('Seeded 100 Cartelas')
+    }
+
+    // 3. Seed Game Templates (preconfigured always-on games)
+    console.log('Seeding Game Templates...')
+    const templateCount = await prisma.gameTemplate.count()
+    if (templateCount === 0) {
+        const templates = [
+            {
+                title: 'Quick 10 ETB',
+                ticketPrice: 10,
+                maxPlayers: 70,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE' as const,
+                countdownSecs: 60,
+                active: true,
+            },
+            {
+                title: 'Classic 20 ETB',
+                ticketPrice: 20,
+                maxPlayers: 70,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE' as const,
+                countdownSecs: 60,
+                active: true,
+            },
+            {
+                title: 'Premium 50 ETB',
+                ticketPrice: 50,
+                maxPlayers: 70,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE' as const,
+                countdownSecs: 60,
+                active: true,
+            },
+            {
+                title: 'High Roller 100 ETB',
+                ticketPrice: 100,
+                maxPlayers: 50,
+                minPlayers: 2,
+                houseEdgePct: 8,
+                pattern: 'FULL_CARD' as const,
+                countdownSecs: 60,
+                active: true,
+            },
+        ]
+
+        for (const t of templates) {
+            await prisma.gameTemplate.create({ data: t })
+        }
+        console.log(`Seeded ${templates.length} Game Templates`)
     }
 }
 

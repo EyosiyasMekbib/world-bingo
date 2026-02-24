@@ -221,6 +221,14 @@ async function endGameNoWinner(gameId: string): Promise<void> {
     }
 
     await clearGameState(gameId)
+
+    // Auto-replenish: if this was a templated game, create a new one
+    try {
+        const { GameSchedulerService } = await import('../services/game-scheduler.service.js')
+        GameSchedulerService.onGameEnded(gameId).catch(() => {})
+    } catch {
+        // Non-critical
+    }
 }
 
 /**

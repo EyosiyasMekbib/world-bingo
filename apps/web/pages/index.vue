@@ -62,6 +62,12 @@
           </li>
         </ul>
 
+        <!-- Countdown timer (shown when minPlayers reached) -->
+        <GameCountdown
+          v-if="gameStore.countdowns[game.id]"
+          :starts-at="gameStore.countdowns[game.id]"
+        />
+
         <!-- CTA -->
         <NuxtLink :to="`/quick/${game.id}`" class="join-btn">
           Join Game
@@ -123,6 +129,11 @@ onMounted(() => {
 
   socket.on('game:updated', (game: Game) => {
     gameStore.onGameUpdated(game)
+  })
+
+  // Listen for countdown events (game reached minPlayers, 60s countdown started)
+  socket.on('game:countdown', (payload: { gameId: string; countdownSecs: number; startsAt: string }) => {
+    gameStore.onGameCountdown(payload)
   })
 
   // T59 — Listen for jackpot updates

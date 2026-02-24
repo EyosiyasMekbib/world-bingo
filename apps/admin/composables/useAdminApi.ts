@@ -37,6 +37,22 @@ export const useAdminApi = () => {
         startGame: (id: string) => apiFetch(`/admin/games/${id}/start`, { method: 'POST' }),
         updateUserRole: (id: string, role: string) =>
             apiFetch(`/admin/users/${id}/status`, { method: 'PATCH', body: { role } }),
+
+        // ── Game Templates ──────────────────────────────────────────────────
+        getGameTemplates: () => apiFetch<any[]>('/admin/game-templates'),
+        createGameTemplate: (data: {
+            title: string
+            ticketPrice: number
+            maxPlayers: number
+            minPlayers: number
+            houseEdgePct: number
+            pattern: string
+            countdownSecs: number
+        }) => apiFetch('/admin/game-templates', { method: 'POST', body: data }),
+        updateGameTemplate: (id: string, data: Record<string, any>) =>
+            apiFetch(`/admin/game-templates/${id}`, { method: 'PATCH', body: data }),
+        deleteGameTemplate: (id: string) =>
+            apiFetch(`/admin/game-templates/${id}`, { method: 'DELETE' }),
     }
 }
 

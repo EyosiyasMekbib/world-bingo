@@ -29,6 +29,8 @@ export const QUEUE_NAMES = {
     NOTIFICATION: 'notification',
     WITHDRAWAL: 'withdrawal',
     GAME_ENGINE: 'game-engine',
+    GAME_SCHEDULER: 'game-scheduler',
+    GAME_COUNTDOWN: 'game-countdown',
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

@@ -11,6 +11,7 @@ import { clearGameState } from '../lib/game-state'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
 import { JackpotService } from './jackpot.service'
 import { TournamentService } from './tournament.service'
+import { GameSchedulerService } from './game-scheduler.service'
 
 export class GameService {
     /**
@@ -20,7 +21,7 @@ export class GameService {
     static async joinGame(userId: string, gameId: string, cartelaSerials: string[]) {
         if (!cartelaSerials.length) throw new Error('At least one cartela is required')
 
-        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const entries = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const game = await tx.game.findUnique({ 
                 where: { id: gameId },
                 include: { _count: { select: { entries: true } } }
@@ -100,6 +101,13 @@ export class GameService {
             
             return entries
         })
+
+        // After transaction commits: check if we should start the countdown
+        GameSchedulerService.checkAndStartCountdown(gameId).catch((err) => {
+            console.error(`[GameService] Failed to check countdown for game ${gameId}:`, err)
+        })
+
+        return entries
     }
 
     static async startGame(gameId: string) {
@@ -204,6 +212,11 @@ export class GameService {
         const io = getIo()
         io.to(`game:${gameId}`).emit('game:cancelled', { gameId, reason: 'admin_cancelled' })
         io.to('lobby').emit('lobby:game-removed', gameId)
+
+        // Auto-replenish: if this was a templated game, create a new one
+        GameSchedulerService.onGameEnded(gameId).catch((err) => {
+            console.error('[GameService] Game replenishment after cancel failed:', err)
+        })
     }
 
     /**
@@ -348,6 +361,12 @@ export class GameService {
             }
 
             await clearGameState(gameId).catch(() => {})
+
+            // Auto-replenish: if this was a templated game, create a new one
+            GameSchedulerService.onGameEnded(gameId).catch((err) => {
+                console.error('[GameService] Game replenishment failed:', err)
+            })
+
             return endedGame
         })
     }

@@ -24,6 +24,10 @@ import { registerBullBoard } from './routes/bull-board.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 
+// Import workers so they auto-start with the server process
+import './workers/game-countdown.worker.js'
+import './workers/game-scheduler.worker.js'
+
 dotenv.config()
 
 const isProd = process.env.NODE_ENV === 'production'

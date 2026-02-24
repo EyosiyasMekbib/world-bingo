@@ -19,6 +19,8 @@ interface GameState {
     error: string | null
     loadingGames: boolean
     loadingGame: boolean
+    /** Countdown timers for games that reached minPlayers — gameId → startsAt ISO string */
+    countdowns: Record<string, string>
 }
 
 export const useGameStore = defineStore('game', {
@@ -33,6 +35,7 @@ export const useGameStore = defineStore('game', {
         error: null,
         loadingGames: false,
         loadingGame: false,
+        countdowns: {},
     }),
 
     getters: {
@@ -171,6 +174,11 @@ export const useGameStore = defineStore('game', {
 
         onLobbyGameRemoved(gameId: string) {
             this.availableGames = this.availableGames.filter((g) => g.id !== gameId)
+            delete this.countdowns[gameId]
+        },
+
+        onGameCountdown(payload: { gameId: string; countdownSecs: number; startsAt: string }) {
+            this.countdowns[payload.gameId] = payload.startsAt
         },
 
         resetGame() {
