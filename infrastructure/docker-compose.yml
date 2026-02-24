@@ -88,6 +88,7 @@ services:
       - "3001:3001"
     environment:
       NUXT_PUBLIC_API_BASE: ${API_BASE_URL:-http://localhost:8080}
+      NUXT_API_BASE_SERVER: http://api:8080
       NUXT_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
     depends_on:
       - api

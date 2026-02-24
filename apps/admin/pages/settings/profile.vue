@@ -46,49 +46,54 @@ const handleSavePassword = async () => {
 
 <template>
   <div class="space-y-6 max-w-2xl">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-gray-900">Profile Settings</h1>
+    <div>
+      <h1 class="text-2xl font-bold text-white">Profile Settings</h1>
+      <p class="text-sm text-zinc-500 mt-0.5">Manage your account and security</p>
     </div>
 
-    <UCard>
-      <template #header>
-        <h3 class="text-lg font-medium">Manager Identity</h3>
-      </template>
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <span class="text-sm text-gray-500">Manager Username</span>
-            <p class="font-semibold text-gray-900">{{ user?.username ?? '—' }}</p>
-          </div>
-          <div>
-            <span class="text-sm text-gray-500">Role</span>
-            <p class="font-semibold text-gray-900">{{ user?.role ?? '—' }}</p>
-          </div>
-          <div>
-            <span class="text-sm text-gray-500">Phone</span>
-            <p class="font-semibold text-gray-900">{{ user?.phone ?? '—' }}</p>
-          </div>
+    <!-- Identity card -->
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <div class="px-5 py-4 border-b border-white/8" style="background:#0d1220;">
+        <h3 class="text-sm font-semibold text-zinc-300 uppercase tracking-wide">Manager Identity</h3>
+      </div>
+      <div class="p-5 grid grid-cols-2 gap-5">
+        <div>
+          <span class="text-xs text-zinc-500 uppercase tracking-wide">Username</span>
+          <p class="font-semibold text-zinc-200 mt-1">{{ user?.username ?? '—' }}</p>
+        </div>
+        <div>
+          <span class="text-xs text-zinc-500 uppercase tracking-wide">Role</span>
+          <p class="font-semibold text-amber-400 mt-1">{{ user?.role ?? '—' }}</p>
+        </div>
+        <div>
+          <span class="text-xs text-zinc-500 uppercase tracking-wide">Phone</span>
+          <p class="font-semibold text-zinc-200 font-mono mt-1">{{ user?.phone ?? '—' }}</p>
         </div>
       </div>
-    </UCard>
+    </div>
 
-    <UCard>
-      <template #header>
-        <h3 class="text-lg font-medium">Security Controls</h3>
-      </template>
-      <div class="space-y-6">
+    <!-- Security card -->
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <div class="px-5 py-4 border-b border-white/8" style="background:#0d1220;">
+        <h3 class="text-sm font-semibold text-zinc-300 uppercase tracking-wide">Security Controls</h3>
+      </div>
+      <div class="p-5 space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <p class="font-medium text-gray-900">Two Step Verification Status</p>
-            <p class="text-sm text-gray-500">{{ isTwoFactorEnabled ? 'Enabled' : 'Disabled' }}</p>
+            <p class="font-medium text-zinc-200">Two Step Verification</p>
+            <p class="text-sm text-zinc-500">{{ isTwoFactorEnabled ? 'Enabled' : 'Disabled' }}</p>
           </div>
-          <UButton :color="isTwoFactorEnabled ? 'error' : 'primary'" :label="isTwoFactorEnabled ? 'DISABLE' : 'ENABLE'" @click="isTwoFactorEnabled = !isTwoFactorEnabled" />
+          <UButton
+            :color="isTwoFactorEnabled ? 'error' : 'primary'"
+            :label="isTwoFactorEnabled ? 'DISABLE' : 'ENABLE'"
+            @click="isTwoFactorEnabled = !isTwoFactorEnabled"
+          />
         </div>
 
-        <UDivider />
+        <div class="border-t border-white/8" />
 
         <form class="space-y-4" @submit.prevent="handleSavePassword">
-          <h4 class="font-medium text-gray-900">Change Password</h4>
+          <h4 class="font-medium text-zinc-200">Change Password</h4>
           <UFormField label="Current Password" required>
             <UInput
               v-model="passwordForm.currentPassword"
@@ -122,7 +127,7 @@ const handleSavePassword = async () => {
           <UButton type="submit" color="primary" :loading="loading" label="CHANGE PASSWORD" />
         </form>
       </div>
-    </UCard>
+    </div>
   </div>
 </template>
 

@@ -11,8 +11,16 @@ export const useAdminAuth = () => {
     const user = useState<any>('admin_user', () => null)
     const config = useRuntimeConfig()
 
+    // Use server-side URL for SSR, public URL for browser
+    const getApiBase = () => {
+        if (import.meta.server && config.apiBaseServer) {
+            return config.apiBaseServer as string
+        }
+        return config.public.apiBase as string
+    }
+
     const login = async (credentials: any) => {
-        const data: any = await $fetch(`${config.public.apiBase}/auth/admin/login`, {
+        const data: any = await $fetch(`${getApiBase()}/auth/admin/login`, {
             method: 'POST',
             body: credentials,
         })
@@ -25,7 +33,7 @@ export const useAdminAuth = () => {
     const logout = async () => {
         if (refreshToken.value) {
             try {
-                await $fetch(`${config.public.apiBase}/auth/logout`, {
+                await $fetch(`${getApiBase()}/auth/logout`, {
                     method: 'POST',
                     body: { refreshToken: refreshToken.value },
                 })
@@ -36,13 +44,13 @@ export const useAdminAuth = () => {
         accessToken.value = null
         refreshToken.value = null
         user.value = null
-        navigateTo('/login')
+        return navigateTo('/login')
     }
 
     const refresh = async (): Promise<string | null> => {
         if (!refreshToken.value) return null
         try {
-            const data: any = await $fetch(`${config.public.apiBase}/auth/refresh`, {
+            const data: any = await $fetch(`${getApiBase()}/auth/refresh`, {
                 method: 'POST',
                 body: { refreshToken: refreshToken.value },
             })
@@ -68,7 +76,7 @@ export const useAdminAuth = () => {
         }
 
         try {
-            const data: any = await $fetch(`${config.public.apiBase}/auth/me`, {
+            const data: any = await $fetch(`${getApiBase()}/auth/me`, {
                 headers: {
                     Authorization: `Bearer ${accessToken.value}`,
                 },
@@ -79,17 +87,17 @@ export const useAdminAuth = () => {
                 // Token expired — try to refresh
                 const newToken = await refresh()
                 if (!newToken) {
-                    logout()
+                    return logout()
                 }
             } else {
-                logout()
+                return logout()
             }
         }
     }
 
     const apiFetch = async <T = unknown>(url: string, options: any = {}): Promise<T> => {
         const doFetch = (token: string) =>
-            $fetch<T>(`${config.public.apiBase}${url}`, {
+            $fetch<T>(`${getApiBase()}${url}`, {
                 ...options,
                 headers: {
                     ...options.headers,

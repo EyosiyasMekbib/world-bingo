@@ -29,22 +29,28 @@ onMounted(refreshStats)
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" />
+      <div>
+        <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+        <p class="text-sm text-zinc-500 mt-0.5">Platform overview</p>
+      </div>
+      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshStats" />
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <UCard v-for="(stat, index) in stats" :key="index" class="relative group overflow-hidden hover:shadow-lg transition-all">
-        <div class="flex items-start justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-500">{{ stat.label }}</p>
-            <p class="mt-2 text-3xl font-bold text-gray-900">{{ stat.value }}</p>
-          </div>
-          <div class="p-3 bg-primary-50 rounded-lg group-hover:bg-primary-100 transition-colors">
-            <UIcon :name="stat.icon" class="w-6 h-6 text-primary-600" />
-          </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div
+        v-for="(stat, index) in stats"
+        :key="index"
+        class="group relative rounded-2xl border border-white/8 p-5 flex items-start justify-between hover:border-amber-400/30 transition-all cursor-default"
+        style="background:#111827;"
+      >
+        <div>
+          <p class="text-xs font-medium text-zinc-500 uppercase tracking-wider">{{ stat.label }}</p>
+          <p class="mt-2 text-2xl font-bold text-amber-400">{{ stat.value }}</p>
         </div>
-      </UCard>
+        <div class="p-2.5 rounded-xl border border-amber-400/20 group-hover:border-amber-400/40 transition-colors" style="background:rgba(245,158,11,0.08);">
+          <UIcon :name="stat.icon" class="w-5 h-5 text-amber-400" />
+        </div>
+      </div>
     </div>
   </div>
 </template>

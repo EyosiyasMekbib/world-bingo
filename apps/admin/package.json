@@ -20,9 +20,11 @@
         "chart.js": "^4.4.0",
         "pinia": "^2.3.0",
         "vue-chartjs": "^5.3.0",
+        "vue-router": "^4.5.0",
         "zod": "^3.24.0"
     },
     "devDependencies": {
+        "@iconify-json/heroicons": "^1.2.3",
         "@nuxt/eslint": "^1.0.0",
         "@playwright/test": "^1.48.0",
         "nuxt": "^3.15.0",

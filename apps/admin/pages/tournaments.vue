@@ -49,7 +49,7 @@ async function fetchTournaments() {
     const data = await apiFetch<TournamentDto[]>('/tournaments')
     tournaments.value = data
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to load tournaments', color: 'red' })
+    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to load tournaments', color: 'error' })
   } finally {
     loading.value = false
   }
@@ -67,22 +67,22 @@ async function createTournament() {
         scheduledAt: newTournament.scheduledAt || undefined,
       },
     })
-    toast.add({ title: 'Tournament Created', color: 'green' })
+    toast.add({ title: 'Tournament Created', color: 'success' })
     showCreateModal.value = false
     Object.assign(newTournament, { title: '', entryFee: 100, maxPlayers: 16, houseEdgePct: 10, scheduledAt: '' })
     await fetchTournaments()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to create tournament', color: 'red' })
+    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to create tournament', color: 'error' })
   }
 }
 
 async function startTournament(id: string) {
   try {
     await apiFetch(`/tournaments/${id}/start`, { method: 'POST' })
-    toast.add({ title: '🏆 Tournament Started!', color: 'green' })
+    toast.add({ title: '🏆 Tournament Started!', color: 'success' })
     await fetchTournaments()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to start tournament', color: 'red' })
+    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to start tournament', color: 'error' })
   }
 }
 
@@ -90,20 +90,20 @@ async function cancelTournament(id: string) {
   if (!confirm('Cancel this tournament? All entry fees will be refunded.')) return
   try {
     await apiFetch(`/tournaments/${id}/cancel`, { method: 'POST' })
-    toast.add({ title: 'Tournament Cancelled', description: 'All entry fees refunded.', color: 'amber' })
+    toast.add({ title: 'Tournament Cancelled', description: 'All entry fees refunded.', color: 'warning' })
     await fetchTournaments()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to cancel', color: 'red' })
+    toast.add({ title: 'Error', description: e?.data?.error ?? 'Failed to cancel', color: 'error' })
   }
 }
 
-function statusColor(status: string): 'green' | 'red' | 'amber' | 'gray' | 'blue' {
+function statusColor(status: string): 'success' | 'warning' | 'info' | 'neutral' | 'error' {
   switch (status) {
-    case TournamentStatus.REGISTRATION: return 'green'
-    case TournamentStatus.IN_PROGRESS: return 'red'
-    case TournamentStatus.COMPLETED: return 'blue'
-    case TournamentStatus.CANCELLED: return 'gray'
-    default: return 'gray'
+    case TournamentStatus.REGISTRATION: return 'success'
+    case TournamentStatus.IN_PROGRESS: return 'warning'
+    case TournamentStatus.COMPLETED: return 'info'
+    case TournamentStatus.CANCELLED: return 'neutral'
+    default: return 'neutral'
   }
 }
 
@@ -121,170 +121,164 @@ onMounted(fetchTournaments)
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between flex-wrap gap-3">
       <div>
         <h1 class="text-2xl font-bold text-white">🏆 Tournaments</h1>
-        <p class="text-gray-400 text-sm mt-1">Manage tournament creation, lifecycle, and results</p>
+        <p class="text-sm text-zinc-500 mt-0.5">Manage tournament creation, lifecycle, and results</p>
       </div>
-      <UButton icon="i-heroicons-plus" @click="showCreateModal = true" color="amber">
+      <UButton icon="i-heroicons-plus" color="primary" @click="showCreateModal = true">
         Create Tournament
       </UButton>
     </div>
 
-    <!-- Filter -->
-    <div class="flex gap-3 flex-wrap">
-      <USelectMenu
+    <!-- Filter + refresh -->
+    <div class="flex gap-2 flex-wrap">
+      <USelect
         v-model="selectedStatus"
-        :options="statusOptions"
-        value-attribute="value"
-        option-attribute="label"
-        placeholder="All Statuses"
+        :items="statusOptions"
+        value-key="value"
         class="w-48"
       />
-      <UButton variant="ghost" icon="i-heroicons-arrow-path" :loading="loading" @click="fetchTournaments">
+      <UButton color="neutral" variant="ghost" icon="i-heroicons-arrow-path" :loading="loading" @click="fetchTournaments">
         Refresh
       </UButton>
     </div>
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <UCard class="text-center">
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
         <div class="text-2xl font-bold text-white">{{ tournaments.length }}</div>
-        <div class="text-xs text-gray-400 mt-1">Total Tournaments</div>
-      </UCard>
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-green-400">
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Total</div>
+      </div>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-emerald-400">
           {{ tournaments.filter(t => t.status === TournamentStatus.REGISTRATION).length }}
         </div>
-        <div class="text-xs text-gray-400 mt-1">Open Registration</div>
-      </UCard>
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-red-400">
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Open Registration</div>
+      </div>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-amber-400">
           {{ tournaments.filter(t => t.status === TournamentStatus.IN_PROGRESS).length }}
         </div>
-        <div class="text-xs text-gray-400 mt-1">Live</div>
-      </UCard>
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-amber-400">
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Live</div>
+      </div>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-cyan-400">
           {{ tournaments.reduce((s, t) => s + t.currentPlayers, 0) }}
         </div>
-        <div class="text-xs text-gray-400 mt-1">Total Participants</div>
-      </UCard>
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Total Participants</div>
+      </div>
     </div>
 
     <!-- Table -->
-    <UCard>
-      <UTable :loading="loading" :columns="columns" :rows="filtered.map(t => ({
-        ...t,
-        players: `${t.currentPlayers}/${t.maxPlayers}`,
-        createdAt: new Date(t.createdAt).toLocaleDateString(),
-      }))">
-        <template #status-data="{ row }">
-          <UBadge :color="statusColor(row.status)" variant="subtle">
-            {{ statusLabel(row.status) }}
-          </UBadge>
-        </template>
-
-        <template #entryFee-data="{ row }">
-          {{ Number(row.entryFee).toLocaleString() }} ETB
-        </template>
-
-        <template #prizePool-data="{ row }">
-          <span class="text-amber-400 font-bold">
-            {{ Number(row.prizePool).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }}
-          </span>
-        </template>
-
-        <template #actions-data="{ row }">
-          <div class="flex gap-2">
-            <UButton
-              v-if="row.status === TournamentStatus.REGISTRATION"
-              size="xs"
-              color="green"
-              icon="i-heroicons-play"
-              @click="startTournament(row.id)"
-            >
-              Start
-            </UButton>
-            <UButton
-              v-if="row.status !== TournamentStatus.COMPLETED && row.status !== TournamentStatus.CANCELLED"
-              size="xs"
-              color="red"
-              variant="ghost"
-              icon="i-heroicons-x-mark"
-              @click="cancelTournament(row.id)"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              size="xs"
-              variant="ghost"
-              icon="i-heroicons-chart-bar"
-              :to="`/tournaments/${row.id}`"
-            >
-              View
-            </UButton>
-          </div>
-        </template>
-      </UTable>
-    </UCard>
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="border-b border-white/8" style="background:#0d1220;">
+            <tr>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Title</th>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Status</th>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Entry Fee</th>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Players</th>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Prize Pool</th>
+              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Created</th>
+              <th class="text-right px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            <tr v-if="loading">
+              <td colspan="7" class="px-4 py-12 text-center text-zinc-500">
+                <div class="flex justify-center"><UIcon name="i-heroicons-arrow-path" class="w-5 h-5 animate-spin" /></div>
+              </td>
+            </tr>
+            <tr v-else-if="!filtered.length">
+              <td colspan="7" class="px-4 py-12 text-center text-zinc-600">
+                <UIcon name="i-heroicons-trophy" class="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p>No tournaments found</p>
+              </td>
+            </tr>
+            <tr v-for="t in filtered" :key="t.id" class="hover:bg-white/3 transition-colors">
+              <td class="px-4 py-3 font-medium text-zinc-200">{{ t.title }}</td>
+              <td class="px-4 py-3">
+                <UBadge :color="statusColor(t.status)" variant="soft">{{ statusLabel(t.status) }}</UBadge>
+              </td>
+              <td class="px-4 py-3 text-zinc-300">{{ Number(t.entryFee).toLocaleString() }} ETB</td>
+              <td class="px-4 py-3 text-zinc-300">{{ t.currentPlayers }}/{{ t.maxPlayers }}</td>
+              <td class="px-4 py-3">
+                <span class="font-bold text-amber-400">
+                  {{ Number(t.prizePool).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
+                </span>
+              </td>
+              <td class="px-4 py-3 text-zinc-500 text-xs">{{ new Date(t.createdAt).toLocaleDateString() }}</td>
+              <td class="px-4 py-3 text-right">
+                <div class="flex gap-2 justify-end">
+                  <UButton
+                    v-if="t.status === TournamentStatus.REGISTRATION"
+                    size="xs" color="success" variant="soft" icon="i-heroicons-play"
+                    @click="startTournament(t.id)"
+                  >Start</UButton>
+                  <UButton
+                    v-if="t.status !== TournamentStatus.COMPLETED && t.status !== TournamentStatus.CANCELLED"
+                    size="xs" color="error" variant="soft" icon="i-heroicons-x-mark"
+                    @click="cancelTournament(t.id)"
+                  >Cancel</UButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Create Modal -->
-    <UModal v-model="showCreateModal">
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-bold">Create Tournament</h3>
-            <UButton icon="i-heroicons-x-mark" variant="ghost" @click="showCreateModal = false" />
-          </div>
-        </template>
-
+    <UModal v-model:open="showCreateModal" title="Create Tournament" :ui="{ footer: 'justify-end' }">
+      <template #body>
         <div class="space-y-4">
-          <UFormGroup label="Title">
+          <div>
+            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Title</label>
             <UInput v-model="newTournament.title" placeholder="e.g. Summer Bingo Championship" />
-          </UFormGroup>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormGroup label="Entry Fee (ETB)">
-              <UInput v-model.number="newTournament.entryFee" type="number" min="0" />
-            </UFormGroup>
-            <UFormGroup label="Max Players">
-              <UInput v-model.number="newTournament.maxPlayers" type="number" min="2" max="128" />
-            </UFormGroup>
           </div>
-          <UFormGroup label="House Edge %">
-            <UInput v-model.number="newTournament.houseEdgePct" type="number" min="0" max="50" />
-          </UFormGroup>
-          <UFormGroup label="Scheduled Start (optional)">
-            <UInput v-model="newTournament.scheduledAt" type="datetime-local" />
-          </UFormGroup>
-
-          <div class="bg-gray-800 rounded-lg p-3 text-sm text-gray-300">
-            <div class="font-semibold mb-1">Prize Pool Estimate</div>
+          <div class="grid grid-cols-2 gap-4">
             <div>
-              With {{ newTournament.maxPlayers }} players × {{ newTournament.entryFee }} ETB entry
-              and {{ newTournament.houseEdgePct }}% house edge:<br>
-              <span class="text-amber-400 font-bold">
-                ~{{ (newTournament.maxPlayers * newTournament.entryFee * (1 - newTournament.houseEdgePct / 100)).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
-              </span>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Entry Fee (ETB)</label>
+              <UInput v-model.number="newTournament.entryFee" type="number" min="0" />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Max Players</label>
+              <UInput v-model.number="newTournament.maxPlayers" type="number" min="2" max="128" />
+            </div>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">House Edge %</label>
+            <UInput v-model.number="newTournament.houseEdgePct" type="number" min="0" max="50" />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Scheduled Start (optional)</label>
+            <UInput v-model="newTournament.scheduledAt" type="datetime-local" />
+          </div>
+
+          <!-- Prize pool estimate -->
+          <div class="rounded-xl border border-amber-400/20 p-3 text-sm" style="background:rgba(245,158,11,0.06);">
+            <div class="font-semibold text-amber-400 mb-1">Prize Pool Estimate</div>
+            <div class="text-zinc-400">
+              {{ newTournament.maxPlayers }} players × {{ newTournament.entryFee }} ETB — {{ newTournament.houseEdgePct }}% house edge:
+            </div>
+            <div class="text-amber-400 font-bold text-lg mt-1">
+              ~{{ (newTournament.maxPlayers * newTournament.entryFee * (1 - newTournament.houseEdgePct / 100)).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
             </div>
           </div>
         </div>
-
-        <template #footer>
-          <div class="flex justify-end gap-3">
-            <UButton variant="ghost" @click="showCreateModal = false">Cancel</UButton>
-            <UButton
-              color="amber"
-              :disabled="!newTournament.title || newTournament.entryFee < 0"
-              @click="createTournament"
-            >
-              Create Tournament
-            </UButton>
-          </div>
-        </template>
-      </UCard>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" @click="showCreateModal = false">Cancel</UButton>
+        <UButton
+          color="primary"
+          :disabled="!newTournament.title || newTournament.entryFee < 0"
+          @click="createTournament"
+        >Create Tournament</UButton>
+      </template>
     </UModal>
   </div>
 </template>

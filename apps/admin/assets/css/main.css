@@ -1,2 +1,25 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+html, body {
+  font-family: 'Space Grotesk', 'Nunito', system-ui, sans-serif;
+  background: #0a0f1e;
+  color: #f1f5f9;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sidebar nav active state */
+.admin-nav-link.router-link-active,
+.admin-nav-link.router-link-exact-active {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Table row hover */
+tbody tr:hover { background: rgba(255,255,255,0.03) !important; }

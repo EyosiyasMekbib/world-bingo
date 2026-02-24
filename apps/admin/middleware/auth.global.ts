@@ -13,7 +13,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
 
     // Run checkAuth to validate/refresh tokens and hydrate user
-    await checkAuth()
+    try {
+        await checkAuth()
+    } catch {
+        return navigateTo('/login')
+    }
 
     if (!isAdmin.value) {
         return navigateTo('/login')

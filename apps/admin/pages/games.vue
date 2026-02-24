@@ -153,119 +153,110 @@ onMounted(refreshGames)
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
-      <h1 class="text-2xl font-semibold text-gray-900">Game Management</h1>
-      <div class="flex gap-3 items-center">
-        <USelect v-model="selectedStatus" :options="statusOptions" option-attribute="label" value-attribute="value" />
-        <UButton icon="i-heroicons-arrow-path" variant="ghost" @click="refreshGames">Refresh</UButton>
+      <div>
+        <h1 class="text-2xl font-bold text-white">Game Management</h1>
+        <p class="text-sm text-zinc-500 mt-0.5">Create and manage bingo games</p>
+      </div>
+      <div class="flex gap-2 items-center flex-wrap">
+        <USelect v-model="selectedStatus" :items="statusOptions" value-key="value" class="w-40" />
+        <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshGames">Refresh</UButton>
         <UButton icon="i-heroicons-plus" color="primary" @click="showCreateModal = true">New Game</UButton>
       </div>
     </div>
 
-    <UCard>
-      <UTable :columns="columns" :rows="games" :loading="loading">
+    <!-- Table card -->
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <UTable :columns="columns" :data="games" :loading="loading">
         <template #status-cell="{ row }">
           <UBadge :color="statusColor((row.original as unknown as GameRow).status)" variant="soft">
             {{ (row.original as unknown as GameRow).status }}
           </UBadge>
         </template>
         <template #players-cell="{ row }">
-          {{ (row.original as unknown as GameRow)._count?.entries ?? 0 }} / {{ (row.original as unknown as GameRow).maxPlayers }}
+          <span class="text-zinc-300">
+            {{ (row.original as unknown as GameRow)._count?.entries ?? 0 }} / {{ (row.original as unknown as GameRow).maxPlayers }}
+          </span>
         </template>
         <template #createdAt-cell="{ row }">
-          {{ new Date((row.original as unknown as GameRow).createdAt).toLocaleString() }}
+          <span class="text-zinc-400 text-xs">{{ new Date((row.original as unknown as GameRow).createdAt).toLocaleString() }}</span>
         </template>
         <template #houseEdgePct-cell="{ row }">
-          {{ (row.original as unknown as GameRow).houseEdgePct }}%
+          <span class="text-zinc-300">{{ (row.original as unknown as GameRow).houseEdgePct }}%</span>
+        </template>
+        <template #ticketPrice-cell="{ row }">
+          <span class="font-semibold text-amber-400">{{ (row.original as unknown as GameRow).ticketPrice }} ETB</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
             <UButton
               v-if="(row.original as unknown as GameRow).status === 'WAITING'"
-              size="xs"
-              color="success"
-              variant="soft"
-              icon="i-heroicons-play"
+              size="xs" color="success" variant="soft" icon="i-heroicons-play"
               @click="handleStart((row.original as unknown as GameRow).id)"
             >Start</UButton>
             <UButton
               v-if="['WAITING', 'STARTING', 'IN_PROGRESS'].includes((row.original as unknown as GameRow).status)"
-              size="xs"
-              color="error"
-              variant="soft"
-              icon="i-heroicons-stop"
+              size="xs" color="error" variant="soft" icon="i-heroicons-stop"
               @click="confirmCancel((row.original as unknown as GameRow).id)"
             >Cancel</UButton>
           </div>
         </template>
       </UTable>
 
-      <div v-if="totalPages > 1" class="flex justify-center gap-2 mt-4 pb-2">
+      <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-white/8">
         <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons-chevron-left" @click="page--" />
-        <span class="text-sm self-center">Page {{ page }} / {{ totalPages }}</span>
+        <span class="text-sm text-zinc-400 self-center">Page {{ page }} / {{ totalPages }}</span>
         <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons-chevron-right" @click="page++" />
       </div>
-    </UCard>
+    </div>
 
     <!-- Create Game Modal -->
-    <UModal v-model="showCreateModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-base font-semibold">Create New Game</h3>
-        </template>
-        <div class="p-4 space-y-4">
+    <UModal v-model:open="showCreateModal" title="Create New Game" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div class="space-y-4">
           <div>
-            <label class="text-sm text-gray-600">Title</label>
+            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Title</label>
             <UInput v-model="newGame.title" placeholder="e.g. Quick Bingo #1" />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-sm text-gray-600">Ticket Price (ETB)</label>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Ticket Price (ETB)</label>
               <UInput v-model.number="newGame.ticketPrice" type="number" min="1" />
             </div>
             <div>
-              <label class="text-sm text-gray-600">Max Players</label>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Max Players</label>
               <UInput v-model.number="newGame.maxPlayers" type="number" min="2" max="500" />
             </div>
             <div>
-              <label class="text-sm text-gray-600">Min Players</label>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Min Players</label>
               <UInput v-model.number="newGame.minPlayers" type="number" min="2" />
             </div>
             <div>
-              <label class="text-sm text-gray-600">House Edge %</label>
+              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">House Edge %</label>
               <UInput v-model.number="newGame.houseEdgePct" type="number" min="0" max="50" />
             </div>
           </div>
           <div>
-            <label class="text-sm text-gray-600">Win Pattern</label>
-            <USelect v-model="newGame.pattern" :options="patternOptions.map(p => ({ label: p, value: p }))" option-attribute="label" value-attribute="value" />
+            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Win Pattern</label>
+            <USelect v-model="newGame.pattern" :items="patternOptions.map(p => ({ label: p, value: p }))" value-key="value" />
           </div>
-          <p v-if="createError" class="text-red-500 text-sm">{{ createError }}</p>
+          <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
         </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="showCreateModal = false">Cancel</UButton>
-            <UButton color="primary" :loading="creating" @click="handleCreate">Create Game</UButton>
-          </div>
-        </template>
-      </UCard>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" @click="showCreateModal = false">Cancel</UButton>
+        <UButton color="primary" :loading="creating" @click="handleCreate">Create Game</UButton>
+      </template>
     </UModal>
 
     <!-- Cancel Confirm Modal -->
-    <UModal v-model="showCancelConfirm">
-      <UCard>
-        <template #header>
-          <h3 class="text-base font-semibold">Cancel Game?</h3>
-        </template>
-        <div class="p-4">
-          <p class="text-sm text-gray-600">The game will be cancelled and all players will be refunded. This cannot be undone.</p>
-        </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="showCancelConfirm = false">Back</UButton>
-            <UButton color="error" @click="handleCancel">Confirm Cancel</UButton>
-          </div>
-        </template>
-      </UCard>
+    <UModal v-model:open="showCancelConfirm" title="Cancel Game?" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <p class="text-sm text-zinc-400">The game will be cancelled and all players will be refunded. This cannot be undone.</p>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" @click="showCancelConfirm = false">Back</UButton>
+        <UButton color="error" @click="handleCancel">Confirm Cancel</UButton>
+      </template>
     </UModal>
   </div>
 </template>

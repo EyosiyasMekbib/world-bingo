@@ -104,29 +104,32 @@ const typeColor = (type: string) => {
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
-      <h1 class="text-2xl font-semibold text-gray-900">Orders History</h1>
-      <div class="flex items-center gap-3">
-        <USelect v-model="selectedType" :options="typeOptions" option-attribute="label" value-attribute="value" />
-        <UButton icon="i-heroicons-arrow-down-tray" variant="ghost" @click="exportCsv">Export CSV</UButton>
-        <UButton icon="i-heroicons-arrow-path" variant="ghost" @click="refreshHistory">Refresh</UButton>
+      <div>
+        <h1 class="text-2xl font-bold text-white">Orders History</h1>
+        <p class="text-sm text-zinc-500 mt-0.5">All wallet transactions across the platform</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <USelect v-model="selectedType" :items="typeOptions" value-key="value" class="w-40" />
+        <UButton icon="i-heroicons-arrow-down-tray" color="neutral" variant="ghost" @click="exportCsv">Export CSV</UButton>
+        <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshHistory">Refresh</UButton>
       </div>
     </div>
 
-    <UCard>
-      <UTable :columns="columns" :rows="history" :loading="loading">
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <UTable :columns="columns" :data="history" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs">{{ (row.original as unknown as OrderTransaction).id.slice(0, 8) }}…</span>
+          <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as OrderTransaction).id.slice(0, 8) }}…</span>
         </template>
         <template #amount-cell="{ row }">
-          {{ Number((row.original as unknown as OrderTransaction).amount).toFixed(2) }}
+          <span class="font-semibold text-amber-400">{{ Number((row.original as unknown as OrderTransaction).amount).toFixed(2) }}</span>
         </template>
         <template #balanceAfter-cell="{ row }">
-          <span class="text-xs text-gray-500">
+          <span class="text-xs text-zinc-500">
             {{ (row.original as unknown as OrderTransaction).balanceAfter != null ? Number((row.original as unknown as OrderTransaction).balanceAfter).toFixed(2) : '—' }}
           </span>
         </template>
         <template #createdAt-cell="{ row }">
-          {{ new Date((row.original as unknown as OrderTransaction).createdAt).toLocaleString() }}
+          <span class="text-zinc-400 text-xs">{{ new Date((row.original as unknown as OrderTransaction).createdAt).toLocaleString() }}</span>
         </template>
         <template #type-cell="{ row }">
           <UBadge :color="typeColor((row.original as unknown as OrderTransaction).type)" variant="soft">
@@ -141,11 +144,11 @@ const typeColor = (type: string) => {
       </UTable>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="flex justify-center gap-2 mt-4 pb-2">
+      <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-white/8">
         <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons-chevron-left" @click="page--" />
-        <span class="text-sm self-center">Page {{ page }} / {{ totalPages }}</span>
+        <span class="text-sm text-zinc-400 self-center">Page {{ page }} / {{ totalPages }}</span>
         <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons-chevron-right" @click="page++" />
       </div>
-    </UCard>
+    </div>
   </div>
 </template>

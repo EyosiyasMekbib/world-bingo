@@ -8,6 +8,12 @@ export default defineNuxtConfig({
         '@nuxtjs/i18n',
     ],
 
+    app: {
+        head: {
+            htmlAttrs: { class: 'dark' },
+        },
+    },
+
     i18n: {
         locales: [
             { code: 'en', name: 'English', file: 'en.json' },
@@ -22,10 +28,11 @@ export default defineNuxtConfig({
         },
     },
 
-    css: ['~/assets/css/main.css', '@world-bingo/ui/styles/tokens.css'],
+    css: ['~/assets/css/main.css'],
 
     runtimeConfig: {
         jwtSecret: '',
+        apiBaseServer: 'http://localhost:8080', // overridden by NUXT_API_BASE_SERVER in Docker (http://api:8080)
         public: {
             apiBase: 'http://localhost:8080',
         },

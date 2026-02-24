@@ -117,68 +117,61 @@ onMounted(refreshDeposits)
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-gray-900">Pending Deposits</h1>
-      <UButton icon="i-heroicons-arrow-path" variant="ghost" @click="refreshDeposits">Refresh</UButton>
+      <h1 class="text-2xl font-bold text-white">Pending Deposits</h1>
+      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshDeposits">Refresh</UButton>
     </div>
 
     <!-- Summary stats -->
     <div class="grid grid-cols-3 gap-4">
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-yellow-500">{{ pendingCount }}</div>
-        <div class="text-xs text-gray-500 mt-1">Pending</div>
-      </UCard>
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-green-600">{{ approvedSum.toFixed(2) }} ETB</div>
-        <div class="text-xs text-gray-500 mt-1">Approved (all time)</div>
-      </UCard>
-      <UCard class="text-center">
-        <div class="text-2xl font-bold text-red-500">{{ declinedSum.toFixed(2) }} ETB</div>
-        <div class="text-xs text-gray-500 mt-1">Declined (all time)</div>
-      </UCard>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-amber-400">{{ pendingCount }}</div>
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Pending</div>
+      </div>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-emerald-400">{{ approvedSum.toFixed(2) }} ETB</div>
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Approved (all time)</div>
+      </div>
+      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+        <div class="text-2xl font-bold text-red-400">{{ declinedSum.toFixed(2) }} ETB</div>
+        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Declined (all time)</div>
+      </div>
     </div>
 
-    <UCard>
-      <UTable :columns="columns" :rows="pendingDeposits" :loading="loading">
+    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+      <UTable :columns="columns" :data="pendingDeposits" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
+          <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
         </template>
         <template #paymentTransactionId-cell="{ row }">
-          <span class="font-mono text-xs font-semibold">
+          <span class="font-mono text-xs font-semibold text-zinc-200">
             {{ (row.original as unknown as DepositTransaction).paymentTransactionId ?? '—' }}
           </span>
         </template>
         <template #senderName-cell="{ row }">
-          {{ (row.original as unknown as DepositTransaction).senderName ?? '—' }}
+          <span class="text-zinc-300">{{ (row.original as unknown as DepositTransaction).senderName ?? '—' }}</span>
         </template>
         <template #senderAccount-cell="{ row }">
-          <span class="font-mono text-xs">{{ (row.original as unknown as DepositTransaction).senderAccount ?? '—' }}</span>
+          <span class="font-mono text-xs text-zinc-300">{{ (row.original as unknown as DepositTransaction).senderAccount ?? '—' }}</span>
         </template>
         <template #amount-cell="{ row }">
-          <strong>{{ Number((row.original as unknown as DepositTransaction).amount).toFixed(2) }}</strong>
+          <strong class="text-amber-400">{{ Number((row.original as unknown as DepositTransaction).amount).toFixed(2) }}</strong>
         </template>
         <template #createdAt-cell="{ row }">
           <div class="flex flex-col gap-0.5">
-            <span>{{ new Date((row.original as unknown as DepositTransaction).createdAt).toLocaleString() }}</span>
+            <span class="text-zinc-300 text-xs">{{ new Date((row.original as unknown as DepositTransaction).createdAt).toLocaleString() }}</span>
             <UBadge
               v-if="ageMinutes((row.original as unknown as DepositTransaction).createdAt) > 15"
-              color="error"
-              variant="soft"
-              size="xs"
-            >⚠ Late submission ({{ ageMinutes((row.original as unknown as DepositTransaction).createdAt) }}m)</UBadge>
+              color="error" variant="soft" size="xs"
+            >⚠ Late ({{ ageMinutes((row.original as unknown as DepositTransaction).createdAt) }}m)</UBadge>
           </div>
         </template>
         <template #receipt-cell="{ row }">
           <UButton
             v-if="(row.original as unknown as DepositTransaction).receiptUrl"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            icon="i-heroicons-photo"
+            size="xs" color="neutral" variant="ghost" icon="i-heroicons-photo"
             @click="openReceipt((row.original as unknown as DepositTransaction).receiptUrl!)"
-          >
-            View
-          </UButton>
-          <span v-else class="text-gray-400 text-xs">No receipt</span>
+          >View</UButton>
+          <span v-else class="text-zinc-600 text-xs">No receipt</span>
         </template>
         <template #status-cell="{ row }">
           <UBadge color="warning" variant="soft">{{ (row.original as unknown as DepositTransaction).status }}</UBadge>
@@ -190,31 +183,22 @@ onMounted(refreshDeposits)
           </div>
         </template>
       </UTable>
-    </UCard>
+    </div>
 
     <!-- Receipt Modal -->
-    <UModal v-model="isReceiptOpen">
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">Transfer Receipt</h3>
-            <UButton color="neutral" variant="ghost" icon="i-heroicons-x-mark-20-solid" @click="isReceiptOpen = false" />
-          </div>
-        </template>
-        <div class="p-4 flex justify-center bg-gray-100 rounded">
-          <img :src="selectedReceipt" alt="Receipt" class="max-w-full max-h-[70vh] object-contain shadow-lg" />
+    <UModal v-model:open="isReceiptOpen" title="Transfer Receipt">
+      <template #body>
+        <div class="flex justify-center rounded-xl" style="background:#0a0f1e;">
+          <img :src="selectedReceipt" alt="Receipt" class="max-w-full max-h-[70vh] object-contain shadow-lg rounded-lg" />
         </div>
-      </UCard>
+      </template>
     </UModal>
 
     <!-- Decline Modal -->
-    <UModal v-model="showDeclineModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-base font-semibold">Decline Deposit</h3>
-        </template>
-        <div class="p-4 space-y-3">
-          <p class="text-sm text-gray-600">Select a reason or type a custom one. The player will be notified.</p>
+    <UModal v-model:open="showDeclineModal" title="Decline Deposit" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div class="space-y-3">
+          <p class="text-sm text-zinc-400">Select a reason or type a custom one. The player will be notified.</p>
           <div class="grid grid-cols-2 gap-2">
             <UButton
               v-for="reason in DECLINE_REASONS"
@@ -223,22 +207,18 @@ onMounted(refreshDeposits)
               :color="declineNote === reason ? 'error' : 'neutral'"
               :variant="declineNote === reason ? 'soft' : 'ghost'"
               @click="declineNote = reason; customReason = ''"
-            >
-              {{ reason }}
-            </UButton>
+            >{{ reason }}</UButton>
           </div>
           <UInput v-model="customReason" placeholder="Custom reason (optional)" @input="declineNote = ''" />
-          <p v-if="declineNote || customReason" class="text-xs text-gray-500">
-            Reason: <strong>{{ customReason || declineNote }}</strong>
+          <p v-if="declineNote || customReason" class="text-xs text-zinc-500">
+            Reason: <strong class="text-zinc-200">{{ customReason || declineNote }}</strong>
           </p>
         </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="showDeclineModal = false">Cancel</UButton>
-            <UButton color="error" @click="handleDecline">Confirm Decline</UButton>
-          </div>
-        </template>
-      </UCard>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" @click="showDeclineModal = false">Cancel</UButton>
+        <UButton color="error" @click="handleDecline">Confirm Decline</UButton>
+      </template>
     </UModal>
   </div>
 </template>
