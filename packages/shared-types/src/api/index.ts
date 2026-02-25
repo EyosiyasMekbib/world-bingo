@@ -56,7 +56,7 @@ export const ReviewDepositSchema = z.object({
 })
 
 export const JoinGameSchema = z.object({
-    gameId: z.string().uuid(),
+    gameId: z.string().uuid().optional(),
     cartelaSerials: z.array(z.string()).min(1).max(10),
 })
 

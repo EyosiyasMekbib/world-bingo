@@ -66,7 +66,8 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/packages/game-logic/dist ./packages/game-logic/dist
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
-RUN chown -R appuser:appgroup /app
+RUN mkdir -p /app/apps/api/uploads && \
+    chown -R appuser:appgroup /app
 USER appuser
 
 WORKDIR /app/apps/api
