@@ -36,6 +36,7 @@
           <span class="status-badge" :class="gameStore.currentGame.status.toLowerCase()">
             {{ gameStore.currentGame.status }}
           </span>
+          <span class="pattern-badge">{{ patternLabel(gameStore.currentGame.pattern) }}</span>
         </div>
         <div v-if="gameStore.lastCalledBall !== null" class="last-called">
           <span class="ball-label">Last Ball</span>
@@ -89,14 +90,17 @@
         <h3>Select Your Card(s) to Join</h3>
         <p class="price-info">
           Entry: <strong>{{ gameStore.currentGame.ticketPrice }} ETB</strong> per card
-          <span v-if="selectedSerials.length > 1">
-            × {{ selectedSerials.length }} = <strong>{{ totalCost.toFixed(2) }} ETB</strong>
+          <span v-if="selectedSerials.length">
+            · {{ selectedSerials.length }} selected
+            <span v-if="selectedSerials.length > 1"> = <strong>{{ totalCost.toFixed(2) }} ETB</strong></span>
           </span>
         </p>
 
+        <p class="cards-hint">{{ gameStore.availableCartelas.length }} cards available — tap to select</p>
+
         <div class="cartela-grid">
           <div
-            v-for="cartela in gameStore.availableCartelas"
+            v-for="(cartela, idx) in gameStore.availableCartelas"
             :key="cartela.id"
             class="cartela-tile"
             :class="{
@@ -105,7 +109,8 @@
             }"
             @click="toggleCartela(cartela.serial)"
           >
-            <span class="serial">{{ cartela.serial }}</span>
+            <span class="tile-number">#{{ idx + 1 }}</span>
+            <span class="tile-check" v-if="selectedSerials.includes(cartela.serial)">✓</span>
           </div>
         </div>
 
@@ -137,6 +142,7 @@ const gameId = route.params.gameId as string
 const gameStore = useGameStore()
 const auth = useAuthStore()
 const { connect } = useSocket()
+const { patternLabel } = usePatternLabel()
 
 const selectedSerials = ref<string[]>([])
 const joining = ref(false)
@@ -219,20 +225,22 @@ function startRedirectCountdown() {
   }, 1000)
 }
 
-// Initial data load
-await gameStore.fetchGameDetails(gameId)
-await gameStore.fetchAvailableCartelas(gameId)
+onMounted(async () => {
+  // Initial data load
+  await gameStore.fetchGameDetails(gameId)
+  await gameStore.fetchAvailableCartelas(gameId)
 
-// Check if player is already in game — redirect to play page
-const existingEntries = (gameStore.currentGame as any)?.entries?.filter(
-  (e: any) => e.userId === auth.user?.id,
-)
-if (existingEntries?.length) {
-  gameStore.myEntries = existingEntries
-  await router.push(`/quick/${gameId}/play`)
-}
+  // Check if player is already in game — redirect to play page
+  const existingEntries = (gameStore.currentGame as any)?.entries?.filter(
+    (e: any) => e.userId === auth.user?.id,
+  )
+  if (existingEntries?.length) {
+    gameStore.myEntries = existingEntries
+    await router.push(`/quick/${gameId}/play`)
+    return
+  }
 
-onMounted(() => {
+  // Socket setup
   const socket = connect()
   if (!socket) return
 
@@ -270,6 +278,7 @@ onUnmounted(() => {
   padding: 1rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .state-message {
@@ -312,6 +321,15 @@ onUnmounted(() => {
 .status-badge.waiting { background: rgba(234, 179, 8, 0.15); color: #fbbf24; }
 .status-badge.in_progress { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
 .status-badge.starting { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+
+.pattern-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  font-weight: 600;
+  background: rgba(6, 182, 212, 0.12);
+  color: #22d3ee;
+}
 
 .last-called {
   display: flex;
@@ -360,10 +378,13 @@ onUnmounted(() => {
 }
 
 .cartelas-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.5rem;
+  justify-items: center;
+  max-height: 75vh;
+  overflow-y: auto;
+  padding: 0.5rem;
 }
 
 .my-cartela {
@@ -371,6 +392,9 @@ onUnmounted(() => {
   padding: 1rem;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  max-width: 260px;
+  box-sizing: border-box;
 }
 
 .my-cartela h4 {
@@ -381,13 +405,12 @@ onUnmounted(() => {
 
 .grid-header {
   display: grid;
-  grid-template-columns: repeat(5, 44px);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   margin-bottom: 2px;
 }
 
 .col-header {
-  width: 44px;
   text-align: center;
   font-weight: 900;
   font-size: 0.9rem;
@@ -396,14 +419,13 @@ onUnmounted(() => {
 
 .row {
   display: grid;
-  grid-template-columns: repeat(5, 44px);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   margin-bottom: 4px;
 }
 
 .cell {
-  width: 44px;
-  height: 44px;
+  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -451,54 +473,94 @@ onUnmounted(() => {
 
 /* Join Area */
 .join-area {
-  padding: 1rem 0;
+  padding: 1.5rem 0;
+  max-width: 640px;
 }
 
 .join-area h3 {
   margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
 }
 
 .price-info {
-  color: #aaa;
-  font-size: 0.95rem;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.9rem;
   margin-bottom: 1rem;
 }
 
 .price-info strong {
-  color: var(--color-primary, #c9a96e);
+  color: var(--brand-primary, #f59e0b);
+}
+
+.cards-hint {
+  font-size: 0.78rem;
+  color: var(--text-disabled, #475569);
+  margin-bottom: 0.75rem;
 }
 
 .cartela-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
   gap: 0.5rem;
   margin-bottom: 1.5rem;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .cartela-tile {
-  width: 50px;
-  height: 50px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 700;
   transition: all 0.15s;
   background: rgba(255, 255, 255, 0.04);
+  user-select: none;
+}
+
+.tile-number {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.tile-check {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.65rem;
+  color: #10b981;
+  font-weight: 900;
 }
 
 .cartela-tile:hover:not(.taken) {
-  border-color: var(--color-primary, #c9a96e);
-  background: rgba(201, 169, 110, 0.1);
+  border-color: var(--brand-primary, #f59e0b);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.cartela-tile:hover:not(.taken) .tile-number {
+  color: var(--brand-primary, #f59e0b);
 }
 
 .cartela-tile.selected {
-  border-color: var(--color-primary, #c9a96e);
-  background: rgba(201, 169, 110, 0.2);
-  color: var(--color-primary, #c9a96e);
+  border-color: var(--brand-primary, #f59e0b);
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+}
+
+.cartela-tile.selected .tile-number {
+  color: var(--brand-primary, #f59e0b);
 }
 
 .cartela-tile.taken {
@@ -522,13 +584,14 @@ onUnmounted(() => {
 .join-btn {
   padding: 0.85rem 2rem;
   font-size: 1rem;
-  background: var(--color-primary, #c9a96e);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
   color: #000;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 700;
-  transition: opacity 0.2s;
+  transition: all 0.2s;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.2);
 }
 
 .join-btn:disabled {

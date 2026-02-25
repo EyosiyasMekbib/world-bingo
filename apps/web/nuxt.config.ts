@@ -28,6 +28,10 @@ export default defineNuxtConfig({
 
     runtimeConfig: {
         jwtSecret: '',
+        // Server-side only override — mapped from NUXT_API_BASE_SERVER env var.
+        // When running in Docker, set this to http://api:8080 so SSR calls
+        // reach the API container instead of localhost (which doesn't resolve).
+        apiBaseServer: '',
         public: {
             apiBase: 'http://localhost:8080',
             wsUrl: 'http://localhost:8080',
@@ -39,6 +43,7 @@ export default defineNuxtConfig({
         '/wallet': { ssr: true },
         '/': { ssr: false },
         '/quick/**': { ssr: false },
+        '/profile': { ssr: false },
     },
 
     pwa: {

@@ -317,3 +317,14 @@ model TournamentGame {
   @@index([tournamentId, round])
   @@map("tournament_games")
 }
+
+// ─── Site Settings / Feature Flags ──────────────────────────────────────────────
+// A simple key-value store for admin-togglable features.
+// Seeded with defaults; the admin panel can flip them on/off.
+model SiteSetting {
+  key       String   @id            // e.g. "feature_referrals", "feature_tournaments"
+  value     String                  // "true" / "false" or any string value
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}

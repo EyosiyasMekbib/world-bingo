@@ -53,6 +53,11 @@ export const useAdminApi = () => {
             apiFetch(`/admin/game-templates/${id}`, { method: 'PATCH', body: data }),
         deleteGameTemplate: (id: string) =>
             apiFetch(`/admin/game-templates/${id}`, { method: 'DELETE' }),
+
+        // ── Feature Flags / Site Settings ───────────────────────────────────
+        getFeatureFlags: () => apiFetch<Record<string, boolean>>('/settings/features'),
+        updateFeatureFlags: (flags: Record<string, boolean>) =>
+            apiFetch('/settings/features', { method: 'PUT', body: flags }),
     }
 }
 

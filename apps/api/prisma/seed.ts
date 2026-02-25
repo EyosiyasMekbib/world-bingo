@@ -98,6 +98,21 @@ async function main() {
         }
         console.log(`Seeded ${templates.length} Game Templates`)
     }
+
+    // 4. Seed default feature flags
+    console.log('Seeding Feature Flags...')
+    const defaultFlags = [
+        { key: 'feature_referrals', value: 'false' },
+        { key: 'feature_tournaments', value: 'false' },
+    ]
+    for (const flag of defaultFlags) {
+        await prisma.siteSetting.upsert({
+            where: { key: flag.key },
+            update: {},             // don't overwrite existing values
+            create: flag,
+        })
+    }
+    console.log('Feature flags seeded')
 }
 
 main()

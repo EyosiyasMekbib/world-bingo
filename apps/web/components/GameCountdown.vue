@@ -1,19 +1,25 @@
 <template>
-  <div class="countdown-bar">
-    <div class="countdown-icon">⏱️</div>
-    <div class="countdown-text">
-      <span class="countdown-label">Starting in</span>
-      <span class="countdown-time">{{ display }}</span>
-    </div>
-    <div class="countdown-progress">
-      <div class="countdown-progress-fill" :style="{ width: progressPct + '%' }" />
-    </div>
+  <div :class="compact ? 'countdown-inline' : 'countdown-bar'">
+    <template v-if="compact">
+      <span class="countdown-time-inline">{{ display }}</span>
+    </template>
+    <template v-else>
+      <div class="countdown-icon">⏱️</div>
+      <div class="countdown-text">
+        <span class="countdown-label">Starting in</span>
+        <span class="countdown-time">{{ display }}</span>
+      </div>
+      <div class="countdown-progress">
+        <div class="countdown-progress-fill" :style="{ width: progressPct + '%' }" />
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 const props = defineProps<{
   startsAt: string
+  compact?: boolean
 }>()
 
 const remaining = ref(0)
@@ -106,5 +112,17 @@ onUnmounted(() => {
   border-radius: 2px;
   background: linear-gradient(90deg, #f59e0b, #d97706);
   transition: width 0.3s ease;
+}
+
+/* compact / inline mode */
+.countdown-inline {
+  display: inline;
+}
+.countdown-time-inline {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 800;
+  color: #fbbf24;
+  font-size: inherit;
+  line-height: inherit;
 }
 </style>

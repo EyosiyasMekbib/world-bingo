@@ -4,6 +4,7 @@ import { useAuthStore } from '~/store/auth'
 const auth = useAuthStore()
 const router = useRouter()
 const { locale, setLocale, t } = useI18n()
+const { referralsEnabled, tournamentsEnabled } = useFeatureFlags()
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -55,7 +56,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             {{ t('nav.lobby') }}
           </NuxtLink>
           <NuxtLink
-            v-if="auth.isAuthenticated"
+            v-if="auth.isAuthenticated && referralsEnabled"
             to="/refer"
             class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
             active-class="text-amber-400 bg-amber-400/10"
@@ -64,6 +65,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             {{ t('nav.refer') }}
           </NuxtLink>
           <NuxtLink
+            v-if="tournamentsEnabled"
             to="/tournaments"
             class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
             active-class="text-amber-400 bg-amber-400/10"
@@ -182,6 +184,8 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
       >
         <div v-if="mobileNavOpen" class="sm:hidden border-t border-white/10 px-4 py-3 flex flex-col gap-2 bg-zinc-950">
           <NuxtLink to="/" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🎮 Lobby</NuxtLink>
+          <NuxtLink v-if="referralsEnabled && auth.isAuthenticated" to="/refer" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🎁 Refer &amp; Earn</NuxtLink>
+          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🏆 Tournaments</NuxtLink>
           <template v-if="auth.isAuthenticated">
             <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
               <span class="text-sm text-zinc-400">Balance</span>

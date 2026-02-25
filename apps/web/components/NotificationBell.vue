@@ -101,13 +101,16 @@ function relativeTime(date: Date | string): string {
 
 // ── Socket: listen for new notifications ──────────────────────────────────
 onMounted(() => {
+  if (!auth.token) return
   fetchNotifications()
   document.addEventListener('click', onClickOutside)
 
   const socket = connect()
-  socket.on('notification:new', (notif) => {
-    notifications.value.unshift(notif as any)
-  })
+  if (socket) {
+    socket.on('notification:new', (notif) => {
+      notifications.value.unshift(notif as any)
+    })
+  }
 })
 
 onUnmounted(() => {

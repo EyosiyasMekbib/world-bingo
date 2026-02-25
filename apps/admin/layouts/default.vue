@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Orders History', icon: 'i-heroicons-clipboard-document-list',   to: '/orders'          },
   { label: 'Games',          icon: 'i-heroicons-puzzle-piece',              to: '/games'           },
   { label: 'Game Templates', icon: 'i-heroicons-cog-6-tooth',               to: '/settings/game-templates' },
+  { label: 'Feature Flags', icon: 'i-heroicons-adjustments-horizontal',    to: '/settings/features' },
   { label: 'Tournaments',    icon: 'i-heroicons-trophy',                    to: '/tournaments'     },
   { label: 'Users',          icon: 'i-heroicons-users',                     to: '/users'           },
   { label: 'Profile',        icon: 'i-heroicons-user-circle',               to: '/settings/profile'},

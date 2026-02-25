@@ -4,7 +4,15 @@
  *
  * Displays the player's personal referral code, referral link,
  * and their referral stats (total referrals, earnings).
+ * Only accessible when the admin has enabled the referrals feature.
  */
+
+const { referralsEnabled } = useFeatureFlags()
+
+// Redirect to home if referrals feature is disabled
+watch(referralsEnabled, (enabled) => {
+  if (!enabled) navigateTo('/')
+}, { immediate: true })
 
 const config = useRuntimeConfig()
 const auth = useAuth()

@@ -84,6 +84,12 @@ import { useSocket } from '~/composables/useSocket'
 
 const config = useRuntimeConfig()
 const { socket } = useSocket()
+const { tournamentsEnabled } = useFeatureFlags()
+
+// Redirect to home if tournaments feature is disabled
+watch(tournamentsEnabled, (enabled) => {
+  if (!enabled) navigateTo('/')
+}, { immediate: true })
 
 const loading = ref(true)
 const tournaments = ref<TournamentDto[]>([])

@@ -93,7 +93,7 @@ export const useGameStore = defineStore('game', {
             try {
                 const entries = await auth.apiFetch<GameEntry[]>(`/games/${gameId}/join`, {
                     method: 'POST',
-                    body: { cartelaSerials },
+                    body: { gameId, cartelaSerials },
                 })
                 this.myEntries = entries
                 this.gameStatus = 'waiting'
@@ -111,7 +111,7 @@ export const useGameStore = defineStore('game', {
             try {
                 return await auth.apiFetch(`/games/${gameId}/claim`, {
                     method: 'POST',
-                    body: { cartelaId },
+                    body: { gameId, cartelaId },
                 })
             } catch (e: any) {
                 this.error = e?.message ?? 'Bingo claim failed'
