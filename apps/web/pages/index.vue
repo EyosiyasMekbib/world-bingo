@@ -1,23 +1,6 @@
 <template>
   <div class="lobby-page">
 
-    <!-- ── Jackpot Winner Toast ───────────────────────────────────────── -->
-    <Transition name="toast-pop">
-      <div v-if="jackpotWinner" class="jackpot-toast" role="status">
-        🎰 JACKPOT! Someone just won
-        <strong>{{ jackpotWinner.amount.toFixed(2) }} ETB</strong>!
-      </div>
-    </Transition>
-
-    <!-- ── Progressive Jackpot Banner ───────────────────────────────── -->
-    <div class="jackpot-banner">
-      <div class="jackpot-banner-inner">
-        <span class="jackpot-label">🎰 Progressive Jackpot</span>
-        <span class="jackpot-amount">{{ jackpotAmount.toFixed(2) }} ETB</span>
-      </div>
-      <span class="jackpot-hint">Full card in ≤ 20 balls to win!</span>
-    </div>
-
     <!-- ── States ────────────────────────────────────────────────────── -->
     <div v-if="gameStore.loadingGames" class="state-message">
       <span class="spinner-lg" />
@@ -46,7 +29,7 @@
             <span class="game-value">{{ Number(game.ticketPrice).toLocaleString() }} Birr</span>
           </div>
           <div class="game-card-col game-card-col--right">
-            <span class="game-label">{{ patternLabel(game.pattern) }}</span>
+            <span class="game-pattern-badge">{{ patternLabel(game.pattern) }}</span>
             <span class="game-value game-value--time">
               <GameCountdown
                 v-if="gameStore.countdowns[game.id]"
@@ -86,21 +69,10 @@ const { connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel, patternIcon } = usePatternLabel()
 
-// T59 — Progressive jackpot
-const jackpotAmount = ref(0)
-const jackpotWinner = ref<{ winnerId: string; amount: number } | null>(null)
-
-const fetchJackpot = async () => {
-  try {
-    const data = await $fetch<{ amount: number }>(`${config.public.apiBase}/jackpot`)
-    jackpotAmount.value = data.amount
-  } catch { /* non-critical */ }
-}
-
-// Fetch data on mount to avoid top-level await issues with ssr:false
+// Fetch data on mount
 onMounted(async () => {
   try {
-    await Promise.all([gameStore.fetchAvailableGames(), fetchJackpot()])
+    await gameStore.fetchAvailableGames()
   } catch { /* errors are stored in gameStore.error */ }
 
   const socket = connect()
@@ -124,18 +96,6 @@ onMounted(async () => {
   socket.on('game:countdown', (payload: { gameId: string; countdownSecs: number; startsAt: string }) => {
     gameStore.onGameCountdown(payload)
   })
-
-  // T59 — Listen for jackpot updates
-  socket.on('jackpot:update', ({ amount }: { amount: number }) => {
-    jackpotAmount.value = amount
-  })
-
-  socket.on('jackpot:won', (payload: { winnerId: string; amount: number }) => {
-    jackpotWinner.value = payload
-    jackpotAmount.value = 0
-    // Auto-dismiss after 8s
-    setTimeout(() => { jackpotWinner.value = null }, 8000)
-  })
 })
 
 onUnmounted(() => {
@@ -147,70 +107,9 @@ onUnmounted(() => {
 <style scoped>
 /* ── Page wrapper ────────────────────────────────────────────────────── */
 .lobby-page {
-  padding: 1rem 1rem 3rem;
+  padding: 1.5rem 1rem 3rem;
   max-width: 600px;
   margin: 0 auto;
-}
-
-/* ── Jackpot toast ───────────────────────────────────────────────────── */
-.jackpot-toast {
-  position: fixed;
-  top: 4.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999;
-  background: linear-gradient(135deg, #7c3aed, #dc2626);
-  color: white;
-  padding: 0.875rem 1.75rem;
-  border-radius: 14px;
-  font-size: 1rem;
-  font-weight: 600;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  white-space: nowrap;
-}
-.toast-pop-enter-active { transition: opacity 0.4s, transform 0.4s var(--ease-bounce, cubic-bezier(0.34,1.56,0.64,1)); }
-.toast-pop-enter-from   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.9); }
-.toast-pop-leave-active { transition: opacity 0.3s, transform 0.3s; }
-.toast-pop-leave-to     { opacity: 0; transform: translateX(-50%) translateY(-12px); }
-
-/* ── Jackpot banner ──────────────────────────────────────────────────── */
-.jackpot-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  background: linear-gradient(120deg, rgba(26,5,51,0.85) 0%, rgba(59,7,100,0.85) 100%);
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  border-radius: 14px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.25rem;
-  flex-wrap: wrap;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 24px rgba(124, 58, 237, 0.15);
-}
-.jackpot-banner-inner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-.jackpot-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #c4b5fd;
-}
-.jackpot-amount {
-  font-size: 1.5rem;
-  font-weight: 900;
-  color: #fbbf24;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--font-game, 'Rajdhani', sans-serif);
-  text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
-}
-.jackpot-hint {
-  font-size: 0.72rem;
-  color: #9ca3af;
 }
 
 /* ── Loading / empty state ───────────────────────────────────────────── */
@@ -251,17 +150,17 @@ onUnmounted(() => {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Games list — stacked cards like reference app ───────────────────── */
+/* ── Games list ──────────────────────────────────────────────────────── */
 .games-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-/* ── Game card — ticket/time layout ──────────────────────────────────── */
+/* ── Game card — matches profile/wallet card style ───────────────────── */
 .game-card {
-  background: linear-gradient(135deg, #1a2550 0%, #1e3060 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 1.25rem 1.25rem 1rem;
   display: flex;
@@ -272,7 +171,7 @@ onUnmounted(() => {
   animation-delay: var(--delay, 0ms);
 }
 .game-card:hover {
-  border-color: rgba(251, 191, 36, 0.5);
+  border-color: rgba(245, 158, 11, 0.35);
   transform: translateY(-2px);
 }
 @keyframes card-fadein {
@@ -302,19 +201,30 @@ onUnmounted(() => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .game-value {
   font-size: 1.35rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary, #f1f5f9);
   font-family: var(--font-game, 'Rajdhani', sans-serif);
   line-height: 1.2;
 }
 
 .game-value--time {
   color: #fbbf24;
+}
+
+.game-pattern-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  background: rgba(201, 169, 110, 0.12);
+  color: var(--color-primary, #c9a96e);
 }
 
 .game-card-bottom {
@@ -327,8 +237,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   padding: 0.5rem 0.85rem;
   font-size: 0.9rem;
@@ -341,7 +251,7 @@ onUnmounted(() => {
 .player-icon {
   width: 16px;
   height: 16px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* CTA */
@@ -358,12 +268,12 @@ onUnmounted(() => {
   font-weight: 700;
   font-size: 0.95rem;
   transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
-  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.25);
   letter-spacing: 0.01em;
 }
 .join-btn:hover {
   background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.5);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.45);
   transform: translateY(-1px);
 }
 

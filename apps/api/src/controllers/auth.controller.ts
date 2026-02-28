@@ -4,14 +4,12 @@ import type { LoginDto, RegisterDto, RefreshTokenDto, LogoutDto, ChangePasswordD
 
 export class AuthController {
     static async register(request: FastifyRequest<{ Body: RegisterDto }>, reply: FastifyReply) {
-        const user = await AuthService.register(request.body)
-        // After register, automatically sign an access token (no refresh token on first register;
-        // client must call /auth/login to get a refresh token)
+        const { user, refreshToken } = await AuthService.register(request.body)
         const accessToken = await reply.jwtSign(
             { id: user.id, role: user.role },
             { expiresIn: '15m' }
         )
-        return { user, accessToken }
+        return { user, accessToken, refreshToken }
     }
 
     static async login(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {

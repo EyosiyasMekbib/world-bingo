@@ -85,12 +85,17 @@ export class GameController {
         const game = await prisma.game.findUnique({
             where: { id: request.params.id },
             include: {
-                entries: true, // We need to see who is in
+                entries: {
+                    include: { cartela: true },
+                },
+                _count: { select: { entries: true } },
             },
         })
         
         if (!game) return reply.status(404).send({ message: 'Game not found' })
-        return game
+        // Attach a distinct player count for the UI
+        const distinctPlayers = new Set(game.entries.map((e: any) => e.userId)).size
+        return { ...game, currentPlayers: distinctPlayers }
     }
 
     static async getAvailableCartelas(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {

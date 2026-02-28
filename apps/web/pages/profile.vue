@@ -48,20 +48,30 @@
             <span class="tx-type">{{ txLabel(tx.type) }}</span>
             <span class="tx-date">{{ formatDate(tx.createdAt) }}</span>
           </div>
-          <div class="tx-amount" :class="txAmountClass(tx.type)">
-            {{ txSign(tx.type) }}{{ Number(tx.amount).toFixed(2) }} ETB
+          <div class="tx-right">
+            <div class="tx-amount" :class="txAmountClass(tx.type)">
+              {{ txSign(tx.type) }}{{ Number(tx.amount).toFixed(2) }} ETB
+            </div>
+            <span class="tx-status" :class="`status-${tx.status?.toLowerCase()}`">
+              {{ tx.status }}
+            </span>
           </div>
-          <span class="tx-status" :class="`status-${tx.status?.toLowerCase()}`">
-            {{ tx.status }}
-          </span>
         </div>
       </div>
     </div>
 
-    <!-- ── Change Password ─────────────────────────────────────────── -->
+    <!-- ── Change Password (collapsible) ───────────────────────────── -->
     <div class="card">
-      <h3 class="section-title">🔒 Change Password</h3>
-      <form class="password-form" @submit.prevent="handleChangePassword">
+      <button class="section-toggle" @click="showPasswordForm = !showPasswordForm">
+        <h3 class="section-title">🔒 Change Password</h3>
+        <span class="toggle-chevron" :class="{ open: showPasswordForm }">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
+      <Transition name="slide-fade">
+        <form v-if="showPasswordForm" class="password-form" @submit.prevent="handleChangePassword">
         <div class="field">
           <label>Current Password</label>
           <input
@@ -100,6 +110,7 @@
           {{ pwLoading ? 'Changing…' : 'Change Password' }}
         </button>
       </form>
+      </Transition>
     </div>
   </div>
 </template>
@@ -112,6 +123,7 @@ const config = useRuntimeConfig()
 
 // ── Wallet ─────────────────────────────────────────────────────────────
 const walletLoading = ref(false)
+const showPasswordForm = ref(false)
 const formattedBalance = computed(() => {
   const bal = Number(auth.wallet?.balance ?? 0)
   return bal.toLocaleString('en-ET', {
@@ -421,6 +433,14 @@ onMounted(() => {
   color: var(--text-disabled, #475569);
 }
 
+.tx-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
 .tx-amount {
   font-weight: 700;
   font-size: 0.9rem;
@@ -461,17 +481,63 @@ onMounted(() => {
   color: #ef4444;
 }
 
+/* ── Change Password Toggle ─────────────────────────────────────────── */
+.section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.section-toggle:hover .section-title {
+  color: #f59e0b;
+}
+
+.toggle-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary, #94a3b8);
+  transition: transform 0.25s ease;
+}
+
+.toggle-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Slide-fade transition for password form */
+.slide-fade-enter-active {
+  transition: all 0.25s ease;
+}
+.slide-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.slide-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
 /* ── Change Password ────────────────────────────────────────────────── */
 .section-title {
-  margin: 0 0 1.25rem;
+  margin: 0;
   font-size: 1rem;
   color: var(--text-primary, #f1f5f9);
+  transition: color 0.2s;
 }
 
 .password-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  margin-top: 1.25rem;
 }
 
 .field {

@@ -4,17 +4,14 @@
  * Ensures that for every active GameTemplate, there is always at least one
  * game in WAITING status in the lobby. When a game completes or is cancelled,
  * a new one is automatically created from the same template.
- *
- * Also handles the 60-second countdown auto-start:
- *   - When a game reaches minPlayers, schedule a countdown job.
- *   - When the countdown expires, start the game engine.
- *   - If the game is cancelled before countdown ends, the job is removed.
  */
 
 import prisma from '../lib/prisma'
 import { GameStatus } from '@world-bingo/shared-types'
 import { getIo } from '../lib/socket'
-import { getQueue, QUEUE_NAMES } from '../lib/queue'
+
+/** In-memory set of game IDs that have an active countdown scheduled */
+const activeCountdowns = new Set<string>()
 
 export class GameSchedulerService {
     /**
@@ -93,76 +90,6 @@ export class GameSchedulerService {
     }
 
     /**
-     * Called after a player joins a game. If the game now has >= minPlayers
-     * and doesn't already have a countdown scheduled, schedule one.
-     */
-    static async checkAndStartCountdown(gameId: string): Promise<void> {
-        const game = await prisma.game.findUnique({
-            where: { id: gameId },
-            include: {
-                _count: { select: { entries: true } },
-                template: true,
-            },
-        })
-
-        if (!game || game.status !== GameStatus.WAITING) return
-
-        // Count distinct players (a player with 3 cartelas counts as 1)
-        const distinctPlayers = await prisma.gameEntry.groupBy({
-            by: ['userId'],
-            where: { gameId },
-        })
-
-        const playerCount = distinctPlayers.length
-        if (playerCount < game.minPlayers) return
-
-        const countdownSecs = game.template?.countdownSecs ?? 60
-
-        // Check if a countdown job is already scheduled for this game
-        const countdownQueue = getQueue(QUEUE_NAMES.GAME_COUNTDOWN)
-        const existingJobs = await countdownQueue.getJobs(['delayed', 'waiting'])
-        const alreadyScheduled = existingJobs.some(
-            (j) => j.data?.gameId === gameId,
-        )
-
-        if (alreadyScheduled) return
-
-        // Schedule the countdown job
-        await countdownQueue.add(
-            `countdown-${gameId}`,
-            { gameId },
-            {
-                delay: countdownSecs * 1000,
-                removeOnComplete: { count: 50 },
-                removeOnFail: { count: 50 },
-                jobId: `countdown-${gameId}`, // Dedup key
-            },
-        )
-
-        // Notify all clients in the game room about the countdown
-        try {
-            const io = getIo()
-            io.to(`game:${gameId}`).emit('game:countdown', {
-                gameId,
-                countdownSecs,
-                startsAt: new Date(Date.now() + countdownSecs * 1000).toISOString(),
-            } as any)
-            // Also update lobby
-            io.to('lobby').emit('game:countdown', {
-                gameId,
-                countdownSecs,
-                startsAt: new Date(Date.now() + countdownSecs * 1000).toISOString(),
-            } as any)
-        } catch {
-            // Socket might not be ready
-        }
-
-        console.log(
-            `[GameScheduler] Countdown started for game ${gameId}: ${countdownSecs}s`,
-        )
-    }
-
-    /**
      * Called when the countdown expires. Auto-starts the game via the engine.
      */
     static async handleCountdownExpired(gameId: string): Promise<void> {
@@ -184,8 +111,11 @@ export class GameSchedulerService {
         const playerCount = game.entries.length
         if (playerCount < game.minPlayers) {
             console.log(
-                `[GameScheduler] Game ${gameId} has ${playerCount}/${game.minPlayers} players, not enough to start — skipping`,
+                `[GameScheduler] Game ${gameId} has ${playerCount}/${game.minPlayers} players, not enough to start — auto-cancelling`,
             )
+            // Auto-cancel: not enough players joined during the countdown
+            const { GameService } = await import('../services/game.service.js')
+            await GameService.cancelGame(gameId)
             return
         }
 
@@ -215,5 +145,56 @@ export class GameSchedulerService {
                 console.error(`[GameScheduler] Failed to replenish template ${game.templateId}:`, err)
             })
         }, 5_000)
+    }
+
+    /**
+     * After a player joins, check if minPlayers is reached and fire the 60-second
+     * countdown. If a countdown is already running, this is a no-op.
+     */
+    static async checkAndStartCountdown(gameId: string): Promise<void> {
+        const game = await prisma.game.findUnique({
+            where: { id: gameId },
+            include: {
+                entries: { distinct: ['userId'], select: { userId: true } },
+            },
+        })
+
+        if (!game || game.status !== GameStatus.WAITING) return
+
+        // Countdown already scheduled for this game
+        if (activeCountdowns.has(gameId)) return
+
+        const playerCount = game.entries.length
+        if (playerCount < game.minPlayers) return // Not enough players yet
+
+        // Reached minPlayers — schedule a 60-second countdown
+        const COUNTDOWN_SECS = 60
+        const startsAt = new Date(Date.now() + COUNTDOWN_SECS * 1_000)
+
+        // Mark this game as having an active countdown (idempotency guard)
+        activeCountdowns.add(gameId)
+
+        // Broadcast countdown to all players in the game room + lobby
+        try {
+            const io = getIo()
+            const payload = { gameId, countdownSecs: COUNTDOWN_SECS, startsAt: startsAt.toISOString() }
+            io.to(`game:${gameId}`).emit('game:countdown', payload)
+            io.to('lobby').emit('game:countdown', payload)
+        } catch {
+            // Socket not ready
+        }
+
+        console.log(
+            `[GameScheduler] Countdown started for game ${gameId} — starts at ${startsAt.toISOString()}`,
+        )
+
+        // Schedule the auto-start after the countdown
+        setTimeout(() => {
+            GameSchedulerService.handleCountdownExpired(gameId).catch((err) => {
+                console.error(`[GameScheduler] handleCountdownExpired failed for ${gameId}:`, err)
+            }).finally(() => {
+                activeCountdowns.delete(gameId)
+            })
+        }, COUNTDOWN_SECS * 1_000)
     }
 }

@@ -41,15 +41,17 @@ export const useAuthStore = defineStore('auth', {
 
     async register(data: RegisterDto) {
       const config = useRuntimeConfig()
-      const { user, accessToken } = await $fetch<{
+      const { user, accessToken, refreshToken } = await $fetch<{
         user: User
         accessToken: string
+        refreshToken: string
       }>(`${config.public.apiBase}/auth/register`, {
         method: 'POST',
         body: data,
       })
       this.user = user
       this.accessToken = accessToken
+      this.refreshToken = refreshToken
       await this.fetchWallet()
     },
 
@@ -132,7 +134,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         return await doFetch(this.accessToken)
       } catch (error: any) {
-        if (error?.statusCode === 401) {
+        const status = error?.status ?? error?.statusCode ?? error?.response?.status
+        if (status === 401) {
           const newToken = await this.refresh()
           if (!newToken) {
             await this.logout()

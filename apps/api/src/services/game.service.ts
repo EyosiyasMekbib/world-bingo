@@ -9,7 +9,6 @@ import { RefundService } from './refund.service'
 import { NotificationService } from './notification.service'
 import { clearGameState } from '../lib/game-state'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
-import { JackpotService } from './jackpot.service'
 import { TournamentService } from './tournament.service'
 import { GameSchedulerService } from './game-scheduler.service'
 
@@ -338,15 +337,6 @@ export class GameService {
                 `Congratulations! You won ${prize.toFixed(2)} ETB!`,
                 { gameId },
             ).catch(() => {})
-
-            // T59: Contribute 2% of pot to jackpot
-            await JackpotService.contribute(totalPot).catch(() => {})
-
-            // T59: Check if the win qualifies for a jackpot payout
-            const pattern = endedGame.pattern as string
-            if (JackpotService.isJackpotEligible(pattern, ballsCalled)) {
-                await JackpotService.awardJackpot(userId, gameId, ballsCalled).catch(() => {})
-            }
 
             // T60: If this game is part of a tournament, advance the tournament
             const tournamentGame = await prisma.tournamentGame.findUnique({ where: { gameId } }).catch(() => null)

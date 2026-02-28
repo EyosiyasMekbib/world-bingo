@@ -22,7 +22,7 @@ async function main() {
                 passwordHash,
                 role: 'SUPER_ADMIN',
                 wallet: {
-                    create: { balance: 0 }
+                    create: { balance: 10000 }
                 }
             }
         })

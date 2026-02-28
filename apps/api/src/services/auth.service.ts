@@ -28,7 +28,6 @@ export class AuthService {
 
         const passwordHash = await bcrypt.hash(data.password, 10)
 
-        // Resolve referral code → referrer ID (if provided)
         let referredById: string | undefined
         if (data.referralCode) {
             const referrerId = await ReferralService.resolveCode(data.referralCode)
@@ -49,8 +48,21 @@ export class AuthService {
             },
         })
 
+        const refreshToken = generateRefreshToken()
+        const tokenHash = hashToken(refreshToken)
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+        await prisma.refreshToken.create({
+            data: {
+                userId: user.id,
+                tokenHash,
+                expiresAt,
+            },
+        })
+
         const { passwordHash: _, ...result } = user
-        return result
+        return { user: result, refreshToken }
     }
 
     static async login(data: LoginDto) {
