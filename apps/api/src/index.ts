@@ -10,6 +10,7 @@ import * as dotenv from 'dotenv'
 import path from 'path'
 import { initSocket } from './lib/socket'
 import { stopAllEngines } from './lib/game-engine'
+import { stopAllRoomCountdowns } from './services/room-timer.service'
 import { closeAllQueues } from './lib/queue'
 import { register as metricsRegistry, httpRequestsTotal } from './lib/metrics'
 import authRoutes from './routes/auth'
@@ -163,6 +164,7 @@ server.addHook('onResponse', async (request, reply) => {
 const shutdown = async (signal: string) => {
     server.log.info(`Received ${signal}. Starting graceful shutdown...`)
     stopAllEngines()
+    stopAllRoomCountdowns()
     await closeAllQueues().catch(() => {})
     try {
         await server.close()

@@ -1,7 +1,10 @@
 export enum GameStatus {
     WAITING = 'WAITING',
     STARTING = 'STARTING',
+    LOCKING = 'LOCKING',
     IN_PROGRESS = 'IN_PROGRESS',
+    PAYOUT = 'PAYOUT',
+    REFUNDING = 'REFUNDING',
     COMPLETED = 'COMPLETED',
     CANCELLED = 'CANCELLED',
 }

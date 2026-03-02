@@ -8,6 +8,15 @@ import { startGameEngine, stopGameEngine } from '../lib/game-engine'
 import { RefundService } from './refund.service'
 import { NotificationService } from './notification.service'
 import { clearGameState } from '../lib/game-state'
+import {
+    initRoom,
+    addPlayers,
+    incrementPot,
+    getRoomStatus,
+    setRoomStatus,
+    clearRoomState,
+} from '../lib/room-state'
+import { startRoomCountdown, stopRoomCountdown } from './room-timer.service'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
 import { TournamentService } from './tournament.service'
 import { GameSchedulerService } from './game-scheduler.service'
@@ -16,11 +25,22 @@ export class GameService {
     /**
      * Join a game with one or more cartelas.
      * T8: Multi-cartela support — accepts cartelaSerials array.
+     *
+     * Room state machine:
+     *   - Rejects if room phase is not WAITING (LOCKING gate).
+     *   - Updates Redis pot and player set atomically after DB commit.
+     *   - Starts the 60-second countdown on first minPlayers-reached event.
      */
     static async joinGame(userId: string, gameId: string, cartelaSerials: string[]) {
         if (!cartelaSerials.length) throw new Error('At least one cartela is required')
 
-        const entries = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // ── LOCKING gate (Redis-first for lowest latency) ───────────────────
+        const roomPhase = await getRoomStatus(gameId).catch(() => null)
+        if (roomPhase && roomPhase !== 'WAITING') {
+            throw new Error('Ticket sales are closed. The game is no longer accepting entries.')
+        }
+
+        const txResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const game = await tx.game.findUnique({ 
                 where: { id: gameId },
                 include: { _count: { select: { entries: true } } }
@@ -93,20 +113,40 @@ export class GameService {
                     })
                 )
             )
-            
-            // Notify room of updated player count
-            const io = getIo()
-            io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: game._count.entries + 1 } as any)
-            
-            return entries
+
+            return { entries, game, totalCost }
         })
+
+        const { game, totalCost, entries: joinedEntries } = txResult as {
+            game: any
+            totalCost: Decimal
+            entries: any[]
+        }
+
+        // ── Post-commit: update Redis room state ────────────────────────────
+        // Ensure room keys exist (idempotent — NX flags prevent overwrite)
+        const template = game.templateId
+            ? await prisma.gameTemplate.findUnique({ where: { id: game.templateId } })
+            : null
+        const countdownSecs = template?.countdownSecs ?? 60
+
+        await initRoom(gameId, { countdownSecs }).catch(() => {})
+        const [playerCount] = await Promise.all([
+            addPlayers(gameId, userId),
+            incrementPot(gameId, Number(totalCost)),
+        ])
+
+        // Notify room of updated counts via socket (also done in gateway, belt+suspenders)
+        const io = getIo()
+        io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: playerCount } as any)
+        ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
 
         // After transaction commits: check if we should start the countdown
         GameSchedulerService.checkAndStartCountdown(gameId).catch((err) => {
             console.error(`[GameService] Failed to check countdown for game ${gameId}:`, err)
         })
 
-        return entries
+        return joinedEntries
     }
 
     static async startGame(gameId: string) {
@@ -169,16 +209,26 @@ export class GameService {
 
     /**
      * T25 — Cancel a game. Stops the engine, refunds all players, notifies them.
+     *
+     * When called due to under-fill (timer expired, < 2 players), the room
+     * transitions through REFUNDING → CANCELLED. For admin-triggered cancels
+     * the room goes directly to CANCELLED.
      */
-    static async cancelGame(gameId: string): Promise<void> {
+    static async cancelGame(gameId: string, reason = 'admin_cancelled'): Promise<void> {
         const game = await prisma.game.findUnique({ where: { id: gameId } })
         if (!game) throw new Error('Game not found')
         if (game.status === GameStatus.COMPLETED || game.status === GameStatus.CANCELLED) {
             throw new Error('Game is already finished or cancelled')
         }
 
+        // Stop the room countdown timer
+        stopRoomCountdown(gameId)
+
         // Stop the game engine on this instance if running
         stopGameEngine(gameId)
+
+        // Transition to REFUNDING phase in Redis before DB write
+        await setRoomStatus(gameId, 'REFUNDING').catch(() => {})
 
         // Mark cancelled in Postgres
         await prisma.game.update({
@@ -186,8 +236,8 @@ export class GameService {
             data: { status: GameStatus.CANCELLED, endedAt: new Date() },
         })
 
-        // Clear Redis state
-        await clearGameState(gameId).catch(() => {})
+        // Clear both Redis state namespaces
+        await Promise.allSettled([clearGameState(gameId), clearRoomState(gameId)])
 
         // Refund all players (idempotent)
         const refunds = await RefundService.refundGame(gameId)
@@ -207,9 +257,10 @@ export class GameService {
                 ),
         )
 
-        // Broadcast cancellation via WebSocket
+        // Broadcast cancellation via WebSocket (both spec events + legacy alias)
         const io = getIo()
-        io.to(`game:${gameId}`).emit('game:cancelled', { gameId, reason: 'admin_cancelled' })
+        ;(io.to(`game:${gameId}`) as any).emit('game_cancelled', { gameId, reason })
+        io.to(`game:${gameId}`).emit('game:cancelled', { gameId, reason })
         io.to('lobby').emit('lobby:game-removed', gameId)
 
         // Auto-replenish: if this was a templated game, create a new one

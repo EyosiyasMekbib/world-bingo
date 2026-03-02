@@ -9,9 +9,10 @@
 import prisma from '../lib/prisma'
 import { GameStatus } from '@world-bingo/shared-types'
 import { getIo } from '../lib/socket'
+import { initRoom } from '../lib/room-state'
+import { startRoomCountdown, isCountdownActive } from './room-timer.service'
 
-/** In-memory set of game IDs that have an active countdown scheduled */
-const activeCountdowns = new Set<string>()
+
 
 export class GameSchedulerService {
     /**
@@ -150,31 +151,37 @@ export class GameSchedulerService {
     /**
      * After a player joins, check if minPlayers is reached and fire the 60-second
      * countdown. If a countdown is already running, this is a no-op.
+     *
+     * Uses RoomTimerService for per-second Redis DECR + socket emission.
      */
     static async checkAndStartCountdown(gameId: string): Promise<void> {
         const game = await prisma.game.findUnique({
             where: { id: gameId },
             include: {
                 entries: { distinct: ['userId'], select: { userId: true } },
+                template: { select: { countdownSecs: true } },
             },
         })
 
         if (!game || game.status !== GameStatus.WAITING) return
 
-        // Countdown already scheduled for this game
-        if (activeCountdowns.has(gameId)) return
+        // Countdown already running for this game
+        if (isCountdownActive(gameId)) return
 
         const playerCount = game.entries.length
         if (playerCount < game.minPlayers) return // Not enough players yet
 
-        // Reached minPlayers — schedule a 60-second countdown
-        const COUNTDOWN_SECS = 60
+        // Reached minPlayers — initialise room state then fire the countdown
+        const COUNTDOWN_SECS = (game as any).template?.countdownSecs ?? 60
         const startsAt = new Date(Date.now() + COUNTDOWN_SECS * 1_000)
 
-        // Mark this game as having an active countdown (idempotency guard)
-        activeCountdowns.add(gameId)
+        // Ensure room Redis keys are initialised
+        await initRoom(gameId, { countdownSecs: COUNTDOWN_SECS }).catch(() => {})
 
-        // Broadcast countdown to all players in the game room + lobby
+        // Start per-second RoomTimer (emits timer_update each tick)
+        startRoomCountdown(gameId, COUNTDOWN_SECS)
+
+        // Also broadcast via the legacy countdown event for existing clients
         try {
             const io = getIo()
             const payload = { gameId, countdownSecs: COUNTDOWN_SECS, startsAt: startsAt.toISOString() }
@@ -185,16 +192,7 @@ export class GameSchedulerService {
         }
 
         console.log(
-            `[GameScheduler] Countdown started for game ${gameId} — starts at ${startsAt.toISOString()}`,
+            `[GameScheduler] RoomTimer countdown started for game ${gameId} — ${COUNTDOWN_SECS}s`,
         )
-
-        // Schedule the auto-start after the countdown
-        setTimeout(() => {
-            GameSchedulerService.handleCountdownExpired(gameId).catch((err) => {
-                console.error(`[GameScheduler] handleCountdownExpired failed for ${gameId}:`, err)
-            }).finally(() => {
-                activeCountdowns.delete(gameId)
-            })
-        }, COUNTDOWN_SECS * 1_000)
     }
 }

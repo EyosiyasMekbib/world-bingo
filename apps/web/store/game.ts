@@ -21,6 +21,12 @@ interface GameState {
     loadingGame: boolean
     /** Countdown timers for games that reached minPlayers — gameId → startsAt ISO string */
     countdowns: Record<string, string>
+    /** Live player counts per game — kept in sync by player_count_update socket event */
+    livePlayers: Record<string, number>
+    /** Live pot totals per game — kept in sync by pot_update socket event */
+    livePots: Record<string, number>
+    /** Per-second timer value from timer_update — gameId → secondsLeft */
+    liveTimers: Record<string, number>
 }
 
 export const useGameStore = defineStore('game', {
@@ -36,6 +42,9 @@ export const useGameStore = defineStore('game', {
         loadingGames: false,
         loadingGame: false,
         countdowns: {},
+        livePlayers: {},
+        livePots: {},
+        liveTimers: {},
     }),
 
     getters: {
@@ -52,6 +61,11 @@ export const useGameStore = defineStore('game', {
             try {
                 const games = await $fetch<Game[]>(`${config.public.apiBase}/games`)
                 this.availableGames = games
+                // Seed livePlayers from the currentPlayers field the API now returns
+                for (const g of games) {
+                    const p = (g as any).currentPlayers
+                    if (p !== undefined) this.livePlayers[g.id] = p
+                }
             } catch (e: any) {
                 this.error = e?.message ?? 'Failed to load games'
             } finally {
@@ -127,6 +141,11 @@ export const useGameStore = defineStore('game', {
             if (idx !== -1) {
                 this.availableGames[idx] = game
             }
+            // Sync live player count from game:updated
+            const players = (game as any).currentPlayers ?? (game as any)._count?.entries
+            if (players !== undefined) {
+                this.livePlayers[game.id] = players
+            }
         },
 
         onGameStarted(game: Game) {
@@ -175,10 +194,37 @@ export const useGameStore = defineStore('game', {
         onLobbyGameRemoved(gameId: string) {
             this.availableGames = this.availableGames.filter((g) => g.id !== gameId)
             delete this.countdowns[gameId]
+            delete this.livePlayers[gameId]
+            delete this.livePots[gameId]
+            delete this.liveTimers[gameId]
         },
 
         onGameCountdown(payload: { gameId: string; countdownSecs: number; startsAt: string }) {
             this.countdowns[payload.gameId] = payload.startsAt
+        },
+
+        /** Called by player_count_update socket event */
+        onPlayerCountUpdate(gameId: string, playerCount: number) {
+            this.livePlayers[gameId] = playerCount
+            // Also patch availableGames for lobby display
+            const idx = this.availableGames.findIndex((g) => g.id === gameId)
+            if (idx !== -1) {
+                ;(this.availableGames[idx] as any).currentPlayers = playerCount
+            }
+        },
+
+        /** Called by pot_update socket event */
+        onPotUpdate(gameId: string, pot: number) {
+            this.livePots[gameId] = pot
+        },
+
+        /** Called by timer_update socket event */
+        onTimerUpdate(gameId: string, secondsLeft: number | null) {
+            if (secondsLeft == null || secondsLeft <= 0) {
+                delete this.liveTimers[gameId]
+            } else {
+                this.liveTimers[gameId] = secondsLeft
+            }
         },
 
         resetGame() {

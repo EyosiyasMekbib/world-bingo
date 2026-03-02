@@ -11,10 +11,18 @@ import {
     updateGameState,
     clearGameState,
 } from './game-state'
-import { drawBall, createBallPool } from '@world-bingo/game-logic'
+import {
+    setRoomStatus,
+    getRoomStatus,
+    pushDrawnNumber,
+    getDrawnNumbers,
+    clearRoomState,
+} from './room-state'
+import { drawBall, createBallPool, checkPattern, PatternName } from '@world-bingo/game-logic'
 import { GameStatus } from '@world-bingo/shared-types'
 import { NotificationService } from '../services/notification.service'
 import { NotificationType } from '@world-bingo/shared-types'
+import { PayoutService } from '../services/payout.service'
 
 /**
  * T24 — Robust Game Engine with Redlock
@@ -128,6 +136,9 @@ export async function startGameEngine(gameId: string): Promise<void> {
             }
         }, LOCK_RENEW_MS)
 
+        // ── Transition room state: LOCKING → IN_PROGRESS ─────────────────────
+        await setRoomStatus(gameId, 'IN_PROGRESS')
+
         // ── Main ball-calling loop ────────────────────────────────────────────
         const allBalls = createBallPool() // [1..75]
         let stopped = false
@@ -146,9 +157,17 @@ export async function startGameEngine(gameId: string): Promise<void> {
                 break
             }
 
-            const calledBalls = await getCalledBalls(gameId)
-            const calledSet = new Set(calledBalls)
-            const remaining = allBalls.filter((b) => !calledSet.has(b))
+            // Also check the room-state layer (guards against external state changes)
+            const roomPhase = await getRoomStatus(gameId)
+            if (roomPhase && roomPhase !== 'IN_PROGRESS') {
+                stopped = true
+                break
+            }
+
+            // ── Draw a unique ball ─────────────────────────────────────────────
+            const calledBalls  = await getCalledBalls(gameId)
+            const calledSet    = new Set(calledBalls)
+            const remaining    = allBalls.filter((b) => !calledSet.has(b))
 
             if (remaining.length === 0) {
                 // All 75 balls called — end game with no winner
@@ -158,14 +177,40 @@ export async function startGameEngine(gameId: string): Promise<void> {
             }
 
             const { ball } = drawBall(remaining)
-            await addCalledBall(gameId, ball)
+            const updatedCalledBalls = [...calledBalls, ball]
 
+            // Persist to both Redis keys (game-state compat + room-state spec)
+            await addCalledBall(gameId, ball)
+            await pushDrawnNumber(gameId, ball)
+
+            // ── Broadcast: new_call (spec) + game:ball-called (legacy) ─────────
             const io = getIo()
-            io.to(`game:${gameId}`).emit('game:ball-called', {
-                gameId,
-                ball,
-                calledBalls: [...calledBalls, ball],
-            })
+            const ballPayload = { gameId, ball, calledBalls: updatedCalledBalls }
+            ;(io.to(`game:${gameId}`) as any).emit('new_call', ballPayload)
+            io.to(`game:${gameId}`).emit('game:ball-called', ballPayload)
+
+            // ── Win Check — iterate all active tickets ─────────────────────────
+            const winnerIds = await checkAllTickets(gameId, new Set(updatedCalledBalls))
+
+            if (winnerIds.length > 0) {
+                stopped = true
+                console.log(`[GameEngine] ${gameId}: Winner(s) found: ${winnerIds.join(', ')}`)
+
+                // Transition: IN_PROGRESS → PAYOUT
+                await setRoomStatus(gameId, 'PAYOUT')
+                await updateGameState(gameId, { status: 'PAYOUT' })
+
+                // Persist called balls to Postgres before payout
+                await prisma.game.update({
+                    where: { id: gameId },
+                    data: { calledBalls: updatedCalledBalls },
+                })
+
+                // Execute atomic payout
+                await PayoutService.executePayout(gameId, winnerIds)
+
+                break
+            }
         }
     } finally {
         if (renewTimer) clearInterval(renewTimer)
@@ -194,6 +239,7 @@ async function endGameNoWinner(gameId: string): Promise<void> {
     })
 
     await updateGameState(gameId, { status: GameStatus.COMPLETED })
+    await setRoomStatus(gameId, 'COMPLETED')
 
     const io = getIo()
     io.to(`game:${gameId}`).emit('game:ended', { id: gameId } as any)
@@ -220,7 +266,7 @@ async function endGameNoWinner(gameId: string): Promise<void> {
         // Non-critical
     }
 
-    await clearGameState(gameId)
+    await Promise.allSettled([clearGameState(gameId), clearRoomState(gameId)])
 
     // Auto-replenish: if this was a templated game, create a new one
     try {
@@ -229,6 +275,42 @@ async function endGameNoWinner(gameId: string): Promise<void> {
     } catch {
         // Non-critical
     }
+}
+
+/**
+ * Iterate through every active ticket (GameEntry + Cartela) for this game
+ * and return the list of user IDs whose cartela satisfies the winning pattern.
+ *
+ * This is the server-authoritative win check — the client's claim-bingo is
+ * still validated separately, but the engine auto-detects winners so the game
+ * can resolve even if a client never emits claim-bingo.
+ */
+async function checkAllTickets(gameId: string, calledSet: Set<number>): Promise<string[]> {
+    const game = await prisma.game.findUnique({
+        where: { id: gameId },
+        select: { pattern: true },
+    })
+    if (!game) return []
+
+    const entries = await prisma.gameEntry.findMany({
+        where: { gameId },
+        include: { cartela: { select: { grid: true } } },
+    })
+
+    const winners: string[] = []
+
+    for (const entry of entries) {
+        const grid = entry.cartela.grid as number[][]
+        try {
+            if (checkPattern(game.pattern as PatternName, grid, calledSet)) {
+                winners.push(entry.userId)
+            }
+        } catch {
+            // Malformed cartela — skip
+        }
+    }
+
+    return winners
 }
 
 /**

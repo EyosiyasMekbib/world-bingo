@@ -99,7 +99,15 @@ async function main() {
         console.log(`Seeded ${templates.length} Game Templates`)
     }
 
-    // 4. Seed default feature flags
+    // 4. Seed Admin Wallet (singleton house wallet)
+    console.log('Seeding Admin Wallet...')
+    const adminWalletCount = await prisma.adminWallet.count()
+    if (adminWalletCount === 0) {
+        await prisma.adminWallet.create({ data: { balance: 0 } })
+        console.log('Admin wallet created')
+    }
+
+    // 5. Seed default feature flags
     console.log('Seeding Feature Flags...')
     const defaultFlags = [
         { key: 'feature_referrals', value: 'false' },
@@ -113,6 +121,32 @@ async function main() {
         })
     }
     console.log('Feature flags seeded')
+
+    // 6. Create one WAITING game per active template so the lobby isn't empty
+    console.log('Creating initial games from templates...')
+    const templates = await prisma.gameTemplate.findMany({ where: { active: true } })
+    for (const t of templates) {
+        const existingWaiting = await prisma.game.count({
+            where: { templateId: t.id, status: 'WAITING' },
+        })
+        if (existingWaiting === 0) {
+            await prisma.game.create({
+                data: {
+                    title: t.title,
+                    ticketPrice: t.ticketPrice,
+                    maxPlayers: t.maxPlayers,
+                    minPlayers: t.minPlayers,
+                    houseEdgePct: t.houseEdgePct,
+                    pattern: t.pattern,
+                    status: 'WAITING',
+                    calledBalls: [],
+                    templateId: t.id,
+                },
+            })
+            console.log(`  Created WAITING game for "${t.title}"`)
+        }
+    }
+    console.log('Initial games created')
 }
 
 main()

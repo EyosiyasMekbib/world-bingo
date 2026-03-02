@@ -157,19 +157,22 @@
         </div>
 
         <!-- Countdown ring (shown once minPlayers reached and countdown fires) -->
-        <div v-if="countdownStartsAt" class="countdown-block">
+        <div v-if="countdownStartsAt || (gameStore.liveTimers[gameId] !== undefined && gameStore.liveTimers[gameId] > 0)" class="countdown-block">
           <div class="countdown-ring-wrap">
             <svg class="countdown-ring" viewBox="0 0 120 120">
               <circle cx="60" cy="60" r="52" class="ring-track" />
               <circle cx="60" cy="60" r="52" class="ring-fill" :style="{ strokeDashoffset: ringOffset }" />
             </svg>
             <div class="countdown-inner">
-              <span class="countdown-secs">{{ countdownRemaining }}</span>
+              <span class="countdown-secs">{{ gameStore.liveTimers[gameId] ?? countdownRemaining }}</span>
               <span class="countdown-label">sec</span>
             </div>
           </div>
           <p class="countdown-title">🟢 Minimum players reached!</p>
           <p class="countdown-sub">Game starts when timer hits zero</p>
+          <p v-if="gameStore.livePots[gameId]" class="pot-display">
+            💰 Prize Pot: <strong>{{ gameStore.livePots[gameId].toFixed(2) }} ETB</strong>
+          </p>
           <p class="countdown-warn">
             If players drop below minimum, the game will be cancelled and
             <strong>entry fees refunded</strong>.
@@ -415,7 +418,8 @@ const playerProgressPct = computed(() => {
 // SVG countdown ring: circumference = 2π×52 ≈ 326.73
 const RING_CIRC = 2 * Math.PI * 52
 const ringOffset = computed(() => {
-  const pct = Math.max(0, countdownRemaining.value) / COUNTDOWN_TOTAL
+  const secs = gameStore.liveTimers[gameId] ?? countdownRemaining.value
+  const pct = Math.max(0, secs) / COUNTDOWN_TOTAL
   return RING_CIRC * (1 - pct)
 })
 
@@ -615,15 +619,18 @@ async function init() {
     if (!game) { errorMsg.value = 'Game not found.'; return }
 
     // Set game status from server
-    if (game.status === 'IN_PROGRESS') {
+    const rawStatus = (game.status as string)
+    if (rawStatus === 'IN_PROGRESS') {
       gameStore.gameStatus = 'active'
       gameStore.calledBalls = (game as any).calledBalls ?? []
-    } else if (game.status === 'WAITING') {
-      gameStore.gameStatus = 'waiting'
-    } else if (game.status === 'STARTING') {
+    } else if (rawStatus === 'LOCKING' || rawStatus === 'STARTING') {
       gameStore.gameStatus = 'starting'
-    } else if (game.status === 'COMPLETED' || game.status === 'CANCELLED') {
+    } else if (rawStatus === 'COMPLETED' || rawStatus === 'CANCELLED' || rawStatus === 'REFUNDING') {
       gameStore.gameStatus = 'ended'
+    } else {
+      // WAITING — keep as 'idle' until we know if user has joined;
+      // phase computed will resolve to 'join' or 'waiting' based on myEntries
+      gameStore.gameStatus = 'idle'
     }
 
     // Seed live player count
@@ -672,6 +679,36 @@ onMounted(() => {
     }
   })
 
+  // New spec events from room state machine
+  ;(socket as any).on('timer_update', (payload: { gameId: string; secondsLeft: number | null }) => {
+    if (payload.gameId !== gameId) return
+    gameStore.onTimerUpdate(gameId, payload.secondsLeft)
+    if (payload.secondsLeft && payload.secondsLeft > 0) {
+      // Drive the countdown ring directly from server ticks
+      countdownRemaining.value = payload.secondsLeft
+      if (!countdownStartsAt.value) {
+        // First tick — synthesise a startsAt so the ring has a reference
+        countdownStartsAt.value = new Date(Date.now() + payload.secondsLeft * 1000).toISOString()
+      }
+      playCountdownBeep(payload.secondsLeft)
+    } else {
+      // No active timer — clear local countdown state
+      countdownStartsAt.value = null
+      countdownRemaining.value = 0
+    }
+  })
+
+  ;(socket as any).on('player_count_update', (payload: { gameId: string; playerCount: number }) => {
+    if (payload.gameId !== gameId) return
+    livePlayerCount.value = payload.playerCount
+    gameStore.onPlayerCountUpdate(gameId, payload.playerCount)
+  })
+
+  ;(socket as any).on('pot_update', (payload: { gameId: string; pot: number }) => {
+    if (payload.gameId !== gameId) return
+    gameStore.onPotUpdate(gameId, payload.pot)
+  })
+
   socket.on('game:countdown', (payload: any) => {
     gameStore.onGameCountdown(payload)
     if (payload.gameId === gameId) startCountdown(payload.startsAt)
@@ -689,8 +726,28 @@ onMounted(() => {
     if (payload.gameId === gameId) playBallSound(payload.ball)
   })
 
+  // new_call is the spec alias — handle alongside legacy game:ball-called
+  ;(socket as any).on('new_call', (payload: any) => {
+    gameStore.onBallCalled(payload)
+    if (payload.gameId === gameId) playBallSound(payload.ball)
+  })
+
   socket.on('game:winner', (payload: any) => {
     gameStore.onGameWinner(payload)
+    playWinSound()
+    showWinnerOverlay.value = true
+    startRedirectCountdown()
+  })
+
+  // game_over = spec event (includes full breakdown), treat same as game:winner
+  ;(socket as any).on('game_over', (payload: any) => {
+    if (payload.gameId !== gameId) return
+    const myWinner = payload.winners?.find((w: any) => w.userId === auth.user?.id)
+    gameStore.onGameWinner({
+      gameId,
+      winner: myWinner ?? payload.winners?.[0] ?? { username: 'Unknown' },
+      prizeAmount: myWinner?.netWin ?? payload.winners?.[0]?.netWin ?? 0,
+    })
     playWinSound()
     showWinnerOverlay.value = true
     startRedirectCountdown()
@@ -702,6 +759,16 @@ onMounted(() => {
   })
 
   socket.on('game:cancelled', (payload: any) => {
+    gameStore.onGameCancelled(payload)
+    if (countdownTickTimer) clearInterval(countdownTickTimer)
+    countdownStartsAt.value = null
+    showCancelledOverlay.value = true
+    startRedirectCountdown()
+  })
+
+  // game_cancelled = spec alias
+  ;(socket as any).on('game_cancelled', (payload: any) => {
+    if (payload.gameId !== gameId) return
     gameStore.onGameCancelled(payload)
     if (countdownTickTimer) clearInterval(countdownTickTimer)
     countdownStartsAt.value = null
@@ -1030,6 +1097,18 @@ onUnmounted(() => {
 }
 
 .countdown-warn strong { color: #fbbf24; }
+
+.pot-display {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-align: center;
+  margin: 0.25rem 0;
+}
+
+.pot-display strong {
+  color: #4ade80;
+  font-size: 1.05rem;
+}
 
 /* Still waiting */
 .still-waiting {

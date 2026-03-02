@@ -148,7 +148,10 @@ enum UserRole {
 enum GameStatus {
   WAITING
   STARTING
+  LOCKING
   IN_PROGRESS
+  PAYOUT
+  REFUNDING
   COMPLETED
   CANCELLED
 }
@@ -327,4 +330,17 @@ model SiteSetting {
   updatedAt DateTime @updatedAt
 
   @@map("site_settings")
+}
+
+// ─── Admin House Wallet ──────────────────────────────────────────────────────
+// A singleton wallet that accumulates house-edge fees from every game payout.
+// There is exactly ONE row (seeded at startup). All fee credits are atomic
+// Postgres transactions (SELECT FOR UPDATE + UPDATE).
+model AdminWallet {
+  id        String   @id @default(uuid())
+  balance   Decimal  @default(0) @db.Decimal(14, 2)
+  currency  String   @default("ETB")
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_wallet")
 }

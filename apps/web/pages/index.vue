@@ -47,7 +47,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="player-icon">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span>{{ (game as any).currentPlayers ?? 0 }}</span>
+            <span>{{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}</span>
           </div>
           <NuxtLink :to="`/quick/${game.id}`" class="join-btn">
             Join Game
@@ -90,6 +90,11 @@ onMounted(async () => {
 
   socket.on('game:updated', (game: Game) => {
     gameStore.onGameUpdated(game)
+  })
+
+  // Live player count updates from the new room state machine
+  ;(socket as any).on('player_count_update', (payload: { gameId: string; playerCount: number }) => {
+    gameStore.onPlayerCountUpdate(payload.gameId, payload.playerCount)
   })
 
   // Listen for countdown events (game reached minPlayers, 60s countdown started)

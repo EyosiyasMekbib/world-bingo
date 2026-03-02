@@ -74,11 +74,18 @@ export class GameController {
                     in: [GameStatus.WAITING, GameStatus.STARTING, GameStatus.IN_PROGRESS],
                 },
             },
+            include: {
+                _count: { select: { entries: true } },
+            },
             orderBy: {
                 createdAt: 'desc',
             },
         })
-        return games
+        // Attach a distinct player count for lobby UI
+        return games.map((g: any) => ({
+            ...g,
+            currentPlayers: g._count?.entries ?? 0,
+        }))
     }
 
     static async get(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
