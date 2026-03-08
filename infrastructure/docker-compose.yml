@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-      - "8001:8001"   # RedisInsight UI
+      - "8001:8001" # RedisInsight UI
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,7 +34,6 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
-      network: host
     image: world-bingo-api
     restart: unless-stopped
     ports:
@@ -61,12 +60,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - default
+      - dokploy-network
 
   web:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
-      network: host
     image: world-bingo-web
     restart: unless-stopped
     ports:
@@ -78,12 +79,14 @@ services:
       NUXT_API_BASE_SERVER: http://api:8080
     depends_on:
       - api
+    networks:
+      - default
+      - dokploy-network
 
   admin:
     build:
       context: ..
       dockerfile: apps/admin/Dockerfile
-      network: host
     image: world-bingo-admin
     restart: unless-stopped
     ports:
@@ -94,6 +97,9 @@ services:
       NUXT_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
     depends_on:
       - api
+    networks:
+      - default
+      - dokploy-network
 
   # ── Observability (T52) ────────────────────────────────────────────────
   prometheus:
@@ -105,11 +111,11 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
     depends_on:
       - api
 
@@ -120,7 +126,7 @@ services:
       - "3003:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
@@ -133,7 +139,7 @@ services:
   k6:
     image: grafana/k6:latest
     profiles:
-      - loadtest            # only starts when: docker-compose --profile loadtest up k6
+      - loadtest # only starts when: docker-compose --profile loadtest up k6
     volumes:
       - ./k6:/scripts:ro
     environment:
@@ -153,7 +159,7 @@ services:
       - "8086:8086"
     environment:
       INFLUXDB_DB: k6
-      INFLUXDB_HTTP_AUTH_ENABLED: 'false'
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
     volumes:
       - influxdb_data:/var/lib/influxdb
 
@@ -164,3 +170,7 @@ volumes:
   prometheus_data:
   grafana_data:
   influxdb_data:
+
+networks:
+  dokploy-network:
+    external: true
