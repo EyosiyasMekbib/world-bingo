@@ -48,8 +48,8 @@ export function startRoomCountdown(roomId: string, initialSecs = 60): void {
             const secondsLeft = await decrementTimer(roomId)
             const io = getIo()
 
-            // Broadcast per-second tick
-            ;(io.to(`game:${roomId}`) as any).emit('timer_update', { gameId: roomId, secondsLeft })
+                // Broadcast per-second tick
+                ; (io.to(`game:${roomId}`) as any).emit('timer_update', { gameId: roomId, secondsLeft })
 
             if (secondsLeft <= 0) {
                 // Timer expired — clear the interval before async work
@@ -97,9 +97,19 @@ async function handleTimerExpired(roomId: string): Promise<void> {
     const io = getIo()
 
     try {
-        const playerCount = await getRoomPlayerCount(roomId)
+        let playerCount = await getRoomPlayerCount(roomId)
 
-        if (playerCount < 2) {
+        // If Redis key expired, fall back to DB for an accurate count
+        if (playerCount === 0) {
+            const dbEntries = await prisma.gameEntry.findMany({
+                where: { gameId: roomId },
+                distinct: ['userId'],
+                select: { userId: true },
+            })
+            playerCount = dbEntries.length
+        }
+
+        if (playerCount < 1) {
             // ── Branch A: Not enough players ────────────────────────────────
             console.log(`[RoomTimer] Room ${roomId}: only ${playerCount} player(s) — REFUNDING`)
             await setRoomStatus(roomId, 'REFUNDING')
@@ -108,10 +118,10 @@ async function handleTimerExpired(roomId: string): Promise<void> {
             const { GameService } = await import('../services/game.service.js')
             await GameService.cancelGame(roomId)
 
-            ;(io.to(`game:${roomId}`) as any).emit('game_cancelled', {
-                gameId: roomId,
-                reason: 'Not enough players to start the game.',
-            })
+                ; (io.to(`game:${roomId}`) as any).emit('game_cancelled', {
+                    gameId: roomId,
+                    reason: 'Not enough players to start the game.',
+                })
         } else {
             // ── Branch B: Enough players — lock and start ────────────────────
             console.log(`[RoomTimer] Room ${roomId}: ${playerCount} player(s) — LOCKING → IN_PROGRESS`)
@@ -132,7 +142,7 @@ async function handleTimerExpired(roomId: string): Promise<void> {
         }
     } catch (err) {
         console.error(`[RoomTimer] handleTimerExpired error for room ${roomId}:`, err)
-        await clearRoomState(roomId).catch(() => {})
+        await clearRoomState(roomId).catch(() => { })
     }
 }
 

@@ -41,12 +41,12 @@ export class GameService {
         }
 
         const txResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const game = await tx.game.findUnique({ 
+            const game = await tx.game.findUnique({
                 where: { id: gameId },
                 include: { _count: { select: { entries: true } } }
             })
             if (!game) throw new Error('Game not found')
-            
+
             if (game.status !== GameStatus.WAITING) {
                 throw new Error('Game is already in progress or finished')
             }
@@ -130,7 +130,7 @@ export class GameService {
             : null
         const countdownSecs = template?.countdownSecs ?? 60
 
-        await initRoom(gameId, { countdownSecs }).catch(() => {})
+        await initRoom(gameId, { countdownSecs }).catch(() => { })
         const [playerCount] = await Promise.all([
             addPlayers(gameId, userId),
             incrementPot(gameId, Number(totalCost)),
@@ -139,7 +139,7 @@ export class GameService {
         // Notify room of updated counts via socket (also done in gateway, belt+suspenders)
         const io = getIo()
         io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: playerCount } as any)
-        ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
+            ; (io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
 
         // After transaction commits: check if we should start the countdown
         GameSchedulerService.checkAndStartCountdown(gameId).catch((err) => {
@@ -155,14 +155,14 @@ export class GameService {
             include: { entries: { distinct: ['userId'], select: { userId: true } } },
         })
         if (!game) throw new Error('Game not found')
-        if (game.status !== GameStatus.WAITING && game.status !== GameStatus.STARTING) {
+        if (game.status !== GameStatus.WAITING && game.status !== GameStatus.STARTING && (game.status as any) !== 'LOCKING') {
             throw new Error('Game is not in a startable state')
         }
 
         // Check minimum player requirement
         const playerCount = game.entries.length
-        if (playerCount < game.minPlayers) {
-            throw new Error(`Not enough players to start. Need at least ${game.minPlayers}, have ${playerCount}.`)
+        if (playerCount < 1) {
+            throw new Error(`Not enough players to start. Need at least 1, have ${playerCount}.`)
         }
 
         const updatedGame = await prisma.game.update({
@@ -186,7 +186,7 @@ export class GameService {
                     'Game Starting!',
                     `Your bingo game is starting in 5 seconds. Get ready!`,
                     { gameId },
-                ).catch(() => {}),
+                ).catch(() => { }),
             ),
         )
 
@@ -228,7 +228,7 @@ export class GameService {
         stopGameEngine(gameId)
 
         // Transition to REFUNDING phase in Redis before DB write
-        await setRoomStatus(gameId, 'REFUNDING').catch(() => {})
+        await setRoomStatus(gameId, 'REFUNDING').catch(() => { })
 
         // Mark cancelled in Postgres
         await prisma.game.update({
@@ -253,13 +253,13 @@ export class GameService {
                         'Game Cancelled',
                         `Your game was cancelled. ${r.amount} ETB has been refunded to your wallet.`,
                         { gameId, refundAmount: r.amount },
-                    ).catch(() => {}),
+                    ).catch(() => { }),
                 ),
         )
 
         // Broadcast cancellation via WebSocket (both spec events + legacy alias)
         const io = getIo()
-        ;(io.to(`game:${gameId}`) as any).emit('game_cancelled', { gameId, reason })
+            ; (io.to(`game:${gameId}`) as any).emit('game_cancelled', { gameId, reason })
         io.to(`game:${gameId}`).emit('game:cancelled', { gameId, reason })
         io.to('lobby').emit('lobby:game-removed', gameId)
 
@@ -280,9 +280,9 @@ export class GameService {
         if (!game || game.status !== GameStatus.WAITING) return
 
         const playerCount = game.entries.length
-        if (playerCount < game.minPlayers) {
+        if (playerCount < 1) {
             console.log(
-                `[GameService] Auto-cancelling game ${gameId}: only ${playerCount}/${game.minPlayers} players.`,
+                `[GameService] Auto-cancelling game ${gameId}: only ${playerCount} players.`,
             )
             await GameService.cancelGame(gameId)
         }
@@ -309,9 +309,9 @@ export class GameService {
             // @ts-ignore - JSON type issue
             const grid = entry.cartela.grid as number[][]
             const calledSet = new Set<number>(calledBalls)
-            
+
             const hasWon = checkPattern(game.pattern as PatternName, grid, calledSet)
-            
+
             if (!hasWon) {
                 throw new Error('False Bingo!')
             }
@@ -361,7 +361,7 @@ export class GameService {
                     balanceAfter: balanceAfter,
                 }
             })
-            
+
             const user = await tx.user.findUnique({ where: { id: userId } })
 
             const io = getIo()
@@ -372,7 +372,7 @@ export class GameService {
             })
             io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
             io.to('lobby').emit('lobby:game-removed', gameId)
-            
+
             return endedGame
         }).then(async (endedGame: any) => {
             // Post-transaction: notify winner and clear Redis (non-critical)
@@ -387,7 +387,7 @@ export class GameService {
                 '🎉 You Won!',
                 `Congratulations! You won ${prize.toFixed(2)} ETB!`,
                 { gameId },
-            ).catch(() => {})
+            ).catch(() => { })
 
             // T60: If this game is part of a tournament, advance the tournament
             const tournamentGame = await prisma.tournamentGame.findUnique({ where: { gameId } }).catch(() => null)
@@ -401,7 +401,7 @@ export class GameService {
                 })
             }
 
-            await clearGameState(gameId).catch(() => {})
+            await clearGameState(gameId).catch(() => { })
 
             // Auto-replenish: if this was a templated game, create a new one
             GameSchedulerService.onGameEnded(gameId).catch((err) => {

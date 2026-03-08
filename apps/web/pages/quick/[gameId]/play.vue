@@ -56,7 +56,7 @@
             <span class="pattern-badge">{{ (gameStore.currentGame as any).pattern?.replace(/_/g, ' ') }}</span>
             <span class="stake-badge">{{ (gameStore.currentGame as any).ticketPrice }} ETB / card</span>
             <span class="players-badge">
-              👥 {{ livePlayerCount }} / {{ (gameStore.currentGame as any).minPlayers ?? 2 }} min
+              👥 {{ livePlayerCount }}
             </span>
             <span v-if="gameStore.gameStatus === 'active'" class="ball-count-badge">
               🎱 {{ gameStore.calledBalls.length }}/75
@@ -146,9 +146,7 @@
             <span>Players Joined</span>
             <span class="pp-count">
               <strong style="color:#4ade80">{{ livePlayerCount }}</strong>
-              /
-              <strong style="color:#fbbf24">{{ (gameStore.currentGame as any).minPlayers ?? 2 }}</strong>
-              min required
+              players
             </span>
           </div>
           <div class="players-progress-bar">
@@ -156,7 +154,7 @@
           </div>
         </div>
 
-        <!-- Countdown ring (shown once minPlayers reached and countdown fires) -->
+        <!-- Countdown ring (shows while waiting for the timer to expire) -->
         <div v-if="countdownStartsAt || (gameStore.liveTimers[gameId] !== undefined && gameStore.liveTimers[gameId] > 0)" class="countdown-block">
           <div class="countdown-ring-wrap">
             <svg class="countdown-ring" viewBox="0 0 120 120">
@@ -168,27 +166,22 @@
               <span class="countdown-label">sec</span>
             </div>
           </div>
-          <p class="countdown-title">🟢 Minimum players reached!</p>
+          <p class="countdown-title">🟢 Get ready!</p>
           <p class="countdown-sub">Game starts when timer hits zero</p>
           <p v-if="gameStore.livePots[gameId]" class="pot-display">
             💰 Prize Pot: <strong>{{ gameStore.livePots[gameId].toFixed(2) }} ETB</strong>
           </p>
           <p class="countdown-warn">
-            If players drop below minimum, the game will be cancelled and
-            <strong>entry fees refunded</strong>.
+            The game will begin instantly. Good luck!
           </p>
         </div>
 
-        <!-- Still waiting for min players -->
+        <!-- Still waiting (edge case if connection is slow) -->
         <div v-else class="still-waiting">
           <div class="waiting-spinner" />
-          <h3>Waiting for players…</h3>
+          <h3>Waiting...</h3>
           <p class="waiting-sub">
-            Once <strong style="color:#fbbf24">{{ (gameStore.currentGame as any).minPlayers ?? 2 }}</strong>
-            players join, a 60-second countdown will begin.
-          </p>
-          <p class="waiting-refund-note">
-            ℹ️ If not enough players join, the game is cancelled and your fee is refunded.
+            The game will start soon.
           </p>
         </div>
 
@@ -223,13 +216,11 @@
       <!-- PHASE 3: ACTIVE — live game, ball board, mark & claim bingo  -->
       <!-- ══════════════════════════════════════════════════════════════ -->
       <template v-else-if="phase === 'active'">
-
-        <!-- Live game section: hero ball + 75-board + recent -->
-        <div class="game-live-section">
-
+        <!-- Top strip: hero ball + recent calls -->
+        <div class="live-top-strip">
           <!-- Hero ball -->
-          <div class="hero-col">
-            <div class="hero-label">Current Ball</div>
+          <div class="hero-ball-wrap">
+            <div class="hb-label">Called</div>
             <Transition name="ball-bounce" mode="out-in">
               <div
                 v-if="gameStore.lastCalledBall !== null"
@@ -237,54 +228,57 @@
                 class="hero-ball"
                 :class="ballColumnClass(gameStore.lastCalledBall)"
               >
-                <span class="hero-ball-letter">{{ ballLetter(gameStore.lastCalledBall) }}</span>
-                <span class="hero-ball-number">{{ gameStore.lastCalledBall }}</span>
+                <span class="hb-letter">{{ ballLetter(gameStore.lastCalledBall) }}</span>
+                <span class="hb-num">{{ gameStore.lastCalledBall }}</span>
               </div>
               <div v-else class="hero-ball placeholder">
-                <span class="hero-ball-letter">?</span>
-                <span class="hero-ball-number">—</span>
+                <span class="hb-letter">—</span>
               </div>
             </Transition>
           </div>
 
-          <!-- 75-ball board -->
-          <div class="board-col">
-            <div class="board-header">
-              <span v-for="col in COLUMNS" :key="col" class="board-col-label" :class="`bcol-${col.toLowerCase()}`">{{ col }}</span>
-            </div>
-            <div class="board-rows">
-              <div v-for="row in 15" :key="row" class="board-row">
-                <div
-                  v-for="(col, ci) in COLUMNS" :key="ci"
-                  class="board-num"
-                  :class="{
-                    called: gameStore.calledBalls.includes(boardNumber(ci, row)),
-                    'last-called': gameStore.lastCalledBall === boardNumber(ci, row),
-                    [`bcol-${col.toLowerCase()}`]: true,
-                  }"
-                >{{ boardNumber(ci, row) }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Recent calls -->
-          <div class="recent-col">
-            <div class="recent-label">Recent</div>
-            <TransitionGroup name="ball-list" tag="div" class="recent-balls">
+          <!-- Recent balls strip -->
+          <div class="recent-strip">
+            <div class="rs-label">Recent</div>
+            <TransitionGroup name="ball-list" tag="div" class="rs-balls">
               <div
-                v-for="ball in [...gameStore.calledBalls].reverse().slice(0, 8)"
+                v-for="ball in [...gameStore.calledBalls].reverse().slice(0, 12)"
                 :key="ball"
-                class="recent-ball"
+                class="rs-ball"
                 :class="ballColumnClass(ball)"
               >
-                <span class="rb-letter">{{ ballLetter(ball) }}</span>
-                <span class="rb-num">{{ ball }}</span>
+                <span class="rs-letter">{{ ballLetter(ball) }}</span>
+                <span class="rs-num">{{ ball }}</span>
               </div>
             </TransitionGroup>
           </div>
+
+          <!-- Ball counter -->
+          <div class="ball-counter">
+            <div class="bc-num">{{ gameStore.calledBalls.length }}</div>
+            <div class="bc-label">/ 75 balls</div>
+          </div>
         </div>
 
-        <!-- Player's bingo cards -->
+        <!-- 75-ball master board -->
+        <div class="master-board">
+          <div class="mb-cols">
+            <div v-for="(col, ci) in COLUMNS" :key="col" class="mb-col" :class="`mbc-${col.toLowerCase()}`">
+              <div class="mb-col-header">{{ col }}</div>
+              <div
+                v-for="n in 15"
+                :key="n"
+                class="mb-cell"
+                :class="{
+                  called: gameStore.calledBalls.includes(ci * 15 + n),
+                  'last-called': gameStore.lastCalledBall === ci * 15 + n,
+                }"
+              >{{ ci * 15 + n }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player cartelas -->
         <div v-if="gameStore.myEntries.length" class="cartelas-section">
           <div class="cartelas-grid">
             <div
@@ -294,40 +288,45 @@
               :class="{ 'has-bingo': entry.cartela && canClaimBingo(entry.cartela) }"
             >
               <template v-if="entry.cartela">
-                <div class="card-header">
+                <div class="card-top">
                   <span class="card-serial">Card #{{ shortSerial(entry.cartela.serial) }}</span>
                   <span v-if="canClaimBingo(entry.cartela)" class="bingo-indicator pulse">BINGO!</span>
                 </div>
-                <div class="bingo-grid">
-                  <div class="grid-header">
-                    <span v-for="col in COLUMNS" :key="col" class="col-label" :class="`gcol-${col.toLowerCase()}`">{{ col }}</span>
+
+                <div class="bingo-card-grid">
+                  <div class="bcg-header">
+                    <span v-for="col in COLUMNS" :key="col" class="bcg-hcell" :class="`gcol-${col.toLowerCase()}`">{{ col }}</span>
                   </div>
-                  <div v-for="(row, r) in getGrid(entry.cartela.grid)" :key="r" class="grid-row">
+                  <div v-for="(row, r) in getGrid(entry.cartela.grid)" :key="r" class="bcg-row">
                     <div
-                      v-for="(num, c) in row" :key="`${r}-${c}`"
-                      class="grid-cell"
+                      v-for="(num, c) in row"
+                      :key="`${r}-${c}`"
+                      class="bcg-cell"
                       :class="{
-                        marked: isCellMarked(num, r, c),
+                        'auto-marked': isCellMarked(num, r, c),
                         'free-space': r === 2 && c === 2,
                         'just-called': num === gameStore.lastCalledBall && !(r === 2 && c === 2),
+                        'manually-ticked': isManuallyTicked(entry.id, num, r, c),
                       }"
+                      @click="!(r === 2 && c === 2) && toggleTick(entry.id, num)"
                     >
                       <span v-if="r === 2 && c === 2" class="free-star">★</span>
                       <span v-else>{{ num }}</span>
+                      <span v-if="isManuallyTicked(entry.id, num, r, c) && !isCellMarked(num, r, c)" class="tick-mark">✓</span>
                     </div>
                   </div>
                 </div>
-                <Transition name="bingo-pop">
-                  <button
-                    v-if="canClaimBingo(entry.cartela)"
-                    class="bingo-button pulse"
-                    :disabled="claimingBingo"
-                    @click="handleClaimBingo(entry.cartela.id)"
-                  >
-                    <span v-if="claimingBingo">Checking…</span>
-                    <span v-else>🎉 CLAIM BINGO!</span>
-                  </button>
-                </Transition>
+
+                <!-- BINGO button — always shown, enabled when pattern complete -->
+                <button
+                  class="bingo-button"
+                  :class="{ active: canClaimBingo(entry.cartela), pulsing: canClaimBingo(entry.cartela) }"
+                  :disabled="claimingBingo || !canClaimBingo(entry.cartela)"
+                  @click="handleClaimBingo(entry.cartela.id)"
+                >
+                  <span v-if="claimingBingo && canClaimBingo(entry.cartela)">Checking…</span>
+                  <span v-else>🎉 BINGO!</span>
+                </button>
               </template>
             </div>
           </div>
@@ -361,18 +360,18 @@ const showCancelledOverlay = ref(false)
 const redirectCountdown = ref(10)
 const audioEnabled = ref(true)
 
-// Join phase
 const selectedSerials = ref<string[]>([])
 const joining = ref(false)
 const joinError = ref('')
 
-// 60s pre-start countdown
 const countdownStartsAt = ref<string | null>(null)
 const countdownRemaining = ref(0)
 const COUNTDOWN_TOTAL = 60
 
-// Live player count (updated via socket)
 const livePlayerCount = ref(0)
+
+// Manual ticks: entryId -> Set of numbers the player manually ticked
+const manualTicks = ref<Record<string, Set<number>>>({})
 
 let countdownTickTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
@@ -411,8 +410,7 @@ const displayStatus = computed(() => {
 })
 
 const playerProgressPct = computed(() => {
-  const min = (gameStore.currentGame as any)?.minPlayers ?? 2
-  return Math.min(100, (livePlayerCount.value / min) * 100)
+  return 100 // Progress bar is now just fully green
 })
 
 // SVG countdown ring: circumference = 2π×52 ≈ 326.73
@@ -473,6 +471,20 @@ function toggleCartela(serial: string) {
   const idx = selectedSerials.value.indexOf(serial)
   if (idx === -1) selectedSerials.value.push(serial)
   else selectedSerials.value.splice(idx, 1)
+}
+
+function isManuallyTicked(entryId: string, num: number, r: number, c: number): boolean {
+  if (r === 2 && c === 2) return false
+  return manualTicks.value[entryId]?.has(num) ?? false
+}
+
+function toggleTick(entryId: string, num: number) {
+  if (!manualTicks.value[entryId]) {
+    manualTicks.value[entryId] = new Set()
+  }
+  const ticks = manualTicks.value[entryId]
+  if (ticks.has(num)) ticks.delete(num)
+  else ticks.add(num)
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────
@@ -1263,171 +1275,155 @@ onUnmounted(() => {
   text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.75rem;
 }
 
-/* ── Live section ────────────────────────────────────────────────────────── */
-.game-live-section {
-  display: grid;
-  grid-template-columns: 110px 1fr 80px;
-  gap: 1rem; margin-bottom: 1.5rem; align-items: start;
+/* ── Live game (Phase 3) ─────────────────────────────────────────────────── */
+.live-top-strip {
+  display: flex;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+  align-items: center;
+  gap: 1.5rem;
 }
 
-/* Hero ball */
-.hero-col { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
-.hero-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+.hero-ball-wrap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 70px;
+}
+.hb-label { font-size: 0.65rem; text-transform: uppercase; color: #888; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
 .hero-ball {
-  width: 86px; height: 86px; border-radius: 50%;
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.2);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.25), transparent 60%), var(--ball-bg, #c9a96e);
-  box-shadow: 0 6px 24px rgba(0,0,0,0.4), inset 0 -4px 10px rgba(0,0,0,0.2);
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3) 0%, transparent 60%), var(--ball-bg, #333);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: 900; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
-.hero-ball.placeholder { --ball-bg: rgba(255,255,255,0.07); box-shadow: none; }
-.hero-ball-letter { font-size: 0.8rem; font-weight: 700; color: rgba(0,0,0,0.55); line-height: 1; }
-.hero-ball-number { font-size: 2.1rem; font-weight: 900; color: #000; line-height: 1; }
-.hero-ball.placeholder .hero-ball-letter,
-.hero-ball.placeholder .hero-ball-number { color: #555; }
+.hero-ball.placeholder { --ball-bg: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); }
+.hb-letter { font-size: 0.65rem; opacity: 0.8; }
+.hb-num { font-size: 1.25rem; }
+.placeholder .hb-letter { font-size: 1.25rem; opacity: 0.3; }
 
-/* Ball colours */
-.col-b { --ball-bg: #3b82f6; }
-.col-b .hero-ball-number, .col-b .hero-ball-letter { color: #fff; }
-.col-i { --ball-bg: #ef4444; }
-.col-i .hero-ball-number, .col-i .hero-ball-letter { color: #fff; }
-.col-n { --ball-bg: #f59e0b; }
-.col-g { --ball-bg: #22c55e; }
-.col-g .hero-ball-number, .col-g .hero-ball-letter { color: #fff; }
-.col-o { --ball-bg: #a855f7; }
-.col-o .hero-ball-number, .col-o .hero-ball-letter { color: #fff; }
-
-/* ── 75-ball Board ───────────────────────────────────────────────────────── */
-.board-col { width: 100%; }
-.board-header {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin-bottom: 2px;
-}
-.board-col-label {
-  text-align: center; font-weight: 900; font-size: 0.82rem; padding: 0.22rem 0; border-radius: 4px;
-}
-.bcol-b { color: #93c5fd; background: rgba(59,130,246,0.15); }
-.bcol-i { color: #fca5a5; background: rgba(239,68,68,0.15); }
-.bcol-n { color: #fde68a; background: rgba(245,158,11,0.15); }
-.bcol-g { color: #86efac; background: rgba(34,197,94,0.15); }
-.bcol-o { color: #d8b4fe; background: rgba(168,85,247,0.15); }
-.board-rows { display: flex; flex-direction: column; gap: 2px; }
-.board-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
-.board-num {
-  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-  font-size: 0.7rem; font-weight: 600; border-radius: 4px;
-  background: rgba(255,255,255,0.04); color: #444;
-  transition: all 0.2s ease; border: 1px solid transparent;
-}
-.board-num.called { opacity: 0.55; color: #fff; }
-.board-num.called.bcol-b { background: rgba(59,130,246,0.38); border-color: rgba(59,130,246,0.3); }
-.board-num.called.bcol-i { background: rgba(239,68,68,0.38); border-color: rgba(239,68,68,0.3); }
-.board-num.called.bcol-n { background: rgba(245,158,11,0.38); border-color: rgba(245,158,11,0.3); color: #111; }
-.board-num.called.bcol-g { background: rgba(34,197,94,0.38); border-color: rgba(34,197,94,0.3); }
-.board-num.called.bcol-o { background: rgba(168,85,247,0.38); border-color: rgba(168,85,247,0.3); }
-.board-num.last-called {
-  opacity: 1 !important; transform: scale(1.18); font-weight: 900;
-  box-shadow: 0 0 8px rgba(255,255,255,0.3); z-index: 2;
-  animation: board-pop 0.5s ease;
-}
-.board-num.last-called.bcol-b { background: #3b82f6; color: #fff; border-color: #60a5fa; }
-.board-num.last-called.bcol-i { background: #ef4444; color: #fff; border-color: #f87171; }
-.board-num.last-called.bcol-n { background: #f59e0b; color: #000; border-color: #fbbf24; }
-.board-num.last-called.bcol-g { background: #22c55e; color: #fff; border-color: #4ade80; }
-.board-num.last-called.bcol-o { background: #a855f7; color: #fff; border-color: #c084fc; }
-@keyframes board-pop {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.28); }
-  100% { transform: scale(1.18); }
-}
-
-/* ── Recent balls ────────────────────────────────────────────────────────── */
-.recent-col { display: flex; flex-direction: column; gap: 0.35rem; }
-.recent-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555; text-align: center; }
-.recent-balls { display: flex; flex-direction: column; gap: 0.3rem; align-items: center; }
-.recent-ball {
-  width: 42px; height: 42px; border-radius: 50%;
+.recent-strip { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.rs-label { font-size: 0.65rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+.rs-balls { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.3rem; scrollbar-width: none; align-items: center; }
+.rs-balls::-webkit-scrollbar { display: none; }
+.rs-ball {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--ball-bg, rgba(201,169,110,0.3));
-  border: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
+  background: var(--ball-bg, #444); border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: inset 0 2px 5px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.2);
+  line-height: 1;
 }
-.rb-letter { font-size: 0.52rem; font-weight: 700; color: rgba(255,255,255,0.75); line-height: 1; }
-.rb-num { font-size: 0.88rem; font-weight: 900; color: #fff; line-height: 1; }
-.recent-ball.col-n .rb-num, .recent-ball.col-n .rb-letter { color: #000; }
+.rs-letter { font-size: 0.5rem; font-weight: 800; opacity: 0.7; }
+.rs-num { font-size: 0.9rem; font-weight: 900; }
 
-/* ── Cartelas ────────────────────────────────────────────────────────────── */
-.cartelas-section { margin-top: 0.5rem; }
-.cartelas-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 1rem; justify-items: center;
+.col-b { --ball-bg: #3b82f6; color: white; }
+.col-i { --ball-bg: #ef4444; color: white; }
+.col-n { --ball-bg: #f59e0b; color: #111; }
+.col-g { --ball-bg: #22c55e; color: white; }
+.col-o { --ball-bg: #a855f7; color: white; }
+
+.ball-counter { display: flex; flex-direction: column; align-items: center; min-width: 60px; }
+.bc-num { font-size: 1.2rem; font-weight: 900; color: var(--color-primary, #c9a96e); }
+.bc-label { font-size: 0.65rem; color: #888; text-transform: uppercase; white-space: nowrap; }
+
+/* ── 75-Ball Master Board (Horizontal) ───────────────────────────────────── */
+.master-board {
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 0.8rem; margin-bottom: 1.5rem; overflow-x: auto;
 }
+.mb-cols { display: flex; flex-direction: column; gap: 4px; min-width: max-content; }
+.mb-col { display: flex; gap: 4px; align-items: center; }
+.mb-col-header {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  font-weight: 900; border-radius: 4px; font-size: 0.8rem; flex-shrink: 0;
+  color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.5); box-shadow: inset 0 1px 3px rgba(255,255,255,0.2);
+}
+.mb-cell {
+  width: 24px; height: 24px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;
+  background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.3); border: 1px solid transparent;
+  transition: all 0.2s;
+}
+.mbc-b .mb-col-header { background: #3b82f6; }
+.mbc-i .mb-col-header { background: #ef4444; }
+.mbc-n .mb-col-header { background: #f59e0b; color: #111; text-shadow: none; }
+.mbc-g .mb-col-header { background: #22c55e; }
+.mbc-o .mb-col-header { background: #a855f7; }
+
+.mb-cell.called { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2); }
+.mbc-b .mb-cell.called { background: rgba(59,130,246,0.3); border-color: rgba(59,130,246,0.5); }
+.mbc-i .mb-cell.called { background: rgba(239,68,68,0.3); border-color: rgba(239,68,68,0.5); }
+.mbc-n .mb-cell.called { background: rgba(245,158,11,0.3); border-color: rgba(245,158,11,0.5); color: #fcd34d; }
+.mbc-g .mb-cell.called { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
+.mbc-o .mb-cell.called { background: rgba(168,85,247,0.3); border-color: rgba(168,85,247,0.5); }
+
+.mb-cell.last-called {
+  transform: scale(1.15); border-width: 2px; border-color: #fff !important; font-weight: 900; z-index: 2;
+  box-shadow: 0 0 10px rgba(255,255,255,0.5); background: var(--color-primary, #c9a96e) !important; color: #000 !important;
+}
+
+/* ── Cartelas (Tickets) & Grids ──────────────────────────────────────────── */
+.cartelas-section { display: flex; flex-direction: column; width: 100%; }
+.cartelas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; justify-items: center; }
 .cartela-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px; padding: 1rem;
-  width: 100%; max-width: 280px; box-sizing: border-box;
-  transition: border-color 0.2s;
+  width: 100%; max-width: 320px; background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 1.25rem;
+  box-sizing: border-box; display: flex; flex-direction: column; gap: 0.8rem;
+  transition: all 0.25s ease; position: relative; overflow: hidden;
 }
-.cartela-card.has-bingo {
-  border-color: rgba(239,68,68,0.5);
-  box-shadow: 0 0 20px rgba(239,68,68,0.12);
-}
-.card-header {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;
-}
-.card-serial { font-size: 0.8rem; font-weight: 700; color: var(--color-primary, #c9a96e); }
-.bingo-indicator {
-  font-size: 0.68rem; font-weight: 900; color: #ef4444;
-  background: rgba(239,68,68,0.15); padding: 0.14rem 0.5rem;
-  border-radius: 12px; letter-spacing: 0.04em;
-}
+.cartela-card.has-bingo { border-color: #f59e0b; box-shadow: 0 0 25px rgba(245,158,11,0.15), inset 0 0 20px rgba(245,158,11,0.05); }
 
-/* ── Bingo Grid ──────────────────────────────────────────────────────────── */
-.bingo-grid { display: flex; flex-direction: column; gap: 3px; }
-.grid-header { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 1px; }
-.col-label { text-align: center; font-weight: 900; font-size: 0.86rem; padding: 0.2rem 0; border-radius: 4px; }
-.gcol-b { color: #93c5fd; background: rgba(59,130,246,0.18); }
-.gcol-i { color: #fca5a5; background: rgba(239,68,68,0.18); }
-.gcol-n { color: #fde68a; background: rgba(245,158,11,0.18); }
-.gcol-g { color: #86efac; background: rgba(34,197,94,0.18); }
-.gcol-o { color: #d8b4fe; background: rgba(168,85,247,0.18); }
-.grid-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
-.grid-cell {
-  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.05); border-radius: 5px;
-  font-weight: 700; font-size: 0.87rem; color: #bbb;
-  transition: all 0.22s ease; position: relative;
-}
-.grid-cell.marked {
-  background: var(--color-primary, #c9a96e); color: #000;
-  transform: scale(1.03); box-shadow: 0 0 6px rgba(201,169,110,0.35);
-}
-.grid-cell.just-called { animation: just-called-pop 0.55s ease; z-index: 2; }
-@keyframes just-called-pop {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.22); }
-  65% { transform: scale(0.96); }
-  100% { transform: scale(1.03); }
-}
-.grid-cell.free-space { background: rgba(201,169,110,0.15); color: var(--color-primary, #c9a96e); }
-.free-star { font-size: 1.1rem; }
+.card-top { display: flex; justify-content: space-between; align-items: center; }
+.card-serial { font-size: 0.85rem; font-weight: 700; color: #888; }
+.bingo-indicator { font-size: 0.75rem; font-weight: 900; color: #f59e0b; background: rgba(245,158,11,0.15); padding: 0.2rem 0.6rem; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
 
-/* ── Bingo button ────────────────────────────────────────────────────────── */
+.bingo-card-grid { display: flex; flex-direction: column; gap: 4px; }
+.bcg-header, .bcg-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.bcg-hcell {
+  text-align: center; font-weight: 900; font-size: 0.9rem; padding: 0.35rem 0; border-radius: 6px;
+  color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.4); box-shadow: inset 0 1px 3px rgba(255,255,255,0.15);
+}
+.gcol-b { background: #3b82f6; }
+.gcol-i { background: #ef4444; }
+.gcol-n { background: #f59e0b; color: #111; text-shadow: none; }
+.gcol-g { background: #22c55e; }
+.gcol-o { background: #a855f7; }
+
+.bcg-cell {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center; position: relative;
+  background: rgba(255,255,255,0.04); border-radius: 6px; border: 2px solid transparent;
+  font-weight: 700; font-size: 1.1rem; color: #ddd; transition: all 0.15s ease; cursor: pointer; user-select: none;
+}
+.bcg-cell:hover:not(.free-space) { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); }
+
+/* Auto-mark (server called) vs Manual Tick (user act) */
+.bcg-cell.free-space { background: rgba(201,169,110,0.15); color: var(--color-primary, #c9a96e); cursor: default; border: none; font-size: 1.3rem; }
+.bcg-cell.auto-marked { border-color: var(--color-primary, #c9a96e); color: #fff; background: rgba(201,169,110,0.15); opacity: 0.7; }
+
+/* The manual tick adds a nice green gradient and tick mark if the user clicks it BEFORE it's auto-marked,
+   or just makes it clearly "checked off" if both are true. */
+.bcg-cell.manually-ticked {
+  background: var(--color-primary, #c9a96e); color: #000; opacity: 1; transform: scale(1.04); box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-color: #fcd34d;
+}
+.tick-mark { position: absolute; bottom: 1px; right: 2px; font-size: 0.55rem; color: #000; font-weight: 900; line-height: 1; text-shadow: none; }
+.bcg-cell.manually-ticked.auto-marked { background: linear-gradient(135deg, #10b981, #059669); color: white; border-color: #34d399; }
+.bcg-cell.manually-ticked.auto-marked .tick-mark { color: white; }
+
+.bcg-cell.just-called { animation: cell-pop 0.6s ease; z-index: 2; border-color: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+@keyframes cell-pop { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+/* ── Bingo Button ────────────────────────────────────────────────────────── */
 .bingo-button {
-  width: 100%; margin-top: 0.85rem; padding: 0.8rem;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: #fff; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.08em;
-  border: none; border-radius: 10px; cursor: pointer;
-  box-shadow: 0 4px 16px rgba(239,68,68,0.35);
-  transition: transform 0.1s, box-shadow 0.1s;
+  width: 100%; padding: 0.85rem; border-radius: 8px; border: none; font-weight: 900; font-size: 1.1rem;
+  background: rgba(255,255,255,0.05); color: #666; cursor: not-allowed; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); margin-top: 0.5rem;
 }
-.bingo-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(239,68,68,0.5); }
-.bingo-button:active:not(:disabled) { transform: translateY(0); }
-.bingo-button:disabled { opacity: 0.5; cursor: not-allowed; }
-.pulse { animation: pulse-btn 1.4s infinite; }
-@keyframes pulse-btn {
-  0%, 100% { box-shadow: 0 4px 16px rgba(239,68,68,0.35); }
-  50% { box-shadow: 0 4px 28px rgba(239,68,68,0.65); }
-}
+.bingo-button.active { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; cursor: pointer; box-shadow: 0 4px 15px rgba(245,158,11,0.3); }
+.bingo-button.active:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,158,11,0.4); }
+.bingo-button.active:active { transform: translateY(1px); box-shadow: 0 2px 10px rgba(245,158,11,0.3); }
+.bingo-button.pulsing { animation: pulse-bingo 1.5s infinite; }
+@keyframes pulse-bingo { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,0.6); } 70% { box-shadow: 0 0 0 10px rgba(245,158,11,0); } 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } }
 
 /* ── Overlays ────────────────────────────────────────────────────────────── */
 .overlay {

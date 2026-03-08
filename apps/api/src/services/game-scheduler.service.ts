@@ -9,7 +9,7 @@
 import prisma from '../lib/prisma'
 import { GameStatus } from '@world-bingo/shared-types'
 import { getIo } from '../lib/socket'
-import { initRoom } from '../lib/room-state'
+import { initRoom, setTimer, addPlayers } from '../lib/room-state'
 import { startRoomCountdown, isCountdownActive } from './room-timer.service'
 
 
@@ -110,9 +110,9 @@ export class GameSchedulerService {
         }
 
         const playerCount = game.entries.length
-        if (playerCount < game.minPlayers) {
+        if (playerCount < 1) {
             console.log(
-                `[GameScheduler] Game ${gameId} has ${playerCount}/${game.minPlayers} players, not enough to start — auto-cancelling`,
+                `[GameScheduler] Game ${gameId} has ${playerCount} players, not enough to start — auto-cancelling`,
             )
             // Auto-cancel: not enough players joined during the countdown
             const { GameService } = await import('../services/game.service.js')
@@ -165,23 +165,26 @@ export class GameSchedulerService {
 
         if (!game || game.status !== GameStatus.WAITING) return
 
-        // Countdown already running for this game
         if (isCountdownActive(gameId)) return
 
         const playerCount = game.entries.length
-        if (playerCount < game.minPlayers) return // Not enough players yet
+        if (playerCount < 1) return
 
-        // Reached minPlayers — initialise room state then fire the countdown
         const COUNTDOWN_SECS = (game as any).template?.countdownSecs ?? 60
         const startsAt = new Date(Date.now() + COUNTDOWN_SECS * 1_000)
 
-        // Ensure room Redis keys are initialised
-        await initRoom(gameId, { countdownSecs: COUNTDOWN_SECS }).catch(() => {})
+        // Always reset Redis state fresh so stale timer values don't cause immediate expiry
+        await initRoom(gameId, { countdownSecs: COUNTDOWN_SECS }).catch(() => { })
+        // Force-set the timer (overrides any stale 0 / negative value left from a previous run)
+        await setTimer(gameId, COUNTDOWN_SECS).catch(() => { })
+        // Re-populate players set from DB (in case Redis key expired between restarts)
+        const userIds = game.entries.map((e: { userId: string }) => e.userId)
+        if (userIds.length > 0) {
+            await addPlayers(gameId, ...userIds).catch(() => { })
+        }
 
-        // Start per-second RoomTimer (emits timer_update each tick)
         startRoomCountdown(gameId, COUNTDOWN_SECS)
 
-        // Also broadcast via the legacy countdown event for existing clients
         try {
             const io = getIo()
             const payload = { gameId, countdownSecs: COUNTDOWN_SECS, startsAt: startsAt.toISOString() }

@@ -28,6 +28,7 @@ import { registerGameHandlers } from './gateways/game.gateway'
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
 import './workers/game-scheduler.worker.js'
+import './workers/game-engine.worker.js'
 
 dotenv.config()
 
@@ -165,7 +166,7 @@ const shutdown = async (signal: string) => {
     server.log.info(`Received ${signal}. Starting graceful shutdown...`)
     stopAllEngines()
     stopAllRoomCountdowns()
-    await closeAllQueues().catch(() => {})
+    await closeAllQueues().catch(() => { })
     try {
         await server.close()
         server.log.info('Server closed cleanly.')
@@ -186,8 +187,43 @@ try {
     await server.ready()
     const io = initSocket(server.server, process.env.REDIS_URL || 'redis://localhost:6379')
     registerGameHandlers(io)
-    
+
     await server.listen({ port, host })
+
+    // Recovery: restart countdowns for any WAITING games that already have players
+    // and push LOCKING/STARTING games into the engine
+    setTimeout(async () => {
+        try {
+            const { GameSchedulerService } = await import('./services/game-scheduler.service.js')
+            const { GameService } = await import('./services/game.service.js')
+            const prismaClient = (await import('./lib/prisma.js')).default
+
+            const stuckGames = await prismaClient.game.findMany({
+                where: { status: { in: ['WAITING', 'LOCKING', 'STARTING'] as any } },
+                include: { entries: { distinct: ['userId'], select: { userId: true } } },
+            })
+
+            for (const game of stuckGames) {
+                const playerCount = game.entries.length
+                if ((game.status as any) === 'WAITING') {
+                    if (playerCount > 0) {
+                        console.log(`[Startup] Recovering countdown for WAITING game ${game.id} (${playerCount} players)`)
+                        await GameSchedulerService.checkAndStartCountdown(game.id).catch(() => { })
+                    }
+                } else if ((game.status as any) === 'LOCKING' || (game.status as any) === 'STARTING') {
+                    if (playerCount > 0) {
+                        console.log(`[Startup] Recovering ${game.status} game ${game.id} → startGame`)
+                        await GameService.startGame(game.id).catch(() => { })
+                    } else {
+                        console.log(`[Startup] Cancelling empty ${game.status} game ${game.id}`)
+                        await GameService.cancelGame(game.id).catch(() => { })
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Startup] Game recovery failed:', err)
+        }
+    }, 3_000)
 } catch (err) {
     server.log.error(err)
     process.exit(1)
