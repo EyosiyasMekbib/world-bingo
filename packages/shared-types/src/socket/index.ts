@@ -37,6 +37,7 @@ export interface ServerToClientEvents {
     'game:ended': (game: Game) => void
     'game:cancelled': (payload: { gameId: string; reason: string }) => void
     'game:countdown': (payload: { gameId: string; countdownSecs: number; startsAt: string }) => void
+    'cartelas:taken': (payload: { gameId: string; cartelaSerials: string[] }) => void
     'cartela:marked': (payload: { cartelaId: string; cell: [number, number] }) => void
     'wallet:updated': (payload: { balance: number }) => void
     'notification:new': (notification: Notification) => void

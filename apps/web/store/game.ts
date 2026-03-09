@@ -94,7 +94,7 @@ export const useGameStore = defineStore('game', {
             const config = useRuntimeConfig()
             try {
                 const cartelas = await $fetch<any[]>(`${config.public.apiBase}/games/${gameId}/cartelas`)
-                this.availableCartelas = cartelas.filter((c) => !c.isTaken)
+                this.availableCartelas = cartelas
             } catch (e: any) {
                 this.error = e?.message ?? 'Failed to load cartelas'
             }
@@ -145,6 +145,17 @@ export const useGameStore = defineStore('game', {
             const players = (game as any).currentPlayers ?? (game as any)._count?.entries
             if (players !== undefined) {
                 this.livePlayers[game.id] = players
+            }
+        },
+
+        onCartelasTaken(payload: { gameId: string; cartelaSerials: string[] }) {
+            if (this.currentGame?.id === payload.gameId) {
+                this.availableCartelas = this.availableCartelas.map((c: any) => {
+                    if (payload.cartelaSerials.includes(c.serial)) {
+                        return { ...c, isTaken: true }
+                    }
+                    return c
+                })
             }
         },
 
@@ -209,7 +220,7 @@ export const useGameStore = defineStore('game', {
             // Also patch availableGames for lobby display
             const idx = this.availableGames.findIndex((g) => g.id === gameId)
             if (idx !== -1) {
-                ;(this.availableGames[idx] as any).currentPlayers = playerCount
+                ; (this.availableGames[idx] as any).currentPlayers = playerCount
             }
         },
 

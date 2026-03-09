@@ -770,6 +770,15 @@ onMounted(() => {
     if (!showWinnerOverlay.value) { showWinnerOverlay.value = true; startRedirectCountdown() }
   })
 
+  socket.on('cartelas:taken', (payload: any) => {
+    gameStore.onCartelasTaken(payload)
+    if (payload.gameId === gameId) {
+      selectedSerials.value = selectedSerials.value.filter(
+        (serial) => !payload.cartelaSerials.includes(serial)
+      )
+    }
+  })
+
   socket.on('game:cancelled', (payload: any) => {
     gameStore.onGameCancelled(payload)
     if (countdownTickTimer) clearInterval(countdownTickTimer)

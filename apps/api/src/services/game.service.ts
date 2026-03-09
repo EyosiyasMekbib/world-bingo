@@ -140,6 +140,7 @@ export class GameService {
         const io = getIo()
         io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: playerCount } as any)
             ; (io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
+        io.to(`game:${gameId}`).emit('cartelas:taken', { gameId, cartelaSerials })
 
         // After transaction commits: check if we should start the countdown
         GameSchedulerService.checkAndStartCountdown(gameId).catch((err) => {
