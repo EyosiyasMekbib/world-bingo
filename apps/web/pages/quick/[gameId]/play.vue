@@ -1423,16 +1423,49 @@ onUnmounted(() => {
 .bcg-cell.just-called { animation: cell-pop 0.6s ease; z-index: 2; border-color: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
 @keyframes cell-pop { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
 
-/* ── Bingo Button ────────────────────────────────────────────────────────── */
+/* ── Bingo Button ───────────────────────────────────────────────────────── */
 .bingo-button {
-  width: 100%; padding: 0.85rem; border-radius: 8px; border: none; font-weight: 900; font-size: 1.1rem;
-  background: rgba(255,255,255,0.05); color: #666; cursor: not-allowed; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); margin-top: 0.5rem;
+  width: 100%;
+  padding: 0.9rem;
+  border-radius: 10px;
+  border: 2px solid rgba(255,255,255,0.08);
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.2);
+  cursor: not-allowed;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  margin-top: 0.75rem;
+  pointer-events: none;
+  filter: grayscale(1) opacity(0.4);
 }
-.bingo-button.active { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; cursor: pointer; box-shadow: 0 4px 15px rgba(245,158,11,0.3); }
-.bingo-button.active:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,158,11,0.4); }
-.bingo-button.active:active { transform: translateY(1px); box-shadow: 0 2px 10px rgba(245,158,11,0.3); }
-.bingo-button.pulsing { animation: pulse-bingo 1.5s infinite; }
-@keyframes pulse-bingo { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,0.6); } 70% { box-shadow: 0 0 0 10px rgba(245,158,11,0); } 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } }
+.bingo-button.active {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  border-color: #f59e0b;
+  color: #fff;
+  cursor: pointer;
+  pointer-events: all;
+  filter: none;
+  box-shadow: 0 0 0 4px rgba(245,158,11,0.25), 0 8px 24px rgba(245,158,11,0.5);
+  transform: scale(1.02);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.bingo-button.active:hover {
+  transform: scale(1.05) translateY(-2px);
+  box-shadow: 0 0 0 6px rgba(245,158,11,0.2), 0 12px 32px rgba(245,158,11,0.6);
+}
+.bingo-button.active:active {
+  transform: scale(0.98);
+  box-shadow: 0 0 0 2px rgba(245,158,11,0.4), 0 4px 12px rgba(245,158,11,0.4);
+}
+.bingo-button.pulsing { animation: pulse-bingo 1.2s infinite; }
+@keyframes pulse-bingo {
+  0%   { box-shadow: 0 0 0 4px rgba(245,158,11,0.25), 0 8px 24px rgba(245,158,11,0.5); }
+  50%  { box-shadow: 0 0 0 10px rgba(245,158,11,0.1), 0 8px 32px rgba(239,68,68,0.6); }
+  100% { box-shadow: 0 0 0 4px rgba(245,158,11,0.25), 0 8px 24px rgba(245,158,11,0.5); }
+}
 
 /* ── Overlays ────────────────────────────────────────────────────────────── */
 .overlay {

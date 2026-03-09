@@ -107,11 +107,12 @@ async function main() {
         console.log('Admin wallet created')
     }
 
-    // 5. Seed default feature flags
+    // 5. Seed default feature flags + game settings
     console.log('Seeding Feature Flags...')
     const defaultFlags = [
         { key: 'feature_referrals', value: 'false' },
         { key: 'feature_tournaments', value: 'false' },
+        { key: 'ball_interval_secs', value: '3' },
     ]
     for (const flag of defaultFlags) {
         await prisma.siteSetting.upsert({

@@ -58,6 +58,10 @@ export const useAdminApi = () => {
         getFeatureFlags: () => apiFetch<Record<string, boolean>>('/settings/features'),
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
+
+        getGameSettings: () => apiFetch<{ ball_interval_secs: number }>('/settings/game'),
+        updateGameSettings: (data: { ball_interval_secs: number }) =>
+            apiFetch('/settings/game', { method: 'PUT', body: data }),
     }
 }
 

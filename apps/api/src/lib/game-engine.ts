@@ -31,13 +31,18 @@ import { PayoutService } from '../services/payout.service'
  * drives a game's ball-calling loop. If the lock is lost (server crash),
  * another instance can recover by checking Redis for active game state.
  *
- * Ball interval: 3 seconds per spec.
+ * Ball interval: configurable via SiteSetting(ball_interval_secs), default 3 s.
  * Lock TTL: 10 seconds, auto-renewed every 5 seconds.
  */
 
-const BALL_INTERVAL_MS = 3_000
 const LOCK_TTL_MS = 10_000
 const LOCK_RENEW_MS = 5_000
+
+async function getBallIntervalMs(): Promise<number> {
+    const row = await prisma.siteSetting.findUnique({ where: { key: 'ball_interval_secs' } })
+    const secs = Math.max(1, Math.min(30, Number(row?.value ?? 3)))
+    return secs * 1_000
+}
 
 // Singleton Redlock instance
 const redlock = new Redlock([redis as any], {
@@ -82,6 +87,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  *  5. On game end / all balls called, release lock & persist to Postgres.
  */
 export async function startGameEngine(gameId: string): Promise<void> {
+    const BALL_INTERVAL_MS = await getBallIntervalMs()
     // Fetch game to initialize Redis state
     const game = await prisma.game.findUnique({
         where: { id: gameId },
@@ -165,9 +171,9 @@ export async function startGameEngine(gameId: string): Promise<void> {
             }
 
             // ── Draw a unique ball ─────────────────────────────────────────────
-            const calledBalls  = await getCalledBalls(gameId)
-            const calledSet    = new Set(calledBalls)
-            const remaining    = allBalls.filter((b) => !calledSet.has(b))
+            const calledBalls = await getCalledBalls(gameId)
+            const calledSet = new Set(calledBalls)
+            const remaining = allBalls.filter((b) => !calledSet.has(b))
 
             if (remaining.length === 0) {
                 // All 75 balls called — end game with no winner
@@ -186,7 +192,7 @@ export async function startGameEngine(gameId: string): Promise<void> {
             // ── Broadcast: new_call (spec) + game:ball-called (legacy) ─────────
             const io = getIo()
             const ballPayload = { gameId, ball, calledBalls: updatedCalledBalls }
-            ;(io.to(`game:${gameId}`) as any).emit('new_call', ballPayload)
+                ; (io.to(`game:${gameId}`) as any).emit('new_call', ballPayload)
             io.to(`game:${gameId}`).emit('game:ball-called', ballPayload)
 
             // ── Win Check — iterate all active tickets ─────────────────────────
@@ -259,7 +265,7 @@ async function endGameNoWinner(gameId: string): Promise<void> {
                     'Game Ended',
                     'The game ended with no winner. All balls were called.',
                     { gameId },
-                ).catch(() => {}),
+                ).catch(() => { }),
             ),
         )
     } catch {
@@ -271,7 +277,7 @@ async function endGameNoWinner(gameId: string): Promise<void> {
     // Auto-replenish: if this was a templated game, create a new one
     try {
         const { GameSchedulerService } = await import('../services/game-scheduler.service.js')
-        GameSchedulerService.onGameEnded(gameId).catch(() => {})
+        GameSchedulerService.onGameEnded(gameId).catch(() => { })
     } catch {
         // Non-critical
     }

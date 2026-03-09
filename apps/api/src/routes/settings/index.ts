@@ -1,10 +1,11 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../../lib/prisma'
 
-/** Default feature flags — seeded on first read if missing */
+/** Default feature flags and game settings — seeded on first read if missing */
 const DEFAULTS: Record<string, string> = {
     feature_referrals: 'false',
     feature_tournaments: 'false',
+    ball_interval_secs: '3',
 }
 
 /**
@@ -33,6 +34,45 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             features[row.key] = row.value === 'true'
         }
         return features
+    })
+
+    // ── Admin: GET /settings/game ─────────────────────────────────────────────
+    // Returns configurable game settings (admin only).
+    fastify.get('/game', {
+        preValidation: [
+            fastify.authenticate,
+            async (request: any, reply) => {
+                if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
+                    reply.status(403).send({ error: 'Forbidden: Admin access only' })
+                }
+            },
+        ],
+    }, async (_req, _reply) => {
+        await ensureDefaults()
+        const row = await prisma.siteSetting.findUnique({ where: { key: 'ball_interval_secs' } })
+        return { ball_interval_secs: Number(row?.value ?? 3) }
+    })
+
+    // ── Admin: PUT /settings/game ─────────────────────────────────────────────
+    // Body: { ball_interval_secs: 5 }
+    fastify.put('/game', {
+        preValidation: [
+            fastify.authenticate,
+            async (request: any, reply) => {
+                if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
+                    reply.status(403).send({ error: 'Forbidden: Admin access only' })
+                }
+            },
+        ],
+    }, async (req: any, _reply) => {
+        const { ball_interval_secs } = req.body as { ball_interval_secs: number }
+        const secs = Math.max(1, Math.min(30, Number(ball_interval_secs)))
+        await prisma.siteSetting.upsert({
+            where: { key: 'ball_interval_secs' },
+            update: { value: String(secs) },
+            create: { key: 'ball_interval_secs', value: String(secs) },
+        })
+        return { ball_interval_secs: secs }
     })
 
     // ── Admin: PUT /settings/features ───────────────────────────────────────
