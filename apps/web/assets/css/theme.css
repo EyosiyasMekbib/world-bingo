@@ -1,0 +1,28 @@
+:root {
+  /* User provided colors */
+  --surface-base: #000B1E;
+  --wb-text-primary: #FFFFFF;
+  --text-primary: #FFFFFF;
+  --brand-primary: #FFD700;
+  
+  /* Additional updates for consistency with the provided colors */
+  --surface-raised: #041433;
+  --surface-overlay: #0b1f47;
+  --surface-border: #132b5e;
+  
+  --brand-primary-dim: #cca800;
+  --brand-primary-glow: rgba(255, 215, 0, 0.3);
+  
+  --cartela-free-bg: var(--brand-primary);
+  --winner-glow: rgba(255, 215, 0, 0.8);
+  --shadow-glow-gold: 0 0 24px rgba(255, 215, 0, 0.4);
+}
+
+/* ── Global layered mesh background override for web app aesthetics ── */
+body::before {
+  background:
+    radial-gradient(ellipse 90% 60% at 20% -10%, rgba(255, 215, 0, 0.08) 0%, transparent 65%),
+    radial-gradient(ellipse 70% 50% at 80% 110%, rgba(6, 182, 212, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 75%),
+    var(--surface-base);
+}
