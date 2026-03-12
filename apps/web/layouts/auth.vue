@@ -8,8 +8,9 @@
 
     <!-- Branding wordmark top-left -->
     <NuxtLink to="/" class="auth-brand" tabindex="-1">
-      <div class="auth-brand-icon">B</div>
-      <span>World Bingo</span>
+      <div class="auth-brand-icon">
+        <img src="/logo.png" alt="World Bingo Logo" class="logo-img" />
+      </div>
     </NuxtLink>
 
     <!-- Centered card slot -->
@@ -62,23 +63,20 @@
   left: 1.5rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   text-decoration: none;
   z-index: 10;
 }
 .auth-brand-icon {
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  background: var(--brand-primary, #f59e0b);
+  width: 56px; height: 56px;
+  border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 1rem; color: #000;
   flex-shrink: 0;
+  overflow: hidden;
 }
-.auth-brand span {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text-primary, #f1f5f9);
-  letter-spacing: -0.01em;
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .auth-main {

@@ -28,33 +28,19 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col" style="background: var(--color-background, #0a0d14); color: var(--color-text-primary, #fff);">
+  <div class="min-h-screen flex flex-col" style="background: var(--surface-base, #0a0d14); color: var(--color-text-primary, #fff);">
 
     <!-- ── Top Header ────────────────────────────────────────────────────── -->
     <header class="sticky top-0 z-40 border-b border-white/10"
-      style="background: rgba(15,18,27,0.92); backdrop-filter: blur(12px);">
-      <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+      style="background: var(--surface-overlay, rgba(15,18,27,0.92)); backdrop-filter: blur(12px);">
+      <div class="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
 
         <!-- Logo -->
-        <NuxtLink to="/" class="flex items-center gap-2 flex-shrink-0 group">
-          <div class="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center">
-            <span class="text-black font-bold text-base leading-none">B</span>
-          </div>
-          <span class="font-bold text-base text-white hidden sm:block tracking-tight group-hover:text-amber-400 transition-colors">
-            World Bingo
-          </span>
+        <NuxtLink to="/" class="h-20 flex items-center flex-shrink-0 group">
+          <img src="/logo.png" alt="Arada Bingo Logo" class="h-full w-auto object-contain py-0.5" />
         </NuxtLink>
 
-        <!-- Desktop nav links -->
         <nav class="hidden sm:flex items-center gap-1">
-          <NuxtLink
-            to="/"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            active-class="text-amber-400 bg-amber-400/10"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            {{ t('nav.lobby') }}
-          </NuxtLink>
           <NuxtLink
             v-if="auth.isAuthenticated && referralsEnabled"
             to="/refer"
@@ -183,7 +169,6 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         leave-to-class="opacity-0 -translate-y-2"
       >
         <div v-if="mobileNavOpen" class="sm:hidden border-t border-white/10 px-4 py-3 flex flex-col gap-2 bg-zinc-950">
-          <NuxtLink to="/" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🎮 Lobby</NuxtLink>
           <NuxtLink v-if="referralsEnabled && auth.isAuthenticated" to="/refer" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🎁 Refer &amp; Earn</NuxtLink>
           <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8" @click="mobileNavOpen = false">🏆 Tournaments</NuxtLink>
           <template v-if="auth.isAuthenticated">
