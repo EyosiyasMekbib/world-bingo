@@ -118,7 +118,7 @@ onMounted(refreshDeposits)
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold text-white">Pending Deposits</h1>
-      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshDeposits">Refresh</UButton>
+      <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshDeposits">Refresh</UButton>
     </div>
 
     <!-- Summary stats -->
@@ -168,7 +168,7 @@ onMounted(refreshDeposits)
         <template #receipt-cell="{ row }">
           <UButton
             v-if="(row.original as unknown as DepositTransaction).receiptUrl"
-            size="xs" color="neutral" variant="ghost" icon="i-heroicons-photo"
+            size="xs" color="neutral" variant="ghost" icon="i-heroicons:photo"
             @click="openReceipt((row.original as unknown as DepositTransaction).receiptUrl!)"
           >View</UButton>
           <span v-else class="text-zinc-600 text-xs">No receipt</span>
@@ -178,8 +178,8 @@ onMounted(refreshDeposits)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check" @click="handleApprove((row.original as unknown as DepositTransaction).id)">Approve</UButton>
-            <UButton size="xs" color="error" variant="soft" icon="i-heroicons-x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="handleApprove((row.original as unknown as DepositTransaction).id)">Approve</UButton>
+            <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
           </div>
         </template>
       </UTable>

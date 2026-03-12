@@ -4,16 +4,16 @@ const { locale, setLocale } = useI18n()
 const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 
 const navItems = [
-  { label: 'Dashboard',      icon: 'i-heroicons-squares-2x2',              to: '/'                },
-  { label: 'Deposits',       icon: 'i-heroicons-arrow-down-tray',           to: '/deposits'        },
-  { label: 'Withdrawals',    icon: 'i-heroicons-arrow-up-tray',             to: '/withdrawals'     },
-  { label: 'Orders History', icon: 'i-heroicons-clipboard-document-list',   to: '/orders'          },
-  { label: 'Games',          icon: 'i-heroicons-puzzle-piece',              to: '/games'           },
-  { label: 'Game Templates', icon: 'i-heroicons-cog-6-tooth',               to: '/settings/game-templates' },
-  { label: 'Feature Flags', icon: 'i-heroicons-adjustments-horizontal',    to: '/settings/features' },
-  { label: 'Tournaments',    icon: 'i-heroicons-trophy',                    to: '/tournaments'     },
-  { label: 'Users',          icon: 'i-heroicons-users',                     to: '/users'           },
-  { label: 'Profile',        icon: 'i-heroicons-user-circle',               to: '/settings/profile'},
+  { label: 'Dashboard',      icon: 'i-heroicons:squares-2x2',              to: '/'                },
+  { label: 'Deposits',       icon: 'i-heroicons:arrow-down-tray',           to: '/deposits'        },
+  { label: 'Withdrawals',    icon: 'i-heroicons:arrow-up-tray',             to: '/withdrawals'     },
+  { label: 'Orders History', icon: 'i-heroicons:clipboard-document-list',   to: '/orders'          },
+  { label: 'Games',          icon: 'i-heroicons:puzzle-piece',              to: '/games'           },
+  { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',               to: '/settings/game-templates' },
+  { label: 'Feature Flags',  icon: 'i-heroicons:adjustments-horizontal',    to: '/settings/features' },
+  { label: 'Tournaments',    icon: 'i-heroicons:trophy',                    to: '/tournaments'     },
+  { label: 'Users',          icon: 'i-heroicons:users',                     to: '/users'           },
+  { label: 'Profile',        icon: 'i-heroicons:user-circle',               to: '/settings/profile'},
 ]
 
 const mobileOpen = ref(false)
@@ -31,7 +31,7 @@ watch(() => route.path, () => { mobileOpen.value = false })
       <!-- Logo + mobile burger -->
       <div class="flex items-center gap-3">
         <button class="md:hidden p-1.5 rounded-lg hover:bg-white/8 transition-colors" @click="mobileOpen = !mobileOpen">
-          <UIcon name="i-heroicons-bars-3" class="w-5 h-5 text-zinc-300" />
+          <UIcon name="i-heroicons:bars-3" class="w-5 h-5 text-zinc-300" />
         </button>
         <NuxtLink to="/" class="flex items-center gap-2 group">
           <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-black text-base" style="background:#f59e0b;">B</div>
@@ -50,10 +50,10 @@ watch(() => route.path, () => { mobileOpen.value = false })
           @click="toggleLocale"
         />
         <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 text-sm" style="background:rgba(255,255,255,0.05);">
-          <UIcon name="i-heroicons-user-circle" class="w-4 h-4 text-amber-400" />
+          <UIcon name="i-heroicons:user-circle" class="w-4 h-4 text-amber-400" />
           <span class="text-zinc-200 text-sm font-medium">{{ user?.username ?? 'kira' }}</span>
         </div>
-        <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-arrow-left-on-rectangle"
+        <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons:arrow-left-on-rectangle"
           title="Logout" @click="logout()" />
       </div>
     </header>
@@ -91,7 +91,7 @@ watch(() => route.path, () => { mobileOpen.value = false })
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 hover:text-red-400 hover:bg-red-500/8 transition-all"
             @click="logout()"
           >
-            <UIcon name="i-heroicons-arrow-left-on-rectangle" class="w-4.5 h-4.5" />
+            <UIcon name="i-heroicons:arrow-left-on-rectangle" class="w-4.5 h-4.5" />
             Sign out
           </button>
         </div>

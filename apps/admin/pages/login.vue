@@ -50,7 +50,7 @@ const handleLogin = async () => {
           <UFormField label="Username or Phone" required>
             <UInput
               v-model="form.identifier"
-              icon="i-heroicons-user"
+              icon="i-heroicons:user"
               placeholder="Username or +251..."
               class="w-full"
               autocomplete="username"
@@ -61,7 +61,7 @@ const handleLogin = async () => {
             <UInput
               v-model="form.password"
               type="password"
-              icon="i-heroicons-lock-closed"
+              icon="i-heroicons:lock-closed"
               placeholder="••••••••"
               class="w-full"
               autocomplete="current-password"

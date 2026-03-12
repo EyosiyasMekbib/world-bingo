@@ -128,7 +128,7 @@ onMounted(fetchTournaments)
         <h1 class="text-2xl font-bold text-white">🏆 Tournaments</h1>
         <p class="text-sm text-zinc-500 mt-0.5">Manage tournament creation, lifecycle, and results</p>
       </div>
-      <UButton icon="i-heroicons-plus" color="primary" @click="showCreateModal = true">
+      <UButton icon="i-heroicons:plus" color="primary" @click="showCreateModal = true">
         Create Tournament
       </UButton>
     </div>
@@ -141,7 +141,7 @@ onMounted(fetchTournaments)
         value-key="value"
         class="w-48"
       />
-      <UButton color="neutral" variant="ghost" icon="i-heroicons-arrow-path" :loading="loading" @click="fetchTournaments">
+      <UButton color="neutral" variant="ghost" icon="i-heroicons:arrow-path" :loading="loading" @click="fetchTournaments">
         Refresh
       </UButton>
     </div>
@@ -190,12 +190,12 @@ onMounted(fetchTournaments)
           <tbody class="divide-y divide-white/5">
             <tr v-if="loading">
               <td colspan="7" class="px-4 py-12 text-center text-zinc-500">
-                <div class="flex justify-center"><UIcon name="i-heroicons-arrow-path" class="w-5 h-5 animate-spin" /></div>
+                <div class="flex justify-center"><UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin" /></div>
               </td>
             </tr>
             <tr v-else-if="!filtered.length">
               <td colspan="7" class="px-4 py-12 text-center text-zinc-600">
-                <UIcon name="i-heroicons-trophy" class="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <UIcon name="i-heroicons:trophy" class="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p>No tournaments found</p>
               </td>
             </tr>
@@ -216,12 +216,12 @@ onMounted(fetchTournaments)
                 <div class="flex gap-2 justify-end">
                   <UButton
                     v-if="t.status === TournamentStatus.REGISTRATION"
-                    size="xs" color="success" variant="soft" icon="i-heroicons-play"
+                    size="xs" color="success" variant="soft" icon="i-heroicons:play"
                     @click="startTournament(t.id)"
                   >Start</UButton>
                   <UButton
                     v-if="t.status !== TournamentStatus.COMPLETED && t.status !== TournamentStatus.CANCELLED"
-                    size="xs" color="error" variant="soft" icon="i-heroicons-x-mark"
+                    size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
                     @click="cancelTournament(t.id)"
                   >Cancel</UButton>
                 </div>

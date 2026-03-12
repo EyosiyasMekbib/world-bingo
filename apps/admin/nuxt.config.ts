@@ -6,12 +6,12 @@ export default defineNuxtConfig({
         ['@nuxt/ui', { fonts: false }],
         '@pinia/nuxt',
         '@nuxtjs/i18n',
+        '@nuxt/icon',
     ],
 
     icon: {
-        serverBundle: {
-            collections: ['heroicons']
-        }
+        serverBundle: 'remote',
+        localApiEndpoint: '/_nuxt_icon',
     },
 
     app: {
@@ -46,7 +46,7 @@ export default defineNuxtConfig({
 
     routeRules: {
         '/api/**': { proxy: 'http://api:8080/**' },
-        '/socket.io/': { proxy: 'http://api:8080/socket.io/' }
+        '/socket.io/**': { proxy: 'http://api:8080/socket.io/**' }
     },
 
     vite: {

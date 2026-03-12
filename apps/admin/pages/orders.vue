@@ -110,8 +110,8 @@ const typeColor = (type: string) => {
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         <USelect v-model="selectedType" :items="typeOptions" value-key="value" class="w-40" />
-        <UButton icon="i-heroicons-arrow-down-tray" color="neutral" variant="ghost" @click="exportCsv">Export CSV</UButton>
-        <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshHistory">Refresh</UButton>
+        <UButton icon="i-heroicons:arrow-down-tray" color="neutral" variant="ghost" @click="exportCsv">Export CSV</UButton>
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshHistory">Refresh</UButton>
       </div>
     </div>
 
@@ -145,9 +145,9 @@ const typeColor = (type: string) => {
 
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-white/8">
-        <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons-chevron-left" @click="page--" />
+        <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons:chevron-left" @click="page--" />
         <span class="text-sm text-zinc-400 self-center">Page {{ page }} / {{ totalPages }}</span>
-        <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons-chevron-right" @click="page++" />
+        <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons:chevron-right" @click="page++" />
       </div>
     </div>
   </div>

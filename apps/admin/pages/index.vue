@@ -3,12 +3,12 @@ import { ref } from 'vue'
 
 const { getStats } = useAdminApi()
 const stats = ref([
-  { label: 'Approved Deposit Sum', key: 'approvedDepositSum', value: '0 ETB', icon: 'i-heroicons-banknotes' },
-  { label: 'Declined Deposit Sum', key: 'declinedDepositSum', value: '0 ETB', icon: 'i-heroicons-x-circle' },
-  { label: 'Approved Withdrawal Sum', key: 'approvedWithdrawalSum', value: '0 ETB', icon: 'i-heroicons-arrow-up-tray' },
-  { label: 'Total Profit', key: 'totalProfit', value: '0 ETB', icon: 'i-heroicons-currency-dollar' },
-  { label: 'Users Count', key: 'usersCount', value: '0', icon: 'i-heroicons-users' },
-  { label: 'Commission', key: 'commission', value: '0%', icon: 'i-heroicons-receipt-percent' }
+  { label: 'Approved Deposit Sum', key: 'approvedDepositSum', value: '0 ETB', icon: 'i-heroicons:banknotes' },
+  { label: 'Declined Deposit Sum', key: 'declinedDepositSum', value: '0 ETB', icon: 'i-heroicons:x-circle' },
+  { label: 'Approved Withdrawal Sum', key: 'approvedWithdrawalSum', value: '0 ETB', icon: 'i-heroicons:arrow-up-tray' },
+  { label: 'Total Profit', key: 'totalProfit', value: '0 ETB', icon: 'i-heroicons:currency-dollar' },
+  { label: 'Users Count', key: 'usersCount', value: '0', icon: 'i-heroicons:users' },
+  { label: 'Commission', key: 'commission', value: '0%', icon: 'i-heroicons:receipt-percent' }
 ])
 
 const refreshStats = async () => {
@@ -33,7 +33,7 @@ onMounted(refreshStats)
         <h1 class="text-2xl font-bold text-white">Dashboard</h1>
         <p class="text-sm text-zinc-500 mt-0.5">Platform overview</p>
       </div>
-      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshStats" />
+      <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshStats" />
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

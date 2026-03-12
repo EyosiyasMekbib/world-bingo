@@ -107,13 +107,13 @@ function formatDate(date: string) {
         <h1 class="text-2xl font-bold text-white">Users</h1>
         <p class="text-sm text-zinc-500 mt-0.5">{{ totalUsers.toLocaleString() }} total users</p>
       </div>
-      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchUsers" />
+      <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchUsers" />
     </div>
 
     <!-- Search bar -->
     <UInput
       v-model="searchQuery"
-      icon="i-heroicons-magnifying-glass"
+      icon="i-heroicons:magnifying-glass"
       placeholder="Search by username or phone…"
       class="max-w-sm"
       @input="onSearch"
@@ -136,19 +136,19 @@ function formatDate(date: string) {
           <tbody class="divide-y divide-white/5">
             <tr v-if="loading">
               <td colspan="6" class="px-4 py-12 text-center text-zinc-500">
-                <div class="flex justify-center"><UIcon name="i-heroicons-arrow-path" class="w-5 h-5 animate-spin" /></div>
+                <div class="flex justify-center"><UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin" /></div>
               </td>
             </tr>
             <tr v-else-if="!users.length">
               <td colspan="6" class="px-4 py-12 text-center text-zinc-600">
-                <UIcon name="i-heroicons-users" class="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <UIcon name="i-heroicons:users" class="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p>No users found</p>
               </td>
             </tr>
             <tr v-for="user in users" :key="user.id" class="hover:bg-white/3 transition-colors">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs flex-shrink-0" style="background:#f59e0b;">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0" style="background:#f59e0b;">
                     {{ user.username[0].toUpperCase() }}
                   </div>
                   <button class="font-medium text-zinc-200 hover:text-amber-400 transition-colors" @click="openDetail(user)">
@@ -168,7 +168,7 @@ function formatDate(date: string) {
                 <UButton
                   v-if="user.role !== 'SUPER_ADMIN'"
                   size="xs" color="neutral" variant="ghost"
-                  icon="i-heroicons-shield-check" label="Role"
+                  icon="i-heroicons:shield-check" label="Role"
                   @click="openRoleModal(user)"
                 />
               </td>
@@ -181,8 +181,8 @@ function formatDate(date: string) {
       <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-white/8">
         <span class="text-sm text-zinc-500">Page {{ page }} of {{ totalPages }}</span>
         <div class="flex gap-2">
-          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-chevron-left" :disabled="page <= 1" @click="page--" />
-          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-chevron-right" :disabled="page >= totalPages" @click="page++" />
+          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" />
+          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" />
         </div>
       </div>
     </div>

@@ -99,7 +99,7 @@ const handleSavePassword = async () => {
               v-model="passwordForm.currentPassword"
               type="password"
               placeholder="Current password"
-              icon="i-heroicons-lock-closed"
+              icon="i-heroicons:lock-closed"
               class="w-full"
               autocomplete="current-password"
             />
@@ -109,7 +109,7 @@ const handleSavePassword = async () => {
               v-model="passwordForm.newPassword"
               type="password"
               placeholder="New password (min 6 chars)"
-              icon="i-heroicons-key"
+              icon="i-heroicons:key"
               class="w-full"
               autocomplete="new-password"
             />
@@ -119,7 +119,7 @@ const handleSavePassword = async () => {
               v-model="passwordForm.confirmPassword"
               type="password"
               placeholder="Repeat new password"
-              icon="i-heroicons-key"
+              icon="i-heroicons:key"
               class="w-full"
               autocomplete="new-password"
             />

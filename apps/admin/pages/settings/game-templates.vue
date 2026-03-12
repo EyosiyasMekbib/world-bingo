@@ -125,8 +125,8 @@ onMounted(refreshTemplates)
         </p>
       </div>
       <div class="flex gap-2 items-center">
-        <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshTemplates">Refresh</UButton>
-        <UButton icon="i-heroicons-plus" color="primary" @click="showCreateModal = true">New Template</UButton>
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshTemplates">Refresh</UButton>
+        <UButton icon="i-heroicons:plus" color="primary" @click="showCreateModal = true">New Template</UButton>
       </div>
     </div>
 
@@ -185,7 +185,7 @@ onMounted(refreshTemplates)
               {{ (row.original as unknown as GameTemplate).active ? 'Deactivate' : 'Activate' }}
             </UButton>
             <UButton
-              size="xs" color="error" variant="soft" icon="i-heroicons-trash"
+              size="xs" color="error" variant="soft" icon="i-heroicons:trash"
               @click="confirmDelete((row.original as unknown as GameTemplate).id)"
             />
           </div>

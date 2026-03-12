@@ -159,8 +159,8 @@ onMounted(refreshGames)
       </div>
       <div class="flex gap-2 items-center flex-wrap">
         <USelect v-model="selectedStatus" :items="statusOptions" value-key="value" class="w-40" />
-        <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshGames">Refresh</UButton>
-        <UButton icon="i-heroicons-plus" color="primary" @click="showCreateModal = true">New Game</UButton>
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshGames">Refresh</UButton>
+        <UButton icon="i-heroicons:plus" color="primary" @click="showCreateModal = true">New Game</UButton>
       </div>
     </div>
 
@@ -190,12 +190,12 @@ onMounted(refreshGames)
           <div class="flex items-center gap-2">
             <UButton
               v-if="(row.original as unknown as GameRow).status === 'WAITING'"
-              size="xs" color="success" variant="soft" icon="i-heroicons-play"
+              size="xs" color="success" variant="soft" icon="i-heroicons:play"
               @click="handleStart((row.original as unknown as GameRow).id)"
             >Start</UButton>
             <UButton
               v-if="['WAITING', 'STARTING', 'IN_PROGRESS'].includes((row.original as unknown as GameRow).status)"
-              size="xs" color="error" variant="soft" icon="i-heroicons-stop"
+              size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
               @click="confirmCancel((row.original as unknown as GameRow).id)"
             >Cancel</UButton>
           </div>
@@ -203,9 +203,9 @@ onMounted(refreshGames)
       </UTable>
 
       <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-white/8">
-        <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons-chevron-left" @click="page--" />
+        <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons:chevron-left" @click="page--" />
         <span class="text-sm text-zinc-400 self-center">Page {{ page }} / {{ totalPages }}</span>
-        <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons-chevron-right" @click="page++" />
+        <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons:chevron-right" @click="page++" />
       </div>
     </div>
 

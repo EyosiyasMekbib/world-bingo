@@ -85,7 +85,7 @@ onMounted(refreshWithdrawals)
         <h1 class="text-2xl font-bold text-white">Withdrawals Management</h1>
         <p class="text-sm text-zinc-500 mt-0.5">Review and process player withdrawal requests</p>
       </div>
-      <UButton icon="i-heroicons-arrow-path" color="neutral" variant="ghost" @click="refreshWithdrawals">Refresh</UButton>
+      <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshWithdrawals">Refresh</UButton>
     </div>
 
     <!-- Summary stats -->
@@ -101,7 +101,7 @@ onMounted(refreshWithdrawals)
     </div>
 
     <UAlert
-      icon="i-heroicons-information-circle"
+      icon="i-heroicons:information-circle"
       color="warning"
       variant="soft"
       title="Manual Settlement"
@@ -138,10 +138,10 @@ onMounted(refreshWithdrawals)
             v-if="(row.original as unknown as WithdrawalTransaction).status === 'PENDING_REVIEW'"
             class="flex items-center gap-2"
           >
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons-check"
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check"
               @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'approve')"
             >Mark Transferred</UButton>
-            <UButton size="xs" color="error" variant="soft" icon="i-heroicons-x-mark"
+            <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
               @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'reject')"
             >Reject</UButton>
           </div>

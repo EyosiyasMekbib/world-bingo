@@ -65,7 +65,7 @@ onMounted(fetchAll)
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-16 text-zinc-500">
-      <UIcon name="i-heroicons-arrow-path" class="w-5 h-5 animate-spin mr-2" />
+      <UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin mr-2" />
       Loading…
     </div>
 
@@ -73,7 +73,7 @@ onMounted(fetchAll)
       <!-- ── Game Settings ── -->
       <div class="space-y-4">
         <h2 class="text-base font-semibold text-zinc-300 flex items-center gap-2">
-          <UIcon name="i-heroicons-cog-6-tooth" class="w-4 h-4 text-amber-400" />
+          <UIcon name="i-heroicons:cog-6-tooth" class="w-4 h-4 text-amber-400" />
           Game Settings
         </h2>
 
@@ -83,7 +83,7 @@ onMounted(fetchAll)
         >
           <div class="flex items-start gap-3 mb-4">
             <div class="p-2.5 rounded-xl border border-amber-400/20 shrink-0" style="background:rgba(245,158,11,0.08);">
-              <UIcon name="i-heroicons-clock" class="w-5 h-5 text-amber-400" />
+              <UIcon name="i-heroicons:clock" class="w-5 h-5 text-amber-400" />
             </div>
             <div class="flex-1">
               <p class="text-sm font-semibold text-white">Ball Calling Interval</p>
@@ -116,7 +116,7 @@ onMounted(fetchAll)
             <UButton
               color="primary"
               :loading="savingGame"
-              icon="i-heroicons-check"
+              icon="i-heroicons:check"
               size="sm"
               @click="saveGameSettings"
             >
@@ -129,7 +129,7 @@ onMounted(fetchAll)
       <!-- ── Feature Flags ── -->
       <div class="space-y-4">
         <h2 class="text-base font-semibold text-zinc-300 flex items-center gap-2">
-          <UIcon name="i-heroicons-beaker" class="w-4 h-4 text-cyan-400" />
+          <UIcon name="i-heroicons:beaker" class="w-4 h-4 text-cyan-400" />
           Feature Flags
         </h2>
 
@@ -141,7 +141,7 @@ onMounted(fetchAll)
           >
             <div class="flex items-center gap-3">
               <div class="p-2.5 rounded-xl border border-amber-400/20" style="background:rgba(245,158,11,0.08);">
-                <UIcon name="i-heroicons-gift" class="w-5 h-5 text-amber-400" />
+                <UIcon name="i-heroicons:gift" class="w-5 h-5 text-amber-400" />
               </div>
               <div>
                 <p class="text-sm font-semibold text-white">Refer &amp; Earn</p>
@@ -158,7 +158,7 @@ onMounted(fetchAll)
           >
             <div class="flex items-center gap-3">
               <div class="p-2.5 rounded-xl border border-amber-400/20" style="background:rgba(245,158,11,0.08);">
-                <UIcon name="i-heroicons-trophy" class="w-5 h-5 text-amber-400" />
+                <UIcon name="i-heroicons:trophy" class="w-5 h-5 text-amber-400" />
               </div>
               <div>
                 <p class="text-sm font-semibold text-white">Tournaments</p>
