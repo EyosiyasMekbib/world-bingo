@@ -75,6 +75,11 @@ const gameRoutes: FastifyPluginAsync = async (fastify) => {
             return { success: true }
         }
     })
+
+    fastify.post('/:id/leave', {
+        preValidation: [fastify.authenticate],
+        handler: GameController.leave,
+    })
 }
 
 export default gameRoutes

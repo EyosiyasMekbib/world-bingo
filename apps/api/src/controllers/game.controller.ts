@@ -122,4 +122,12 @@ export class GameController {
              isTaken: usedIds.has(c.id)
          }))
     }
+
+    static async leave(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+        const gameId = request.params.id
+        // @ts-ignore
+        const userId = request.user.id
+        const result = await (await import('../services/game.service')).GameService.leaveGame(userId, gameId)
+        return result
+    }
 }

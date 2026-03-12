@@ -111,10 +111,28 @@ export const useGameStore = defineStore('game', {
                 })
                 this.myEntries = entries
                 this.gameStatus = 'waiting'
+                await auth.fetchWallet()
                 return entries
             } catch (e: any) {
                 this.error = e?.message ?? 'Failed to join game'
                 this.gameStatus = 'idle'
+                throw e
+            }
+        },
+
+        async leaveGame(gameId: string) {
+            const auth = useAuthStore()
+            this.error = null
+            try {
+                await auth.apiFetch(`/games/${gameId}/leave`, {
+                    method: 'POST',
+                    body: { gameId },
+                })
+                this.myEntries = []
+                this.gameStatus = 'idle'
+                await auth.fetchWallet()
+            } catch (e: any) {
+                this.error = e?.message ?? 'Failed to leave game'
                 throw e
             }
         },
@@ -178,6 +196,11 @@ export const useGameStore = defineStore('game', {
                     prizeAmount: payload.prizeAmount,
                 }
                 this.gameStatus = 'ended'
+                // If I'm the winner, refresh my wallet
+                const auth = useAuthStore()
+                if (payload.winner?.id === auth.user?.id) {
+                    auth.fetchWallet()
+                }
             }
         },
 

@@ -19,9 +19,12 @@
           <div v-if="isWinner" class="confetti-row">🎊🎊🎊</div>
           <div class="trophy">🏆</div>
           <h2 v-if="isWinner" class="you-won">You Won!</h2>
-          <h2 v-else class="other-won">{{ gameStore.winner?.username }} Won!</h2>
+          <template v-else>
+            <h2 class="you-lost">You Lost</h2>
+            <p class="other-won-sub">{{ gameStore.winner?.username }} is the winner!</p>
+          </template>
           <p class="prize-amount">
-            <span class="prize-label">Prize</span>
+            <span class="prize-label">{{ isWinner ? 'You Won' : 'Prize' }}</span>
             {{ gameStore.winner?.prizeAmount?.toFixed(2) }} ETB
           </p>
           <p class="redirect-hint">Returning to lobby in {{ redirectCountdown }}s…</p>
@@ -169,8 +172,12 @@
           <p class="countdown-title">🟢 Get ready!</p>
           <p class="countdown-sub">Game starts when timer hits zero</p>
           <p v-if="gameStore.livePots[gameId]" class="pot-display">
-            💰 Prize Pot: <strong>{{ gameStore.livePots[gameId].toFixed(2) }} ETB</strong>
+            💰 Net Prize: <strong>{{ netPrize.toFixed(2) }} ETB</strong>
           </p>
+          <button class="leave-queue-btn" :disabled="leaving" @click="handleLeaveGame">
+            <span v-if="leaving" class="btn-spinner"></span>
+            {{ leaving ? 'Leaving...' : 'Leave Game & Refund' }}
+          </button>
           <p class="countdown-warn">
             The game will begin instantly. Good luck!
           </p>
@@ -195,12 +202,12 @@
                   <span class="card-serial">Card #{{ shortSerial(entry.cartela.serial) }}</span>
                   <span class="preview-badge">Preview</span>
                 </div>
-                <div class="bingo-grid">
-                  <div class="grid-header">
-                    <span v-for="col in COLUMNS" :key="col" class="col-label" :class="`gcol-${col.toLowerCase()}`">{{ col }}</span>
+                <div class="bingo-card-grid">
+                  <div class="bcg-header">
+                    <span v-for="col in COLUMNS" :key="col" class="bcg-hcell" :class="`gcol-${col.toLowerCase()}`">{{ col }}</span>
                   </div>
-                  <div v-for="(row, r) in getGrid(entry.cartela.grid)" :key="r" class="grid-row">
-                    <div v-for="(num, c) in row" :key="`${r}-${c}`" class="grid-cell" :class="{ 'free-space': r === 2 && c === 2 }">
+                  <div v-for="(row, r) in getGrid(entry.cartela.grid)" :key="r" class="bcg-row">
+                    <div v-for="(num, c) in row" :key="`${r}-${c}`" class="bcg-cell" :class="{ 'free-space': r === 2 && c === 2 }">
                       <span v-if="r === 2 && c === 2" class="free-star">★</span>
                       <span v-else>{{ num }}</span>
                     </div>
@@ -285,12 +292,12 @@
               v-for="entry in gameStore.myEntries"
               :key="entry.id"
               class="cartela-card"
-              :class="{ 'has-bingo': entry.cartela && canClaimBingo(entry.cartela) }"
+              :class="{ 'has-bingo': entry.cartela && canClaimBingo(entry.cartela, entry.id) }"
             >
               <template v-if="entry.cartela">
                 <div class="card-top">
                   <span class="card-serial">Card #{{ shortSerial(entry.cartela.serial) }}</span>
-                  <span v-if="canClaimBingo(entry.cartela)" class="bingo-indicator pulse">BINGO!</span>
+                  <span v-if="canClaimBingo(entry.cartela, entry.id)" class="bingo-indicator pulse">BINGO!</span>
                 </div>
 
                 <div class="bingo-card-grid">
@@ -320,11 +327,11 @@
                 <!-- BINGO button — always shown, enabled when pattern complete -->
                 <button
                   class="bingo-button"
-                  :class="{ active: canClaimBingo(entry.cartela), pulsing: canClaimBingo(entry.cartela) }"
-                  :disabled="claimingBingo || !canClaimBingo(entry.cartela)"
+                  :class="{ active: canClaimBingo(entry.cartela, entry.id), pulsing: canClaimBingo(entry.cartela, entry.id) }"
+                  :disabled="claimingBingo || !canClaimBingo(entry.cartela, entry.id)"
                   @click="handleClaimBingo(entry.cartela.id)"
                 >
-                  <span v-if="claimingBingo && canClaimBingo(entry.cartela)">Checking…</span>
+                  <span v-if="claimingBingo && canClaimBingo(entry.cartela, entry.id)">Checking…</span>
                   <span v-else>🎉 BINGO!</span>
                 </button>
               </template>
@@ -413,6 +420,12 @@ const playerProgressPct = computed(() => {
   return 100 // Progress bar is now just fully green
 })
 
+const netPrize = computed(() => {
+  const pot = gameStore.livePots[gameId] ?? 0
+  const houseEdge = Number((gameStore.currentGame as any)?.houseEdgePct ?? 0) / 100
+  return pot * (1 - houseEdge)
+})
+
 // SVG countdown ring: circumference = 2π×52 ≈ 326.73
 const RING_CIRC = 2 * Math.PI * 52
 const ringOffset = computed(() => {
@@ -456,12 +469,30 @@ function shortSerial(serial: string): string {
   return serial.slice(-6).replace(/^-/, '')
 }
 
-function canClaimBingo(cartela: Cartela): boolean {
-  if (gameStore.gameStatus !== 'active') return false
+function canClaimBingo(cartela: Cartela, entryId: string): boolean {
+  if (gameStore.gameStatus !== 'active' || !gameStore.currentGame) return false
   const grid = getGrid(cartela.grid)
   const calledSet = new Set<number>(gameStore.calledBalls)
+  const ticks = manualTicks.value[entryId] || new Set<number>()
+
+  // A cell counts as "marked" only if:
+  // 1. It is the free space (row 2, col 2)
+  // 2. OR it is in calledBalls AND it was manually ticked by the player
+  const validMarkedSet = new Set<number>()
+  grid.forEach((row, r) => {
+    row.forEach((num, c) => {
+      if (r === 2 && c === 2) {
+        // Free space doesn't have a number in the Set context, but the pattern checker handles it
+        // Actually, checkPattern uses createMarkedGrid which checks (r===2 && c===2)
+        // So we just need to ensure the calledBalls passed to it allows the check to succeed
+      } else if (calledSet.has(num) && ticks.has(num)) {
+        validMarkedSet.add(num)
+      }
+    })
+  })
+
   try {
-    return checkPattern(gameStore.currentGame!.pattern as PatternName, grid, calledSet)
+    return checkPattern(gameStore.currentGame!.pattern as PatternName, grid, validMarkedSet)
   } catch {
     return false
   }
@@ -585,6 +616,20 @@ async function handleJoin() {
     joinError.value = e?.data?.message ?? e?.message ?? 'Failed to join game'
   } finally {
     joining.value = false
+  }
+}
+
+const leaving = ref(false)
+async function handleLeaveGame() {
+  if (!confirm('Are you sure you want to leave? Your entry fee will be refunded.')) return
+  leaving.value = true
+  try {
+    await gameStore.leaveGame(gameId)
+    goToLobby()
+  } catch (e: any) {
+    alert(e?.message ?? 'Failed to leave game')
+  } finally {
+    leaving.value = false
   }
 }
 
@@ -1123,13 +1168,38 @@ onUnmounted(() => {
   font-size: 0.9rem;
   color: #94a3b8;
   text-align: center;
-  margin: 0.25rem 0;
+  margin: 0.25rem 0 0.75rem;
 }
 
 .pot-display strong {
   color: #4ade80;
   font-size: 1.05rem;
 }
+
+.leave-queue-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.leave-queue-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.leave-queue-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.you-lost { color: #94a3b8; font-weight: 800; }
+.other-won-sub { font-size: 0.9rem; color: #64748b; margin-top: -0.5rem; }
 
 /* Still waiting */
 .still-waiting {

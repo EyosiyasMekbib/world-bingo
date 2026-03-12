@@ -111,6 +111,12 @@ export async function getRoomPlayerCount(roomId: string): Promise<number> {
     return redis.scard(playersKey(roomId))
 }
 
+/** Remove a player from the room. Returns the new player count. */
+export async function removePlayer(roomId: string, userId: string): Promise<number> {
+    await redis.srem(playersKey(roomId), userId)
+    return getRoomPlayerCount(roomId)
+}
+
 /** Get all player IDs in the room. */
 export async function getRoomPlayers(roomId: string): Promise<string[]> {
     return redis.smembers(playersKey(roomId))
@@ -135,6 +141,13 @@ export async function incrementPot(roomId: string, etbAmount: number): Promise<n
 export async function getPot(roomId: string): Promise<number> {
     const raw = await redis.get(potKey(roomId))
     return raw ? parseInt(raw, 10) / 100 : 0
+}
+
+/** Decrement the pot by the given ETB amount. */
+export async function decrementPot(roomId: string, etbAmount: number): Promise<number> {
+    const paisa = Math.round(etbAmount * 100)
+    await redis.decrby(potKey(roomId), paisa)
+    return getPot(roomId)
 }
 
 // ─── Drawn Numbers ────────────────────────────────────────────────────────────

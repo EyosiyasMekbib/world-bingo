@@ -15,6 +15,8 @@ import {
     getRoomStatus,
     setRoomStatus,
     clearRoomState,
+    removePlayer,
+    decrementPot,
 } from '../lib/room-state'
 import { startRoomCountdown, stopRoomCountdown } from './room-timer.service'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
@@ -148,6 +150,78 @@ export class GameService {
         })
 
         return joinedEntries
+    }
+
+    /**
+     * T82: Leave a game during the WAITING phase.
+     * Refunds the player and removes their entries.
+     */
+    static async leaveGame(userId: string, gameId: string) {
+        const txResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const game = await tx.game.findUnique({
+                where: { id: gameId },
+            })
+            if (!game) throw new Error('Game not found')
+            if (game.status !== GameStatus.WAITING) {
+                throw new Error('Cannot leave a game that has already started')
+            }
+
+            const entries = await tx.gameEntry.findMany({
+                where: { gameId, userId },
+            })
+            if (entries.length === 0) throw new Error('No entries found for this game')
+
+            const refundAmount = new Decimal(game.ticketPrice).times(entries.length)
+
+            // Refund wallet
+            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
+                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            if (!wallet) throw new Error('Wallet not found')
+
+            const balanceBefore = new Decimal(wallet.balance)
+            const balanceAfter = balanceBefore.plus(refundAmount)
+
+            await tx.wallet.update({
+                where: { userId },
+                data: { balance: { increment: refundAmount } }
+            })
+
+            // Record refund transaction
+            await tx.transaction.create({
+                data: {
+                    userId,
+                    type: TransactionType.REFUND,
+                    amount: refundAmount,
+                    status: PaymentStatus.APPROVED,
+                    referenceId: gameId,
+                    balanceBefore: balanceBefore,
+                    balanceAfter: balanceAfter,
+                }
+            })
+
+            // Delete entries
+            await tx.gameEntry.deleteMany({
+                where: { gameId, userId }
+            })
+
+            return { refundAmount, game }
+        })
+
+        const { refundAmount, game } = txResult as { refundAmount: Decimal, game: any }
+
+        // ── Room state update ───────────────────────────────────────────────
+        const [playerCount] = await Promise.all([
+            removePlayer(gameId, userId),
+            decrementPot(gameId, Number(refundAmount)),
+        ])
+
+        const io = getIo()
+        io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: playerCount } as any)
+        ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
+
+        return { refundAmount, playerCount }
     }
 
     static async startGame(gameId: string) {
