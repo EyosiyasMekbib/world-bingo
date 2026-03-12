@@ -168,7 +168,7 @@ export class GameSchedulerService {
         if (isCountdownActive(gameId)) return
 
         const playerCount = game.entries.length
-        if (playerCount < game.minPlayers) return
+        if (playerCount < 1) return
 
         const COUNTDOWN_SECS = (game as any).template?.countdownSecs ?? 60
         const startsAt = new Date(Date.now() + COUNTDOWN_SECS * 1_000)

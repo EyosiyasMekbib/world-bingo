@@ -109,7 +109,13 @@ async function handleTimerExpired(roomId: string): Promise<void> {
             playerCount = dbEntries.length
         }
 
-        if (playerCount < 1) {
+        const game = await prisma.game.findUnique({
+            where: { id: roomId },
+            select: { minPlayers: true }
+        })
+        const minPlayers = game?.minPlayers ?? 2
+
+        if (playerCount < minPlayers) {
             // ── Branch A: Not enough players ────────────────────────────────
             console.log(`[RoomTimer] Room ${roomId}: only ${playerCount} player(s) — REFUNDING`)
             await setRoomStatus(roomId, 'REFUNDING')

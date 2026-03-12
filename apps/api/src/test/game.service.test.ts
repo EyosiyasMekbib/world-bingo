@@ -1,29 +1,16 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { GameService } from '../services/game.service'
-import { prisma } from './setup'
-import { GameStatus, PatternType, NotificationType } from '@world-bingo/shared-types'
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
-
-vi.mock('../lib/socket', () => ({
-    getIo: () => ({
-        to: () => ({ emit: vi.fn() }),
-    }),
+const mocks = vi.hoisted(() => ({
+    startRoomCountdown: vi.fn(),
+    stopRoomCountdown: vi.fn(),
+    isCountdownActive: vi.fn().mockReturnValue(false),
 }))
 
-vi.mock('../lib/game-engine', () => ({
-    startGameEngine: vi.fn().mockResolvedValue(undefined),
-    stopGameEngine: vi.fn(),
-    isEngineActive: vi.fn().mockReturnValue(false),
-    stopAllEngines: vi.fn(),
-}))
-
-vi.mock('../lib/game-state', () => ({
-    initGameState: vi.fn().mockResolvedValue(undefined),
-    clearGameState: vi.fn().mockResolvedValue(undefined),
-    addCalledBall: vi.fn().mockResolvedValue(undefined),
-    getCalledBalls: vi.fn().mockResolvedValue([]),
-    getGameState: vi.fn().mockResolvedValue(null),
+// Move mocks to the absolute top to ensure they are applied before any service imports
+vi.mock('../services/room-timer.service', () => ({
+    startRoomCountdown: mocks.startRoomCountdown,
+    stopRoomCountdown: mocks.stopRoomCountdown,
+    isCountdownActive: mocks.isCountdownActive,
 }))
 
 vi.mock('../lib/redis', () => {
@@ -44,6 +31,32 @@ vi.mock('../lib/redis', () => {
         getRedis: () => mockRedis,
     }
 })
+
+vi.mock('../lib/socket', () => ({
+    getIo: () => ({
+        to: () => ({ emit: vi.fn() }),
+    }),
+}))
+
+vi.mock('../lib/game-engine', () => ({
+    startGameEngine: vi.fn().mockResolvedValue(undefined),
+    stopGameEngine: vi.fn(),
+    isEngineActive: vi.fn().mockReturnValue(false),
+    stopAllEngines: vi.fn(),
+}))
+
+import { startRoomCountdown } from '../services/room-timer.service'
+import { GameService } from '../services/game.service'
+import { prisma } from './setup'
+import { GameStatus, PatternType, NotificationType } from '@world-bingo/shared-types'
+
+vi.mock('../lib/game-state', () => ({
+    initGameState: vi.fn().mockResolvedValue(undefined),
+    clearGameState: vi.fn().mockResolvedValue(undefined),
+    addCalledBall: vi.fn().mockResolvedValue(undefined),
+    getCalledBalls: vi.fn().mockResolvedValue([]),
+    getGameState: vi.fn().mockResolvedValue(null),
+}))
 
 vi.mock('../services/notification.service', () => ({
     NotificationService: {
@@ -314,5 +327,23 @@ describe('GameService.autoCancelIfUnderFilled (T26)', () => {
 
     it('should silently do nothing for non-existent game', async () => {
         await expect(GameService.autoCancelIfUnderFilled('ghost-id')).resolves.toBeUndefined()
+    })
+})
+
+describe('GameSchedulerService.checkAndStartCountdown (T27)', () => {
+    it('should start countdown when first player joins (even if < minPlayers)', async () => {
+        mocks.startRoomCountdown.mockClear()
+
+        const game = await createGame({ minPlayers: 3 })
+        const user = await createUserWithWallet('first_user', '+251900800001')
+        const c = await createCartela('COUNT-C1')
+
+        // Joining should trigger the countdown check (fire-and-forget)
+        await GameService.joinGame(user.id, game.id, [c.serial])
+
+        // the countdown check is async and not awaited in joinGame, wait a bit
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        expect(mocks.startRoomCountdown).toHaveBeenCalledWith(game.id, expect.any(Number))
     })
 })
