@@ -110,7 +110,7 @@ export class GameSchedulerService {
         }
 
         const playerCount = game.entries.length
-        if (playerCount < 1) {
+        if (playerCount < game.minPlayers) {
             console.log(
                 `[GameScheduler] Game ${gameId} has ${playerCount} players, not enough to start — auto-cancelling`,
             )
@@ -168,7 +168,7 @@ export class GameSchedulerService {
         if (isCountdownActive(gameId)) return
 
         const playerCount = game.entries.length
-        if (playerCount < 1) return
+        if (playerCount < game.minPlayers) return
 
         const COUNTDOWN_SECS = (game as any).template?.countdownSecs ?? 60
         const startsAt = new Date(Date.now() + COUNTDOWN_SECS * 1_000)

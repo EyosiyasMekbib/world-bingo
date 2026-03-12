@@ -162,8 +162,8 @@ export class GameService {
 
         // Check minimum player requirement
         const playerCount = game.entries.length
-        if (playerCount < 1) {
-            throw new Error(`Not enough players to start. Need at least 1, have ${playerCount}.`)
+        if (playerCount < game.minPlayers) {
+            throw new Error(`Not enough players to start. Need at least ${game.minPlayers}, have ${playerCount}.`)
         }
 
         const updatedGame = await prisma.game.update({
@@ -281,7 +281,7 @@ export class GameService {
         if (!game || game.status !== GameStatus.WAITING) return
 
         const playerCount = game.entries.length
-        if (playerCount < 1) {
+        if (playerCount < game.minPlayers) {
             console.log(
                 `[GameService] Auto-cancelling game ${gameId}: only ${playerCount} players.`,
             )

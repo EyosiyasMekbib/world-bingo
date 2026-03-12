@@ -26,18 +26,24 @@ vi.mock('../lib/game-state', () => ({
     getGameState: vi.fn().mockResolvedValue(null),
 }))
 
-vi.mock('../lib/redis', () => ({
-    getRedis: () => ({
+vi.mock('../lib/redis', () => {
+    const mockRedis = {
         get: vi.fn().mockResolvedValue(null),
         set: vi.fn().mockResolvedValue('OK'),
         del: vi.fn().mockResolvedValue(1),
-    }),
-    redis: {
-        get: vi.fn().mockResolvedValue(null),
-        set: vi.fn().mockResolvedValue('OK'),
-        del: vi.fn().mockResolvedValue(1),
-    },
-}))
+        sadd: vi.fn().mockResolvedValue(1),
+        srem: vi.fn().mockResolvedValue(1),
+        scard: vi.fn().mockResolvedValue(1),
+        smembers: vi.fn().mockResolvedValue([]),
+        incrby: vi.fn().mockResolvedValue(1),
+        expire: vi.fn().mockResolvedValue(1),
+    }
+    return {
+        default: mockRedis,
+        redis: mockRedis,
+        getRedis: () => mockRedis,
+    }
+})
 
 vi.mock('../services/notification.service', () => ({
     NotificationService: {
