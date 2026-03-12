@@ -30,13 +30,15 @@
           </div>
           <div class="game-card-col game-card-col--right">
             <span class="game-pattern-badge">{{ patternLabel(game.pattern) }}</span>
-            <span class="game-value game-value--time">
+            <span class="game-value game-value--time" :class="{ 'game-value--live': game.status !== 'WAITING' }">
               <GameCountdown
                 v-if="gameStore.countdowns[game.id]"
                 :starts-at="gameStore.countdowns[game.id]"
                 compact
               />
-              <template v-else>1:00</template>
+              <template v-else>
+                {{ game.status === 'WAITING' ? '1:00' : 'LIVE' }}
+              </template>
             </span>
           </div>
         </div>
@@ -49,9 +51,12 @@
             </svg>
             <span>{{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}</span>
           </div>
-          <NuxtLink :to="`/quick/${game.id}`" class="join-btn">
+          <NuxtLink v-if="game.status === 'WAITING'" :to="`/quick/${game.id}`" class="join-btn">
             Join Game
           </NuxtLink>
+          <div v-else class="join-btn join-btn--live">
+            {{ game.status === 'STARTING' ? 'Starting...' : 'Game Live' }}
+          </div>
         </div>
       </div>
     </div>
@@ -221,6 +226,11 @@ onUnmounted(() => {
   color: #fbbf24;
 }
 
+.game-value--live {
+  color: #f87171;
+  text-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
+}
+
 .game-pattern-badge {
   font-size: 0.68rem;
   font-weight: 600;
@@ -280,6 +290,18 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #fbbf24, #f59e0b);
   box-shadow: 0 4px 20px rgba(245, 158, 11, 0.45);
   transform: translateY(-1px);
+}
+
+.join-btn--live {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: default;
+  box-shadow: none;
+}
+.join-btn--live:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */

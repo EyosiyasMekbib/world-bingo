@@ -38,15 +38,22 @@ export class GameSchedulerService {
         })
         if (!template || !template.active) return
 
-        // Count WAITING games for this template
-        const waitingCount = await prisma.game.count({
+        // Count active games for this template (Waiting, Starting, or In Progress)
+        const activeCount = await prisma.game.count({
             where: {
                 templateId: template.id,
-                status: GameStatus.WAITING,
+                status: {
+                    in: [
+                        GameStatus.WAITING,
+                        GameStatus.STARTING,
+                        GameStatus.LOCKING,
+                        GameStatus.IN_PROGRESS,
+                    ],
+                },
             },
         })
 
-        if (waitingCount > 0) return // Already have a game waiting
+        if (activeCount > 0) return // Already have an active game
 
         // Create a new game from the template
         await GameSchedulerService.createFromTemplate(templateId)
