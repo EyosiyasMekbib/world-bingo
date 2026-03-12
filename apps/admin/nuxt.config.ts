@@ -8,6 +8,12 @@ export default defineNuxtConfig({
         '@nuxtjs/i18n',
     ],
 
+    icon: {
+        serverBundle: {
+            collections: ['heroicons']
+        }
+    },
+
     app: {
         head: {
             htmlAttrs: { class: 'dark' },

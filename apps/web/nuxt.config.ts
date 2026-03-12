@@ -24,6 +24,12 @@ export default defineNuxtConfig({
         }],
     ],
 
+    icon: {
+        serverBundle: {
+            collections: ['heroicons']
+        }
+    },
+
     css: ['@world-bingo/ui/styles/tokens.css', '~/assets/css/theme.css'],
 
     runtimeConfig: {

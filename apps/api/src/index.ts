@@ -111,6 +111,41 @@ await server.register(swaggerUi, {
     routePrefix: '/docs',
 })
 
+server.setErrorHandler((error, request, reply) => {
+    // Map common service errors to appropriate status codes
+    if (error.message === 'Invalid credentials' || error.message === 'Invalid refresh token') {
+        return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: error.message
+        })
+    }
+
+    if (error.message === 'User already exists') {
+        return reply.status(409).send({
+            statusCode: 409,
+            error: 'Conflict',
+            message: error.message
+        })
+    }
+
+    if (error.message === 'User not found') {
+        return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: error.message
+        })
+    }
+
+    // Default error handler
+    const statusCode = error.statusCode || 500
+    return reply.status(statusCode).send({
+        statusCode,
+        error: error.name || 'Internal Server Error',
+        message: error.message
+    })
+})
+
 server.decorate('authenticate', async function (request: any, reply: any) {
     try {
         await request.jwtVerify()
