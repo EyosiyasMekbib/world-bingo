@@ -6,8 +6,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: world_bingo
-    ports:
-      - "5432"
+    # ports:
+    #   - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,9 +19,9 @@ services:
   redis:
     image: redis/redis-stack:latest
     restart: unless-stopped
-    ports:
-      - "6379"
-      - "8001" # RedisInsight UI
+    # ports:
+    #   - "6379"
+    #   - "8001" # RedisInsight UI
     volumes:
       - redis_data:/data
     healthcheck:
@@ -36,8 +36,8 @@ services:
       dockerfile: apps/api/Dockerfile
     image: world-bingo-api
     restart: unless-stopped
-    ports:
-      - "8080"
+    # ports:
+    #   - "8080"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/world_bingo
@@ -105,8 +105,8 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.2
     restart: unless-stopped
-    ports:
-      - "9090"
+    # ports:
+    #   - "9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -122,8 +122,8 @@ services:
   grafana:
     image: grafana/grafana:10.4.2
     restart: unless-stopped
-    ports:
-      - "3000"
+    # ports:
+    #   - "3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"

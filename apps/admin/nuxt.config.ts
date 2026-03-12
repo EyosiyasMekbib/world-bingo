@@ -38,6 +38,11 @@ export default defineNuxtConfig({
         },
     },
 
+    routeRules: {
+        '/api/**': { proxy: 'http://api:8080/**' },
+        '/socket.io/': { proxy: 'http://api:8080/socket.io/' }
+    },
+
     vite: {
         resolve: {
             alias: {

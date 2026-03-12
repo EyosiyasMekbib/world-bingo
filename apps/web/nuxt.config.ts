@@ -44,6 +44,8 @@ export default defineNuxtConfig({
         '/': { ssr: false },
         '/quick/**': { ssr: false },
         '/profile': { ssr: false },
+        '/api/**': { proxy: 'http://api:8080/**' },
+        '/socket.io/': { proxy: 'http://api:8080/socket.io/' }
     },
 
     pwa: {
