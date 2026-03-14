@@ -75,6 +75,11 @@ const executeAction = async () => {
   }
 }
 
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
+
 onMounted(refreshWithdrawals)
 </script>
 
@@ -111,13 +116,29 @@ onMounted(refreshWithdrawals)
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="withdrawals" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as WithdrawalTransaction).id.slice(0, 8) }}…</span>
+          <div class="flex items-center gap-1 group">
+            <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as WithdrawalTransaction).id.slice(0, 8) }}…</span>
+            <UButton
+              icon="i-heroicons:clipboard-document text-[10px]"
+              variant="ghost" color="neutral" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-0.5"
+              @click="copyToClipboard((row.original as unknown as WithdrawalTransaction).id)"
+            />
+          </div>
         </template>
         <template #user.username-cell="{ row }">
           <span class="font-semibold text-zinc-200">{{ (row.original as unknown as WithdrawalTransaction).user.username }}</span>
         </template>
         <template #user.phone-cell="{ row }">
-          <span class="font-mono text-sm font-bold text-cyan-400">{{ (row.original as unknown as WithdrawalTransaction).user.phone }}</span>
+          <div class="flex items-center gap-1.5 group">
+            <span class="font-mono text-sm font-bold text-cyan-400">{{ (row.original as unknown as WithdrawalTransaction).user.phone }}</span>
+            <UButton
+              icon="i-heroicons:clipboard-document text-xs"
+              variant="ghost" color="primary" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-1"
+              @click="copyToClipboard((row.original as unknown as WithdrawalTransaction).user.phone)"
+            />
+          </div>
         </template>
         <template #amount-cell="{ row }">
           <strong class="text-lg text-yellow-500 font-bold px-1 rounded-md">{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }} ETB</strong>

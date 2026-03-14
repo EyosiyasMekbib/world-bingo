@@ -30,6 +30,7 @@ const statusOptions = [
 const patternOptions = ['ANY_LINE', 'FULL_HOUSE', 'FOUR_CORNERS', 'T_SHAPE', 'X_SHAPE', 'U_SHAPE', 'DIAMOND']
 
 const columns = [
+  { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'title', header: 'Title' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'ticketPrice', header: 'Price (ETB)' },
@@ -146,6 +147,11 @@ const statusColor = (s: string) => {
   return 'neutral'
 }
 
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
+
 watch([selectedStatus, page], refreshGames)
 onMounted(refreshGames)
 </script>
@@ -167,6 +173,17 @@ onMounted(refreshGames)
     <!-- Table card -->
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="games" :loading="loading">
+        <template #id-cell="{ row }">
+          <div class="flex items-center gap-1 group">
+            <span class="font-mono text-[10px] text-white/30">{{ (row.original as unknown as GameRow).id.slice(0, 6) }}…</span>
+            <UButton
+              icon="i-heroicons:clipboard-document text-[10px]"
+              variant="ghost" color="neutral" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-0.5"
+              @click="copyToClipboard((row.original as unknown as GameRow).id)"
+            />
+          </div>
+        </template>
         <template #status-cell="{ row }">
           <UBadge :color="statusColor((row.original as unknown as GameRow).status)" variant="soft">
             {{ (row.original as unknown as GameRow).status }}

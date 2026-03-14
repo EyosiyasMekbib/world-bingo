@@ -33,6 +33,7 @@ const filtered = computed(() =>
 )
 
 const columns = [
+  { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'title', header: 'Title' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'entryFee', header: 'Entry Fee (ETB)' },
@@ -117,6 +118,11 @@ function statusLabel(status: string) {
   }
 }
 
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
+
 onMounted(fetchTournaments)
 </script>
 
@@ -178,6 +184,7 @@ onMounted(fetchTournaments)
         <table class="w-full text-sm">
           <thead class="border-b border-(--surface-border)" style="background:var(--surface-overlay);">
             <tr>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">ID</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Title</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Status</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Entry Fee</th>
@@ -200,6 +207,17 @@ onMounted(fetchTournaments)
               </td>
             </tr>
             <tr v-for="t in filtered" :key="t.id" class="hover:bg-white/3 transition-colors">
+              <td class="px-4 py-3 font-mono text-[10px] text-white/30 truncate max-w-15">
+                <div class="flex items-center gap-1 group">
+                  <span>{{ t.id.slice(0, 6) }}…</span>
+                  <UButton
+                    icon="i-heroicons:clipboard-document text-[10px]"
+                    variant="ghost" color="neutral" size="xs"
+                    class="opacity-0 group-hover:opacity-100 p-0.5"
+                    @click="copyToClipboard(t.id)"
+                  />
+                </div>
+              </td>
               <td class="px-4 py-3 font-medium text-zinc-200">{{ t.title }}</td>
               <td class="px-4 py-3">
                 <UBadge :color="statusColor(t.status)" variant="soft">{{ statusLabel(t.status) }}</UBadge>

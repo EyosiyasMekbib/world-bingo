@@ -111,6 +111,11 @@ const ageMinutes = (createdAt: string) => {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
 }
 
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
+
 onMounted(refreshDeposits)
 </script>
 
@@ -140,12 +145,29 @@ onMounted(refreshDeposits)
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="pendingDeposits" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
+          <div class="flex items-center gap-1 group">
+            <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
+            <UButton
+              icon="i-heroicons:clipboard-document text-[10px]"
+              variant="ghost" color="neutral" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-0.5"
+              @click="copyToClipboard((row.original as unknown as DepositTransaction).id)"
+            />
+          </div>
         </template>
         <template #paymentTransactionId-cell="{ row }">
-          <span class="font-mono text-xs font-semibold text-zinc-200">
-            {{ (row.original as unknown as DepositTransaction).paymentTransactionId ?? '—' }}
-          </span>
+          <div class="flex items-center gap-1.5 group">
+            <span class="font-mono text-xs font-semibold text-zinc-200">
+              {{ (row.original as unknown as DepositTransaction).paymentTransactionId ?? '—' }}
+            </span>
+            <UButton
+              v-if="(row.original as unknown as DepositTransaction).paymentTransactionId"
+              icon="i-heroicons:clipboard-document text-xs"
+              variant="ghost" color="primary" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-1"
+              @click="copyToClipboard((row.original as unknown as DepositTransaction).paymentTransactionId!)"
+            />
+          </div>
         </template>
         <template #senderName-cell="{ row }">
           <span class="text-zinc-300">{{ (row.original as unknown as DepositTransaction).senderName ?? '—' }}</span>

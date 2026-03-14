@@ -97,6 +97,11 @@ function roleColor(role: string) {
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString('en-ET', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
 </script>
 
 <template>
@@ -156,7 +161,17 @@ function formatDate(date: string) {
                   </button>
                 </div>
               </td>
-              <td class="px-4 py-3 text-white/40 font-mono text-xs">{{ user.phone }}</td>
+              <td class="px-4 py-3 text-white/40 font-mono text-xs">
+                <div class="flex items-center gap-1.5 group">
+                  <span>{{ user.phone }}</span>
+                  <UButton
+                    icon="i-heroicons:clipboard-document text-[10px]"
+                    variant="ghost" color="primary" size="xs"
+                    class="opacity-0 group-hover:opacity-100 p-0.5"
+                    @click="copyToClipboard(user.phone)"
+                  />
+                </div>
+              </td>
               <td class="px-4 py-3">
                 <UBadge :color="roleColor(user.role)" variant="soft" :label="user.role" />
               </td>
@@ -232,9 +247,15 @@ function formatDate(date: string) {
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Username</p>
               <p class="font-bold text-white text-base tracking-tight">{{ detailUser.username }}</p>
             </div>
-            <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+            <div class="p-3.5 rounded-xl border border-(--surface-border) relative group" style="background:var(--surface-overlay);">
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Phone</p>
               <p class="font-bold font-mono text-white text-base tracking-tight">{{ detailUser.phone }}</p>
+              <UButton
+                icon="i-heroicons:clipboard-document"
+                class="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
+                variant="ghost" color="primary" size="xs"
+                @click="copyToClipboard(detailUser.phone)"
+              />
             </div>
             <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Access Role</p>
@@ -246,9 +267,15 @@ function formatDate(date: string) {
                 {{ Number(detailUser.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/40">ETB</span>
               </p>
             </div>
-            <div class="p-3.5 rounded-xl border border-(--surface-border) col-span-2" style="background:var(--surface-overlay);">
+            <div class="p-3.5 rounded-xl border border-(--surface-border) col-span-2 relative group" style="background:var(--surface-overlay);">
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Internal Reference ID</p>
               <p class="font-mono text-xs text-white/30 break-all leading-relaxed">{{ detailUser.id }}</p>
+              <UButton
+                icon="i-heroicons:clipboard-document text-xs"
+                class="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
+                variant="ghost" color="neutral" size="xs"
+                @click="copyToClipboard(detailUser.id)"
+              />
             </div>
           </div>
           <div class="text-[11px] font-semibold text-white/20 uppercase tracking-wider text-center pt-2">

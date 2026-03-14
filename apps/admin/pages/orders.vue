@@ -64,6 +64,11 @@ const refreshHistory = async () => {
   }
 }
 
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
+  toast.add({ title: 'Copied', color: 'success' })
+}
+
 watch([selectedType, page], refreshHistory)
 onMounted(refreshHistory)
 
@@ -118,7 +123,15 @@ const typeColor = (type: string) => {
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="history" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as OrderTransaction).id.slice(0, 8) }}…</span>
+          <div class="flex items-center gap-1 group">
+            <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as OrderTransaction).id.slice(0, 8) }}…</span>
+            <UButton
+              icon="i-heroicons:clipboard-document text-[10px]"
+              variant="ghost" color="neutral" size="xs"
+              class="opacity-0 group-hover:opacity-100 p-0.5"
+              @click="copyToClipboard((row.original as unknown as OrderTransaction).id)"
+            />
+          </div>
         </template>
         <template #amount-cell="{ row }">
           <span class="font-bold text-yellow-500">{{ Number((row.original as unknown as OrderTransaction).amount).toFixed(2) }}</span>
