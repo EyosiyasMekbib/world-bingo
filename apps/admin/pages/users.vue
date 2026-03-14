@@ -12,6 +12,8 @@ const limit = 20
 const totalPages = ref(1)
 const totalUsers = ref(0)
 const searchQuery = ref('')
+const selectedRole = ref('')
+const viewMode = ref<'table' | 'card'>('table')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Role modal ─────────────────────────────────────────────────────────────
@@ -24,6 +26,14 @@ const roleLoading = ref(false)
 const showDetailModal = ref(false)
 const detailUser = ref<any>(null)
 
+// ── Role options ───────────────────────────────────────────────────────────
+const roleOptions = [
+  { label: 'All Roles', value: '' },
+  { label: 'Player', value: 'PLAYER' },
+  { label: 'Admin', value: 'ADMIN' },
+  { label: 'Super Admin', value: 'SUPER_ADMIN' },
+]
+
 // ── Fetch ──────────────────────────────────────────────────────────────────
 async function fetchUsers() {
   loading.value = true
@@ -32,6 +42,7 @@ async function fetchUsers() {
       page: page.value,
       limit,
       search: searchQuery.value || undefined,
+      role: selectedRole.value || undefined
     }) as any
     users.value = result?.data ?? result ?? []
     if (result?.pagination) {
@@ -54,7 +65,7 @@ function onSearch() {
   }, 400)
 }
 
-watch(page, fetchUsers)
+watch([page, selectedRole], fetchUsers)
 onMounted(fetchUsers)
 
 // ── Role change ────────────────────────────────────────────────────────────
@@ -98,6 +109,11 @@ function formatDate(date: string) {
   return new Date(date).toLocaleDateString('en-ET', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+function formatUserId(serial?: number) {
+  if (!serial) return '—'
+  return String(serial).padStart(5, '0')
+}
+
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text)
   toast.add({ title: 'Copied', color: 'success' })
@@ -105,31 +121,58 @@ const copyToClipboard = (text: string) => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 pb-20 md:pb-0">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between flex-wrap gap-4">
       <div>
         <h1 class="text-2xl font-bold text-white tracking-tight">Platform Users</h1>
         <p class="text-sm text-white/50 mt-0.5 font-medium">{{ totalUsers.toLocaleString() }} total accounts</p>
       </div>
-      <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchUsers" />
+      <div class="flex items-center gap-2">
+        <UButtonGroup size="sm">
+          <UButton
+            :variant="viewMode === 'table' ? 'solid' : 'ghost'"
+            color="neutral"
+            icon="i-heroicons:table-cells"
+            @click="viewMode = 'table'"
+          />
+          <UButton
+            :variant="viewMode === 'card' ? 'solid' : 'ghost'"
+            color="neutral"
+            icon="i-heroicons:squares-2x2"
+            @click="viewMode = 'card'"
+          />
+        </UButtonGroup>
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchUsers" />
+      </div>
     </div>
 
-    <!-- Search bar -->
-    <UInput
-      v-model="searchQuery"
-      icon="i-heroicons:magnifying-glass"
-      placeholder="Search by username or phone…"
-      class="max-w-sm"
-      @input="onSearch"
-    />
+    <!-- Toolbar Filters -->
+    <div class="flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
+      <UInput
+        v-model="searchQuery"
+        icon="i-heroicons:magnifying-glass"
+        placeholder="Search by username or phone…"
+        class="flex-1 min-w-60"
+        @input="onSearch"
+      />
+      <USelect
+        v-model="selectedRole"
+        :items="roleOptions"
+        icon="i-heroicons:funnel"
+        placeholder="All Roles"
+        class="w-full md:w-48"
+        value-key="value"
+      />
+    </div>
 
-    <!-- Table -->
-    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
+    <!-- Table View -->
+    <div v-if="viewMode === 'table'" class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl bg-(--surface-raised)">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-(--surface-border)" style="background:var(--surface-overlay);">
+          <thead class="border-b border-(--surface-border) bg-(--surface-overlay)">
             <tr>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">ID</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Username</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Phone</th>
               <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Role</th>
@@ -140,20 +183,21 @@ const copyToClipboard = (text: string) => {
           </thead>
           <tbody class="divide-y divide-white/5">
             <tr v-if="loading">
-              <td colspan="6" class="px-4 py-12 text-center text-white/40">
+              <td colspan="7" class="px-4 py-12 text-center text-white/40">
                 <div class="flex justify-center"><UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin" /></div>
               </td>
             </tr>
             <tr v-else-if="!users.length">
-              <td colspan="6" class="px-4 py-12 text-center text-white/30">
+              <td colspan="7" class="px-4 py-12 text-center text-white/30">
                 <UIcon name="i-heroicons:users" class="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p>No users found</p>
               </td>
             </tr>
             <tr v-for="user in users" :key="user.id" class="hover:bg-white/3 transition-colors">
+              <td class="px-4 py-3 text-white/30 font-mono text-xs">{{ formatUserId(user.serial) }}</td>
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0" style="background:var(--brand-primary);">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0 bg-(--brand-primary)">
                     {{ user.username[0].toUpperCase() }}
                   </div>
                   <button class="font-semibold text-zinc-200 hover:text-yellow-500 transition-colors" @click="openDetail(user)">
@@ -167,7 +211,7 @@ const copyToClipboard = (text: string) => {
                   <UButton
                     icon="i-heroicons:clipboard-document"
                     variant="ghost" color="primary" size="xs"
-                    class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
+                    class="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
                     @click="copyToClipboard(user.phone)"
                   />
                 </div>
@@ -191,14 +235,72 @@ const copyToClipboard = (text: string) => {
           </tbody>
         </table>
       </div>
+    </div>
 
-      <!-- Pagination -->
-      <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-(--surface-border)">
-        <span class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</span>
-        <div class="flex gap-2">
-          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" />
-          <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" />
+    <!-- Card View -->
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div v-if="loading" class="col-span-full flex justify-center py-12">
+        <UIcon name="i-heroicons:arrow-path" class="w-8 h-8 animate-spin text-white/20" />
+      </div>
+      <div v-else-if="!users.length" class="col-span-full text-center py-12 text-white/30 bg-white/5 rounded-3xl border border-white/5">
+        <UIcon name="i-heroicons:users" class="w-12 h-12 mx-auto mb-3 opacity-20" />
+        <p class="text-lg font-medium">No users found</p>
+        <p class="text-sm">Try adjusting your filters</p>
+      </div>
+      <div
+        v-for="user in users" :key="user.id"
+        class="relative p-5 rounded-3xl border border-white/5 bg-(--surface-raised) hover:bg-white/5 transition-all duration-300 group shadow-lg"
+      >
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-black text-xl bg-(--brand-primary) shadow-lg transform group-hover:scale-105 transition-transform">
+              {{ user.username[0].toUpperCase() }}
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-zinc-100 hover:text-yellow-500 transition-colors cursor-pointer" @click="openDetail(user)">
+                  {{ user.username }}
+                </h3>
+                <UBadge :color="roleColor(user.role)" variant="soft" size="xs" :label="user.role" />
+              </div>
+              <p class="text-[10px] text-white/30 font-mono tracking-wider">{{ formatUserId(user.serial) }}</p>
+            </div>
+          </div>
+          <UButton
+            v-if="user.role !== 'SUPER_ADMIN'"
+            icon="i-heroicons:shield-check"
+            variant="ghost" color="neutral" size="xs"
+            @click="openRoleModal(user)"
+          />
         </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-black/20 border border-white/5">
+            <span class="text-[10px] font-bold text-white/30 uppercase tracking-widest">Phone</span>
+            <div class="flex items-center gap-1">
+              <span class="text-xs font-mono text-zinc-400">{{ user.phone }}</span>
+              <UButton icon="i-heroicons:clipboard-document" variant="ghost" color="primary" size="xs" class="p-0.5" @click="copyToClipboard(user.phone)" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-black/20 border border-white/5">
+            <span class="text-[10px] font-bold text-white/30 uppercase tracking-widest">Balance</span>
+            <span class="text-sm font-bold text-yellow-500">{{ Number(user.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/30 font-normal">ETB</span></span>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-white/5 flex justify-between items-center">
+          <span class="text-[10px] text-white/20 font-medium">Joined {{ formatDate(user.createdAt) }}</span>
+          <UButton label="View Profile" variant="link" color="neutral" size="xs" class="p-0 opacity-50 hover:opacity-100" @click="openDetail(user)" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-(--surface-border) mt-6">
+      <span class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</span>
+      <div class="flex gap-2">
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" label="Prev" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" label="Next" />
       </div>
     </div>
 

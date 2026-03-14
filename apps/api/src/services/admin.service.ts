@@ -71,6 +71,7 @@ export class AdminService {
                     user: {
                         select: {
                             id: true,
+                            serial: true,
                             username: true,
                             phone: true,
                         },
@@ -150,25 +151,28 @@ export class AdminService {
         return transaction
     }
 
-    static async getUsers(params: { page?: number; limit?: number; search?: string }) {
+    static async getUsers(params: { page?: number; limit?: number; search?: string; role?: UserRole }) {
         const page = params.page ?? 1
         const limit = params.limit ?? 20
         const skip = (page - 1) * limit
 
-        const where = params.search
-            ? {
-                  OR: [
-                      { username: { contains: params.search, mode: 'insensitive' as const } },
-                      { phone: { contains: params.search } },
-                  ],
-              }
-            : {}
+        const where: any = {}
+        if (params.search) {
+            where.OR = [
+                { username: { contains: params.search, mode: 'insensitive' as const } },
+                { phone: { contains: params.search } },
+            ]
+        }
+        if (params.role) {
+            where.role = params.role
+        }
 
         const [users, total] = await Promise.all([
             prisma.user.findMany({
                 where,
                 select: {
                     id: true,
+                    serial: true,
                     username: true,
                     phone: true,
                     role: true,

@@ -9,6 +9,7 @@ datasource db {
 
 model User {
   id             String          @id @default(uuid())
+  serial         Int             @default(autoincrement()) @unique
   username       String          @unique
   phone          String          @unique
   passwordHash   String

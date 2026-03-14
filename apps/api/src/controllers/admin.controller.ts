@@ -9,9 +9,10 @@ export class AdminController {
     }
 
     static async getPendingDeposits(request: FastifyRequest, reply: FastifyReply) {
+        const { status } = (request.query as any) ?? {}
         const result = await AdminService.getTransactions({
             type: TransactionType.DEPOSIT,
-            status: PaymentStatus.PENDING_REVIEW,
+            status: (status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
         })
         return result.data
     }
@@ -28,9 +29,10 @@ export class AdminController {
     }
 
     static async getWithdrawals(request: FastifyRequest, reply: FastifyReply) {
+        const { status } = (request.query as any) ?? {}
         const result = await AdminService.getTransactions({
             type: TransactionType.WITHDRAWAL,
-            status: PaymentStatus.PENDING_REVIEW,
+            status: (status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
         })
         return result.data
     }
@@ -49,14 +51,15 @@ export class AdminController {
     }
 
     static async getUsers(
-        request: FastifyRequest<{ Querystring: { page?: string; limit?: string; search?: string } }>,
+        request: FastifyRequest<{ Querystring: { page?: string; limit?: string; search?: string; role?: string } }>,
         reply: FastifyReply,
     ) {
-        const { page = '1', limit = '20', search } = request.query
+        const { page = '1', limit = '20', search, role } = request.query
         const result = await AdminService.getUsers({
             page: parseInt(page, 10),
             limit: parseInt(limit, 10),
             search,
+            role: role as UserRole || undefined,
         })
         return result
     }

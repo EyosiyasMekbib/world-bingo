@@ -4,7 +4,7 @@ export const useAdminApi = () => {
     return {
         fetch: apiFetch,
         getStats: () => apiFetch<Record<string, number>>('/admin/stats'),
-        getPendingDeposits: () => apiFetch<any[]>('/admin/transactions/pending'),
+        getPendingDeposits: (status?: string) => apiFetch<any[]>(`/admin/transactions/pending${status ? `?status=${status}` : ''}`),
         getTransactionsHistory: (params?: { type?: string; page?: number; limit?: number }) => {
             const qs = new URLSearchParams()
             if (params?.type) qs.set('type', params.type)
@@ -13,15 +13,16 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any[]>(`/admin/transactions/history${query ? `?${query}` : ''}`)
         },
-        getWithdrawals: () => apiFetch<any[]>('/admin/withdrawals'),
+        getWithdrawals: (status?: string) => apiFetch<any[]>(`/admin/withdrawals${status ? `?status=${status}` : ''}`),
         approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
-        getUsers: (params?: { page?: number; limit?: number; search?: string }) => {
+        getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
             if (params?.search) qs.set('search', params.search)
+            if (params?.role) qs.set('role', params.role)
             const query = qs.toString()
             return apiFetch<any>(`/admin/users${query ? `?${query}` : ''}`)
         },
