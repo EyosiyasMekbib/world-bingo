@@ -198,15 +198,24 @@ export class PayoutService {
 
         // ── Notifications (non-critical) ─────────────────────────────────────
         await Promise.all(
-            winnerUsers.map((w) =>
-                NotificationService.create(
+            winnerUsers.map(async (w) => {
+                // Get the latest transaction for this user to find the balanceAfter
+                const lastTx = await prisma.transaction.findFirst({
+                    where: { userId: w.id, referenceId: gameId, type: TransactionType.PRIZE_WIN },
+                    orderBy: { createdAt: 'desc' }
+                })
+                if (lastTx) {
+                    NotificationService.pushWalletUpdate(w.id, Number(lastTx.balanceAfter ?? 0))
+                }
+
+                return NotificationService.create(
                     w.id,
                     NotificationType.GAME_WON,
                     '🎉 You Won!',
                     `Congratulations! You won ${netWinPerPlayer.toFixed(2)} ETB!`,
                     { gameId, prize: netWinPerPlayer },
-                ).catch(() => {}),
-            ),
+                ).catch(() => {})
+            }),
         )
 
         // ── Clean up Redis ────────────────────────────────────────────────────

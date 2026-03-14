@@ -4,9 +4,9 @@ import { getIo } from '../lib/socket'
 import { GameStatus, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { checkPattern, PatternName } from '@world-bingo/game-logic'
 import { Decimal } from '@prisma/client/runtime/library'
+import { NotificationService } from './notification.service'
 import { startGameEngine, stopGameEngine } from '../lib/game-engine'
 import { RefundService } from './refund.service'
-import { NotificationService } from './notification.service'
 import { clearGameState } from '../lib/game-state'
 import {
     initRoom,
@@ -116,13 +116,14 @@ export class GameService {
                 )
             )
 
-            return { entries, game, totalCost }
+            return { entries, game, totalCost, balanceAfter }
         })
 
-        const { game, totalCost, entries: joinedEntries } = txResult as {
+        const { game, totalCost, entries: joinedEntries, balanceAfter } = txResult as {
             game: any
             totalCost: Decimal
             entries: any[]
+            balanceAfter: Decimal
         }
 
         // ── Post-commit: update Redis room state ────────────────────────────
@@ -148,6 +149,9 @@ export class GameService {
         GameSchedulerService.checkAndStartCountdown(gameId).catch((err) => {
             console.error(`[GameService] Failed to check countdown for game ${gameId}:`, err)
         })
+
+        // Push balance update
+        NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
 
         return joinedEntries
     }
@@ -206,10 +210,10 @@ export class GameService {
                 where: { gameId, userId }
             })
 
-            return { refundAmount, game }
+            return { refundAmount, game, balanceAfter }
         })
 
-        const { refundAmount, game } = txResult as { refundAmount: Decimal, game: any }
+        const { refundAmount, game, balanceAfter } = txResult as { refundAmount: Decimal, game: any, balanceAfter: Decimal }
 
         // ── Room state update ───────────────────────────────────────────────
         const [playerCount] = await Promise.all([
@@ -220,6 +224,9 @@ export class GameService {
         const io = getIo()
         io.to(`game:${gameId}`).emit('game:updated', { ...game, currentPlayers: playerCount } as any)
         ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
+
+        // Push balance update
+        NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
 
         return { refundAmount, playerCount }
     }
@@ -448,8 +455,11 @@ export class GameService {
             io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
             io.to('lobby').emit('lobby:game-removed', gameId)
 
-            return endedGame
-        }).then(async (endedGame: any) => {
+            return { endedGame, balanceAfter }
+        }).then(async ({ endedGame, balanceAfter }: any) => {
+            // Push balance update
+            NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+
             // Post-transaction: notify winner and clear Redis (non-critical)
             const totalEntries = await prisma.gameEntry.count({ where: { gameId } })
             const totalPot = Number(endedGame.ticketPrice) * totalEntries

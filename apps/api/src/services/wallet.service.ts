@@ -66,6 +66,9 @@ export class WalletService {
 
             return transaction
         }).then(async (transaction) => {
+            // Push balance update
+            NotificationService.pushWalletUpdate(transaction.userId, Number(transaction.balanceAfter ?? 0))
+
             // Post-transaction: send notification (non-critical)
             await NotificationService.create(
                 transaction.userId,
@@ -128,6 +131,10 @@ export class WalletService {
                     balanceAfter: balanceAfter,
                 },
             })
+            return transaction
+        }).then(async (transaction) => {
+            // Push balance update
+            NotificationService.pushWalletUpdate(userId, Number(transaction.balanceAfter ?? 0))
             return transaction
         })
     }

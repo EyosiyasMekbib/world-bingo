@@ -98,15 +98,11 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async fetchWallet() {
-      if (!this.accessToken) return
-      const config = useRuntimeConfig()
       try {
-        const wallet = await $fetch<Wallet>(`${config.public.apiBase}/wallet`, {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-        })
+        const wallet = await this.apiFetch<Wallet>('/wallet')
         this.wallet = wallet
       } catch (e) {
-        console.error(e)
+        console.error('Failed to fetch wallet:', e)
       }
     },
 

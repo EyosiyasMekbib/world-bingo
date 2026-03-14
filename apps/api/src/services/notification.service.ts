@@ -80,4 +80,16 @@ export class NotificationService {
             data: { isRead: true },
         })
     }
+
+    /**
+     * Push real-time wallet balance update to the user.
+     */
+    static pushWalletUpdate(userId: string, balance: number) {
+        try {
+            const io = getIo()
+            io.to(`user:${userId}`).emit('wallet:updated', { balance })
+        } catch {
+            // Socket not initialized
+        }
+    }
 }

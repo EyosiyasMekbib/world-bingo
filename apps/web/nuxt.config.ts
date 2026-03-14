@@ -7,7 +7,7 @@ export default defineNuxtConfig({
         '@pinia/nuxt',
         '@nuxt/image',
         '@vite-pwa/nuxt',
-        'nuxt-icon',
+        '@nuxt/icon',
         'pinia-plugin-persistedstate/nuxt',
         ['@nuxtjs/i18n', {
             locales: [
@@ -25,9 +25,7 @@ export default defineNuxtConfig({
     ],
 
     icon: {
-        serverBundle: {
-            collections: ['heroicons']
-        }
+        serverBundle: 'remote',
     },
 
     css: ['@world-bingo/ui/styles/tokens.css', '~/assets/css/theme.css'],

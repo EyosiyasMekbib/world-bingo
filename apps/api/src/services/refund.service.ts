@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
+import { NotificationService } from './notification.service'
 
 /**
  * T19 — Refund Service
@@ -87,8 +88,12 @@ export class RefundService {
                     },
                 })
 
-                return { userId, amount: Number(refundAmount), alreadyRefunded: false }
+                return { userId, amount: Number(refundAmount), alreadyRefunded: false, balanceAfter }
             })
+
+            if (!result.alreadyRefunded && (result as any).balanceAfter) {
+                NotificationService.pushWalletUpdate(userId, Number((result as any).balanceAfter))
+            }
 
             results.push(result)
         }
