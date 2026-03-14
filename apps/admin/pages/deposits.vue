@@ -145,26 +145,26 @@ onMounted(refreshDeposits)
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="pendingDeposits" :loading="loading">
         <template #id-cell="{ row }">
-          <div class="flex items-center gap-1 group">
+          <div class="flex items-center gap-1 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
             <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
             <UButton
-              icon="i-heroicons:clipboard-document text-[10px]"
+              icon="i-heroicons:clipboard-document"
               variant="ghost" color="neutral" size="xs"
-              class="opacity-0 group-hover:opacity-100 p-0.5"
+              class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
               @click="copyToClipboard((row.original as unknown as DepositTransaction).id)"
             />
           </div>
         </template>
         <template #paymentTransactionId-cell="{ row }">
-          <div class="flex items-center gap-1.5 group">
+          <div class="flex items-center gap-1.5 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
             <span class="font-mono text-xs font-semibold text-zinc-200">
               {{ (row.original as unknown as DepositTransaction).paymentTransactionId ?? '—' }}
             </span>
             <UButton
               v-if="(row.original as unknown as DepositTransaction).paymentTransactionId"
-              icon="i-heroicons:clipboard-document text-xs"
+              icon="i-heroicons:clipboard-document"
               variant="ghost" color="primary" size="xs"
-              class="opacity-0 group-hover:opacity-100 p-1"
+              class="opacity-50 hover:opacity-100 transition-opacity p-1"
               @click="copyToClipboard((row.original as unknown as DepositTransaction).paymentTransactionId!)"
             />
           </div>

@@ -174,12 +174,12 @@ onMounted(refreshGames)
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="games" :loading="loading">
         <template #id-cell="{ row }">
-          <div class="flex items-center gap-1 group">
+          <div class="flex items-center gap-1 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
             <span class="font-mono text-[10px] text-white/30">{{ (row.original as unknown as GameRow).id.slice(0, 6) }}…</span>
             <UButton
-              icon="i-heroicons:clipboard-document text-[10px]"
+              icon="i-heroicons:clipboard-document"
               variant="ghost" color="neutral" size="xs"
-              class="opacity-0 group-hover:opacity-100 p-0.5"
+              class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
               @click="copyToClipboard((row.original as unknown as GameRow).id)"
             />
           </div>

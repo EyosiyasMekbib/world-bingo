@@ -208,12 +208,12 @@ onMounted(fetchTournaments)
             </tr>
             <tr v-for="t in filtered" :key="t.id" class="hover:bg-white/3 transition-colors">
               <td class="px-4 py-3 font-mono text-[10px] text-white/30 truncate max-w-15">
-                <div class="flex items-center gap-1 group">
+                <div class="flex items-center gap-1 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
                   <span>{{ t.id.slice(0, 6) }}…</span>
                   <UButton
-                    icon="i-heroicons:clipboard-document text-[10px]"
+                    icon="i-heroicons:clipboard-document"
                     variant="ghost" color="neutral" size="xs"
-                    class="opacity-0 group-hover:opacity-100 p-0.5"
+                    class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
                     @click="copyToClipboard(t.id)"
                   />
                 </div>

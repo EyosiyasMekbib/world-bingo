@@ -123,12 +123,12 @@ const typeColor = (type: string) => {
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="history" :loading="loading">
         <template #id-cell="{ row }">
-          <div class="flex items-center gap-1 group">
+          <div class="flex items-center gap-1 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
             <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as OrderTransaction).id.slice(0, 8) }}…</span>
             <UButton
-              icon="i-heroicons:clipboard-document text-[10px]"
+              icon="i-heroicons:clipboard-document"
               variant="ghost" color="neutral" size="xs"
-              class="opacity-0 group-hover:opacity-100 p-0.5"
+              class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
               @click="copyToClipboard((row.original as unknown as OrderTransaction).id)"
             />
           </div>

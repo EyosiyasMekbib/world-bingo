@@ -162,12 +162,12 @@ const copyToClipboard = (text: string) => {
                 </div>
               </td>
               <td class="px-4 py-3 text-white/40 font-mono text-xs">
-                <div class="flex items-center gap-1.5 group">
+                <div class="flex items-center gap-1.5 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
                   <span>{{ user.phone }}</span>
                   <UButton
-                    icon="i-heroicons:clipboard-document text-[10px]"
+                    icon="i-heroicons:clipboard-document"
                     variant="ghost" color="primary" size="xs"
-                    class="opacity-0 group-hover:opacity-100 p-0.5"
+                    class="opacity-50 hover:opacity-100 transition-opacity p-0.5"
                     @click="copyToClipboard(user.phone)"
                   />
                 </div>
@@ -252,7 +252,7 @@ const copyToClipboard = (text: string) => {
               <p class="font-bold font-mono text-white text-base tracking-tight">{{ detailUser.phone }}</p>
               <UButton
                 icon="i-heroicons:clipboard-document"
-                class="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
+                class="absolute top-2 right-2 opacity-30 hover:opacity-100 transition-opacity"
                 variant="ghost" color="primary" size="xs"
                 @click="copyToClipboard(detailUser.phone)"
               />
@@ -271,8 +271,8 @@ const copyToClipboard = (text: string) => {
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Internal Reference ID</p>
               <p class="font-mono text-xs text-white/30 break-all leading-relaxed">{{ detailUser.id }}</p>
               <UButton
-                icon="i-heroicons:clipboard-document text-xs"
-                class="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
+                icon="i-heroicons:clipboard-document"
+                class="absolute top-2 right-2 opacity-30 hover:opacity-100 transition-opacity"
                 variant="ghost" color="neutral" size="xs"
                 @click="copyToClipboard(detailUser.id)"
               />
