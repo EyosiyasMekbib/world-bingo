@@ -125,8 +125,8 @@ onMounted(fetchTournaments)
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-white">🏆 Tournaments</h1>
-        <p class="text-sm text-zinc-500 mt-0.5">Manage tournament creation, lifecycle, and results</p>
+        <h1 class="text-2xl font-bold text-white tracking-tight">🏆 Tournaments</h1>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">Manage tournament events and prizes</p>
       </div>
       <UButton icon="i-heroicons:plus" color="primary" @click="showCreateModal = true">
         Create Tournament
@@ -148,43 +148,43 @@ onMounted(fetchTournaments)
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-white">{{ tournaments.length }}</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Total</div>
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-white tracking-tight">{{ tournaments.length }}</div>
+        <div class="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Total</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-emerald-400">
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-emerald-400 tracking-tight">
           {{ tournaments.filter(t => t.status === TournamentStatus.REGISTRATION).length }}
         </div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Open Registration</div>
+        <div class="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Open Registration</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-amber-400">
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-yellow-500 tracking-tight">
           {{ tournaments.filter(t => t.status === TournamentStatus.IN_PROGRESS).length }}
         </div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Live</div>
+        <div class="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Live</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-cyan-400">
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-cyan-400 tracking-tight">
           {{ tournaments.reduce((s, t) => s + t.currentPlayers, 0) }}
         </div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Total Participants</div>
+        <div class="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Total Participants</div>
       </div>
     </div>
 
     <!-- Table -->
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-white/8" style="background:#0d1220;">
+          <thead class="border-b border-(--surface-border)" style="background:var(--surface-overlay);">
             <tr>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Title</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Status</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Entry Fee</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Players</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Prize Pool</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Created</th>
-              <th class="text-right px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Actions</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Title</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Status</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Entry Fee</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Players</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Prize Pool</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Created</th>
+              <th class="text-right px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-white/5">
@@ -205,13 +205,12 @@ onMounted(fetchTournaments)
                 <UBadge :color="statusColor(t.status)" variant="soft">{{ statusLabel(t.status) }}</UBadge>
               </td>
               <td class="px-4 py-3 text-zinc-300">{{ Number(t.entryFee).toLocaleString() }} ETB</td>
-              <td class="px-4 py-3 text-zinc-300">{{ t.currentPlayers }}/{{ t.maxPlayers }}</td>
               <td class="px-4 py-3">
-                <span class="font-bold text-amber-400">
+                <span class="font-bold text-yellow-500">
                   {{ Number(t.prizePool).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
                 </span>
               </td>
-              <td class="px-4 py-3 text-zinc-500 text-xs">{{ new Date(t.createdAt).toLocaleDateString() }}</td>
+              <td class="px-4 py-3 text-white/40 text-xs font-medium">{{ new Date(t.createdAt).toLocaleDateString() }}</td>
               <td class="px-4 py-3 text-right">
                 <div class="flex gap-2 justify-end">
                   <UButton
@@ -260,13 +259,13 @@ onMounted(fetchTournaments)
           </div>
 
           <!-- Prize pool estimate -->
-          <div class="rounded-xl border border-amber-400/20 p-3 text-sm" style="background:rgba(245,158,11,0.06);">
-            <div class="font-semibold text-amber-400 mb-1">Prize Pool Estimate</div>
-            <div class="text-zinc-400">
-              {{ newTournament.maxPlayers }} players × {{ newTournament.entryFee }} ETB — {{ newTournament.houseEdgePct }}% house edge:
+          <div class="rounded-xl border border-yellow-500/20 p-4 text-sm" style="background:var(--surface-overlay);">
+            <div class="font-bold text-yellow-500 mb-1 uppercase tracking-widest text-[10px]">Prize Pool Estimate</div>
+            <div class="text-white/50 text-xs">
+              {{ newTournament.maxPlayers || 0 }} players × {{ newTournament.entryFee || 0 }} ETB — {{ newTournament.houseEdgePct || 0 }}% house edge:
             </div>
-            <div class="text-amber-400 font-bold text-lg mt-1">
-              ~{{ (newTournament.maxPlayers * newTournament.entryFee * (1 - newTournament.houseEdgePct / 100)).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
+            <div class="text-yellow-500 font-bold text-xl mt-1 tracking-tight">
+              ~{{ (newTournament.maxPlayers * newTournament.entryFee * (1 - newTournament.houseEdgePct / 100)).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/40">ETB</span>
             </div>
           </div>
         </div>

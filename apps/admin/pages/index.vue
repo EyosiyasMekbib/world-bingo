@@ -30,8 +30,8 @@ onMounted(refreshStats)
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-white">Dashboard</h1>
-        <p class="text-sm text-zinc-500 mt-0.5">Platform overview</p>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Dashboard Overview</h1>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">Platform performance and statistics</p>
       </div>
       <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" @click="refreshStats" />
     </div>
@@ -40,15 +40,15 @@ onMounted(refreshStats)
       <div
         v-for="(stat, index) in stats"
         :key="index"
-        class="group relative rounded-2xl border border-white/8 p-5 flex items-start justify-between hover:border-amber-400/30 transition-all cursor-default"
-        style="background:#111827;"
+        class="group relative rounded-2xl border border-(--surface-border) p-5 flex items-start justify-between hover:border-yellow-400/30 transition-all cursor-default shadow-lg"
+        style="background:var(--surface-raised);"
       >
         <div>
-          <p class="text-xs font-medium text-zinc-500 uppercase tracking-wider">{{ stat.label }}</p>
-          <p class="mt-2 text-2xl font-bold text-amber-400">{{ stat.value }}</p>
+          <p class="text-xs font-semibold text-white/50 uppercase tracking-widest">{{ stat.label }}</p>
+          <p class="mt-2 text-2xl font-bold text-yellow-500 tracking-tight">{{ stat.value }}</p>
         </div>
-        <div class="p-2.5 rounded-xl border border-amber-400/20 group-hover:border-amber-400/40 transition-colors" style="background:rgba(245,158,11,0.08);">
-          <UIcon :name="stat.icon" class="w-5 h-5 text-amber-400" />
+        <div class="p-2.5 rounded-xl border border-yellow-400/20 group-hover:border-yellow-400/40 transition-all duration-300" style="background:rgba(255,215,0,0.05);">
+          <UIcon :name="stat.icon" class="w-5 h-5 text-yellow-500 group-hover:scale-110 transition-transform" />
         </div>
       </div>
     </div>

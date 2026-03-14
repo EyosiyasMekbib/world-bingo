@@ -90,13 +90,13 @@ onMounted(refreshWithdrawals)
 
     <!-- Summary stats -->
     <div class="grid grid-cols-2 gap-4">
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-amber-400">{{ pendingCount }}</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Awaiting Transfer</div>
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-yellow-500">{{ pendingCount }}</div>
+        <div class="text-xs text-white/50 mt-1 uppercase tracking-wide">Awaiting Transfer</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
         <div class="text-2xl font-bold text-emerald-400">{{ approvedSum.toFixed(2) }} ETB</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Total Transferred (all time)</div>
+        <div class="text-xs text-white/50 mt-1 uppercase tracking-wide">Total Transferred</div>
       </div>
     </div>
 
@@ -108,7 +108,7 @@ onMounted(refreshWithdrawals)
       description="Send funds via TeleBirr to the player's phone number shown below, then click 'Mark Transferred'. Rejecting a request refunds the balance back to the player."
     />
 
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="withdrawals" :loading="loading">
         <template #id-cell="{ row }">
           <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as WithdrawalTransaction).id.slice(0, 8) }}…</span>
@@ -120,7 +120,7 @@ onMounted(refreshWithdrawals)
           <span class="font-mono text-sm font-bold text-cyan-400">{{ (row.original as unknown as WithdrawalTransaction).user.phone }}</span>
         </template>
         <template #amount-cell="{ row }">
-          <strong class="text-lg text-amber-400">{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }} ETB</strong>
+          <strong class="text-lg text-yellow-500 font-bold px-1 rounded-md">{{ Number((row.original as unknown as WithdrawalTransaction).amount).toFixed(2) }} ETB</strong>
         </template>
         <template #createdAt-cell="{ row }">
           <span class="text-zinc-400 text-xs">{{ new Date((row.original as unknown as WithdrawalTransaction).createdAt).toLocaleString() }}</span>

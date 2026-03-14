@@ -44,20 +44,20 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 <template>
   <div
     class="min-h-screen flex flex-col"
-    style="background: var(--surface-base, #0a0d14); color: var(--color-text-primary, #fff)"
+    style="background: var(--surface-base); color: var(--text-primary)"
   >
     <!-- ── Top Header ────────────────────────────────────────────────────── -->
     <header
       class="sticky top-0 z-40 border-b border-white/10"
       style="
-        background: var(--surface-overlay, rgba(15, 18, 27, 0.92));
+        background: rgba(0, 10, 56, 0.92);
         backdrop-filter: blur(12px);
       "
     >
       <div class="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
         <!-- Logo -->
         <NuxtLink to="/" class="h-20 flex items-center flex-shrink-0 group">
-          <img src="/logo.png" alt="Arada Bingo Logo" class="h-full w-auto object-contain py-0.5" />
+          <img src="/logo.png" alt="Arada Bingo Logo" class="h-14 w-auto object-contain" />
         </NuxtLink>
 
         <nav class="hidden sm:flex items-center gap-1">
@@ -113,8 +113,8 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             <div
               class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm"
             >
-              <span class="text-amber-400 font-semibold">{{ formattedBalance }}</span>
-              <span class="text-zinc-400 text-xs">ETB</span>
+              <span class="text-yellow-500 font-semibold md:font-bold">{{ formattedBalance }}</span>
+              <span class="text-white/50 text-[10px] uppercase font-bold tracking-tight">ETB</span>
             </div>
 
             <!-- Deposit button -->
@@ -222,25 +222,9 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             class="sm:hidden p-2 rounded-lg hover:bg-white/8 transition-colors text-zinc-300"
             @click="mobileNavOpen = !mobileNavOpen"
           >
-            <svg
-              class="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                v-if="!mobileNavOpen"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-              <path
-                v-else
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M6 18L18 6M6 6l12 12"
-              />
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path v-if="!mobileNavOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+              <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -257,74 +241,85 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
       >
         <div
           v-if="mobileNavOpen"
-          class="sm:hidden border-t border-white/10 px-4 py-3 flex flex-col gap-2 bg-zinc-950"
+          class="sm:hidden fixed inset-x-0 top-0 z-50 flex flex-col bg-[var(--surface-base)] shadow-2xl"
         >
-          <NuxtLink
-            v-if="referralsEnabled && auth.isAuthenticated"
-            to="/refer"
-            class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8 flex items-center gap-2"
-            @click="mobileNavOpen = false"
-          >
-            <Icon name="heroicons:gift" class="w-4 h-4" />
-            Refer &amp; Earn
-          </NuxtLink>
-          <NuxtLink
-            v-if="tournamentsEnabled"
-            to="/tournaments"
-            class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/8 flex items-center gap-2"
-            @click="mobileNavOpen = false"
-          >
-            <Icon name="heroicons:trophy" class="w-4 h-4" />
-            Tournaments
-          </NuxtLink>
-          <template v-if="auth.isAuthenticated">
-            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
-              <span class="text-sm text-zinc-400 flex items-center gap-2">
-                <Icon name="heroicons:wallet" class="w-4 h-4" />
-                Balance
-              </span>
-              <span class="text-sm font-semibold text-amber-400">{{ formattedBalance }} ETB</span>
+          <!-- Drawer Header -->
+          <div class="h-20 px-4 flex items-center justify-between border-b border-white/10" style="background: rgba(0, 10, 56, 1);">
+            <img src="/logo.png" alt="Arada Bingo" class="h-10 w-auto object-contain" />
+            <div class="flex items-center gap-3">
+              <div class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 flex items-center gap-2">
+                <span class="text-yellow-500 font-bold text-sm">{{ formattedBalance }}</span>
+                <span class="text-white/40 text-[10px] uppercase font-bold">ETB</span>
+              </div>
+              <button @click="mobileNavOpen = false" class="p-2 text-white/60 hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <button
-              class="w-full text-left px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-amber-400/10 hover:text-amber-400 flex items-center gap-2"
-              @click="showDeposit = true; mobileNavOpen = false"
-            >
-              <Icon name="heroicons:plus-circle" class="w-4 h-4" />
-              Deposit
-            </button>
-            <button
-              class="w-full text-left px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-white/8 flex items-center gap-2"
-              @click="showWithdrawal = true; mobileNavOpen = false"
-            >
-              <Icon name="heroicons:arrow-up-circle" class="w-4 h-4" />
-              Withdraw
-            </button>
-            <button
-              class="w-full text-left px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-white/8 flex items-center gap-2"
-              @click="toggleLocale(); mobileNavOpen = false"
-              :title="locale === 'en' ? 'Switch to Amharic' : 'Switch to English'"
-            >
-              <Icon name="heroicons:language" class="w-4 h-4" />
-              <span>{{
-                locale === 'en' ? 'Switch to Amharic (አማ)' : 'Switch to English (EN)'
-              }}</span>
-            </button>
-            <NuxtLink
-              to="/profile"
-              class="px-3 py-2 rounded-lg text-sm text-zinc-300 hover:bg-white/8 flex items-center gap-2"
-              @click="mobileNavOpen = false"
-            >
-              <Icon name="heroicons:user" class="w-4 h-4" />
-              Profile
-            </NuxtLink>
-            <button
-              class="w-full text-left px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
-              @click="handleLogout"
-            >
-              <Icon name="heroicons:arrow-right-on-rectangle" class="w-4 h-4" />
-              Logout
-            </button>
-          </template>
+          </div>
+
+          <div class="p-4 flex flex-col gap-1">
+            <template v-if="auth.isAuthenticated">
+              <div class="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/5 mb-3">
+                <span class="text-sm text-white/60">Balance</span>
+                <span class="text-base font-bold text-yellow-500">{{ formattedBalance }} ETB</span>
+              </div>
+              
+              <button
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
+                @click="showDeposit = true; mobileNavOpen = false"
+              >
+                Deposit
+              </button>
+              
+              <button
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
+                @click="showWithdrawal = true; mobileNavOpen = false"
+              >
+                Withdraw
+              </button>
+
+              <button
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
+                @click="toggleLocale(); mobileNavOpen = false"
+              >
+                {{ locale === 'en' ? 'Switch to Amharic (አማ)' : 'Switch to English (EN)' }}
+              </button>
+
+              <NuxtLink
+                to="/profile"
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
+                @click="mobileNavOpen = false"
+              >
+                Profile
+              </NuxtLink>
+
+              <button
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-semibold text-red-500/90 hover:bg-red-500/5 flex items-center gap-3 transition-colors mt-2"
+                @click="handleLogout"
+              >
+                Logout
+              </button>
+            </template>
+            
+            <template v-else>
+              <NuxtLink
+                to="/auth/login"
+                class="w-full px-4 py-3.5 rounded-xl bg-yellow-500 text-black text-center font-bold mb-2 shadow-lg shadow-yellow-500/20"
+                @click="mobileNavOpen = false"
+              >
+                Login
+              </NuxtLink>
+              <NuxtLink
+                to="/auth/register"
+                class="w-full px-4 py-3.5 rounded-xl border border-white/20 text-white text-center font-medium hover:bg-white/5"
+                @click="mobileNavOpen = false"
+              >
+                Create Account
+              </NuxtLink>
+            </template>
+          </div>
         </div>
       </Transition>
     </header>

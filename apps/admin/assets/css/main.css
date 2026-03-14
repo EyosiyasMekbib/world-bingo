@@ -1,25 +1,74 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+:root {
+  --surface-base: #000A38;
+  --surface-raised: #041433;
+  --surface-overlay: #0b1f47;
+  --surface-border: #132b5e;
+  
+  --brand-primary: #FFD700;
+  --brand-primary-dim: #cca800;
+  --brand-glow: rgba(255, 215, 0, 0.15);
+  
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+}
+
 html, body {
   font-family: 'Space Grotesk', 'Nunito', system-ui, sans-serif;
-  background: #0a0f1e;
-  color: #f1f5f9;
+  background: var(--surface-base);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Layered mesh background for premium feel */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 215, 0, 0.05) 0%, transparent 100%),
+    radial-gradient(ellipse 50% 50% at 100% 100%, rgba(66, 99, 235, 0.05) 0%, transparent 100%),
+    var(--surface-base);
+}
+
+/* Glassmorphism effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
 }
 
 /* Sidebar nav active state */
 .admin-nav-link.router-link-active,
 .admin-nav-link.router-link-exact-active {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b !important;
+  background: var(--brand-glow);
+  color: var(--brand-primary) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.2);
+}
+
+/* Nuxt UI Overrides */
+.ui-button-solid-primary {
+  background-color: var(--brand-primary) !important;
+  color: #000 !important;
+  font-weight: 600;
+}
+
+.ui-button-solid-primary:hover {
+  background-color: var(--brand-primary-dim) !important;
 }
 
 /* Scrollbar styling */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
-/* Table row hover */
-tbody tr:hover { background: rgba(255,255,255,0.03) !important; }
+/* Table styling */
+.ui-table th { background: rgba(255,255,255,0.02) !important; color: var(--text-secondary) !important; font-size: 0.75rem !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; }
+.ui-table td { border-bottom: 1px solid rgba(255,255,255,0.03) !important; }
+tbody tr:hover { background: rgba(255,255,255,0.02) !important; }

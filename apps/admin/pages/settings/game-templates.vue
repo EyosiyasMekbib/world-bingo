@@ -119,9 +119,9 @@ onMounted(refreshTemplates)
   <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-white">Game Templates</h1>
-        <p class="text-sm text-zinc-500 mt-0.5">
-          Preconfigured games that run automatically. Games auto-start when minimum players join after a countdown.
+        <h1 class="text-2xl font-bold text-white tracking-tight">Game Templates</h1>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">
+          Preconfigured games that run automatically based on minimum player thresholds.
         </p>
       </div>
       <div class="flex gap-2 items-center">
@@ -131,37 +131,47 @@ onMounted(refreshTemplates)
     </div>
 
     <!-- Info Banner -->
-    <div class="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-      <div class="flex items-start gap-3">
-        <span class="text-cyan-400 text-xl">💡</span>
-        <div class="text-sm text-zinc-300">
-          <p class="font-medium text-cyan-400 mb-1">How Templates Work</p>
-          <ul class="list-disc list-inside space-y-0.5 text-zinc-400">
-            <li>Each active template always has one <strong class="text-zinc-300">WAITING</strong> game in the lobby</li>
-            <li>When <strong class="text-zinc-300">min players</strong> join, a <strong class="text-zinc-300">60-second countdown</strong> begins</li>
-            <li>When the countdown expires, the game <strong class="text-zinc-300">auto-starts</strong> (no manual start needed)</li>
-            <li>When a game ends, a <strong class="text-zinc-300">new one is created</strong> from the same template automatically</li>
+    <div class="rounded-2xl border border-cyan-500/20 shadow-lg p-5" style="background:var(--surface-overlay);">
+      <div class="flex items-start gap-4">
+        <div class="p-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/5 shrink-0">
+          <UIcon name="i-heroicons:information-circle" class="w-6 h-6 text-cyan-400" />
+        </div>
+        <div>
+          <p class="text-sm font-bold text-cyan-400 mb-1.5 uppercase tracking-widest text-[10px]">How Templates Work</p>
+          <ul class="space-y-1.5">
+            <li class="flex items-center gap-2 text-xs text-white/50 font-medium">
+              <div class="w-1 h-1 rounded-full bg-cyan-400" />
+              Active templates maintain a <strong class="text-white/80">WAITING</strong> lobby automatically.
+            </li>
+            <li class="flex items-center gap-2 text-xs text-white/50 font-medium">
+              <div class="w-1 h-1 rounded-full bg-cyan-400" />
+              A <strong class="text-white/80">60-second countdown</strong> starts when min players are met.
+            </li>
+            <li class="flex items-center gap-2 text-xs text-white/50 font-medium">
+              <div class="w-1 h-1 rounded-full bg-cyan-400" />
+              Games <strong class="text-white/80">auto-start</strong> upon countdown expiry.
+            </li>
           </ul>
         </div>
       </div>
     </div>
 
     <!-- Table -->
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="templates" :loading="loading">
         <template #ticketPrice-cell="{ row }">
-          <span class="font-semibold text-amber-400">{{ (row.original as unknown as GameTemplate).ticketPrice }} ETB</span>
+          <span class="font-bold text-yellow-500">{{ (row.original as unknown as GameTemplate).ticketPrice }} ETB</span>
         </template>
         <template #players-cell="{ row }">
-          <span class="text-zinc-300">
+          <span class="text-white/70 font-medium">
             {{ (row.original as unknown as GameTemplate).minPlayers }} / {{ (row.original as unknown as GameTemplate).maxPlayers }}
           </span>
         </template>
         <template #houseEdgePct-cell="{ row }">
-          <span class="text-zinc-300">{{ (row.original as unknown as GameTemplate).houseEdgePct }}%</span>
+          <span class="text-white/60 font-medium">{{ (row.original as unknown as GameTemplate).houseEdgePct }}%</span>
         </template>
         <template #countdownSecs-cell="{ row }">
-          <span class="text-zinc-300">{{ (row.original as unknown as GameTemplate).countdownSecs }}s</span>
+          <span class="text-white/60 font-medium font-mono lowercase">{{ (row.original as unknown as GameTemplate).countdownSecs }}s</span>
         </template>
         <template #active-cell="{ row }">
           <UBadge
@@ -172,7 +182,7 @@ onMounted(refreshTemplates)
           </UBadge>
         </template>
         <template #waitingGames-cell="{ row }">
-          <span class="text-zinc-300">{{ (row.original as unknown as GameTemplate)._count?.games ?? 0 }}</span>
+          <span class="text-white font-bold">{{ (row.original as unknown as GameTemplate)._count?.games ?? 0 }}</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
@@ -198,33 +208,33 @@ onMounted(refreshTemplates)
       <template #body>
         <div class="space-y-4">
           <div>
-            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Title</label>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Template Title</label>
             <UInput v-model="newTemplate.title" placeholder="e.g. Quick 10 ETB" />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Ticket Price (ETB)</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Price (ETB)</label>
               <UInput v-model.number="newTemplate.ticketPrice" type="number" min="1" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Max Players</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Max Players</label>
               <UInput v-model.number="newTemplate.maxPlayers" type="number" min="2" max="500" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Min Players</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Min Players To Start</label>
               <UInput v-model.number="newTemplate.minPlayers" type="number" min="2" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">House Edge %</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">House Commission %</label>
               <UInput v-model.number="newTemplate.houseEdgePct" type="number" min="0" max="50" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Countdown (seconds)</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Start Timer (S)</label>
               <UInput v-model.number="newTemplate.countdownSecs" type="number" min="10" max="300" />
             </div>
           </div>
           <div>
-            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Win Pattern</label>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Pattern Focus</label>
             <USelect v-model="newTemplate.pattern" :items="patternOptions.map(p => ({ label: p, value: p }))" value-key="value" />
           </div>
           <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>

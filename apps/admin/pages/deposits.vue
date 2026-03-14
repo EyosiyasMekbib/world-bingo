@@ -123,24 +123,24 @@ onMounted(refreshDeposits)
 
     <!-- Summary stats -->
     <div class="grid grid-cols-3 gap-4">
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-amber-400">{{ pendingCount }}</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Pending</div>
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-yellow-500">{{ pendingCount }}</div>
+        <div class="text-xs text-white/50 mt-1 uppercase tracking-wide">Pending</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
         <div class="text-2xl font-bold text-emerald-400">{{ approvedSum.toFixed(2) }} ETB</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Approved (all time)</div>
+        <div class="text-xs text-white/50 mt-1 uppercase tracking-wide">Approved</div>
       </div>
-      <div class="rounded-2xl border border-white/8 p-5 text-center" style="background:#111827;">
-        <div class="text-2xl font-bold text-red-400">{{ declinedSum.toFixed(2) }} ETB</div>
-        <div class="text-xs text-zinc-500 mt-1 uppercase tracking-wide">Declined (all time)</div>
+      <div class="rounded-2xl border border-(--surface-border) p-5 text-center shadow-lg" style="background:var(--surface-raised);">
+        <div class="text-2xl font-bold text-red-500">{{ declinedSum.toFixed(2) }} ETB</div>
+        <div class="text-xs text-white/50 mt-1 uppercase tracking-wide">Declined</div>
       </div>
     </div>
 
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="pendingDeposits" :loading="loading">
         <template #id-cell="{ row }">
-          <span class="font-mono text-xs text-zinc-400">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
+          <span class="font-mono text-xs text-white/40">{{ (row.original as unknown as DepositTransaction).id.slice(0, 8) }}…</span>
         </template>
         <template #paymentTransactionId-cell="{ row }">
           <span class="font-mono text-xs font-semibold text-zinc-200">
@@ -154,7 +154,7 @@ onMounted(refreshDeposits)
           <span class="font-mono text-xs text-zinc-300">{{ (row.original as unknown as DepositTransaction).senderAccount ?? '—' }}</span>
         </template>
         <template #amount-cell="{ row }">
-          <strong class="text-amber-400">{{ Number((row.original as unknown as DepositTransaction).amount).toFixed(2) }}</strong>
+          <strong class="text-yellow-500 font-bold">{{ Number((row.original as unknown as DepositTransaction).amount).toFixed(2) }}</strong>
         </template>
         <template #createdAt-cell="{ row }">
           <div class="flex flex-col gap-0.5">
@@ -186,10 +186,10 @@ onMounted(refreshDeposits)
     </div>
 
     <!-- Receipt Modal -->
-    <UModal v-model:open="isReceiptOpen" title="Transfer Receipt">
+    <UModal v-model:open="isReceiptOpen" title="Transfer Receipt" :ui="{ content: 'max-w-2xl' }">
       <template #body>
-        <div class="flex justify-center rounded-xl" style="background:#0a0f1e;">
-          <img :src="selectedReceipt" alt="Receipt" class="max-w-full max-h-[70vh] object-contain shadow-lg rounded-lg" />
+        <div class="flex justify-center rounded-xl p-2" style="background:var(--surface-overlay);">
+          <img :src="selectedReceipt" alt="Receipt" class="max-w-full max-h-[70vh] object-contain shadow-2xl rounded-lg" />
         </div>
       </template>
     </UModal>

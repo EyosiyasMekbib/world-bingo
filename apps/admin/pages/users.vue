@@ -104,8 +104,8 @@ function formatDate(date: string) {
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-white">Users</h1>
-        <p class="text-sm text-zinc-500 mt-0.5">{{ totalUsers.toLocaleString() }} total users</p>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Platform Users</h1>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">{{ totalUsers.toLocaleString() }} total accounts</p>
       </div>
       <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchUsers" />
     </div>
@@ -120,27 +120,27 @@ function formatDate(date: string) {
     />
 
     <!-- Table -->
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-white/8" style="background:#0d1220;">
+          <thead class="border-b border-(--surface-border)" style="background:var(--surface-overlay);">
             <tr>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Username</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Phone</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Role</th>
-              <th class="text-right px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Balance (ETB)</th>
-              <th class="text-left px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Joined</th>
-              <th class="text-right px-4 py-3 text-zinc-500 font-medium text-xs uppercase tracking-wide">Actions</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Username</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Phone</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Role</th>
+              <th class="text-right px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Balance (ETB)</th>
+              <th class="text-left px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Joined</th>
+              <th class="text-right px-4 py-3 text-white/50 font-semibold text-xs uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-white/5">
             <tr v-if="loading">
-              <td colspan="6" class="px-4 py-12 text-center text-zinc-500">
+              <td colspan="6" class="px-4 py-12 text-center text-white/40">
                 <div class="flex justify-center"><UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin" /></div>
               </td>
             </tr>
             <tr v-else-if="!users.length">
-              <td colspan="6" class="px-4 py-12 text-center text-zinc-600">
+              <td colspan="6" class="px-4 py-12 text-center text-white/30">
                 <UIcon name="i-heroicons:users" class="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p>No users found</p>
               </td>
@@ -148,22 +148,22 @@ function formatDate(date: string) {
             <tr v-for="user in users" :key="user.id" class="hover:bg-white/3 transition-colors">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0" style="background:#f59e0b;">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0" style="background:var(--brand-primary);">
                     {{ user.username[0].toUpperCase() }}
                   </div>
-                  <button class="font-medium text-zinc-200 hover:text-amber-400 transition-colors" @click="openDetail(user)">
+                  <button class="font-semibold text-zinc-200 hover:text-yellow-500 transition-colors" @click="openDetail(user)">
                     {{ user.username }}
                   </button>
                 </div>
               </td>
-              <td class="px-4 py-3 text-zinc-400 font-mono text-xs">{{ user.phone }}</td>
+              <td class="px-4 py-3 text-white/40 font-mono text-xs">{{ user.phone }}</td>
               <td class="px-4 py-3">
-                <UBadge :color="roleColor(user.role)" variant="subtle" :label="user.role" />
+                <UBadge :color="roleColor(user.role)" variant="soft" :label="user.role" />
               </td>
-              <td class="px-4 py-3 text-right font-mono text-amber-400 font-semibold">
+              <td class="px-4 py-3 text-right font-mono text-yellow-500 font-bold">
                 {{ Number(user.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </td>
-              <td class="px-4 py-3 text-zinc-500 text-xs">{{ formatDate(user.createdAt) }}</td>
+              <td class="px-4 py-3 text-white/40 text-xs font-medium">{{ formatDate(user.createdAt) }}</td>
               <td class="px-4 py-3 text-right">
                 <UButton
                   v-if="user.role !== 'SUPER_ADMIN'"
@@ -178,8 +178,8 @@ function formatDate(date: string) {
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-white/8">
-        <span class="text-sm text-zinc-500">Page {{ page }} of {{ totalPages }}</span>
+      <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-(--surface-border)">
+        <span class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</span>
         <div class="flex gap-2">
           <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" />
           <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" />
@@ -188,16 +188,16 @@ function formatDate(date: string) {
     </div>
 
     <!-- Role change modal -->
-    <UModal v-model:open="showRoleModal" title="Change User Role">
+    <UModal v-model:open="showRoleModal" title="Change User Role" :ui="{ content: 'max-w-md' }">
       <template #body>
         <div v-if="selectedUser" class="space-y-4">
-          <div class="flex items-center gap-3 p-3 rounded-xl border border-white/8" style="background:#0a0f1e;">
-            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-black" style="background:#f59e0b;">
+          <div class="flex items-center gap-3 p-4 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center font-bold text-black text-lg" style="background:var(--brand-primary);">
               {{ selectedUser.username[0].toUpperCase() }}
             </div>
             <div>
-              <p class="font-semibold text-zinc-200">{{ selectedUser.username }}</p>
-              <p class="text-sm text-zinc-500">{{ selectedUser.phone }}</p>
+              <p class="font-bold text-white text-base tracking-tight">{{ selectedUser.username }}</p>
+              <p class="text-sm text-white/50 font-mono">{{ selectedUser.phone }}</p>
             </div>
           </div>
 
@@ -224,35 +224,35 @@ function formatDate(date: string) {
     </UModal>
 
     <!-- User detail modal -->
-    <UModal v-model:open="showDetailModal" :title="detailUser?.username ?? 'User Detail'">
+    <UModal v-model:open="showDetailModal" :title="detailUser?.username ?? 'User Profile Detail'" :ui="{ content: 'max-w-md' }">
       <template #body>
-        <div v-if="detailUser" class="space-y-3 text-sm">
+        <div v-if="detailUser" class="space-y-4">
           <div class="grid grid-cols-2 gap-3">
-            <div class="p-3 rounded-xl border border-white/8" style="background:#0a0f1e;">
-              <p class="text-xs text-zinc-500 mb-1">Username</p>
-              <p class="font-medium text-zinc-200">{{ detailUser.username }}</p>
+            <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+              <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Username</p>
+              <p class="font-bold text-white text-base tracking-tight">{{ detailUser.username }}</p>
             </div>
-            <div class="p-3 rounded-xl border border-white/8" style="background:#0a0f1e;">
-              <p class="text-xs text-zinc-500 mb-1">Phone</p>
-              <p class="font-medium font-mono text-zinc-200">{{ detailUser.phone }}</p>
+            <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+              <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Phone</p>
+              <p class="font-bold font-mono text-white text-base tracking-tight">{{ detailUser.phone }}</p>
             </div>
-            <div class="p-3 rounded-xl border border-white/8" style="background:#0a0f1e;">
-              <p class="text-xs text-zinc-500 mb-1">Role</p>
-              <UBadge :color="roleColor(detailUser.role)" variant="subtle" :label="detailUser.role" />
+            <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+              <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Access Role</p>
+              <UBadge :color="roleColor(detailUser.role)" variant="soft" :label="detailUser.role" />
             </div>
-            <div class="p-3 rounded-xl border border-white/8" style="background:#0a0f1e;">
-              <p class="text-xs text-zinc-500 mb-1">Wallet Balance</p>
-              <p class="font-semibold text-amber-400">
-                {{ Number(detailUser.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} ETB
+            <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+              <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Wallet Credits</p>
+              <p class="font-bold text-yellow-500 text-base">
+                {{ Number(detailUser.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/40">ETB</span>
               </p>
             </div>
-            <div class="p-3 rounded-xl border border-white/8 col-span-2" style="background:#0a0f1e;">
-              <p class="text-xs text-zinc-500 mb-1">User ID</p>
-              <p class="font-mono text-xs text-zinc-500 break-all">{{ detailUser.id }}</p>
+            <div class="p-3.5 rounded-xl border border-(--surface-border) col-span-2" style="background:var(--surface-overlay);">
+              <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Internal Reference ID</p>
+              <p class="font-mono text-xs text-white/30 break-all leading-relaxed">{{ detailUser.id }}</p>
             </div>
           </div>
-          <div class="text-xs text-zinc-600">
-            Joined {{ formatDate(detailUser.createdAt) }}
+          <div class="text-[11px] font-semibold text-white/20 uppercase tracking-wider text-center pt-2">
+            Registered on {{ formatDate(detailUser.createdAt) }}
           </div>
         </div>
       </template>

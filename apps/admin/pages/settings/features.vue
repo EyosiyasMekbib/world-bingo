@@ -44,7 +44,7 @@ const saveFlags = async () => {
 const saveGameSettings = async () => {
   savingGame.value = true
   try {
-    const result = await updateGameSettings({ ball_interval_secs: gameSettings.ball_interval_secs })
+    const result = await updateGameSettings({ ball_interval_secs: gameSettings.ball_interval_secs }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
@@ -60,8 +60,8 @@ onMounted(fetchAll)
 <template>
   <div class="space-y-8 max-w-2xl">
     <div>
-      <h1 class="text-2xl font-bold text-white">Settings</h1>
-      <p class="text-sm text-zinc-500 mt-0.5">Manage game settings and optional features</p>
+      <h1 class="text-2xl font-bold text-white tracking-tight">System Configuration</h1>
+      <p class="text-sm text-white/50 mt-0.5 font-medium">Manage global game settings and active features</p>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-16 text-zinc-500">
@@ -72,22 +72,22 @@ onMounted(fetchAll)
     <template v-else>
       <!-- ── Game Settings ── -->
       <div class="space-y-4">
-        <h2 class="text-base font-semibold text-zinc-300 flex items-center gap-2">
-          <UIcon name="i-heroicons:cog-6-tooth" class="w-4 h-4 text-amber-400" />
-          Game Settings
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <UIcon name="i-heroicons:cog-6-tooth" class="w-5 h-5 text-yellow-500" />
+          Game Engine
         </h2>
 
         <div
-          class="rounded-2xl border border-white/8 p-5"
-          style="background: #111827;"
+          class="rounded-2xl border border-(--surface-border) p-5 shadow-lg"
+          style="background: var(--surface-raised);"
         >
-          <div class="flex items-start gap-3 mb-4">
-            <div class="p-2.5 rounded-xl border border-amber-400/20 shrink-0" style="background:rgba(245,158,11,0.08);">
-              <UIcon name="i-heroicons:clock" class="w-5 h-5 text-amber-400" />
+          <div class="flex items-start gap-4 mb-4">
+            <div class="p-3 rounded-xl border border-yellow-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:clock" class="w-6 h-6 text-yellow-500" />
             </div>
             <div class="flex-1">
-              <p class="text-sm font-semibold text-white">Ball Calling Interval</p>
-              <p class="text-xs text-zinc-500 mt-0.5">Seconds between each ball call during a live game (1–30s)</p>
+              <p class="text-sm font-bold text-white">Ball Interval</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Adjust the speed of ball calling transitions during active bingo sessions.</p>
             </div>
           </div>
 
@@ -98,16 +98,16 @@ onMounted(fetchAll)
                 type="number"
                 min="1"
                 max="30"
-                class="w-28"
+                class="w-32"
               />
-              <span class="text-sm text-zinc-400">seconds</span>
+              <span class="text-sm text-white/40 font-medium lowercase">seconds</span>
             </div>
             <div class="flex items-center gap-2">
               <span
-                class="text-xs px-2 py-1 rounded-full font-mono"
-                :class="gameSettings.ball_interval_secs <= 3 ? 'bg-green-500/10 text-green-400 border border-green-500/20' : gameSettings.ball_interval_secs <= 8 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-zinc-700 text-zinc-400 border border-white/10'"
+                class="text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider"
+                :class="gameSettings.ball_interval_secs <= 3 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : gameSettings.ball_interval_secs <= 8 ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'"
               >
-                {{ gameSettings.ball_interval_secs <= 3 ? 'Fast' : gameSettings.ball_interval_secs <= 8 ? 'Medium' : 'Slow' }}
+                {{ gameSettings.ball_interval_secs <= 3 ? 'Fast' : gameSettings.ball_interval_secs <= 8 ? 'Normal' : 'Slow' }}
               </span>
             </div>
           </div>
@@ -128,44 +128,44 @@ onMounted(fetchAll)
 
       <!-- ── Feature Flags ── -->
       <div class="space-y-4">
-        <h2 class="text-base font-semibold text-zinc-300 flex items-center gap-2">
-          <UIcon name="i-heroicons:beaker" class="w-4 h-4 text-cyan-400" />
-          Feature Flags
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <UIcon name="i-heroicons:beaker" class="w-5 h-5 text-cyan-400" />
+          Experimental Features
         </h2>
 
         <div class="space-y-3">
           <!-- Refer & Earn -->
           <div
-            class="flex items-center justify-between rounded-2xl border border-white/8 p-5 hover:border-amber-400/30 transition-all"
-            style="background: #111827;"
+            class="flex items-center justify-between rounded-2xl border border-(--surface-border) p-5 hover:border-yellow-500/30 transition-all shadow-md"
+            style="background: var(--surface-raised);"
           >
-            <div class="flex items-center gap-3">
-              <div class="p-2.5 rounded-xl border border-amber-400/20" style="background:rgba(245,158,11,0.08);">
-                <UIcon name="i-heroicons:gift" class="w-5 h-5 text-amber-400" />
+            <div class="flex items-center gap-4">
+              <div class="p-2.5 rounded-xl border border-yellow-500/20" style="background:var(--surface-overlay);">
+                <UIcon name="i-heroicons:gift" class="w-5 h-5 text-yellow-500" />
               </div>
               <div>
-                <p class="text-sm font-semibold text-white">Refer &amp; Earn</p>
-                <p class="text-xs text-zinc-500 mt-0.5">Allow players to share referral links and earn bonuses</p>
+                <p class="text-sm font-bold text-white">Referral System</p>
+                <p class="text-xs text-white/40 mt-1 font-medium">Enable rewards and bonuses for player referrals</p>
               </div>
             </div>
-            <USwitch v-model="features.feature_referrals" />
+            <USwitch v-model="features.feature_referrals" color="primary" />
           </div>
 
           <!-- Tournaments -->
           <div
-            class="flex items-center justify-between rounded-2xl border border-white/8 p-5 hover:border-amber-400/30 transition-all"
-            style="background: #111827;"
+            class="flex items-center justify-between rounded-2xl border border-(--surface-border) p-5 hover:border-yellow-500/30 transition-all shadow-md"
+            style="background: var(--surface-raised);"
           >
-            <div class="flex items-center gap-3">
-              <div class="p-2.5 rounded-xl border border-amber-400/20" style="background:rgba(245,158,11,0.08);">
-                <UIcon name="i-heroicons:trophy" class="w-5 h-5 text-amber-400" />
+            <div class="flex items-center gap-4">
+              <div class="p-2.5 rounded-xl border border-yellow-500/20" style="background:var(--surface-overlay);">
+                <UIcon name="i-heroicons:trophy" class="w-5 h-5 text-yellow-500" />
               </div>
               <div>
-                <p class="text-sm font-semibold text-white">Tournaments</p>
-                <p class="text-xs text-zinc-500 mt-0.5">Show tournament listings and allow players to register</p>
+                <p class="text-sm font-bold text-white">Tournament Mode</p>
+                <p class="text-xs text-white/40 mt-1 font-medium">Enable competitive tournament events across the platform</p>
               </div>
             </div>
-            <USwitch v-model="features.feature_tournaments" />
+            <USwitch v-model="features.feature_tournaments" color="primary" />
           </div>
         </div>
 

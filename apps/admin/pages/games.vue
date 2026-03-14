@@ -154,8 +154,8 @@ onMounted(refreshGames)
   <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-white">Game Management</h1>
-        <p class="text-sm text-zinc-500 mt-0.5">Create and manage bingo games</p>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Active Games</h1>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">Create and manage bingo sessions</p>
       </div>
       <div class="flex gap-2 items-center flex-wrap">
         <USelect v-model="selectedStatus" :items="statusOptions" value-key="value" class="w-40" />
@@ -165,7 +165,7 @@ onMounted(refreshGames)
     </div>
 
     <!-- Table card -->
-    <div class="rounded-2xl border border-white/8 overflow-hidden" style="background:#111827;">
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="games" :loading="loading">
         <template #status-cell="{ row }">
           <UBadge :color="statusColor((row.original as unknown as GameRow).status)" variant="soft">
@@ -173,18 +173,18 @@ onMounted(refreshGames)
           </UBadge>
         </template>
         <template #players-cell="{ row }">
-          <span class="text-zinc-300">
+          <span class="text-white/70 font-medium">
             {{ (row.original as unknown as GameRow)._count?.entries ?? 0 }} / {{ (row.original as unknown as GameRow).maxPlayers }}
           </span>
         </template>
         <template #createdAt-cell="{ row }">
-          <span class="text-zinc-400 text-xs">{{ new Date((row.original as unknown as GameRow).createdAt).toLocaleString() }}</span>
+          <span class="text-white/40 text-xs font-medium">{{ new Date((row.original as unknown as GameRow).createdAt).toLocaleString() }}</span>
         </template>
         <template #houseEdgePct-cell="{ row }">
-          <span class="text-zinc-300">{{ (row.original as unknown as GameRow).houseEdgePct }}%</span>
+          <span class="text-white/60 font-medium">{{ (row.original as unknown as GameRow).houseEdgePct }}%</span>
         </template>
         <template #ticketPrice-cell="{ row }">
-          <span class="font-semibold text-amber-400">{{ (row.original as unknown as GameRow).ticketPrice }} ETB</span>
+          <span class="font-bold text-yellow-500">{{ (row.original as unknown as GameRow).ticketPrice }} ETB</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
@@ -202,9 +202,9 @@ onMounted(refreshGames)
         </template>
       </UTable>
 
-      <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-white/8">
+      <div v-if="totalPages > 1" class="flex justify-center gap-2 py-3 border-t border-(--surface-border)">
         <UButton :disabled="page <= 1" variant="ghost" icon="i-heroicons:chevron-left" @click="page--" />
-        <span class="text-sm text-zinc-400 self-center">Page {{ page }} / {{ totalPages }}</span>
+        <span class="text-sm text-white/40 self-center font-medium">Page {{ page }} / {{ totalPages }}</span>
         <UButton :disabled="page >= totalPages" variant="ghost" icon="i-heroicons:chevron-right" @click="page++" />
       </div>
     </div>
@@ -214,29 +214,29 @@ onMounted(refreshGames)
       <template #body>
         <div class="space-y-4">
           <div>
-            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Title</label>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Title</label>
             <UInput v-model="newGame.title" placeholder="e.g. Quick Bingo #1" />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Ticket Price (ETB)</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Ticket Price (ETB)</label>
               <UInput v-model.number="newGame.ticketPrice" type="number" min="1" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Max Players</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Max Capacity</label>
               <UInput v-model.number="newGame.maxPlayers" type="number" min="2" max="500" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Min Players</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Min Start Count</label>
               <UInput v-model.number="newGame.minPlayers" type="number" min="2" />
             </div>
             <div>
-              <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">House Edge %</label>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">House Commission %</label>
               <UInput v-model.number="newGame.houseEdgePct" type="number" min="0" max="50" />
             </div>
           </div>
           <div>
-            <label class="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1.5 block">Win Pattern</label>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Winning Pattern</label>
             <USelect v-model="newGame.pattern" :items="patternOptions.map(p => ({ label: p, value: p }))" value-key="value" />
           </div>
           <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
