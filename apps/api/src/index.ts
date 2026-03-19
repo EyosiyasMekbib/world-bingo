@@ -32,6 +32,11 @@ import './workers/game-engine.worker.js'
 
 dotenv.config()
 
+if (!process.env.JWT_PRIVATE_KEY || !process.env.JWT_PUBLIC_KEY) {
+    console.error('FATAL: JWT_PRIVATE_KEY / JWT_PUBLIC_KEY not set')
+    process.exit(1)
+}
+
 const isProd = process.env.NODE_ENV === 'production'
 
 const server = Fastify({
@@ -63,7 +68,11 @@ await server.register(cors, {
 })
 
 await server.register(jwt, {
-    secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production',
+    secret: {
+        private: process.env.JWT_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+        public: process.env.JWT_PUBLIC_KEY!.replace(/\\n/g, '\n'),
+    },
+    sign: { algorithm: 'RS256', expiresIn: '15m' },
 })
 
 // Global rate limiting: 100 requests / minute per IP

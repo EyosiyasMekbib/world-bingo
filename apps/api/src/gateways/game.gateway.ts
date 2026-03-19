@@ -1,8 +1,8 @@
 import { Socket } from 'socket.io'
+import jwt from 'jsonwebtoken'
 import { getIo } from '../lib/socket.js'
 import { GameService } from '../services/game.service.js'
 import { ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData } from '@world-bingo/shared-types'
-import { verifyJwt } from '../lib/auth.js'
 import { getRoomStatus, getRoomPlayerCount, getPot } from '../lib/room-state.js'
 import prisma from '../lib/prisma.js'
 
@@ -18,7 +18,8 @@ export function registerGameHandlers(io: any) {
             // keeping it loose for now, but strict actions need auth
         } else {
             try {
-                const user = verifyJwt(token)
+                const publicKey = process.env.JWT_PUBLIC_KEY!.replace(/\\n/g, '\n')
+                const user = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as { id: string, username: string, role: string }
                 socket.data.userId = user.id
                 socket.data.username = user.username
                 socket.join(`user:${user.id}`)
