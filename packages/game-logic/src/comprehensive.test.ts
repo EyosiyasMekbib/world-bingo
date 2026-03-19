@@ -533,7 +533,7 @@ describe('prize.ts — Extended', () => {
 
         it('should return full amount for 100% house edge', () => {
             const config: PrizeConfig = { entries: 10, ticketPrice: 100, houseEdgePct: 100 }
-            expect(calculateHouseCut(config)).toBe(10000)
+            expect(calculateHouseCut(config)).toBe(1000)
         })
 
         it('house cut + prize pool should equal gross revenue', () => {
