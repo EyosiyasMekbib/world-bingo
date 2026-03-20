@@ -54,33 +54,25 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         backdrop-filter: blur(12px);
       "
     >
-      <div class="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
+      <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <!-- Logo -->
-        <NuxtLink to="/" class="h-20 flex items-center flex-shrink-0 group">
-          <img src="/logo.png" alt="Arada Bingo Logo" class="h-14 w-auto object-contain" />
+        <NuxtLink to="/" class="flex items-center gap-2.5 flex-shrink-0">
+          <div class="w-9 h-9 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
+            <span class="text-black text-base font-black leading-none">A</span>
+          </div>
+          <span class="font-bold text-white text-sm hidden sm:block">Arada Bingo</span>
         </NuxtLink>
 
         <nav class="hidden sm:flex items-center gap-1">
           <NuxtLink
-            v-if="auth.isAuthenticated && referralsEnabled"
-            to="/refer"
+            to="/"
             class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            active-class="text-amber-400 bg-amber-400/10"
+            exact-active-class="!text-amber-400 !bg-amber-400/10"
           >
-            <svg
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-              />
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
-            {{ t('nav.refer') }}
+            Home
           </NuxtLink>
           <NuxtLink
             v-if="tournamentsEnabled"
@@ -88,20 +80,22 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
             active-class="text-amber-400 bg-amber-400/10"
           >
-            <svg
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-              />
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0012 0V2z" />
             </svg>
-            {{ t('nav.tournaments') }}
+            Tournaments
+          </NuxtLink>
+          <NuxtLink
+            v-if="auth.isAuthenticated"
+            to="/transactions"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
+            active-class="text-amber-400 bg-amber-400/10"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" />
+              <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            History
           </NuxtLink>
         </nav>
 
@@ -109,92 +103,63 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         <div class="flex items-center gap-2">
           <!-- Authenticated user -->
           <template v-if="auth.isAuthenticated">
-            <!-- Wallet balance chip -->
-            <div
-              class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm"
-            >
-              <span class="text-yellow-500 font-semibold md:font-bold">{{ formattedBalance }}</span>
+            <!-- Wallet balance chip with coin + refresh -->
+            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm">
+              <span class="text-base leading-none">💰</span>
+              <span class="text-white font-semibold">{{ formattedBalance }}</span>
               <span class="text-white/50 text-[10px] uppercase font-bold tracking-tight">ETB</span>
+              <button
+                class="ml-0.5 text-white/40 hover:text-white/70 transition-colors"
+                title="Refresh balance"
+                @click="auth.fetchWallet()"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
             </div>
 
             <!-- Deposit button -->
             <button
-              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-all hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] hover:-translate-y-px"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-all"
               @click="showDeposit = true"
             >
-              <svg
-                class="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                viewBox="0 0 24 24"
-              >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
               </svg>
               Deposit
             </button>
 
-            <!-- Withdraw button -->
-            <button
-              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/8 hover:border-white/30 text-white text-sm font-medium transition-all"
-              @click="showWithdrawal = true"
-            >
-              <svg
-                class="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" />
-              </svg>
-              Withdraw
-            </button>
-
-            <!-- Notification bell -->
-            <NotificationBell class="hidden md:flex" />
-
-            <!-- Language switcher -->
-            <button
-              class="hidden md:block px-2 py-1 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/8 text-zinc-300 transition-colors"
-              :title="locale === 'en' ? 'Switch to Amharic' : 'Switch to English'"
-              @click="toggleLocale"
-            >
-              {{ locale === 'en' ? 'አማ' : 'EN' }}
-            </button>
-
-            <!-- User avatar / menu -->
-            <div class="hidden md:block relative group">
-              <button
-                class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-white/8 transition-colors text-sm text-zinc-300"
-              >
-                <div class="w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center">
-                  <span class="text-black text-xs font-bold leading-none">
-                    {{ (auth.user?.username ?? 'U')[0].toUpperCase() }}
-                  </span>
-                </div>
-                <span class="hidden md:block max-w-[100px] truncate">{{
-                  auth.user?.username
-                }}</span>
+            <!-- User avatar circle with dropdown -->
+            <div class="relative group">
+              <button class="w-9 h-9 rounded-full bg-amber-400 hover:bg-amber-300 flex items-center justify-center flex-shrink-0 transition-colors">
+                <span class="text-black text-sm font-bold leading-none">
+                  {{ (auth.user?.username ?? 'U')[0].toUpperCase() }}
+                </span>
               </button>
-
               <!-- Dropdown -->
-              <div
-                class="absolute right-0 top-full mt-1 w-44 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 overflow-hidden"
-              >
-                <NuxtLink
-                  to="/profile"
-                  class="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/8 hover:text-white transition-colors"
-                >
-                  <Icon name="heroicons:user" class="w-4 h-4" />
+              <div class="absolute right-0 top-full mt-1 w-44 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 overflow-hidden">
+                <NuxtLink to="/profile" class="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/8 hover:text-white transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
                   Profile
                 </NuxtLink>
+                <NuxtLink to="/transactions" class="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/8 hover:text-white transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" /><polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  History
+                </NuxtLink>
+                <button
+                  class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-white/50 hover:bg-white/5 transition-colors"
+                  @click="showWithdrawal = true"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" /></svg>
+                  Withdraw
+                </button>
                 <hr class="border-white/10 my-1" />
                 <button
                   class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
                   @click="handleLogout"
                 >
-                  <Icon name="heroicons:arrow-right-on-rectangle" class="w-4 h-4" />
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                   Logout
                 </button>
               </div>
@@ -244,8 +209,13 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
           class="sm:hidden fixed inset-x-0 top-0 z-50 flex flex-col bg-[var(--surface-base)] shadow-2xl"
         >
           <!-- Drawer Header -->
-          <div class="h-20 px-4 flex items-center justify-between border-b border-white/10" style="background: rgba(0, 10, 56, 1);">
-            <img src="/logo.png" alt="Arada Bingo" class="h-10 w-auto object-contain" />
+          <div class="h-16 px-4 flex items-center justify-between border-b border-white/10" style="background: rgba(0, 10, 56, 1);">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
+                <span class="text-black text-sm font-black leading-none">A</span>
+              </div>
+              <span class="font-bold text-white text-sm">Arada Bingo</span>
+            </div>
             <div class="flex items-center gap-3">
               <div class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 flex items-center gap-2">
                 <span class="text-yellow-500 font-bold text-sm">{{ formattedBalance }}</span>
