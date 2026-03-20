@@ -29,6 +29,10 @@ import prisma from '../lib/prisma'
 /** Map of active countdown timers keyed by roomId */
 const activeTimers = new Map<string, NodeJS.Timeout>()
 
+/** Track consecutive tick errors per room to avoid stopping on transient failures */
+const timerErrors = new Map<string, number>()
+const MAX_TICK_ERRORS = 5
+
 /**
  * Start a 1-second tick countdown for a room.
  *
@@ -51,14 +55,23 @@ export function startRoomCountdown(roomId: string, initialSecs = 60): void {
                 // Broadcast per-second tick
                 ; (io.to(`game:${roomId}`) as any).emit('timer_update', { gameId: roomId, secondsLeft })
 
+            // Reset error counter on success
+            timerErrors.set(roomId, 0)
+
             if (secondsLeft <= 0) {
                 // Timer expired — clear the interval before async work
                 stopRoomCountdown(roomId)
                 await handleTimerExpired(roomId)
             }
         } catch (err) {
-            console.error(`[RoomTimer] Tick error for room ${roomId}:`, err)
-            stopRoomCountdown(roomId)
+            const errorCount = (timerErrors.get(roomId) ?? 0) + 1
+            timerErrors.set(roomId, errorCount)
+            console.error(`[RoomTimer] Tick error #${errorCount} for room ${roomId}:`, err)
+            if (errorCount >= MAX_TICK_ERRORS) {
+                console.error(`[RoomTimer] Too many errors for room ${roomId} — stopping countdown`)
+                timerErrors.delete(roomId)
+                stopRoomCountdown(roomId)
+            }
         }
     }
 
@@ -75,6 +88,7 @@ export function stopRoomCountdown(roomId: string): void {
     if (id !== undefined) {
         clearInterval(id)
         activeTimers.delete(roomId)
+        timerErrors.delete(roomId)
     }
 }
 

@@ -10,6 +10,7 @@ import * as dotenv from 'dotenv'
 import path from 'path'
 import { initSocket } from './lib/socket'
 import { stopAllEngines } from './lib/game-engine'
+import prisma from './lib/prisma'
 import { stopAllRoomCountdowns } from './services/room-timer.service'
 import { closeAllQueues } from './lib/queue'
 import { register as metricsRegistry, httpRequestsTotal } from './lib/metrics'
@@ -211,6 +212,7 @@ const shutdown = async (signal: string) => {
     stopAllEngines()
     stopAllRoomCountdowns()
     await closeAllQueues().catch(() => { })
+    await prisma.$disconnect().catch(() => { })
     try {
         await server.close()
         server.log.info('Server closed cleanly.')
@@ -223,6 +225,13 @@ const shutdown = async (signal: string) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('unhandledRejection', (reason, promise) => {
+    server.log.error({ reason, promise }, 'Unhandled promise rejection — potential crash avoided')
+})
+process.on('uncaughtException', (err) => {
+    server.log.error(err, 'Uncaught exception — shutting down')
+    shutdown('uncaughtException')
+})
 
 const port = Number(process.env.PORT) || 8080
 const host = process.env.HOST ?? '0.0.0.0'
@@ -252,15 +261,15 @@ try {
                 if ((game.status as any) === 'WAITING') {
                     if (playerCount > 0) {
                         console.log(`[Startup] Recovering countdown for WAITING game ${game.id} (${playerCount} players)`)
-                        await GameSchedulerService.checkAndStartCountdown(game.id).catch(() => { })
+                        await GameSchedulerService.checkAndStartCountdown(game.id).catch((err) => console.error(`[Startup] Recovery failed for game ${game.id}:`, err))
                     }
                 } else if ((game.status as any) === 'LOCKING' || (game.status as any) === 'STARTING') {
                     if (playerCount > 0) {
                         console.log(`[Startup] Recovering ${game.status} game ${game.id} → startGame`)
-                        await GameService.startGame(game.id).catch(() => { })
+                        await GameService.startGame(game.id).catch((err) => console.error(`[Startup] Recovery failed for game ${game.id}:`, err))
                     } else {
                         console.log(`[Startup] Cancelling empty ${game.status} game ${game.id}`)
-                        await GameService.cancelGame(game.id).catch(() => { })
+                        await GameService.cancelGame(game.id).catch((err) => console.error(`[Startup] Recovery failed for game ${game.id}:`, err))
                     }
                 }
             }

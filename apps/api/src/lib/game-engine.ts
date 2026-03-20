@@ -135,7 +135,12 @@ export async function startGameEngine(gameId: string): Promise<void> {
             try {
                 lock = await lock.extend(LOCK_TTL_MS)
             } catch (err) {
-                // Lock could not be renewed — stop this engine
+                console.error(`[GameEngine] ${gameId}: lock renewal failed — aborting engine`, err)
+                const io = getIo()
+                ;(io.to(`game:${gameId}`) as any).emit('error', {
+                    message: 'Game engine encountered an error and had to stop.',
+                    code: 'ENGINE_LOCK_LOST',
+                })
                 abort.abort()
             }
         }, LOCK_RENEW_MS)

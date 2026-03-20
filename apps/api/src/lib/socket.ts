@@ -15,6 +15,9 @@ export function initSocket(httpServer: HttpServer, redisUrl: string) {
     const pubClient = new Redis(redisUrl)
     const subClient = pubClient.duplicate()
 
+    pubClient.on('error', (err) => console.error('[Socket Redis pub] error:', err.message))
+    subClient.on('error', (err) => console.error('[Socket Redis sub] error:', err.message))
+
     io = new Server(httpServer, {
         cors: {
             origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
