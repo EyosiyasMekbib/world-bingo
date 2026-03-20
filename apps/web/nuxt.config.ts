@@ -39,6 +39,8 @@ export default defineNuxtConfig({
         public: {
             apiBase: 'http://localhost:8080',
             wsUrl: 'http://localhost:8080',
+            telegramBotName: '',
+            telegramBotId: '',
         },
     },
 
@@ -48,6 +50,7 @@ export default defineNuxtConfig({
         '/': { ssr: false },
         '/quick/**': { ssr: false },
         '/profile': { ssr: false },
+        '/transactions': { ssr: false },
         '/api/**': { proxy: 'http://api:8080/**' },
         '/socket.io/': { proxy: 'http://api:8080/socket.io/' }
     },

@@ -175,5 +175,26 @@ export class WalletService {
             },
         }
     }
+
+    static async getUserStats(userId: string) {
+        const [entries, prizes] = await Promise.all([
+            prisma.transaction.aggregate({
+                where: { userId, type: TransactionType.GAME_ENTRY },
+                _count: true,
+                _sum: { amount: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { userId, type: TransactionType.PRIZE_WIN },
+                _count: true,
+                _sum: { amount: true },
+            }),
+        ])
+        return {
+            gamesPlayed: entries._count,
+            gamesWon: prizes._count,
+            totalWagered: Number(entries._sum.amount ?? 0),
+            totalWon: Number(prizes._sum.amount ?? 0),
+        }
+    }
 }
 

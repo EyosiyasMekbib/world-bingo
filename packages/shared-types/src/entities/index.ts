@@ -2,13 +2,26 @@ import type { GameStatus, UserRole, PatternType, TransactionType, PaymentStatus,
 
 export interface User {
     id: string
-    username: string
-    phone: string
+    serial: number
+    username?: string
+    phone?: string
     email?: string
     role: UserRole
     avatarUrl?: string
+    telegramId?: string
+    telegramUsername?: string
+    firstName?: string
+    lastName?: string
+    photoUrl?: string
     createdAt: Date
     updatedAt: Date
+}
+
+export interface UserStatsDto {
+    gamesPlayed: number
+    gamesWon: number
+    totalWagered: number
+    totalWon: number
 }
 
 export interface Wallet {

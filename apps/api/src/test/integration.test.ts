@@ -25,7 +25,7 @@ vi.mock('../lib/socket', () => ({
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function createUser(username: string, phone: string, balance = 1000) {
-    const user = await AuthService.register({ username, phone, password: 'password123' })
+    const { user } = await AuthService.register({ username, phone, password: 'password123' })
     if (balance > 0) {
         await prisma.wallet.update({
             where: { userId: user.id },
@@ -70,7 +70,7 @@ async function createGame(adminId: string) {
 describe('Integration: Auth flow', () => {
     it('register → login with username → refresh → logout', async () => {
         // Register
-        const user = await AuthService.register({
+        const { user } = await AuthService.register({
             username: 'integ_auth',
             phone: '+251900000001',
             password: 'password123',

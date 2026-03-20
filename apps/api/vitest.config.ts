@@ -15,6 +15,7 @@ export default defineConfig({
         fileParallelism: false,
         env: {
             DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/world_bingo_test?schema=public',
+            TELEGRAM_BOT_TOKEN: 'test_token',
         },
     },
 })

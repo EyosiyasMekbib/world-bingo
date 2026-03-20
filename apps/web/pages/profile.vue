@@ -6,11 +6,18 @@
     <div class="card user-card">
       <div class="avatar-row">
         <div class="avatar">
-          {{ (auth.user?.username ?? 'U')[0].toUpperCase() }}
+          <img v-if="auth.user?.photoUrl" :src="auth.user.photoUrl" class="avatar-photo" alt="Profile" />
+          <span v-else>{{ (auth.user?.firstName ?? auth.user?.username ?? 'U')[0].toUpperCase() }}</span>
         </div>
         <div class="user-details">
-          <h2 class="username">{{ auth.user?.username }}</h2>
-          <p class="phone">{{ auth.user?.phone }}</p>
+          <h2 class="username">{{ auth.user?.firstName ?? auth.user?.username }}</h2>
+          <p class="phone">{{ auth.user?.telegramUsername ? `@${auth.user.telegramUsername}` : auth.user?.phone }}</p>
+          <div class="user-id-row">
+            <span class="user-id">ID: #{{ formattedSerial }}</span>
+            <button class="copy-btn" :title="serialCopied ? 'Copied!' : 'Copy ID'" @click="copySerial">
+              <Icon :name="serialCopied ? 'heroicons:check' : 'heroicons:clipboard-document'" class="copy-icon" />
+            </button>
+          </div>
           <p class="member-since">
             Member since {{ formatDate(auth.user?.createdAt) }}
           </p>
@@ -21,9 +28,13 @@
     <!-- ── Wallet Card ─────────────────────────────────────────────── -->
     <div class="card wallet-card">
       <div class="wallet-header">
-        <h3>💰 Wallet</h3>
-        <button class="refresh-btn" @click="refreshWallet" :disabled="walletLoading">
-          {{ walletLoading ? 'Refreshing…' : '🔄 Refresh' }}
+        <h3 class="card-heading">
+          <Icon name="heroicons:wallet" class="card-icon" />
+          Wallet
+        </h3>
+        <button class="refresh-btn" :disabled="walletLoading" @click="refreshWallet">
+          <Icon name="heroicons:arrow-path" class="btn-icon" :class="{ spinning: walletLoading }" />
+          {{ walletLoading ? 'Refreshing…' : 'Refresh' }}
         </button>
       </div>
       <div class="balance-display">
@@ -32,10 +43,41 @@
       </div>
     </div>
 
+    <!-- ── Game Stats Card ─────────────────────────────────────────── -->
+    <div class="card stats-card">
+      <h3 class="stats-title card-heading">
+        <Icon name="heroicons:chart-bar" class="card-icon" />
+        Game Stats
+      </h3>
+      <div v-if="statsLoading" class="loading-state">Loading…</div>
+      <div v-else class="stats-grid">
+        <div class="stat-tile">
+          <span class="stat-val">{{ stats?.gamesPlayed ?? '—' }}</span>
+          <span class="stat-label">Played</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-val">{{ stats?.gamesWon ?? '—' }}</span>
+          <span class="stat-label">Won</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-val">{{ stats ? Number(stats.totalWagered).toFixed(0) : '—' }}</span>
+          <span class="stat-label">Wagered (ETB)</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-val won">{{ stats ? Number(stats.totalWon).toFixed(0) : '—' }}</span>
+          <span class="stat-label">Earned (ETB)</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Transaction History ─────────────────────────────────────── -->
     <div class="card">
       <div class="section-header">
-        <h3>📋 Recent Transactions</h3>
+        <h3 class="card-heading">
+          <Icon name="heroicons:queue-list" class="card-icon" />
+          Recent Transactions
+        </h3>
+        <NuxtLink to="/transactions" class="view-all-link">View all →</NuxtLink>
       </div>
       <div v-if="txLoading" class="loading-state">Loading transactions…</div>
       <div v-else-if="transactions.length === 0" class="empty-state">
@@ -43,7 +85,9 @@
       </div>
       <div v-else class="tx-list">
         <div v-for="tx in transactions" :key="tx.id" class="tx-row">
-          <div class="tx-icon">{{ txIcon(tx.type) }}</div>
+          <div class="tx-icon">
+            <Icon :name="txIconName(tx.type)" class="tx-icon-svg" />
+          </div>
           <div class="tx-info">
             <span class="tx-type">{{ txLabel(tx.type) }}</span>
             <span class="tx-date">{{ formatDate(tx.createdAt) }}</span>
@@ -59,71 +103,28 @@
         </div>
       </div>
     </div>
-
-    <!-- ── Change Password (collapsible) ───────────────────────────── -->
-    <div class="card">
-      <button class="section-toggle" @click="showPasswordForm = !showPasswordForm">
-        <h3 class="section-title">🔒 Change Password</h3>
-        <span class="toggle-chevron" :class="{ open: showPasswordForm }">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </span>
-      </button>
-      <Transition name="slide-fade">
-        <form v-if="showPasswordForm" class="password-form" @submit.prevent="handleChangePassword">
-        <div class="field">
-          <label>Current Password</label>
-          <input
-            v-model="passwordForm.currentPassword"
-            type="password"
-            placeholder="Enter current password"
-            required
-            class="input"
-          />
-        </div>
-        <div class="field">
-          <label>New Password</label>
-          <input
-            v-model="passwordForm.newPassword"
-            type="password"
-            placeholder="Min 6 characters"
-            required
-            minlength="6"
-            class="input"
-          />
-        </div>
-        <div class="field">
-          <label>Confirm New Password</label>
-          <input
-            v-model="passwordForm.confirmPassword"
-            type="password"
-            placeholder="Re-enter new password"
-            required
-            minlength="6"
-            class="input"
-          />
-        </div>
-        <p v-if="pwError" class="msg error">{{ pwError }}</p>
-        <p v-if="pwSuccess" class="msg success">✅ Password changed successfully!</p>
-        <button type="submit" class="btn-primary" :disabled="pwLoading">
-          {{ pwLoading ? 'Changing…' : 'Change Password' }}
-        </button>
-      </form>
-      </Transition>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
+import type { UserStatsDto } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
-const config = useRuntimeConfig()
+
+// ── Serial ID ───────────────────────────────────────────────────────────
+const serialCopied = ref(false)
+const formattedSerial = computed(() =>
+  String(auth.user?.serial ?? 0).padStart(5, '0')
+)
+function copySerial() {
+  navigator.clipboard.writeText(formattedSerial.value)
+  serialCopied.value = true
+  setTimeout(() => { serialCopied.value = false }, 2000)
+}
 
 // ── Wallet ─────────────────────────────────────────────────────────────
 const walletLoading = ref(false)
-const showPasswordForm = ref(false)
 const formattedBalance = computed(() => {
   const bal = Number(auth.wallet?.balance ?? 0)
   return bal.toLocaleString('en-ET', {
@@ -141,6 +142,16 @@ async function refreshWallet() {
   }
 }
 
+// ── Stats ───────────────────────────────────────────────────────────────
+const stats = ref<UserStatsDto | null>(null)
+const statsLoading = ref(false)
+async function fetchStats() {
+  statsLoading.value = true
+  try { stats.value = await auth.apiFetch<UserStatsDto>('/wallet/stats') }
+  catch { /* fail silently */ }
+  finally { statsLoading.value = false }
+}
+
 // ── Transactions ───────────────────────────────────────────────────────
 const transactions = ref<any[]>([])
 const txLoading = ref(false)
@@ -148,8 +159,8 @@ const txLoading = ref(false)
 async function fetchTransactions() {
   txLoading.value = true
   try {
-    const data = await auth.apiFetch<any[]>('/wallet/transactions')
-    transactions.value = data ?? []
+    const data = await auth.apiFetch<{ data: any[]; pagination: any }>('/wallet/transactions?page=1&limit=5')
+    transactions.value = data?.data ?? []
   } catch {
     // fail silently
   } finally {
@@ -157,15 +168,15 @@ async function fetchTransactions() {
   }
 }
 
-function txIcon(type: string): string {
+function txIconName(type: string): string {
   const map: Record<string, string> = {
-    DEPOSIT: '💰',
-    WITHDRAWAL: '💸',
-    GAME_ENTRY: '🎮',
-    PRIZE_WIN: '🏆',
-    REFUND: '↩️',
+    DEPOSIT: 'heroicons:arrow-down-tray',
+    WITHDRAWAL: 'heroicons:arrow-up-tray',
+    GAME_ENTRY: 'heroicons:play-circle',
+    PRIZE_WIN: 'heroicons:trophy',
+    REFUND: 'heroicons:arrow-uturn-left',
   }
-  return map[type] ?? '💲'
+  return map[type] ?? 'heroicons:currency-dollar'
 }
 
 function txLabel(type: string): string {
@@ -187,50 +198,6 @@ function txAmountClass(type: string): string {
   return ['DEPOSIT', 'PRIZE_WIN', 'REFUND'].includes(type) ? 'positive' : 'negative'
 }
 
-// ── Change Password ────────────────────────────────────────────────────
-const passwordForm = reactive({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: '',
-})
-const pwError = ref('')
-const pwSuccess = ref(false)
-const pwLoading = ref(false)
-
-async function handleChangePassword() {
-  pwError.value = ''
-  pwSuccess.value = false
-
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    pwError.value = 'New passwords do not match.'
-    return
-  }
-  if (passwordForm.newPassword.length < 6) {
-    pwError.value = 'New password must be at least 6 characters.'
-    return
-  }
-
-  pwLoading.value = true
-  try {
-    await auth.apiFetch('/auth/change-password', {
-      method: 'POST',
-      body: {
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword,
-      },
-    })
-    pwSuccess.value = true
-    passwordForm.currentPassword = ''
-    passwordForm.newPassword = ''
-    passwordForm.confirmPassword = ''
-  } catch (e: any) {
-    pwError.value =
-      e?.data?.message ?? e?.message ?? 'Failed to change password.'
-  } finally {
-    pwLoading.value = false
-  }
-}
-
 // ── Date formatting ────────────────────────────────────────────────────
 function formatDate(date: Date | string | undefined): string {
   if (!date) return '—'
@@ -245,6 +212,7 @@ function formatDate(date: Date | string | undefined): string {
 onMounted(() => {
   if (!auth.wallet) auth.fetchWallet()
   fetchTransactions()
+  fetchStats()
 })
 </script>
 
@@ -292,6 +260,13 @@ onMounted(() => {
   font-weight: 800;
   color: #000;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .username {
@@ -305,6 +280,44 @@ onMounted(() => {
   color: var(--text-secondary, #94a3b8);
   font-size: 0.9rem;
   margin: 0.15rem 0 0;
+}
+
+.user-id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.user-id {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.05em;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary, #94a3b8);
+  opacity: 0.7;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.copy-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .member-since {
@@ -325,6 +338,33 @@ onMounted(() => {
   margin: 0;
   font-size: 1rem;
   color: var(--text-primary, #f1f5f9);
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-icon {
+  width: 18px;
+  height: 18px;
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.btn-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .refresh-btn {
@@ -367,6 +407,60 @@ onMounted(() => {
   font-weight: 600;
 }
 
+/* ── Stats Card ─────────────────────────────────────────────────────── */
+.stats-title {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: var(--text-primary, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 0.85rem 0.5rem;
+  text-align: center;
+}
+
+.stat-val {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary, #f1f5f9);
+  font-family: var(--font-game, 'Rajdhani', sans-serif);
+}
+
+.stat-val.won {
+  color: #10b981;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 /* ── Transactions ───────────────────────────────────────────────────── */
 .section-header {
   display: flex;
@@ -379,6 +473,18 @@ onMounted(() => {
   margin: 0;
   font-size: 1rem;
   color: var(--text-primary, #f1f5f9);
+}
+
+.view-all-link {
+  font-size: 0.85rem;
+  color: #f59e0b;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.view-all-link:hover {
+  color: #fbbf24;
 }
 
 .loading-state,
@@ -410,8 +516,20 @@ onMounted(() => {
 }
 
 .tx-icon {
-  font-size: 1.25rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.tx-icon-svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tx-info {
@@ -479,141 +597,5 @@ onMounted(() => {
 .status-rejected {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
-}
-
-/* ── Change Password Toggle ─────────────────────────────────────────── */
-.section-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-}
-
-.section-toggle:hover .section-title {
-  color: #f59e0b;
-}
-
-.toggle-chevron {
-  display: flex;
-  align-items: center;
-  color: var(--text-secondary, #94a3b8);
-  transition: transform 0.25s ease;
-}
-
-.toggle-chevron.open {
-  transform: rotate(180deg);
-}
-
-/* Slide-fade transition for password form */
-.slide-fade-enter-active {
-  transition: all 0.25s ease;
-}
-.slide-fade-leave-active {
-  transition: all 0.2s ease;
-}
-.slide-fade-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-.slide-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-/* ── Change Password ────────────────────────────────────────────────── */
-.section-title {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--text-primary, #f1f5f9);
-  transition: color 0.2s;
-}
-
-.password-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.25rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.field label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary, #94a3b8);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.input {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 0.7rem 1rem;
-  font-size: 0.95rem;
-  font-family: inherit;
-  color: var(--text-primary, #f1f5f9);
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.input:focus {
-  border-color: var(--brand-primary, #f59e0b);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
-}
-
-.input::placeholder {
-  color: var(--text-disabled, #475569);
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #000;
-  border: none;
-  border-radius: 10px;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 0.25rem;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.msg {
-  font-size: 0.85rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  margin: 0;
-}
-
-.msg.error {
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.msg.success {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
 }
 </style>

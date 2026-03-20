@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { LoginDto, RegisterDto, User, Wallet } from '@world-bingo/shared-types'
+import type { LoginDto, RegisterDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
 
 interface AuthState {
   user: User | null
@@ -32,6 +32,22 @@ export const useAuthStore = defineStore('auth', {
       }>(`${config.public.apiBase}/auth/login`, {
         method: 'POST',
         body: credentials,
+      })
+      this.user = user
+      this.accessToken = accessToken
+      this.refreshToken = refreshToken
+      await this.fetchWallet()
+    },
+
+    async telegramLogin(payload: TelegramAuthDto) {
+      const config = useRuntimeConfig()
+      const { user, accessToken, refreshToken } = await $fetch<{
+        user: User
+        accessToken: string
+        refreshToken: string
+      }>(`${config.public.apiBase}/auth/telegram`, {
+        method: 'POST',
+        body: payload,
       })
       this.user = user
       this.accessToken = accessToken
@@ -77,6 +93,13 @@ export const useAuthStore = defineStore('auth', {
         this.user = null
         return null
       }
+    },
+
+    clearStoredUser() {
+      this.user = null
+      this.accessToken = null
+      this.refreshToken = null
+      this.wallet = null
     },
 
     async logout() {

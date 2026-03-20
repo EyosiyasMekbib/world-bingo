@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
-import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema } from '@world-bingo/shared-types'
+import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
 
@@ -81,6 +81,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             body: zodToJsonSchema(ChangePasswordSchema),
         },
         handler: AuthController.changePassword,
+    })
+
+    fastify.post('/telegram', {
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(TelegramAuthSchema),
+        },
+        handler: AuthController.telegramLogin,
     })
 }
 

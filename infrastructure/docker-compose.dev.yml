@@ -42,7 +42,9 @@ services:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/world_bingo
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: dev-secret-key-do-not-use-in-prod
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       CORS_ORIGIN: http://localhost:3000,http://localhost:3001
       PORT: 8080
       HOST: 0.0.0.0
@@ -72,9 +74,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NUXT_PUBLIC_API_BASE: http://localhost:8080
-      NUXT_PUBLIC_WS_URL: http://localhost:8080
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_PUBLIC_WS_URL: /
       NUXT_API_BASE_SERVER: http://api:8080
+      NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
+      NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
     depends_on:
       - api
     networks:
@@ -91,7 +95,7 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: http://localhost:8080
       NUXT_API_BASE_SERVER: http://api:8080
-      NUXT_JWT_SECRET: dev-secret-key-do-not-use-in-prod
+      NUXT_JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
     depends_on:
       - api
     networks:

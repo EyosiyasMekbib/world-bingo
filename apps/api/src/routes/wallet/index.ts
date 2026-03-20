@@ -25,6 +25,8 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/transactions', {
         handler: WalletController.getTransactions,
     })
+
+    fastify.get('/stats', { handler: WalletController.getStats })
 }
 
 export default walletRoutes

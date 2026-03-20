@@ -77,6 +77,12 @@ export class WalletController {
         return transaction
     }
 
+    static async getStats(request: FastifyRequest, reply: FastifyReply) {
+        const userId = (request.user as any).id
+        const stats = await WalletService.getUserStats(userId)
+        return stats
+    }
+
     static async getTransactions(
         request: FastifyRequest<{ Querystring: { type?: string; page?: string; limit?: string } }>,
         reply: FastifyReply,

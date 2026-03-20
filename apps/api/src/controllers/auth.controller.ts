@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthService } from '../services'
-import type { LoginDto, RegisterDto, RefreshTokenDto, LogoutDto, ChangePasswordDto } from '@world-bingo/shared-types'
+import type { LoginDto, RegisterDto, RefreshTokenDto, LogoutDto, ChangePasswordDto, TelegramAuthDto } from '@world-bingo/shared-types'
 
 export class AuthController {
     static async register(request: FastifyRequest<{ Body: RegisterDto }>, reply: FastifyReply) {
@@ -57,6 +57,15 @@ export class AuthController {
         const userId = request.user.id
         const result = await AuthService.changePassword(userId, request.body)
         return result
+    }
+
+    static async telegramLogin(request: FastifyRequest<{ Body: TelegramAuthDto }>, reply: FastifyReply) {
+        const { user, refreshToken } = await AuthService.telegramAuth(request.body)
+        const accessToken = await reply.jwtSign(
+            { id: user.id, role: user.role },
+            { expiresIn: '15m' }
+        )
+        return { user, accessToken, refreshToken }
     }
 }
 

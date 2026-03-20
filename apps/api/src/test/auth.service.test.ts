@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import crypto from 'crypto'
 import { AuthService } from '../services/auth.service'
 import { prisma } from './setup'
+import type { TelegramAuthDto } from '@world-bingo/shared-types'
 
 describe('AuthService', () => {
     describe('register', () => {
@@ -11,7 +13,7 @@ describe('AuthService', () => {
                 password: 'password123',
             }
 
-            const user = await AuthService.register(userData)
+            const { user } = await AuthService.register(userData)
 
             expect(user.username).toBe(userData.username)
             expect(user.phone).toBe(userData.phone)
@@ -25,7 +27,7 @@ describe('AuthService', () => {
                 password: 'password123',
             }
 
-            const user = await AuthService.register(userData)
+            const { user } = await AuthService.register(userData)
 
             const wallet = await prisma.wallet.findUnique({
                 where: { userId: user.id },
@@ -76,7 +78,7 @@ describe('AuthService', () => {
                 password: 'mypassword',
             }
 
-            const user = await AuthService.register(userData)
+            const { user } = await AuthService.register(userData)
 
             expect(user).not.toHaveProperty('passwordHash')
 
@@ -248,6 +250,63 @@ describe('AuthService', () => {
         })
     })
 
+    describe('telegramAuth', () => {
+        function makeTelegramPayload(overrides: Partial<Omit<TelegramAuthDto, 'hash'>> = {}): TelegramAuthDto {
+            const base = {
+                id: 123456789,
+                first_name: 'Test',
+                auth_date: Math.floor(Date.now() / 1000),
+                ...overrides,
+            }
+            const dataCheckString = Object.entries(base)
+                .filter(([, v]) => v !== undefined)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => `${k}=${v}`)
+                .join('\n')
+            const secretKey = crypto.createHash('sha256')
+                .update(process.env.TELEGRAM_BOT_TOKEN ?? 'test_token')
+                .digest()
+            const hash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
+            return { ...base, hash }
+        }
+
+        it('should return user + refreshToken for valid payload', async () => {
+            const payload = makeTelegramPayload()
+            const { user, refreshToken } = await AuthService.telegramAuth(payload)
+            expect(user.telegramId).toBe(String(payload.id))
+            expect(refreshToken).toBeDefined()
+        })
+
+        it('should throw for invalid hash', async () => {
+            const payload = makeTelegramPayload()
+            await expect(AuthService.telegramAuth({ ...payload, hash: 'badhash' }))
+                .rejects.toThrow('Invalid Telegram auth data')
+        })
+
+        it('should throw if auth_date is older than 300 seconds', async () => {
+            const payload = makeTelegramPayload({ auth_date: Math.floor(Date.now() / 1000) - 400 })
+            await expect(AuthService.telegramAuth(payload)).rejects.toThrow('Telegram auth data expired')
+        })
+
+        it('should create a new user on first login', async () => {
+            const payload = makeTelegramPayload({ id: 999001 })
+            const { user } = await AuthService.telegramAuth(payload)
+            expect(user.id).toBeDefined()
+            const dbUser = await prisma.user.findUnique({ where: { telegramId: '999001' } })
+            expect(dbUser).toBeTruthy()
+        })
+
+        it('should log in existing user without duplicating', async () => {
+            const payload = makeTelegramPayload({ id: 999002 })
+            const { user: u1 } = await AuthService.telegramAuth(payload)
+            const payload2 = makeTelegramPayload({ id: 999002 })
+            const { user: u2 } = await AuthService.telegramAuth(payload2)
+            expect(u1.id).toBe(u2.id)
+            const count = await prisma.user.count({ where: { telegramId: '999002' } })
+            expect(count).toBe(1)
+        })
+    })
+
     describe('changePassword', () => {
         it('should change password and invalidate all refresh tokens', async () => {
             const userData = {
@@ -280,7 +339,7 @@ describe('AuthService', () => {
                 password: 'correctpassword',
             }
 
-            const user = await AuthService.register(userData)
+            const { user } = await AuthService.register(userData)
 
             await expect(
                 AuthService.changePassword(user.id, {
