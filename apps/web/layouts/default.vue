@@ -50,7 +50,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
     <header
       class="sticky top-0 z-40 border-b border-white/10"
       style="
-        background: rgba(0, 10, 56, 0.92);
+        background: rgba(0, 10, 56, 0.95);
         backdrop-filter: blur(12px);
       "
     >
@@ -265,14 +265,14 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
                 <span class="text-sm text-white/60">Balance</span>
                 <span class="text-base font-bold text-yellow-500">{{ formattedBalance }} ETB</span>
               </div>
-              
+
               <button
                 class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
                 @click="showDeposit = true; mobileNavOpen = false"
               >
                 Deposit
               </button>
-              
+
               <button
                 class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
                 @click="showWithdrawal = true; mobileNavOpen = false"
@@ -302,7 +302,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
                 Logout
               </button>
             </template>
-            
+
             <template v-else>
               <NuxtLink
                 to="/auth/login"
@@ -325,7 +325,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
     </header>
 
     <!-- ── Page Content ───────────────────────────────────────────────────── -->
-    <main class="flex-1">
+    <main class="flex-1 pb-16 sm:pb-0">
       <Transition name="page-fade" mode="out-in">
         <slot />
       </Transition>
@@ -341,6 +341,55 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
       :balance="Number(auth.wallet?.balance ?? 0)"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
+
+    <!-- ── Bottom Tab Bar (mobile only) ──────────────────────────────────── -->
+    <nav class="bottom-nav sm:hidden">
+      <NuxtLink to="/" class="bnav-item" :class="{ active: $route.path === '/' }">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span>Home</span>
+      </NuxtLink>
+
+      <button class="bnav-item" @click="showDeposit = true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2" />
+          <line x1="2" y1="10" x2="22" y2="10" />
+        </svg>
+        <span>Wallet</span>
+      </button>
+
+      <div class="bnav-item bnav-item--muted">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
+        </svg>
+        <span>Promos</span>
+      </div>
+
+      <div class="bnav-item bnav-item--muted">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+        <span>Chat</span>
+      </div>
+
+      <button class="bnav-item" @click="mobileNavOpen = !mobileNavOpen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="5" cy="5" r="1" fill="currentColor" />
+          <circle cx="12" cy="5" r="1" fill="currentColor" />
+          <circle cx="19" cy="5" r="1" fill="currentColor" />
+          <circle cx="5" cy="12" r="1" fill="currentColor" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" />
+          <circle cx="19" cy="12" r="1" fill="currentColor" />
+          <circle cx="5" cy="19" r="1" fill="currentColor" />
+          <circle cx="12" cy="19" r="1" fill="currentColor" />
+          <circle cx="19" cy="19" r="1" fill="currentColor" />
+        </svg>
+        <span>More</span>
+      </button>
+    </nav>
   </div>
 </template>
 
@@ -359,5 +408,68 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 .page-fade-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+/* ── Bottom Nav ──────────────────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  background: rgba(4, 20, 51, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid #132b5e;
+}
+
+.bnav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 0 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bnav-item span {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bnav-item svg {
+  flex-shrink: 0;
+}
+
+.bnav-item.active,
+.bnav-item.router-link-exact-active {
+  color: #FFD700;
+}
+
+.bnav-item--muted {
+  cursor: default;
+}
+
+.bnav-item:not(.bnav-item--muted):hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.bnav-item.active:hover,
+.bnav-item.router-link-exact-active:hover {
+  color: #FFD700;
 }
 </style>
