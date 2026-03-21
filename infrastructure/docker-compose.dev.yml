@@ -33,7 +33,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/api/Dockerfile.dev
     image: world-bingo-api-dev
     restart: unless-stopped
     ports:
@@ -50,7 +50,12 @@ services:
       HOST: 0.0.0.0
       STORAGE_PROVIDER: local
       UPLOAD_DIR: /app/uploads
+      # Enable file-watching polling inside Docker on macOS/Windows
+      CHOKIDAR_USEPOLLING: "true"
     volumes:
+      # Mount API source for hot-reload via tsx watch
+      - ../apps/api/src:/app/apps/api/src
+      - ../apps/api/prisma:/app/apps/api/prisma
       - uploads_dev_data:/app/apps/api/uploads
     depends_on:
       postgres:
@@ -68,7 +73,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/web/Dockerfile.dev
     image: world-bingo-web-dev
     restart: unless-stopped
     ports:
@@ -79,6 +84,16 @@ services:
       NUXT_API_BASE_SERVER: http://api:8080
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      # Enable file-watching polling inside Docker on macOS/Windows
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      # Mount web app source for Nuxt HMR
+      - ../apps/web:/app/apps/web
+      # Shadow node_modules and Nuxt build cache with anonymous volumes
+      # so the container's installed packages are never overwritten by the host mount
+      - web_node_modules:/app/apps/web/node_modules
+      - web_nuxt_cache:/app/apps/web/.nuxt
     depends_on:
       - api
     networks:
@@ -87,7 +102,7 @@ services:
   admin:
     build:
       context: ..
-      dockerfile: apps/admin/Dockerfile
+      dockerfile: apps/admin/Dockerfile.dev
     image: world-bingo-admin-dev
     restart: unless-stopped
     ports:
@@ -96,6 +111,15 @@ services:
       NUXT_PUBLIC_API_BASE: http://localhost:8080
       NUXT_API_BASE_SERVER: http://api:8080
       NUXT_JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # Enable file-watching polling inside Docker on macOS/Windows
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      # Mount admin app source for Nuxt HMR
+      - ../apps/admin:/app/apps/admin
+      # Shadow node_modules and Nuxt build cache
+      - admin_node_modules:/app/apps/admin/node_modules
+      - admin_nuxt_cache:/app/apps/admin/.nuxt
     depends_on:
       - api
     networks:
@@ -174,6 +198,12 @@ volumes:
   prometheus_dev_data:
   grafana_dev_data:
   influxdb_dev_data:
+  # Named volumes that shadow host-mounted app directories
+  # so container node_modules and Nuxt caches are never overwritten
+  web_node_modules:
+  web_nuxt_cache:
+  admin_node_modules:
+  admin_nuxt_cache:
 
 networks:
   default:
