@@ -57,7 +57,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
       <div class="max-w-6xl mx-auto px-2 h-14 flex items-center justify-between gap-3">
         <!-- Logo -->
         <NuxtLink to="/" class="flex items-center gap-2.5 flex-shrink-0">
-          <img src="/logo.png" alt="Arada Bingo" class="h-16 object-contain rounded-xl flex-shrink-0" />
+          <img src="/logo.png" alt="Arada Bingo" class="h-12 object-contain rounded-xl flex-shrink-0" />
         </NuxtLink>
 
         <nav class="hidden sm:flex items-center gap-1">
@@ -101,7 +101,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
           <!-- Authenticated user -->
           <template v-if="auth.isAuthenticated">
             <!-- Wallet balance chip with coin + refresh -->
-            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm">
+            <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm">
               <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" /><circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" /></svg>
               <span class="text-white font-semibold">{{ formattedBalance }}</span>
               <span class="text-white/50 text-[10px] uppercase font-bold tracking-tight">ETB</span>
@@ -118,7 +118,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 
             <!-- Deposit button -->
             <button
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-all"
+              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-all"
               @click="showDeposit = true"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -128,7 +128,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             </button>
 
             <!-- User avatar circle with dropdown -->
-            <div class="relative group">
+            <div class="hidden sm:block relative group">
               <button class="w-9 h-9 rounded-full bg-amber-400 hover:bg-amber-300 flex items-center justify-center flex-shrink-0 transition-colors">
                 <span class="text-black text-sm font-bold leading-none">
                   {{ (auth.user?.username ?? 'U')[0].toUpperCase() }}
@@ -167,7 +167,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
           <template v-else>
             <NuxtLink
               to="/auth/login"
-              class="px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-colors"
+              class="hidden sm:flex px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-colors"
             >
               Login
             </NuxtLink>
@@ -294,11 +294,83 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
     </header>
 
     <!-- ── Page Content ───────────────────────────────────────────────────── -->
-    <main class="flex-1">
+    <main class="flex-1 pb-16 sm:pb-0">
       <Transition name="page-fade" mode="out-in">
         <slot />
       </Transition>
     </main>
+
+    <!-- ── Mobile Bottom Nav ──────────────────────────────────────────────── -->
+    <nav
+      class="sm:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/10 flex items-stretch"
+      style="background: rgba(0, 10, 56, 0.97); backdrop-filter: blur(12px);"
+    >
+      <!-- Home -->
+      <NuxtLink
+        to="/"
+        exact-active-class="text-amber-400 [&_svg]:stroke-amber-400"
+        class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+        <span class="text-[10px] font-medium">Home</span>
+      </NuxtLink>
+
+      <!-- Tournaments -->
+      <NuxtLink
+        v-if="tournamentsEnabled"
+        to="/tournaments"
+        active-class="text-amber-400"
+        class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0012 0V2z" />
+        </svg>
+        <span class="text-[10px] font-medium">Tournaments</span>
+      </NuxtLink>
+
+      <!-- Deposit (authenticated) / Login (guest) -->
+      <template v-if="auth.isAuthenticated">
+        <button
+          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+          @click="showDeposit = true"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" />
+            <circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" />
+          </svg>
+          <span class="text-[10px] font-medium">Wallet</span>
+        </button>
+
+        <!-- Profile -->
+        <NuxtLink
+          to="/profile"
+          active-class="text-amber-400"
+          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+          </svg>
+          <span class="text-[10px] font-medium">Profile</span>
+        </NuxtLink>
+      </template>
+
+      <template v-else>
+        <NuxtLink
+          to="/auth/login"
+          active-class="text-amber-400"
+          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+          </svg>
+          <span class="text-[10px] font-medium">Login</span>
+        </NuxtLink>
+      </template>
+    </nav>
 
     <!-- ── Modals ─────────────────────────────────────────────────────────── -->
     <DepositModal

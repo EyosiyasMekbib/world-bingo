@@ -6,13 +6,6 @@
     <div class="orb orb-2" aria-hidden="true" />
     <div class="orb orb-3" aria-hidden="true" />
 
-    <!-- Branding wordmark top-left -->
-    <NuxtLink to="/" class="auth-brand" tabindex="-1">
-      <div class="auth-brand-icon">
-        <img src="/logo.png" alt="World Bingo Logo" class="logo-img" />
-      </div>
-    </NuxtLink>
-
     <!-- Centered card slot -->
     <main class="auth-main">
       <slot />
@@ -55,28 +48,6 @@
   width: 300px; height: 300px;
   top: 40%; left: 60%;
   background: radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%);
-}
-
-.auth-brand {
-  position: absolute;
-  top: 1.25rem;
-  left: 1.5rem;
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-  z-index: 10;
-}
-.auth-brand-icon {
-  width: 56px; height: 56px;
-  border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.logo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
 }
 
 .auth-main {

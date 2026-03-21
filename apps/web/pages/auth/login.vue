@@ -1,8 +1,10 @@
 <template>
   <div class="auth-card">
-    <!-- Header -->
-    <div class="auth-card-header">
-      <h1 class="auth-title">Welcome back</h1>
+    <!-- Logo + Header -->
+    <div class="auth-hero">
+      <NuxtLink to="/">
+        <img src="/logo.png" alt="Arada Bingo" class="auth-logo-img" />
+      </NuxtLink>
       <p class="auth-subtitle">Sign in to continue playing</p>
     </div>
 
@@ -124,19 +126,31 @@ async function openTelegramAuth() {
 <style scoped>
 /* ── Glass card ─────────────────────────────────────────────────────── */
 .auth-card {
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 2.25rem 2rem;
+  border-radius: 24px;
+  padding: 2.5rem 2rem 2rem;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: 2rem;
 }
 
-.auth-card-header { display: flex; flex-direction: column; gap: 0.35rem; }
+/* ── Hero (logo + title) ────────────────────────────────────────────── */
+.auth-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.auth-logo-img {
+  height: 8vh;
+  object-fit: contain;
+}
 
 .auth-title {
   font-size: 1.6rem;
