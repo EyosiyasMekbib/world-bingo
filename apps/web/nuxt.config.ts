@@ -1,3 +1,5 @@
+import { resolve } from 'path'
+
 export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
@@ -78,9 +80,9 @@ export default defineNuxtConfig({
     vite: {
         resolve: {
             alias: {
-                '@world-bingo/ui': '../../packages/ui/src',
-                '@world-bingo/game-logic': '../../packages/game-logic/src/index.ts',
-                '@world-bingo/shared-types': '../../packages/shared-types/src/index.ts',
+                '@world-bingo/ui': resolve(__dirname, '../../packages/ui/src'),
+                '@world-bingo/game-logic': resolve(__dirname, '../../packages/game-logic/src/index.ts'),
+                '@world-bingo/shared-types': resolve(__dirname, '../../packages/shared-types/src/index.ts'),
             },
         },
     },

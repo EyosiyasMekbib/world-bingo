@@ -56,6 +56,8 @@ services:
       # Mount API source for hot-reload via tsx watch
       - ../apps/api/src:/app/apps/api/src
       - ../apps/api/prisma:/app/apps/api/prisma
+      # Mount shared packages source so tsx watch can resolve workspace imports
+      - ../packages:/app/packages
       - uploads_dev_data:/app/apps/api/uploads
     depends_on:
       postgres:
@@ -90,7 +92,9 @@ services:
     volumes:
       # Mount web app source for Nuxt HMR
       - ../apps/web:/app/apps/web
-      # Shadow node_modules and Nuxt build cache with anonymous volumes
+      # Mount shared packages so Vite aliases resolve to live TypeScript source
+      - ../packages:/app/packages
+      # Shadow node_modules and Nuxt build cache with named volumes
       # so the container's installed packages are never overwritten by the host mount
       - web_node_modules:/app/apps/web/node_modules
       - web_nuxt_cache:/app/apps/web/.nuxt
@@ -117,6 +121,8 @@ services:
     volumes:
       # Mount admin app source for Nuxt HMR
       - ../apps/admin:/app/apps/admin
+      # Mount shared packages so Vite aliases resolve to live TypeScript source
+      - ../packages:/app/packages
       # Shadow node_modules and Nuxt build cache
       - admin_node_modules:/app/apps/admin/node_modules
       - admin_nuxt_cache:/app/apps/admin/.nuxt
