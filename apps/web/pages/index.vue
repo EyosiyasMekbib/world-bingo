@@ -11,6 +11,20 @@ const { patternLabel, patternIcon } = usePatternLabel()
 
 const topGamesCollapsed = ref(false)
 const roomsCollapsed = ref(false)
+const searchQuery = ref('')
+
+const filteredGames = computed(() => {
+  if (!searchQuery.value.trim()) return gameStore.availableGames
+  const q = searchQuery.value.trim().toLowerCase()
+  return gameStore.availableGames.filter((g: Game) =>
+    String(g.ticketPrice).includes(q) ||
+    g.status.toLowerCase().includes(q)
+  )
+})
+
+function scrollToRooms() {
+  document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })
+}
 
 // Fetch data on mount
 onMounted(async () => {
@@ -66,12 +80,12 @@ onUnmounted(() => {
           </div>
           <h1 class="hero-title">Play <span class="hero-accent">Bingo</span>,<br>Win Real ETB</h1>
           <p class="hero-sub">Join thousands of players. Pick your cartela, call BINGO, get paid instantly.</p>
-          <NuxtLink to="/" class="hero-cta">
+          <button class="hero-cta" @click="scrollToRooms">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0">
               <path d="M8 5v14l11-7z" />
             </svg>
             Play Now
-          </NuxtLink>
+          </button>
         </div>
         <div class="hero-art">
           <!-- Front bingo card -->
@@ -159,12 +173,17 @@ onUnmounted(() => {
             Tournaments
           </NuxtLink>
         </div>
-        <div class="search-bar">
+        <label class="search-bar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.4">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <span>Search games…</span>
-        </div>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search games…"
+            class="search-input"
+          />
+        </label>
       </div>
     </div>
 
@@ -300,7 +319,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ── AVAILABLE BINGO ROOMS ──────────────────────────────── -->
-    <div class="section">
+    <div id="rooms" class="section">
       <div class="max-container">
         <div class="section-hdr">
           <span class="section-title">Available Bingo Rooms</span>
@@ -317,13 +336,13 @@ onUnmounted(() => {
             Could not load games
             <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
           </div>
-          <div v-else-if="!gameStore.availableGames.length" class="state-msg">
-            No games available right now. Check back soon!
+          <div v-else-if="!filteredGames.length" class="state-msg">
+            {{ searchQuery ? 'No games match your search.' : 'No games available right now. Check back soon!' }}
           </div>
 
           <div v-else class="rooms-grid">
             <div
-              v-for="(game, idx) in gameStore.availableGames"
+              v-for="(game, idx) in filteredGames"
               :key="game.id"
               class="room-card"
               :style="{ '--delay': `${idx * 60}ms` }"
@@ -386,7 +405,7 @@ onUnmounted(() => {
   min-height: 100vh;
   background: #000A38;
   font-family: 'Nunito', sans-serif;
-  padding-bottom: 80px;
+  padding-bottom: 40px;
 }
 
 .max-container {
@@ -637,6 +656,26 @@ onUnmounted(() => {
   font-size: 13px;
   font-family: 'Nunito', sans-serif;
   min-width: 200px;
+  cursor: text;
+  transition: border-color 0.15s;
+}
+
+.search-bar:focus-within {
+  border-color: rgba(255, 215, 0, 0.4);
+}
+
+.search-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  font-family: 'Nunito', sans-serif;
+  width: 100%;
+}
+
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 @media (max-width: 640px) { .search-bar { display: none; } }
@@ -828,7 +867,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
-  padding-bottom: 80px;
+  padding-bottom: 0;
 }
 
 @media (min-width: 700px) {
