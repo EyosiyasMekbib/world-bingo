@@ -54,10 +54,10 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         backdrop-filter: blur(12px);
       "
     >
-      <div class="max-w-6xl mx-auto px-2 h-14 flex items-center justify-between gap-3">
+      <div class="max-w-6xl mx-auto px-2 h-14 flex items-center justify-between gap-1 sm:gap-3">
         <!-- Logo -->
         <NuxtLink to="/" class="flex items-center gap-2.5 flex-shrink-0">
-          <img src="/logo.png" alt="Arada Bingo" class="h-12 object-contain rounded-xl flex-shrink-0" />
+          <img src="/logo.png" alt="Arada Bingo" class="h-8 sm:h-12 object-contain rounded-xl flex-shrink-0" />
         </NuxtLink>
 
         <nav class="hidden sm:flex items-center gap-1">
@@ -108,9 +108,31 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         </nav>
 
         <!-- Right side actions -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1 sm:gap-2">
           <!-- Authenticated user -->
           <template v-if="auth.isAuthenticated">
+            <!-- Mobile: compact balance chip -->
+            <div class="flex sm:hidden items-center gap-1 px-1.5 py-1 rounded-lg bg-white/8 border border-white/10 text-[11px] min-w-0">
+              <span class="text-white font-semibold truncate">{{ formattedBalance }}</span>
+              <span class="text-white/50 text-[9px] uppercase font-bold tracking-tight flex-shrink-0">ETB</span>
+            </div>
+
+            <!-- Mobile: deposit button -->
+            <button
+              class="flex sm:hidden items-center px-2 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-[11px] font-semibold transition-colors flex-shrink-0"
+              @click="showDeposit = true"
+            >
+              Deposit
+            </button>
+
+            <!-- Mobile: withdraw button -->
+            <button
+              class="flex sm:hidden items-center px-2 py-1 rounded-lg border border-white/20 text-white hover:bg-white/8 text-[11px] font-semibold transition-colors flex-shrink-0"
+              @click="showWithdrawal = true"
+            >
+              Withdraw
+            </button>
+
             <!-- Wallet balance chip with coin + refresh -->
             <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm">
               <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" /><circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" /></svg>
@@ -136,6 +158,17 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
               </svg>
               Deposit
+            </button>
+
+            <!-- Withdraw button -->
+            <button
+              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/8 text-white text-sm font-semibold transition-all"
+              @click="showWithdrawal = true"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 20V4m-8 8l8-8 8 8" />
+              </svg>
+              Withdraw
             </button>
 
             <!-- User avatar circle with dropdown -->
@@ -351,11 +384,12 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
         <span class="text-[10px] font-medium">Tournaments</span>
       </NuxtLink>
 
-      <!-- Deposit (authenticated) / Login (guest) -->
+      <!-- Wallet (authenticated) / Login (guest) -->
       <template v-if="auth.isAuthenticated">
-        <button
+        <NuxtLink
+          to="/wallet"
+          active-class="text-amber-400"
           class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-          @click="showDeposit = true"
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -363,7 +397,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             <circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" />
           </svg>
           <span class="text-[10px] font-medium">Wallet</span>
-        </button>
+        </NuxtLink>
 
         <!-- Profile -->
         <NuxtLink
