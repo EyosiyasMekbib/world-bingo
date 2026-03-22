@@ -94,6 +94,17 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             </svg>
             History
           </NuxtLink>
+          <NuxtLink
+            v-if="referralsEnabled && auth.isAuthenticated"
+            to="/refer"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
+            active-class="text-amber-400 bg-amber-400/10"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Refer
+          </NuxtLink>
         </nav>
 
         <!-- Right side actions -->
@@ -263,6 +274,16 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
                 Profile
               </NuxtLink>
 
+              <NuxtLink
+                v-if="referralsEnabled"
+                to="/refer"
+                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
+                @click="mobileNavOpen = false"
+              >
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                Refer &amp; Earn
+              </NuxtLink>
+
               <button
                 class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-semibold text-red-500/90 hover:bg-red-500/5 flex items-center gap-3 transition-colors mt-2"
                 @click="handleLogout"
@@ -355,6 +376,19 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
           </svg>
           <span class="text-[10px] font-medium">Profile</span>
+        </NuxtLink>
+
+        <!-- Refer (when enabled) -->
+        <NuxtLink
+          v-if="referralsEnabled"
+          to="/refer"
+          active-class="text-amber-400"
+          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <span class="text-[10px] font-medium">Refer</span>
         </NuxtLink>
       </template>
 
