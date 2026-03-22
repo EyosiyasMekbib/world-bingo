@@ -19,6 +19,7 @@ model User {
   lastName         String?
   photoUrl         String?
   role             UserRole        @default(PLAYER)
+  isActive         Boolean         @default(true)
   avatarUrl      String?
   referralCode   String?         @unique
   referredById   String?
@@ -88,6 +89,9 @@ model GameTemplate {
   pattern        PatternType
   active         Boolean     @default(true)          // toggle template on/off
   countdownSecs  Int         @default(60)            // seconds to wait after minPlayers join
+  botEnabled     Boolean     @default(false)         // master on/off for bots on this template
+  botCount       Int         @default(0)             // max number of bot players to inject per game
+  botFillToMin   Boolean     @default(true)          // if true, bots fill to minPlayers (botCount is the ceiling)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   games          Game[]

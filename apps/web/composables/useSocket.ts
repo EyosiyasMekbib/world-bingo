@@ -18,7 +18,7 @@ export const useSocket = () => {
             auth: {
                 token: auth.token
             },
-            transports: ['websocket']
+            transports: ['polling', 'websocket']
         })
         
         socket.value.on('connect', () => {

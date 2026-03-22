@@ -81,3 +81,20 @@ export interface Notification {
     createdAt: Date
 }
 
+export interface GameTemplate {
+    id: string
+    title: string
+    ticketPrice: number
+    maxPlayers: number
+    minPlayers: number
+    houseEdgePct: number
+    pattern: PatternType
+    active: boolean
+    countdownSecs: number
+    botEnabled?: boolean
+    botCount?: number
+    botFillToMin?: boolean
+    createdAt: Date
+    updatedAt: Date
+}
+

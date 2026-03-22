@@ -49,11 +49,16 @@ export const useAdminApi = () => {
             houseEdgePct: number
             pattern: string
             countdownSecs: number
+            botEnabled: boolean
+            botCount: number
+            botFillToMin: boolean
         }) => apiFetch('/admin/game-templates', { method: 'POST', body: data }),
         updateGameTemplate: (id: string, data: Record<string, any>) =>
             apiFetch(`/admin/game-templates/${id}`, { method: 'PATCH', body: data }),
         deleteGameTemplate: (id: string) =>
             apiFetch(`/admin/game-templates/${id}`, { method: 'DELETE' }),
+        injectBots: (gameId: string) =>
+            apiFetch(`/admin/games/${gameId}/inject-bots`, { method: 'POST' }),
 
         // ── Feature Flags / Site Settings ───────────────────────────────────
         getFeatureFlags: () => apiFetch<Record<string, boolean>>('/settings/features'),

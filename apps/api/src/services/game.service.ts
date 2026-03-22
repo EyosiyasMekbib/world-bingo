@@ -375,6 +375,10 @@ export class GameService {
             const game = await tx.game.findUnique({ where: { id: gameId } })
             if (!game || game.status !== GameStatus.IN_PROGRESS) throw new Error('Game not active')
 
+            // Check if the winner is a bot — bot prizes stay in the house
+            const user = await tx.user.findUnique({ where: { id: userId } })
+            const isBot = user?.username?.startsWith('bot_') ?? false
+
             // Verify the user actually has this cartela in this game
             const entry = await tx.gameEntry.findFirst({
                 where: { gameId, userId, cartelaId },
@@ -406,15 +410,40 @@ export class GameService {
             const totalPot = Number(game.ticketPrice) * totalEntries
             const prize = totalPot * (1 - Number(game.houseEdgePct) / 100)
 
-            // Lock winner wallet row before crediting prize
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
-            `
-            const wallet = wallets[0]
-            const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
-            const balanceAfter = balanceBefore.plus(new Decimal(prize))
+            let balanceAfter = new Decimal(0)
 
-            // Update Game — persist called balls from Redis
+            if (!isBot) {
+                // Lock winner wallet row before crediting prize
+                const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
+                    SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                `
+                const wallet = wallets[0]
+                const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
+                balanceAfter = balanceBefore.plus(new Decimal(prize))
+
+                // Pay Winner
+                await tx.wallet.update({
+                    where: { userId },
+                    data: { balance: { increment: prize } }
+                })
+
+                // Record Transaction with balance snapshot
+                await tx.transaction.create({
+                    data: {
+                        userId,
+                        type: TransactionType.PRIZE_WIN,
+                        amount: prize,
+                        status: PaymentStatus.APPROVED,
+                        referenceId: gameId,
+                        balanceBefore: balanceBefore,
+                        balanceAfter: balanceAfter,
+                    }
+                })
+            } else {
+                console.log(`[BotService] Bot ${userId} won game ${gameId} — prize returned to house`)
+            }
+
+            // Update Game — persist called balls from Redis (always, regardless of bot)
             const endedGame = await tx.game.update({
                 where: { id: gameId },
                 data: {
@@ -425,27 +454,6 @@ export class GameService {
                 }
             })
 
-            // Pay Winner
-            await tx.wallet.update({
-                where: { userId },
-                data: { balance: { increment: prize } }
-            })
-
-            // Record Transaction with balance snapshot
-            await tx.transaction.create({
-                data: {
-                    userId,
-                    type: TransactionType.PRIZE_WIN,
-                    amount: prize,
-                    status: PaymentStatus.APPROVED,
-                    referenceId: gameId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter,
-                }
-            })
-
-            const user = await tx.user.findUnique({ where: { id: userId } })
-
             const io = getIo()
             io.to(`game:${gameId}`).emit('game:winner', {
                 gameId,
@@ -455,24 +463,27 @@ export class GameService {
             io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
             io.to('lobby').emit('lobby:game-removed', gameId)
 
-            return { endedGame, balanceAfter }
-        }).then(async ({ endedGame, balanceAfter }: any) => {
-            // Push balance update
-            NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+            return { endedGame, balanceAfter, isBot }
+        }).then(async ({ endedGame, balanceAfter, isBot }: any) => {
+            // Push balance update (skip for bots — they have no real balance to show)
+            if (!isBot) {
+                NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+            }
 
             // Post-transaction: notify winner and clear Redis (non-critical)
             const totalEntries = await prisma.gameEntry.count({ where: { gameId } })
             const totalPot = Number(endedGame.ticketPrice) * totalEntries
             const prize = totalPot * (1 - Number(endedGame.houseEdgePct) / 100)
-            const ballsCalled = (endedGame.calledBalls as number[]).length
 
-            await NotificationService.create(
-                userId,
-                NotificationType.GAME_WON,
-                '🎉 You Won!',
-                `Congratulations! You won ${prize.toFixed(2)} ETB!`,
-                { gameId },
-            ).catch(() => { })
+            if (!isBot) {
+                await NotificationService.create(
+                    userId,
+                    NotificationType.GAME_WON,
+                    '🎉 You Won!',
+                    `Congratulations! You won ${prize.toFixed(2)} ETB!`,
+                    { gameId },
+                ).catch(() => { })
+            }
 
             // T60: If this game is part of a tournament, advance the tournament
             const tournamentGame = await prisma.tournamentGame.findUnique({ where: { gameId } }).catch(() => null)

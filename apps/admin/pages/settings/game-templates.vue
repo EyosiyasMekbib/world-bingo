@@ -9,6 +9,9 @@ interface GameTemplate {
   pattern: string
   countdownSecs: number
   active: boolean
+  botEnabled: boolean
+  botCount: number
+  botFillToMin: boolean
   createdAt: string
   _count?: { games: number }
 }
@@ -21,10 +24,13 @@ const patternOptions = ['ANY_LINE', 'DIAGONAL', 'FULL_CARD', 'X_PATTERN', 'CORNE
 const templates = ref<GameTemplate[]>([])
 const loading = ref(false)
 const showCreateModal = ref(false)
+const showEditModal = ref(false)
 const showDeleteConfirm = ref(false)
 const selectedTemplateId = ref<string | null>(null)
 const creating = ref(false)
+const saving = ref(false)
 const createError = ref('')
+const editError = ref('')
 
 const newTemplate = reactive({
   title: '',
@@ -34,6 +40,23 @@ const newTemplate = reactive({
   houseEdgePct: 10,
   pattern: 'ANY_LINE',
   countdownSecs: 60,
+  botEnabled: false,
+  botCount: 0,
+  botFillToMin: true,
+})
+
+const editTemplate = reactive({
+  id: '',
+  title: '',
+  ticketPrice: 20,
+  maxPlayers: 70,
+  minPlayers: 2,
+  houseEdgePct: 10,
+  pattern: 'ANY_LINE',
+  countdownSecs: 60,
+  botEnabled: false,
+  botCount: 0,
+  botFillToMin: true,
 })
 
 const refreshTemplates = async () => {
@@ -62,11 +85,46 @@ const handleCreate = async () => {
     newTemplate.houseEdgePct = 10
     newTemplate.pattern = 'ANY_LINE'
     newTemplate.countdownSecs = 60
+    newTemplate.botEnabled = false
+    newTemplate.botCount = 0
+    newTemplate.botFillToMin = true
     refreshTemplates()
   } catch (e: any) {
     createError.value = e?.data?.message ?? e?.message ?? 'Failed to create template'
   } finally {
     creating.value = false
+  }
+}
+
+const openEdit = (template: GameTemplate) => {
+  editTemplate.id = template.id
+  editTemplate.title = template.title
+  editTemplate.ticketPrice = template.ticketPrice
+  editTemplate.maxPlayers = template.maxPlayers
+  editTemplate.minPlayers = template.minPlayers
+  editTemplate.houseEdgePct = template.houseEdgePct
+  editTemplate.pattern = template.pattern
+  editTemplate.countdownSecs = template.countdownSecs
+  editTemplate.botEnabled = template.botEnabled
+  editTemplate.botCount = template.botCount
+  editTemplate.botFillToMin = template.botFillToMin
+  editError.value = ''
+  showEditModal.value = true
+}
+
+const handleEdit = async () => {
+  saving.value = true
+  editError.value = ''
+  try {
+    const { id, ...data } = editTemplate
+    await updateGameTemplate(id, data)
+    toast.add({ title: 'Template Updated ✅', color: 'success' })
+    showEditModal.value = false
+    refreshTemplates()
+  } catch (e: any) {
+    editError.value = e?.data?.message ?? e?.message ?? 'Failed to update template'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -107,6 +165,7 @@ const columns = [
   { accessorKey: 'pattern', header: 'Pattern' },
   { accessorKey: 'houseEdgePct', header: 'House %' },
   { accessorKey: 'countdownSecs', header: 'Countdown' },
+  { accessorKey: 'bots', header: 'Bots' },
   { accessorKey: 'active', header: 'Status' },
   { accessorKey: 'waitingGames', header: 'Waiting Games' },
   { accessorKey: 'actions', header: 'Actions' },
@@ -173,6 +232,16 @@ onMounted(refreshTemplates)
         <template #countdownSecs-cell="{ row }">
           <span class="text-white/60 font-medium font-mono lowercase">{{ (row.original as unknown as GameTemplate).countdownSecs }}s</span>
         </template>
+        <template #bots-cell="{ row }">
+          <UBadge
+            v-if="(row.original as unknown as GameTemplate).botEnabled"
+            color="success"
+            variant="soft"
+          >
+            ✓ ON · {{ (row.original as unknown as GameTemplate).botCount }} bots
+          </UBadge>
+          <UBadge v-else color="neutral" variant="soft">Off</UBadge>
+        </template>
         <template #active-cell="{ row }">
           <UBadge
             :color="(row.original as unknown as GameTemplate).active ? 'success' : 'neutral'"
@@ -186,6 +255,13 @@ onMounted(refreshTemplates)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="soft"
+              icon="i-heroicons:pencil-square"
+              @click="openEdit(row.original as unknown as GameTemplate)"
+            />
             <UButton
               size="xs"
               :color="(row.original as unknown as GameTemplate).active ? 'warning' : 'success'"
@@ -237,12 +313,95 @@ onMounted(refreshTemplates)
             <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Pattern Focus</label>
             <USelect v-model="newTemplate.pattern" :items="patternOptions.map(p => ({ label: p, value: p }))" value-key="value" />
           </div>
+          <div class="border border-white/10 rounded-xl p-4 space-y-3">
+            <p class="text-[10px] font-bold text-white/40 uppercase tracking-widest">Bot Configuration</p>
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium text-white/70">Enable Bots</label>
+              <USwitch v-model="newTemplate.botEnabled" />
+            </div>
+            <template v-if="newTemplate.botEnabled">
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Count (max 20)</label>
+                <UInput v-model.number="newTemplate.botCount" type="number" min="0" max="20" />
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <label class="text-sm font-medium text-white/70">Fill to Min Players</label>
+                  <p class="text-xs text-white/40 mt-0.5">Bots will fill seats up to minPlayers; Bot Count is the ceiling</p>
+                </div>
+                <USwitch v-model="newTemplate.botFillToMin" />
+              </div>
+            </template>
+          </div>
           <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
         </div>
       </template>
       <template #footer>
         <UButton color="neutral" variant="ghost" @click="showCreateModal = false">Cancel</UButton>
         <UButton color="primary" :loading="creating" @click="handleCreate">Create Template</UButton>
+      </template>
+    </UModal>
+
+    <!-- Edit Template Modal -->
+    <UModal v-model:open="showEditModal" title="Edit Game Template" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div class="space-y-4">
+          <div>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Template Title</label>
+            <UInput v-model="editTemplate.title" placeholder="e.g. Quick 10 ETB" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Price (ETB)</label>
+              <UInput v-model.number="editTemplate.ticketPrice" type="number" min="1" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Max Players</label>
+              <UInput v-model.number="editTemplate.maxPlayers" type="number" min="2" max="500" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Min Players To Start</label>
+              <UInput v-model.number="editTemplate.minPlayers" type="number" min="2" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">House Commission %</label>
+              <UInput v-model.number="editTemplate.houseEdgePct" type="number" min="0" max="50" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Start Timer (S)</label>
+              <UInput v-model.number="editTemplate.countdownSecs" type="number" min="10" max="300" />
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Pattern Focus</label>
+            <USelect v-model="editTemplate.pattern" :items="patternOptions.map(p => ({ label: p, value: p }))" value-key="value" />
+          </div>
+          <div class="border border-white/10 rounded-xl p-4 space-y-3">
+            <p class="text-[10px] font-bold text-white/40 uppercase tracking-widest">Bot Configuration</p>
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium text-white/70">Enable Bots</label>
+              <USwitch v-model="editTemplate.botEnabled" />
+            </div>
+            <template v-if="editTemplate.botEnabled">
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Count (max 20)</label>
+                <UInput v-model.number="editTemplate.botCount" type="number" min="0" max="20" />
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <label class="text-sm font-medium text-white/70">Fill to Min Players</label>
+                  <p class="text-xs text-white/40 mt-0.5">Bots will fill seats up to minPlayers; Bot Count is the ceiling</p>
+                </div>
+                <USwitch v-model="editTemplate.botFillToMin" />
+              </div>
+            </template>
+          </div>
+          <p v-if="editError" class="text-red-400 text-sm">{{ editError }}</p>
+        </div>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" @click="showEditModal = false">Cancel</UButton>
+        <UButton color="primary" :loading="saving" @click="handleEdit">Save Changes</UButton>
       </template>
     </UModal>
 

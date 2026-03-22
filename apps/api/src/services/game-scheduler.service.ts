@@ -98,7 +98,8 @@ export class GameSchedulerService {
     }
 
     /**
-     * Called when the countdown expires. Auto-starts the game via the engine.
+     * Called when the countdown expires. Injects bots (if configured), then auto-starts the game.
+     * If the game still lacks minPlayers after bot injection, it is auto-cancelled.
      */
     static async handleCountdownExpired(gameId: string): Promise<void> {
         const game = await prisma.game.findUnique({
@@ -116,23 +117,60 @@ export class GameSchedulerService {
             return
         }
 
-        const playerCount = game.entries.length
+        // 1. Inject bots before starting — bots fill seats according to template config
+        const { BotService } = await import('./bot.service.js')
+        await BotService.injectBots(gameId)
+
+        // 2. Re-fetch player count after bot injection
+        const updatedGame = await prisma.game.findUnique({
+            where: { id: gameId },
+            include: {
+                entries: { distinct: ['userId'], select: { userId: true } },
+            },
+        })
+        const playerCount = updatedGame?.entries.length ?? 0
+
         if (playerCount < game.minPlayers) {
             console.log(
-                `[GameScheduler] Game ${gameId} has ${playerCount} players, not enough to start — auto-cancelling`,
+                `[GameScheduler] Game ${gameId} has ${playerCount} players after bot injection, not enough to start — auto-cancelling`,
             )
-            // Auto-cancel: not enough players joined during the countdown
+            // Auto-cancel: not enough players even after bot injection
             const { GameService } = await import('../services/game.service.js')
             await GameService.cancelGame(gameId)
             return
         }
 
-        // Auto-start: update status to STARTING and fire game engine
+        // 3. Auto-start: update status to STARTING and fire game engine
         console.log(`[GameScheduler] Auto-starting game ${gameId} with ${playerCount} players`)
 
         // Dynamic import to avoid circular dependency
         const { GameService } = await import('../services/game.service.js')
         await GameService.startGame(gameId)
+
+        // 4. Start bot turn-watching in the background (non-blocking)
+        BotService.playBotTurns(gameId).catch(console.error)
+
+        // 5. Deactivate bots after the game ends — poll until completion
+        ;(async () => {
+            try {
+                // Wait for game to finish by watching status
+                const pollInterval = 5_000
+                while (true) {
+                    await new Promise((resolve) => setTimeout(resolve, pollInterval))
+                    const current = await prisma.game.findUnique({
+                        where: { id: gameId },
+                        select: { status: true },
+                    })
+                    if (!current) break
+                    if (current.status === 'COMPLETED' || current.status === 'CANCELLED') {
+                        await BotService.deactivateBots(gameId)
+                        break
+                    }
+                }
+            } catch (err) {
+                console.error(`[GameScheduler] Bot deactivation watcher failed for game ${gameId}:`, err)
+            }
+        })().catch(console.error)
     }
 
     /**

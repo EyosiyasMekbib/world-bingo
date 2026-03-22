@@ -29,6 +29,13 @@ import prisma from '../lib/prisma'
 /** Map of active countdown timers keyed by roomId */
 const activeTimers = new Map<string, NodeJS.Timeout>()
 
+/**
+ * Rooms whose countdown has fired but whose handleTimerExpired is still running
+ * (e.g. injecting bots). Kept so isCountdownActive() stays true during that window,
+ * preventing checkAndStartCountdown from restarting the countdown.
+ */
+const firingRooms = new Set<string>()
+
 /** Track consecutive tick errors per room to avoid stopping on transient failures */
 const timerErrors = new Map<string, number>()
 const MAX_TICK_ERRORS = 5
@@ -61,6 +68,8 @@ export function startRoomCountdown(roomId: string, initialSecs = 60): void {
             if (secondsLeft <= 0) {
                 // Timer expired — clear the interval before async work
                 stopRoomCountdown(roomId)
+                // Mark as firing so isCountdownActive() stays true while bots inject
+                firingRooms.add(roomId)
                 await handleTimerExpired(roomId)
             }
         } catch (err) {
@@ -90,6 +99,7 @@ export function stopRoomCountdown(roomId: string): void {
         activeTimers.delete(roomId)
         timerErrors.delete(roomId)
     }
+    firingRooms.delete(roomId)
 }
 
 /**
@@ -111,9 +121,14 @@ async function handleTimerExpired(roomId: string): Promise<void> {
     const io = getIo()
 
     try {
+        // Note: firingRooms.add(roomId) was set by the caller; cleared in finally.
+        // ── Inject bots before checking player count ─────────────────────────
+        const { BotService } = await import('./bot.service.js')
+        await BotService.injectBots(roomId)
+
         let playerCount = await getRoomPlayerCount(roomId)
 
-        // If Redis key expired, fall back to DB for an accurate count
+        // If Redis key expired (or bots were just added), fall back to DB
         if (playerCount === 0) {
             const dbEntries = await prisma.gameEntry.findMany({
                 where: { gameId: roomId },
@@ -131,7 +146,7 @@ async function handleTimerExpired(roomId: string): Promise<void> {
 
         if (playerCount < minPlayers) {
             // ── Branch A: Not enough players ────────────────────────────────
-            console.log(`[RoomTimer] Room ${roomId}: only ${playerCount} player(s) — REFUNDING`)
+            console.log(`[RoomTimer] Room ${roomId}: only ${playerCount} player(s) after bot injection — REFUNDING`)
             await setRoomStatus(roomId, 'REFUNDING')
 
             // Delegate to GameService for atomic DB refunds + notifications
@@ -159,14 +174,39 @@ async function handleTimerExpired(roomId: string): Promise<void> {
             // Transition to IN_PROGRESS via the normal GameService path
             const { GameService } = await import('../services/game.service.js')
             await GameService.startGame(roomId)
+
+            // Start bot turn-watching in the background (non-blocking)
+            BotService.playBotTurns(roomId).catch(console.error)
+
+            // Deactivate bots once the game ends
+            ;(async () => {
+                try {
+                    while (true) {
+                        await new Promise((resolve) => setTimeout(resolve, 5_000))
+                        const current = await prisma.game.findUnique({
+                            where: { id: roomId },
+                            select: { status: true },
+                        })
+                        if (!current) break
+                        if (current.status === 'COMPLETED' || current.status === 'CANCELLED') {
+                            await BotService.deactivateBots(roomId)
+                            break
+                        }
+                    }
+                } catch (err) {
+                    console.error(`[RoomTimer] Bot deactivation watcher failed for room ${roomId}:`, err)
+                }
+            })().catch(console.error)
         }
     } catch (err) {
         console.error(`[RoomTimer] handleTimerExpired error for room ${roomId}:`, err)
         await clearRoomState(roomId).catch(() => { })
+    } finally {
+        firingRooms.delete(roomId)
     }
 }
 
-/** Returns true if a countdown is currently ticking for this room. */
+/** Returns true if a countdown is ticking or the timer just fired and is being processed. */
 export function isCountdownActive(roomId: string): boolean {
-    return activeTimers.has(roomId)
+    return activeTimers.has(roomId) || firingRooms.has(roomId)
 }
