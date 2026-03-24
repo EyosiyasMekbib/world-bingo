@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
+import { HouseWalletService } from './house-wallet.service'
 
 /**
  * T19 — Refund Service
@@ -87,6 +88,20 @@ export class RefundService {
                         balanceAfter,
                     },
                 })
+
+                // Debit house wallet atomically (only for real players — bots use fake money)
+                const user = await tx.user.findUnique({ where: { id: userId }, select: { username: true } })
+                const isBot = user?.username?.startsWith('bot_t') ?? false
+                if (!isBot) {
+                    await HouseWalletService.debit(
+                        refundAmount,
+                        'REFUND_ISSUED',
+                        'Player refund on game cancel',
+                        gameId,
+                        userId,
+                        tx,
+                    )
+                }
 
                 return { userId, amount: Number(refundAmount), alreadyRefunded: false, balanceAfter }
             })

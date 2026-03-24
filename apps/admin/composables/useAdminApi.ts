@@ -65,9 +65,21 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs: number }) =>
+        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number }>('/settings/game'),
+        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number }) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
+
+        // ── House Wallet ──────────────────────────────────────────────────────
+        getHouseWallet: () => apiFetch<{ balance: string; currency: string; summary: Record<string, number> }>('/admin/house/wallet'),
+        getHouseTransactions: (params?: { page?: number; limit?: number; type?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            if (params?.type) qs.set('type', params.type)
+            const query = qs.toString()
+            return apiFetch<any>(`/admin/house/transactions${query ? `?${query}` : ''}`)
+        },
+        getBotActivity: () => apiFetch<any[]>('/admin/house/bots'),
     }
 }
 

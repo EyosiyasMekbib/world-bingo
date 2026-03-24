@@ -22,6 +22,7 @@ import { startRoomCountdown, stopRoomCountdown } from './room-timer.service'
 import { getQueue, QUEUE_NAMES } from '../lib/queue'
 import { TournamentService } from './tournament.service'
 import { GameSchedulerService } from './game-scheduler.service'
+import { HouseWalletService } from './house-wallet.service'
 
 export class GameService {
     /**
@@ -409,6 +410,7 @@ export class GameService {
             const totalEntries = await tx.gameEntry.count({ where: { gameId } })
             const totalPot = Number(game.ticketPrice) * totalEntries
             const prize = totalPot * (1 - Number(game.houseEdgePct) / 100)
+            const houseCut = totalPot - prize
 
             let balanceAfter = new Decimal(0)
 
@@ -441,7 +443,26 @@ export class GameService {
                 })
             } else {
                 console.log(`[BotService] Bot ${userId} won game ${gameId} — prize returned to house`)
+                // Credit full bot prize to house wallet atomically within this transaction
+                await HouseWalletService.credit(
+                    prize,
+                    'BOT_PRIZE_WIN',
+                    `Bot win — prize returned to house`,
+                    gameId,
+                    userId,
+                    tx,
+                )
             }
+
+            // Credit house commission atomically — same transaction as game completion
+            await HouseWalletService.credit(
+                houseCut,
+                'COMMISSION',
+                `House edge commission (${game.houseEdgePct}%)`,
+                gameId,
+                userId,
+                tx,
+            )
 
             // Update Game — persist called balls from Redis (always, regardless of bot)
             const endedGame = await tx.game.update({
@@ -463,17 +484,12 @@ export class GameService {
             io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
             io.to('lobby').emit('lobby:game-removed', gameId)
 
-            return { endedGame, balanceAfter, isBot }
-        }).then(async ({ endedGame, balanceAfter, isBot }: any) => {
+            return { endedGame, balanceAfter, isBot, prize }
+        }).then(async ({ endedGame, balanceAfter, isBot, prize }: any) => {
             // Push balance update (skip for bots — they have no real balance to show)
             if (!isBot) {
                 NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
             }
-
-            // Post-transaction: notify winner and clear Redis (non-critical)
-            const totalEntries = await prisma.gameEntry.count({ where: { gameId } })
-            const totalPot = Number(endedGame.ticketPrice) * totalEntries
-            const prize = totalPot * (1 - Number(endedGame.houseEdgePct) / 100)
 
             if (!isBot) {
                 await NotificationService.create(

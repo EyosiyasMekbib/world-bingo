@@ -12,6 +12,7 @@ interface GameTemplate {
   botEnabled: boolean
   botCount: number
   botFillToMin: boolean
+  botMaxSpend: number | null
   createdAt: string
   _count?: { games: number }
 }
@@ -43,6 +44,7 @@ const newTemplate = reactive({
   botEnabled: false,
   botCount: 0,
   botFillToMin: true,
+  botMaxSpend: null as number | null,
 })
 
 const editTemplate = reactive({
@@ -57,6 +59,7 @@ const editTemplate = reactive({
   botEnabled: false,
   botCount: 0,
   botFillToMin: true,
+  botMaxSpend: null as number | null,
 })
 
 const refreshTemplates = async () => {
@@ -88,6 +91,7 @@ const handleCreate = async () => {
     newTemplate.botEnabled = false
     newTemplate.botCount = 0
     newTemplate.botFillToMin = true
+    newTemplate.botMaxSpend = null
     refreshTemplates()
   } catch (e: any) {
     createError.value = e?.data?.message ?? e?.message ?? 'Failed to create template'
@@ -108,6 +112,7 @@ const openEdit = (template: GameTemplate) => {
   editTemplate.botEnabled = template.botEnabled
   editTemplate.botCount = template.botCount
   editTemplate.botFillToMin = template.botFillToMin
+  editTemplate.botMaxSpend = template.botMaxSpend
   editError.value = ''
   showEditModal.value = true
 }
@@ -331,6 +336,11 @@ onMounted(refreshTemplates)
                 </div>
                 <USwitch v-model="newTemplate.botFillToMin" />
               </div>
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Spend Limit (ETB)</label>
+                <UInput v-model.number="newTemplate.botMaxSpend" type="number" min="0" placeholder="Leave blank to use global default" />
+                <p class="text-xs text-white/30 mt-1">Max ETB this bot can spend on this template's games before being skipped</p>
+              </div>
             </template>
           </div>
           <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
@@ -393,6 +403,11 @@ onMounted(refreshTemplates)
                   <p class="text-xs text-white/40 mt-0.5">Bots will fill seats up to minPlayers; Bot Count is the ceiling</p>
                 </div>
                 <USwitch v-model="editTemplate.botFillToMin" />
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Spend Limit (ETB)</label>
+                <UInput v-model.number="editTemplate.botMaxSpend" type="number" min="0" placeholder="Leave blank to use global default" />
+                <p class="text-xs text-white/30 mt-1">Max ETB this bot can spend on this template's games before being skipped</p>
               </div>
             </template>
           </div>

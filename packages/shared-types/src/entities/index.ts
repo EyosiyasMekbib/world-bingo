@@ -13,6 +13,7 @@ export interface User {
     firstName?: string
     lastName?: string
     photoUrl?: string
+    botTotalSpent?: number
     createdAt: Date
     updatedAt: Date
 }
@@ -94,7 +95,30 @@ export interface GameTemplate {
     botEnabled?: boolean
     botCount?: number
     botFillToMin?: boolean
+    botMaxSpend?: number | null
     createdAt: Date
     updatedAt: Date
+}
+
+export interface HouseTransaction {
+    id: string
+    type: 'COMMISSION' | 'BOT_PRIZE_WIN' | 'REFUND_ISSUED'
+    amount: number
+    description: string
+    gameId?: string | null
+    userId?: string | null
+    balanceBefore: number
+    balanceAfter: number
+    createdAt: Date
+}
+
+export interface BotActivityRow {
+    userId: string
+    username: string
+    totalSpent: number
+    gamesPlayed: number
+    gamesWon: number
+    gamesLost: number
+    isActive: boolean
 }
 

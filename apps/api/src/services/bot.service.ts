@@ -82,64 +82,66 @@ export class BotService {
             }
 
             // 5. Top up wallet and join each bot
+            // Bot usernames are per-template (bot_t<templateId>_<slot>) so the same bot
+            // identity is reused across all games of a template — enabling spend tracking.
             const ticketPrice = Number(game.ticketPrice)
-            const botWalletBalance = ticketPrice * template.botCount
+            const templateKey = template.id.replace(/-/g, '')
 
             const { GameService } = await import('./game.service.js')
 
             for (let i = 0; i < actualBots; i++) {
-                const botUsername = `bot_${gameId}_${i}`
-                const botPhone = `+00000${gameId.slice(0, 5)}${i}`
+                const botUsername = `bot_t${templateKey}_${i}`
                 const cartela = availableCartelas[i]
 
-                // Upsert bot user (reuse across games, mark active)
-                let botUser: { id: string }
-                try {
-                    botUser = await prisma.user.upsert({
-                        where: { username: botUsername },
-                        update: { isActive: true },
-                        create: {
-                            username: botUsername,
-                            phone: botPhone,
-                            role: 'PLAYER',
-                            passwordHash: 'BOT_ACCOUNT',
-                            isActive: true,
-                        },
-                        select: { id: true },
-                    })
-                } catch (upsertErr: any) {
-                    // Handle phone uniqueness collision (e.g., truncated gameId overlaps)
-                    if (upsertErr?.code === 'P2002') {
-                        botUser = await prisma.user.upsert({
-                            where: { username: botUsername },
-                            update: { isActive: true },
-                            create: {
-                                username: botUsername,
-                                phone: null,
-                                role: 'PLAYER',
-                                passwordHash: 'BOT_ACCOUNT',
-                                isActive: true,
-                            },
-                            select: { id: true },
-                        })
-                    } else {
-                        throw upsertErr
-                    }
-                }
+                // Upsert bot user — phone is null to avoid uniqueness collisions
+                const botUser = await prisma.user.upsert({
+                    where: { username: botUsername },
+                    update: { isActive: true },
+                    create: {
+                        username: botUsername,
+                        phone: null,
+                        role: 'PLAYER',
+                        passwordHash: 'BOT_ACCOUNT',
+                        isActive: true,
+                    },
+                    select: { id: true },
+                })
 
-                // Upsert bot wallet — always set to exact funding amount (idempotent)
+                // Fund bot wallet with exactly one ticket's worth (idempotent top-up)
                 await prisma.wallet.upsert({
                     where: { userId: botUser.id },
-                    update: { balance: botWalletBalance },
+                    update: { balance: ticketPrice },
                     create: {
                         userId: botUser.id,
-                        balance: botWalletBalance,
+                        balance: ticketPrice,
                         currency: 'ETB',
                     },
                 })
 
+                // Enforce bot spend limit
+                const globalLimitRow = await prisma.siteSetting.findUnique({ where: { key: 'bot_max_spend_etb' } })
+                const globalLimit = Number(globalLimitRow?.value ?? 500)
+                const effectiveLimit = template.botMaxSpend != null ? Number(template.botMaxSpend) : globalLimit
+                const currentBot = await prisma.user.findUnique({
+                    where: { id: botUser.id },
+                    select: { botTotalSpent: true },
+                })
+                const totalSpent = Number(currentBot?.botTotalSpent ?? 0)
+                if (totalSpent >= effectiveLimit) {
+                    console.log(
+                        `[BotService] Bot ${botUsername} has reached spend limit (${totalSpent}/${effectiveLimit} ETB) — skipping`,
+                    )
+                    continue
+                }
+
                 // Join the game — reuses existing join logic (wallet deduction, socket events, lobby counts)
                 await GameService.joinGame(botUser.id, gameId, [cartela.serial])
+
+                // Increment bot's cumulative spend
+                await prisma.user.update({
+                    where: { id: botUser.id },
+                    data: { botTotalSpent: { increment: ticketPrice } },
+                })
             }
 
             console.log(`[BotService] Successfully injected ${actualBots} bots into game ${gameId}`)
@@ -161,7 +163,7 @@ export class BotService {
             const botEntries = await prisma.gameEntry.findMany({
                 where: {
                     gameId,
-                    user: { username: { startsWith: `bot_${gameId}_` } },
+                    user: { username: { startsWith: 'bot_t' } },
                 },
                 include: { cartela: true, user: true },
             })
@@ -249,8 +251,14 @@ export class BotService {
      */
     static async deactivateBots(gameId: string): Promise<void> {
         try {
+            const botEntries = await prisma.gameEntry.findMany({
+                where: { gameId, user: { username: { startsWith: 'bot_t' } } },
+                select: { userId: true },
+                distinct: ['userId'],
+            })
+            if (botEntries.length === 0) return
             const result = await prisma.user.updateMany({
-                where: { username: { startsWith: `bot_${gameId}_` } },
+                where: { id: { in: botEntries.map((e) => e.userId) } },
                 data: { isActive: false },
             })
             console.log(`[BotService] Deactivated ${result.count} bots for game ${gameId}`)

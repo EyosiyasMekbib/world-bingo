@@ -13,6 +13,7 @@ const features = reactive({
 
 const gameSettings = reactive({
   ball_interval_secs: 3,
+  bot_max_spend_etb: 500,
 })
 
 const fetchAll = async () => {
@@ -22,6 +23,7 @@ const fetchAll = async () => {
     features.feature_referrals = flags.feature_referrals ?? false
     features.feature_tournaments = flags.feature_tournaments ?? false
     gameSettings.ball_interval_secs = gs.ball_interval_secs ?? 3
+    gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
   } finally {
@@ -44,8 +46,9 @@ const saveFlags = async () => {
 const saveGameSettings = async () => {
   savingGame.value = true
   try {
-    const result = await updateGameSettings({ ball_interval_secs: gameSettings.ball_interval_secs }) as any
+    const result = await updateGameSettings({ ball_interval_secs: gameSettings.ball_interval_secs, bot_max_spend_etb: gameSettings.bot_max_spend_etb }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
+    gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -109,6 +112,26 @@ onMounted(fetchAll)
               >
                 {{ gameSettings.ball_interval_secs <= 3 ? 'Fast' : gameSettings.ball_interval_secs <= 8 ? 'Normal' : 'Slow' }}
               </span>
+            </div>
+          </div>
+
+          <!-- Bot Max Spend -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-yellow-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:cpu-chip" class="w-6 h-6 text-yellow-500" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Global Bot Max Spend (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Maximum ETB a single bot can spend across all games. Can be overridden per template.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.bot_max_spend_etb"
+                  type="number"
+                  min="0"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
             </div>
           </div>
 

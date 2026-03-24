@@ -5,6 +5,7 @@ import { GameService } from '../../services/game.service'
 import { BotService } from '../../services/bot.service'
 import prisma from '../../lib/prisma'
 import { GameSchedulerService } from '../../services/game-scheduler.service'
+import { HouseWalletService } from '../../services/house-wallet.service'
 
 const templateCreateSchema = z.object({
     title: z.string().min(1),
@@ -17,6 +18,7 @@ const templateCreateSchema = z.object({
     botEnabled: z.boolean().default(false),
     botCount: z.coerce.number().int().min(0).max(20).default(0),
     botFillToMin: z.boolean().default(true),
+    botMaxSpend: z.coerce.number().positive().nullable().optional(),
 })
 
 const templateUpdateSchema = z.object({
@@ -31,6 +33,7 @@ const templateUpdateSchema = z.object({
     botEnabled: z.boolean().optional(),
     botCount: z.coerce.number().int().min(0).max(20).optional(),
     botFillToMin: z.boolean().optional(),
+    botMaxSpend: z.coerce.number().positive().nullable().optional(),
 })
 
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
@@ -112,7 +115,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         if (!parsed.success) {
             return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
         }
-        const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, botEnabled, botCount, botFillToMin } = parsed.data
+        const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, botEnabled, botCount, botFillToMin, botMaxSpend } = parsed.data
         const template = await prisma.gameTemplate.create({
             data: {
                 title,
@@ -126,6 +129,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 botEnabled,
                 botCount,
                 botFillToMin,
+                ...(botMaxSpend != null && { botMaxSpend }),
             },
         })
         // Immediately create a game from this template
@@ -140,7 +144,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         if (!parsed.success) {
             return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
         }
-        const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, active, botEnabled, botCount, botFillToMin } = parsed.data
+        const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, active, botEnabled, botCount, botFillToMin, botMaxSpend } = parsed.data
         const template = await prisma.gameTemplate.update({
             where: { id },
             data: {
@@ -155,6 +159,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 ...(botEnabled !== undefined && { botEnabled }),
                 ...(botCount !== undefined && { botCount }),
                 ...(botFillToMin !== undefined && { botFillToMin }),
+                ...(botMaxSpend !== undefined && { botMaxSpend }),
             },
         })
         // If just activated, replenish immediately
@@ -175,6 +180,28 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         // Optionally delete the template entirely
         await prisma.gameTemplate.delete({ where: { id } })
         return { success: true }
+    })
+
+    // ── House Wallet ──────────────────────────────────────────────────────────
+
+    fastify.get('/house/wallet', async (_req, _reply) => {
+        const [balance, summary] = await Promise.all([
+            HouseWalletService.getBalance(),
+            HouseWalletService.getSummary(),
+        ])
+        return { balance: balance.toFixed(2), currency: 'ETB', summary }
+    })
+
+    fastify.get('/house/transactions', async (req: any, _reply) => {
+        const page = Number(req.query.page ?? 1)
+        const limit = Number(req.query.limit ?? 20)
+        const type = req.query.type as 'COMMISSION' | 'BOT_PRIZE_WIN' | 'REFUND_ISSUED' | undefined
+        const result = await HouseWalletService.getTransactions(page, limit, type)
+        return { ...result, page, limit }
+    })
+
+    fastify.get('/house/bots', async (_req, _reply) => {
+        return HouseWalletService.getBotActivity()
     })
 }
 
