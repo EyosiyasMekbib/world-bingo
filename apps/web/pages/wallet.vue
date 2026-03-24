@@ -19,9 +19,19 @@ const refreshing = ref(false)
 const txLoading = ref(false)
 const recentTx = ref<any[]>([])
 
-const formattedBalance = computed(() => {
-  const bal = Number(auth.wallet?.balance ?? 0)
+const formattedRealBalance = computed(() => {
+  const bal = Number(auth.wallet?.realBalance ?? 0)
   return bal.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+})
+
+const formattedBonusBalance = computed(() => {
+  const bal = Number(auth.wallet?.bonusBalance ?? 0)
+  return bal.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+})
+
+const formattedTotalBalance = computed(() => {
+  const total = Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0)
+  return total.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 })
 
 async function refreshBalance() {
@@ -52,16 +62,20 @@ function txLabel(type: string): string {
     GAME_ENTRY: 'Game Entry',
     PRIZE_WIN: 'Prize Won',
     REFUND: 'Refund',
+    FIRST_DEPOSIT_BONUS: 'Welcome Bonus',
+    CASHBACK_BONUS: 'Cashback',
+    ADMIN_REAL_ADJUSTMENT: 'Adjustment',
+    ADMIN_BONUS_ADJUSTMENT: 'Bonus Adjustment',
   }
   return map[type] ?? type
 }
 
 function txSign(type: string): string {
-  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND'].includes(type) ? '+' : '-'
+  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND', 'FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_REAL_ADJUSTMENT', 'ADMIN_BONUS_ADJUSTMENT'].includes(type) ? '+' : '-'
 }
 
 function txAmountClass(type: string): string {
-  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND'].includes(type) ? 'amount-positive' : 'amount-negative'
+  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND', 'FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_REAL_ADJUSTMENT', 'ADMIN_BONUS_ADJUSTMENT'].includes(type) ? 'amount-positive' : 'amount-negative'
 }
 
 function txStatusClass(status: string): string {
@@ -113,11 +127,23 @@ function formatRelativeTime(dateStr: string): string {
       <!-- ── Balance Card ─────────────────────────────────────────── -->
       <div class="balance-card">
         <div class="balance-label-row">
-          <span class="balance-label">Available Balance</span>
+          <span class="balance-label">Total Balance</span>
         </div>
         <div class="balance-display">
-          <span class="balance-amount">{{ formattedBalance }}</span>
+          <span class="balance-amount">{{ formattedTotalBalance }}</span>
           <span class="balance-currency">ETB</span>
+        </div>
+
+        <!-- Dual balance breakdown -->
+        <div class="balance-breakdown">
+          <div class="balance-part">
+            <span class="balance-part-label">Withdrawable</span>
+            <span class="balance-part-value">{{ formattedRealBalance }} ETB</span>
+          </div>
+          <div class="balance-part balance-part--bonus">
+            <span class="balance-part-label">Bonus</span>
+            <span class="balance-part-value balance-part-value--bonus">{{ formattedBonusBalance }} ETB</span>
+          </div>
         </div>
 
         <!-- Actions -->
@@ -239,7 +265,7 @@ function formatRelativeTime(dateStr: string): string {
     />
     <WithdrawalModal
       v-model="showWithdrawal"
-      :balance="Number(auth.wallet?.balance ?? 0)"
+      :balance="Number(auth.wallet?.realBalance ?? 0)"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
   </div>
@@ -334,6 +360,36 @@ function formatRelativeTime(dateStr: string): string {
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* ── Balance Breakdown ───────────────────────────────────────────── */
+.balance-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.balance-part {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.balance-part-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.4);
+}
+.balance-part-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.balance-part-value--bonus {
+  color: #67e8f9;
 }
 
 /* ── Action Buttons ──────────────────────────────────────────────── */

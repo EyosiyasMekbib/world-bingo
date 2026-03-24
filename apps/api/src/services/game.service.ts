@@ -77,21 +77,34 @@ export class GameService {
             const totalCost = new Decimal(game.ticketPrice).times(cartelaSerials.length)
 
             // Lock the wallet row to prevent concurrent joins depleting balance
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
-            if (!wallet || new Decimal(wallet.balance).lessThan(totalCost)) {
+            if (!wallet) throw new Error('Wallet not found')
+
+            const realBefore = new Decimal(wallet.realBalance)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+            const totalAvailable = realBefore.plus(bonusBefore)
+
+            if (totalAvailable.lessThan(totalCost)) {
                 throw new Error('Insufficient funds')
             }
 
-            const balanceBefore = new Decimal(wallet.balance)
-            const balanceAfter = balanceBefore.minus(totalCost)
+            // Deduct from bonusBalance first, then realBalance
+            const bonusDeduction = Decimal.min(bonusBefore, totalCost)
+            const realDeduction = totalCost.minus(bonusDeduction)
 
-            // Deduct balance
+            const realAfter = realBefore.minus(realDeduction)
+            const bonusAfter = bonusBefore.minus(bonusDeduction)
+
+            // Apply deductions
             await tx.wallet.update({
                 where: { userId },
-                data: { balance: { decrement: totalCost } }
+                data: {
+                    realBalance: realAfter,
+                    bonusBalance: bonusAfter,
+                },
             })
 
             // Create a single transaction record for the total entry cost
@@ -102,8 +115,10 @@ export class GameService {
                     amount: totalCost,
                     status: PaymentStatus.APPROVED,
                     referenceId: gameId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusAfter,
                 }
             })
 
@@ -117,14 +132,15 @@ export class GameService {
                 )
             )
 
-            return { entries, game, totalCost, balanceAfter }
+            return { entries, game, totalCost, realAfter, bonusAfter }
         })
 
-        const { game, totalCost, entries: joinedEntries, balanceAfter } = txResult as {
+        const { game, totalCost, entries: joinedEntries, realAfter, bonusAfter } = txResult as {
             game: any
             totalCost: Decimal
             entries: any[]
-            balanceAfter: Decimal
+            realAfter: Decimal
+            bonusAfter: Decimal
         }
 
         // ── Post-commit: update Redis room state ────────────────────────────
@@ -152,7 +168,7 @@ export class GameService {
         })
 
         // Push balance update
-        NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+        NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusAfter.toNumber())
 
         return joinedEntries
     }
@@ -178,19 +194,20 @@ export class GameService {
 
             const refundAmount = new Decimal(game.ticketPrice).times(entries.length)
 
-            // Refund wallet
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            // Refund wallet — refunds always go to realBalance
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
             if (!wallet) throw new Error('Wallet not found')
 
-            const balanceBefore = new Decimal(wallet.balance)
-            const balanceAfter = balanceBefore.plus(refundAmount)
+            const realBefore = new Decimal(wallet.realBalance)
+            const realAfter = realBefore.plus(refundAmount)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
 
             await tx.wallet.update({
                 where: { userId },
-                data: { balance: { increment: refundAmount } }
+                data: { realBalance: { increment: refundAmount } }
             })
 
             // Record refund transaction
@@ -201,8 +218,10 @@ export class GameService {
                     amount: refundAmount,
                     status: PaymentStatus.APPROVED,
                     referenceId: gameId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
                 }
             })
 
@@ -211,10 +230,10 @@ export class GameService {
                 where: { gameId, userId }
             })
 
-            return { refundAmount, game, balanceAfter }
+            return { refundAmount, game, realAfter, bonusBefore }
         })
 
-        const { refundAmount, game, balanceAfter } = txResult as { refundAmount: Decimal, game: any, balanceAfter: Decimal }
+        const { refundAmount, game, realAfter, bonusBefore } = txResult as { refundAmount: Decimal, game: any, realAfter: Decimal, bonusBefore: Decimal }
 
         // ── Room state update ───────────────────────────────────────────────
         const [playerCount] = await Promise.all([
@@ -227,7 +246,7 @@ export class GameService {
         ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
 
         // Push balance update
-        NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+        NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
 
         return { refundAmount, playerCount }
     }
@@ -413,20 +432,23 @@ export class GameService {
             const houseCut = totalPot - prize
 
             let balanceAfter = new Decimal(0)
+            let bonusBalAfter = new Decimal(0)
 
             if (!isBot) {
-                // Lock winner wallet row before crediting prize
-                const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                    SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                // Lock winner wallet row before crediting prize — prizes go to realBalance
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
                 `
                 const wallet = wallets[0]
-                const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
-                balanceAfter = balanceBefore.plus(new Decimal(prize))
+                const realBefore = wallet ? new Decimal(wallet.realBalance) : new Decimal(0)
+                const bonusBal = wallet ? new Decimal(wallet.bonusBalance) : new Decimal(0)
+                balanceAfter = realBefore.plus(new Decimal(prize))
+                bonusBalAfter = bonusBal
 
-                // Pay Winner
+                // Pay Winner — credit to realBalance
                 await tx.wallet.update({
                     where: { userId },
-                    data: { balance: { increment: prize } }
+                    data: { realBalance: { increment: prize } }
                 })
 
                 // Record Transaction with balance snapshot
@@ -437,8 +459,10 @@ export class GameService {
                         amount: prize,
                         status: PaymentStatus.APPROVED,
                         referenceId: gameId,
-                        balanceBefore: balanceBefore,
+                        balanceBefore: realBefore,
                         balanceAfter: balanceAfter,
+                        bonusBalanceBefore: bonusBal,
+                        bonusBalanceAfter: bonusBal,
                     }
                 })
             } else {
@@ -484,11 +508,11 @@ export class GameService {
             io.to(`game:${gameId}`).emit('game:ended', endedGame as any)
             io.to('lobby').emit('lobby:game-removed', gameId)
 
-            return { endedGame, balanceAfter, isBot, prize }
-        }).then(async ({ endedGame, balanceAfter, isBot, prize }: any) => {
+            return { endedGame, balanceAfter, bonusBalAfter, isBot, prize }
+        }).then(async ({ endedGame, balanceAfter, bonusBalAfter, isBot, prize }: any) => {
             // Push balance update (skip for bots — they have no real balance to show)
             if (!isBot) {
-                NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber())
+                NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber(), bonusBalAfter.toNumber())
             }
 
             if (!isBot) {

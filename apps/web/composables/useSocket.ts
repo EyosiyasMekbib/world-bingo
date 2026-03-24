@@ -27,12 +27,12 @@ export const useSocket = () => {
 
         socket.value.on('wallet:updated', (data) => {
             if (auth.wallet) {
-                auth.wallet.balance = data.balance
+                auth.wallet.realBalance = data.realBalance
+                auth.wallet.bonusBalance = data.bonusBalance
             } else {
-                // If wallet for some reason is null, create a minimal object
-                auth.wallet = { balance: data.balance } as any
+                auth.wallet = { realBalance: data.realBalance, bonusBalance: data.bonusBalance } as any
             }
-            console.log('Wallet updated via socket:', data.balance)
+            console.log('Wallet updated via socket:', data)
         })
 
         return socket.value

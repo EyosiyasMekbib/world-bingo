@@ -390,7 +390,7 @@ const COLUMNS = ['B', 'I', 'N', 'G', 'O']
 const isWinner = computed(() => gameStore.winner?.username === auth.user?.username)
 
 /** Current wallet balance from persisted auth store */
-const walletBalance = computed(() => Number(auth.wallet?.balance ?? 0))
+const walletBalance = computed(() => Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0))
 
 /** Resolved UI phase driven by gameStore.gameStatus + hasJoined */
 const phase = computed<'join' | 'waiting' | 'active'>(() => {

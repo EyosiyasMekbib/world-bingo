@@ -58,21 +58,22 @@ export class RefundService {
                 }
 
                 // Lock the wallet row before crediting
-                const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                    SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
                 `
                 const wallet = wallets[0]
                 if (!wallet) {
                     throw new Error(`Wallet not found for user ${userId}`)
                 }
 
-                const balanceBefore = new Decimal(wallet.balance)
-                const balanceAfter = balanceBefore.plus(refundAmount)
+                const realBefore = new Decimal(wallet.realBalance)
+                const realAfter = realBefore.plus(refundAmount)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
 
-                // Credit wallet
+                // Credit realBalance
                 await tx.wallet.update({
                     where: { userId },
-                    data: { balance: { increment: refundAmount } },
+                    data: { realBalance: { increment: refundAmount } },
                 })
 
                 // Record REFUND transaction with balance snapshot
@@ -84,8 +85,10 @@ export class RefundService {
                         status: PaymentStatus.APPROVED,
                         referenceId: gameId,
                         note: `Refund for cancelled game`,
-                        balanceBefore,
-                        balanceAfter,
+                        balanceBefore: realBefore,
+                        balanceAfter: realAfter,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusBefore,
                     },
                 })
 
@@ -103,11 +106,11 @@ export class RefundService {
                     )
                 }
 
-                return { userId, amount: Number(refundAmount), alreadyRefunded: false, balanceAfter }
+                return { userId, amount: Number(refundAmount), alreadyRefunded: false, realAfter: Number(realAfter), bonusBefore: Number(bonusBefore) }
             })
 
-            if (!result.alreadyRefunded && (result as any).balanceAfter) {
-                NotificationService.pushWalletUpdate(userId, Number((result as any).balanceAfter))
+            if (!result.alreadyRefunded) {
+                NotificationService.pushWalletUpdate(userId, (result as any).realAfter, (result as any).bonusBefore)
             }
 
             results.push(result)

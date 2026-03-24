@@ -13,6 +13,8 @@ const navItems = [
   { label: 'Feature Flags',  icon: 'i-heroicons:adjustments-horizontal',    to: '/settings/features' },
   { label: 'House Wallet',   icon: 'i-heroicons:building-library',          to: '/house'           },
   { label: 'Tournaments',    icon: 'i-heroicons:trophy',                    to: '/tournaments'     },
+  { label: 'Cashback',       icon: 'i-heroicons:gift',                      to: '/cashback'        },
+  { label: 'Players',        icon: 'i-heroicons:user-group',                to: '/players'         },
   { label: 'Users',          icon: 'i-heroicons:users',                     to: '/users'           },
   { label: 'Profile',        icon: 'i-heroicons:user-circle',               to: '/settings/profile'},
 ]

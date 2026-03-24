@@ -220,7 +220,7 @@ const copyToClipboard = (text: string) => {
                 <UBadge :color="roleColor(user.role)" variant="soft" :label="user.role" />
               </td>
               <td class="px-4 py-3 text-right font-mono text-yellow-500 font-bold">
-                {{ Number(user.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                {{ Number(user.wallet?.realBalance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} + {{ Number(user.wallet?.bonusBalance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}B
               </td>
               <td class="px-4 py-3 text-white/40 text-xs font-medium">{{ formatDate(user.createdAt) }}</td>
               <td class="px-4 py-3 text-right">
@@ -284,7 +284,7 @@ const copyToClipboard = (text: string) => {
           </div>
           <div class="flex items-center justify-between p-2.5 rounded-xl bg-black/20 border border-white/5">
             <span class="text-[10px] font-bold text-white/30 uppercase tracking-widest">Balance</span>
-            <span class="text-sm font-bold text-yellow-500">{{ Number(user.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/30 font-normal">ETB</span></span>
+            <span class="text-sm font-bold text-yellow-500">{{ Number(user.wallet?.realBalance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} + {{ Number(user.wallet?.bonusBalance ?? 0).toFixed(2) }}B <span class="text-[10px] text-white/30 font-normal">ETB</span></span>
           </div>
         </div>
 
@@ -366,7 +366,7 @@ const copyToClipboard = (text: string) => {
             <div class="p-3.5 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
               <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Wallet Credits</p>
               <p class="font-bold text-yellow-500 text-base">
-                {{ Number(detailUser.wallet?.balance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} <span class="text-[10px] text-white/40">ETB</span>
+                {{ Number(detailUser.wallet?.realBalance ?? 0).toLocaleString('en-ET', { minimumFractionDigits: 2 }) }} + {{ Number(detailUser.wallet?.bonusBalance ?? 0).toFixed(2) }}B <span class="text-[10px] text-white/40">ETB</span>
               </p>
             </div>
             <div class="p-3.5 rounded-xl border border-(--surface-border) col-span-2 relative group" style="background:var(--surface-overlay);">

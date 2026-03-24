@@ -29,7 +29,7 @@ async function createUser(username: string, phone: string, balance = 1000) {
     if (balance > 0) {
         await prisma.wallet.update({
             where: { userId: user.id },
-            data: { balance },
+            data: { realBalance: balance },
         })
     }
     return user
@@ -140,7 +140,7 @@ describe('Integration: Deposit flow', () => {
 
         // Wallet balance should be 300
         const wallet = await WalletService.getBalance(user.id)
-        expect(Number(wallet.balance)).toBe(300)
+        expect(Number(wallet.realBalance)).toBe(300)
 
         // Notification should exist
         const notif = await prisma.notification.findFirst({ where: { userId: user.id } })
@@ -155,7 +155,7 @@ describe('Integration: Deposit flow', () => {
         await AdminService.reviewTransaction(tx.id, PaymentStatus.REJECTED, 'Transaction ID mismatch')
 
         const wallet = await WalletService.getBalance(user.id)
-        expect(Number(wallet.balance)).toBe(0)
+        expect(Number(wallet.realBalance)).toBe(0)
 
         const notif = await prisma.notification.findFirst({ where: { userId: user.id } })
         expect(notif?.type).toBe('DEPOSIT_REJECTED')
@@ -186,12 +186,12 @@ describe('Integration: Withdrawal flow', () => {
 
         // Balance immediately deducted
         const walletMid = await WalletService.getBalance(user.id)
-        expect(Number(walletMid.balance)).toBe(300)
+        expect(Number(walletMid.realBalance)).toBe(300)
 
         // Admin marks as transferred
         await AdminService.reviewTransaction(tx.id, PaymentStatus.APPROVED)
         const walletFinal = await WalletService.getBalance(user.id)
-        expect(Number(walletFinal.balance)).toBe(300) // unchanged — funds sent externally
+        expect(Number(walletFinal.realBalance)).toBe(300) // unchanged — funds sent externally
 
         const notif = await prisma.notification.findFirst({ where: { userId: user.id } })
         expect(notif?.type).toBe('WITHDRAWAL_PROCESSED')
@@ -209,7 +209,7 @@ describe('Integration: Withdrawal flow', () => {
         await AdminService.reviewTransaction(tx.id, PaymentStatus.REJECTED, 'Invalid account')
 
         const wallet = await WalletService.getBalance(user.id)
-        expect(Number(wallet.balance)).toBe(500) // refunded
+        expect(Number(wallet.realBalance)).toBe(500) // refunded
     })
 
     it('insufficient balance is rejected immediately', async () => {
@@ -261,7 +261,7 @@ describe('Integration: Concurrent withdrawal race condition', () => {
 
         // Balance should be exactly 100 (300 - 200)
         const wallet = await WalletService.getBalance(user.id)
-        expect(Number(wallet.balance)).toBe(100)
+        expect(Number(wallet.realBalance)).toBe(100)
     })
 })
 
@@ -287,8 +287,8 @@ describe('Integration: Game flow', () => {
         // Balances deducted
         const w1 = await WalletService.getBalance(p1.id)
         const w2 = await WalletService.getBalance(p2.id)
-        expect(Number(w1.balance)).toBe(150)
-        expect(Number(w2.balance)).toBe(150)
+        expect(Number(w1.realBalance)).toBe(150)
+        expect(Number(w2.realBalance)).toBe(150)
 
         // Cancel the game → triggers refund via RefundService
         await GameService.cancelGame(game.id)
@@ -296,8 +296,8 @@ describe('Integration: Game flow', () => {
 
         const w1After = await WalletService.getBalance(p1.id)
         const w2After = await WalletService.getBalance(p2.id)
-        expect(Number(w1After.balance)).toBe(200)
-        expect(Number(w2After.balance)).toBe(200)
+        expect(Number(w1After.realBalance)).toBe(200)
+        expect(Number(w2After.realBalance)).toBe(200)
     })
 })
 

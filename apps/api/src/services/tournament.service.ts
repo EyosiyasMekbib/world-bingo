@@ -128,18 +128,30 @@ export class TournamentService {
 
             const entryFee = new Decimal(tournament.entryFee)
 
-            // Deduct entry fee from wallet
+            // Deduct entry fee from wallet (bonus-first)
             if (entryFee.gt(0)) {
-                const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                    SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
                 `
                 const wallet = wallets[0]
-                if (!wallet || new Decimal(wallet.balance).lessThan(entryFee)) {
+                if (!wallet) throw new Error('Wallet not found')
+                const realBefore = new Decimal(wallet.realBalance)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
+                const totalBalance = realBefore.plus(bonusBefore)
+                if (totalBalance.lessThan(entryFee)) {
                     throw new Error('Insufficient funds')
                 }
+                const bonusDeduction = Decimal.min(bonusBefore, entryFee)
+                const realDeduction = entryFee.minus(bonusDeduction)
+                const realAfter = realBefore.minus(realDeduction)
+                const bonusAfter = bonusBefore.minus(bonusDeduction)
+
                 await tx.wallet.update({
                     where: { userId },
-                    data: { balance: { decrement: entryFee } },
+                    data: {
+                        realBalance: { decrement: realDeduction },
+                        bonusBalance: { decrement: bonusDeduction },
+                    },
                 })
                 await tx.transaction.create({
                     data: {
@@ -148,8 +160,10 @@ export class TournamentService {
                         amount: entryFee,
                         status: PaymentStatus.APPROVED,
                         referenceId: tournamentId,
-                        balanceBefore: new Decimal(wallet.balance),
-                        balanceAfter: new Decimal(wallet.balance).minus(entryFee),
+                        balanceBefore: realBefore,
+                        balanceAfter: realAfter,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusAfter,
                     },
                 })
             }
@@ -378,18 +392,19 @@ export class TournamentService {
 
         const prizePool = Number(tournament.prizePool)
 
-        // Credit winner wallet
+        // Credit winner wallet (prizes go to realBalance)
         await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${winnerId} FOR UPDATE
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${winnerId} FOR UPDATE
             `
             const wallet = wallets[0]
-            const balanceBefore = wallet ? new Decimal(wallet.balance) : new Decimal(0)
-            const balanceAfter = balanceBefore.plus(prizePool)
+            const realBefore = wallet ? new Decimal(wallet.realBalance) : new Decimal(0)
+            const bonusBefore = wallet ? new Decimal(wallet.bonusBalance) : new Decimal(0)
+            const realAfter = realBefore.plus(prizePool)
 
             await tx.wallet.update({
                 where: { userId: winnerId },
-                data: { balance: { increment: prizePool } },
+                data: { realBalance: { increment: prizePool } },
             })
             await tx.transaction.create({
                 data: {
@@ -398,8 +413,10 @@ export class TournamentService {
                     amount: new Decimal(prizePool),
                     status: PaymentStatus.APPROVED,
                     referenceId: tournamentId,
-                    balanceBefore,
-                    balanceAfter,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
                 },
             })
             await tx.tournament.update({
@@ -453,14 +470,22 @@ export class TournamentService {
             data: { status: TournamentStatus.CANCELLED, endedAt: new Date() },
         })
 
-        // Refund all entry fees
+        // Refund all entry fees (refunds go to realBalance)
         if (Number(tournament.entryFee) > 0) {
             await Promise.all(
                 tournament.entries.map((entry: any) =>
                     prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                        const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                            SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${entry.userId} FOR UPDATE
+                        `
+                        const wallet = wallets[0]
+                        const realBefore = wallet ? new Decimal(wallet.realBalance) : new Decimal(0)
+                        const bonusBefore = wallet ? new Decimal(wallet.bonusBalance) : new Decimal(0)
+                        const realAfter = realBefore.plus(new Decimal(tournament.entryFee))
+
                         await tx.wallet.update({
                             where: { userId: entry.userId },
-                            data: { balance: { increment: tournament.entryFee } },
+                            data: { realBalance: { increment: tournament.entryFee } },
                         })
                         await tx.transaction.create({
                             data: {
@@ -469,6 +494,10 @@ export class TournamentService {
                                 amount: tournament.entryFee,
                                 status: PaymentStatus.APPROVED,
                                 referenceId: tournamentId,
+                                balanceBefore: realBefore,
+                                balanceAfter: realAfter,
+                                bonusBalanceBefore: bonusBefore,
+                                bonusBalanceAfter: bonusBefore,
                             },
                         })
                     }).catch(() => {}),

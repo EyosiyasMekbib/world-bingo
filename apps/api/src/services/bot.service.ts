@@ -110,10 +110,10 @@ export class BotService {
                 // Fund bot wallet with exactly one ticket's worth (idempotent top-up)
                 await prisma.wallet.upsert({
                     where: { userId: botUser.id },
-                    update: { balance: ticketPrice },
+                    update: { realBalance: ticketPrice },
                     create: {
                         userId: botUser.id,
-                        balance: ticketPrice,
+                        realBalance: ticketPrice,
                         currency: 'ETB',
                     },
                 })

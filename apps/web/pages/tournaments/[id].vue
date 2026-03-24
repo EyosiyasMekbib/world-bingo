@@ -154,7 +154,7 @@ const registering = ref(false)
 const currentGameId = ref<string | null>(null)
 
 const isAuthenticated = computed(() => auth.isAuthenticated)
-const walletBalance = computed(() => Number(auth.wallet?.balance ?? 0))
+const walletBalance = computed(() => Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0))
 
 const winnerUsername = computed(() => {
   if (!tournament.value?.winnerId) return ''

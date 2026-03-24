@@ -126,8 +126,8 @@ function copySerial() {
 // ── Wallet ─────────────────────────────────────────────────────────────
 const walletLoading = ref(false)
 const formattedBalance = computed(() => {
-  const bal = Number(auth.wallet?.balance ?? 0)
-  return bal.toLocaleString('en-ET', {
+  const total = Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0)
+  return total.toLocaleString('en-ET', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })

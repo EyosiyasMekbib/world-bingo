@@ -28,7 +28,8 @@ export interface UserStatsDto {
 export interface Wallet {
     id: string
     userId: string
-    balance: number
+    realBalance: number
+    bonusBalance: number
     currency: 'ETB'
     updatedAt: Date
 }
@@ -68,6 +69,8 @@ export interface Transaction {
     note?: string
     balanceBefore?: number
     balanceAfter?: number
+    bonusBalanceBefore?: number
+    bonusBalanceAfter?: number
     createdAt: Date
 }
 
@@ -98,6 +101,16 @@ export interface GameTemplate {
     botMaxSpend?: number | null
     createdAt: Date
     updatedAt: Date
+}
+
+export interface CashbackPromotion {
+    id: string
+    name: string
+    percentage: number
+    startsAt: Date
+    endsAt: Date
+    isActive: boolean
+    createdAt: Date
 }
 
 export interface HouseTransaction {

@@ -7,6 +7,7 @@ const DEFAULTS: Record<string, string> = {
     feature_tournaments: 'false',
     ball_interval_secs: '3',
     bot_max_spend_etb: '500',
+    first_deposit_bonus_amount: '0',
 }
 
 /**
@@ -51,12 +52,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     }, async (_req, _reply) => {
         await ensureDefaults()
         const rows = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount'] } },
         })
         const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
         return {
             ball_interval_secs: Number(map.ball_interval_secs ?? 3),
             bot_max_spend_etb: Number(map.bot_max_spend_etb ?? 500),
+            first_deposit_bonus_amount: Number(map.first_deposit_bonus_amount ?? 0),
         }
     })
 
@@ -72,13 +74,16 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         ],
     }, async (req: any, _reply) => {
-        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number }
+        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number }
         const updates: Record<string, string> = {}
         if (body.ball_interval_secs != null) {
             updates.ball_interval_secs = String(Math.max(1, Math.min(30, Number(body.ball_interval_secs))))
         }
         if (body.bot_max_spend_etb != null) {
             updates.bot_max_spend_etb = String(Math.max(0, Number(body.bot_max_spend_etb)))
+        }
+        if (body.first_deposit_bonus_amount != null) {
+            updates.first_deposit_bonus_amount = String(Math.max(0, Number(body.first_deposit_bonus_amount)))
         }
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({
@@ -90,6 +95,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return {
             ball_interval_secs: Number(updates.ball_interval_secs ?? (await prisma.siteSetting.findUnique({ where: { key: 'ball_interval_secs' } }))?.value ?? 3),
             bot_max_spend_etb: Number(updates.bot_max_spend_etb ?? (await prisma.siteSetting.findUnique({ where: { key: 'bot_max_spend_etb' } }))?.value ?? 500),
+            first_deposit_bonus_amount: Number(updates.first_deposit_bonus_amount ?? (await prisma.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } }))?.value ?? 0),
         }
     })
 

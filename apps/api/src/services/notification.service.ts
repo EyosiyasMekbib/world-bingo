@@ -82,12 +82,12 @@ export class NotificationService {
     }
 
     /**
-     * Push real-time wallet balance update to the user.
+     * Push real-time wallet balance update to the user (dual-balance).
      */
-    static pushWalletUpdate(userId: string, balance: number) {
+    static pushWalletUpdate(userId: string, realBalance: number, bonusBalance: number) {
         try {
             const io = getIo()
-            io.to(`user:${userId}`).emit('wallet:updated', { balance })
+            io.to(`user:${userId}`).emit('wallet:updated', { realBalance, bonusBalance })
         } catch {
             // Socket not initialized
         }

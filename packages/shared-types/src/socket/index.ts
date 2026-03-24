@@ -39,7 +39,7 @@ export interface ServerToClientEvents {
     'game:countdown': (payload: { gameId: string; countdownSecs: number; startsAt: string }) => void
     'cartelas:taken': (payload: { gameId: string; cartelaSerials: string[] }) => void
     'cartela:marked': (payload: { cartelaId: string; cell: [number, number] }) => void
-    'wallet:updated': (payload: { balance: number }) => void
+    'wallet:updated': (payload: { realBalance: number; bonusBalance: number }) => void
     'notification:new': (notification: Notification) => void
     'jackpot:update': (payload: { amount: number }) => void
     'jackpot:won': (payload: { winnerId: string; amount: number }) => void

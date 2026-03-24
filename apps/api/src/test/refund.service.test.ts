@@ -16,7 +16,7 @@ describe('RefundService', () => {
                 username: 'refund_user1',
                 phone: '+251900000001',
                 passwordHash: 'hashed:pass1',
-                wallet: { create: { balance: 100 } },
+                wallet: { create: { realBalance: 100 } },
             },
         })
         const user2 = await prisma.user.create({
@@ -24,7 +24,7 @@ describe('RefundService', () => {
                 username: 'refund_user2',
                 phone: '+251900000002',
                 passwordHash: 'hashed:pass2',
-                wallet: { create: { balance: 100 } },
+                wallet: { create: { realBalance: 100 } },
             },
         })
         user1Id = user1.id
@@ -67,10 +67,10 @@ describe('RefundService', () => {
 
         // User1 joins with 1 cartela, User2 joins with 2 cartelas
         // Deduct balances manually to simulate joining
-        await prisma.wallet.update({ where: { userId: user1Id }, data: { balance: { decrement: 50 } } })
+        await prisma.wallet.update({ where: { userId: user1Id }, data: { realBalance: { decrement: 50 } } })
         await prisma.gameEntry.create({ data: { gameId, userId: user1Id, cartelaId: cartela1.id } })
 
-        await prisma.wallet.update({ where: { userId: user2Id }, data: { balance: { decrement: 100 } } })
+        await prisma.wallet.update({ where: { userId: user2Id }, data: { realBalance: { decrement: 100 } } })
         await prisma.gameEntry.create({ data: { gameId, userId: user2Id, cartelaId: cartela2.id } })
         await prisma.gameEntry.create({ data: { gameId, userId: user2Id, cartelaId: cartela3.id } })
     })
@@ -91,10 +91,10 @@ describe('RefundService', () => {
 
             // Verify wallet balances were restored
             const w1 = await WalletService.getBalance(user1Id)
-            expect(Number(w1.balance)).toBe(100) // 50 (remaining) + 50 (refund) = 100
+            expect(Number(w1.realBalance)).toBe(100) // 50 (remaining) + 50 (refund) = 100
 
             const w2 = await WalletService.getBalance(user2Id)
-            expect(Number(w2.balance)).toBe(100) // 0 (remaining) + 100 (refund) = 100
+            expect(Number(w2.realBalance)).toBe(100) // 0 (remaining) + 100 (refund) = 100
         })
 
         it('should create REFUND transactions with correct balance snapshots', async () => {
@@ -129,10 +129,10 @@ describe('RefundService', () => {
 
             // Verify balances haven't changed from first refund
             const w1 = await WalletService.getBalance(user1Id)
-            expect(Number(w1.balance)).toBe(100) // Still 100, not 150
+            expect(Number(w1.realBalance)).toBe(100) // Still 100, not 150
 
             const w2 = await WalletService.getBalance(user2Id)
-            expect(Number(w2.balance)).toBe(100) // Still 100, not 200
+            expect(Number(w2.realBalance)).toBe(100) // Still 100, not 200
 
             // Verify only 2 REFUND transactions exist (not 4)
             const refundTxs = await prisma.transaction.count({

@@ -65,8 +65,8 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number }) =>
+        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number }>('/settings/game'),
+        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number }) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
 
         // ── House Wallet ──────────────────────────────────────────────────────
@@ -80,6 +80,20 @@ export const useAdminApi = () => {
             return apiFetch<any>(`/admin/house/transactions${query ? `?${query}` : ''}`)
         },
         getBotActivity: () => apiFetch<any[]>('/admin/house/bots'),
+
+        // ── Player Management ─────────────────────────────────────────────
+        getPlayer: (id: string) => apiFetch<any>(`/admin/players/${id}`),
+        adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
+            apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
+
+        // ── Cashback Promotions ───────────────────────────────────────────
+        getCashbackPromotions: () => apiFetch<any[]>('/admin/cashback'),
+        createCashbackPromotion: (data: { name: string; percentage: number; startsAt: string; endsAt: string }) =>
+            apiFetch('/admin/cashback', { method: 'POST', body: data }),
+        toggleCashbackPromotion: (id: string, isActive: boolean) =>
+            apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
+        disburseCashback: (id: string) =>
+            apiFetch(`/admin/cashback/${id}/disburse`, { method: 'POST' }),
     }
 }
 

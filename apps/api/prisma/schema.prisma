@@ -35,6 +35,7 @@ model User {
   referrals      User[]          @relation("Referrals")
   referralRewards ReferralReward[]
   tournamentEntries TournamentEntry[]
+  cashbackDisbursements CashbackDisbursement[]
 
   @@index([role])
   @@index([referralCode])
@@ -42,12 +43,13 @@ model User {
 }
 
 model Wallet {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  balance   Decimal  @default(0) @db.Decimal(12, 2)
-  currency  String   @default("ETB")
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  realBalance  Decimal  @default(0) @db.Decimal(12, 2)
+  bonusBalance Decimal  @default(0) @db.Decimal(12, 2)
+  currency     String   @default("ETB")
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("wallets")
 }
@@ -138,6 +140,8 @@ model Transaction {
   note                 String?
   balanceBefore        Decimal?          @db.Decimal(12, 2)
   balanceAfter         Decimal?          @db.Decimal(12, 2)
+  bonusBalanceBefore   Decimal?          @db.Decimal(12, 2)
+  bonusBalanceAfter    Decimal?          @db.Decimal(12, 2)
   paymentTransactionId String?
   senderName           String?
   senderAccount        String?
@@ -174,6 +178,10 @@ enum TransactionType {
   GAME_ENTRY
   PRIZE_WIN
   REFUND
+  FIRST_DEPOSIT_BONUS
+  CASHBACK_BONUS
+  ADMIN_REAL_ADJUSTMENT
+  ADMIN_BONUS_ADJUSTMENT
 }
 
 enum PaymentStatus {
@@ -232,6 +240,7 @@ enum NotificationType {
   TOURNAMENT_STARTING
   TOURNAMENT_WON
   TOURNAMENT_ELIMINATED
+  CASHBACK_AWARDED
 }
 
 model ReferralReward {
@@ -331,6 +340,35 @@ model TournamentGame {
 
   @@index([tournamentId, round])
   @@map("tournament_games")
+}
+
+// ─── Cashback Promotions ──────────────────────────────────────────────────────
+model CashbackPromotion {
+  id             String                 @id @default(uuid())
+  name           String
+  percentage     Decimal                @db.Decimal(5, 2)   // e.g. 10.00 = 10%
+  startsAt       DateTime
+  endsAt         DateTime
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  disbursements  CashbackDisbursement[]
+
+  @@map("cashback_promotions")
+}
+
+model CashbackDisbursement {
+  id           String            @id @default(uuid())
+  promotionId  String
+  userId       String
+  amount       Decimal           @db.Decimal(12, 2)
+  periodStart  DateTime
+  periodEnd    DateTime
+  createdAt    DateTime          @default(now())
+  promotion    CashbackPromotion @relation(fields: [promotionId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
+
+  @@unique([promotionId, userId])
+  @@map("cashback_disbursements")
 }
 
 // ─── Site Settings / Feature Flags ──────────────────────────────────────────────

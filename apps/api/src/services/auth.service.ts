@@ -42,7 +42,7 @@ export class AuthService {
                 referredById,
                 wallet: {
                     create: {
-                        balance: 0,
+                        realBalance: 0,
                     },
                 },
             },
@@ -223,7 +223,7 @@ export class AuthService {
                 telegramUsername: data.username ?? null,
                 photoUrl: data.photo_url ?? null,
                 phone: phoneToSet ?? null,
-                wallet: { create: { balance: 0 } },
+                wallet: { create: { realBalance: 0 } },
             },
         })
 

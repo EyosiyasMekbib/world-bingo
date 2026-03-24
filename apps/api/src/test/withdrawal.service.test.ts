@@ -12,7 +12,7 @@ describe('WalletService — Withdrawal flow (T15)', () => {
                 username: 'withdraw_test_user',
                 phone: '+251900100001',
                 passwordHash: 'hashed:testpass',
-                wallet: { create: { balance: 1000 } },
+                wallet: { create: { realBalance: 1000 } },
             },
         })
         testUserId = user.id
@@ -43,7 +43,7 @@ describe('WalletService — Withdrawal flow (T15)', () => {
             expect(tx.note).toContain('1234567890')
 
             const wallet = await WalletService.getBalance(testUserId)
-            expect(Number(wallet.balance)).toBe(800)
+            expect(Number(wallet.realBalance)).toBe(800)
         })
 
         it('should record balance snapshots on withdrawal', async () => {
@@ -81,7 +81,7 @@ describe('WalletService — Withdrawal flow (T15)', () => {
             })
 
             const wallet = await WalletService.getBalance(testUserId)
-            expect(Number(wallet.balance)).toBe(200) // 1000 - 400 - 400
+            expect(Number(wallet.realBalance)).toBe(200) // 1000 - 400 - 400
         })
 
         it('should reject withdrawal that would make balance negative', async () => {

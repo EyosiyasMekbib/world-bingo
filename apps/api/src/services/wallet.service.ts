@@ -39,56 +39,127 @@ export class WalletService {
             }
 
             // Lock the wallet row before reading and updating
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${transaction.userId} FOR UPDATE
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${transaction.userId} FOR UPDATE
             `
             const wallet = wallets[0]
             if (!wallet) throw new Error('Wallet not found')
 
-            const balanceBefore = wallet.balance
-            const balanceAfter = new Decimal(balanceBefore).plus(new Decimal(transaction.amount))
+            const realBefore = new Decimal(wallet.realBalance)
+            const realAfter = realBefore.plus(new Decimal(transaction.amount))
+            const bonusBefore = new Decimal(wallet.bonusBalance)
 
             // Update transaction status with balance snapshot
             await tx.transaction.update({
                 where: { id: transactionId },
                 data: {
                     status: PaymentStatus.APPROVED,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
                 },
             })
 
-            // Update user wallet
+            // Credit realBalance
             await tx.wallet.update({
                 where: { userId: transaction.userId },
-                data: { balance: { increment: transaction.amount } },
+                data: { realBalance: { increment: transaction.amount } },
             })
 
-            return transaction
-        }).then(async (transaction) => {
-            // Push balance update
-            NotificationService.pushWalletUpdate(transaction.userId, Number(transaction.balanceAfter ?? 0))
-
-            // Post-transaction: send notification (non-critical)
-            await NotificationService.create(
-                transaction.userId,
-                NotificationType.DEPOSIT_APPROVED,
-                'Deposit Approved ✅',
-                `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved and added to your wallet.`,
-                { transactionId: transaction.id, amount: Number(transaction.amount) },
-            ).catch(() => {})
-
-            // Check if this is the player's first approved deposit → award referral bonus
-            const previousApproved = await prisma.transaction.count({
+            // ── First Deposit Bonus ──────────────────────────────────────────
+            const previousApproved = await tx.transaction.count({
                 where: {
                     userId: transaction.userId,
                     type: TransactionType.DEPOSIT,
                     status: PaymentStatus.APPROVED,
-                    id: { not: transaction.id },
+                    id: { not: transactionId },
                 },
             })
+
+            let bonusAwarded = 0
             if (previousApproved === 0) {
+                // This is their first deposit — check for bonus setting
+                const bonusSetting = await tx.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } })
+                const bonusAmount = Number(bonusSetting?.value ?? '0')
+
+                if (bonusAmount > 0) {
+                    const bonusAfter = bonusBefore.plus(new Decimal(bonusAmount))
+
+                    // Credit bonusBalance
+                    await tx.wallet.update({
+                        where: { userId: transaction.userId },
+                        data: { bonusBalance: { increment: bonusAmount } },
+                    })
+
+                    // Record bonus transaction
+                    await tx.transaction.create({
+                        data: {
+                            userId: transaction.userId,
+                            type: TransactionType.FIRST_DEPOSIT_BONUS,
+                            amount: bonusAmount,
+                            status: PaymentStatus.APPROVED,
+                            note: 'First deposit bonus',
+                            balanceBefore: realAfter,
+                            balanceAfter: realAfter,
+                            bonusBalanceBefore: bonusBefore,
+                            bonusBalanceAfter: bonusAfter,
+                        },
+                    })
+
+                    bonusAwarded = bonusAmount
+                }
+            }
+
+            return { transaction, realAfter, bonusAwarded, bonusBefore }
+        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore }) => {
+            const finalBonusBalance = bonusAwarded > 0
+                ? bonusBefore.plus(new Decimal(bonusAwarded)).toNumber()
+                : bonusBefore.toNumber()
+
+            // Push balance update
+            NotificationService.pushWalletUpdate(
+                transaction.userId,
+                realAfter.toNumber(),
+                finalBonusBalance,
+            )
+
+            // Send notification
+            const metadata: Record<string, unknown> = {
+                transactionId: transaction.id,
+                amount: Number(transaction.amount),
+            }
+            if (bonusAwarded > 0) {
+                metadata.bonusAwarded = bonusAwarded
+            }
+
+            await NotificationService.create(
+                transaction.userId,
+                NotificationType.DEPOSIT_APPROVED,
+                'Deposit Approved ✅',
+                bonusAwarded > 0
+                    ? `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved! You also received a ${bonusAwarded.toFixed(2)} ETB first deposit bonus!`
+                    : `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved and added to your wallet.`,
+                metadata,
+            ).catch(() => {})
+
+            // Check referral bonus (only on first deposit, bonus already handled above)
+            if (bonusAwarded > 0) {
+                // bonusAwarded > 0 means this IS the first deposit
                 await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+            } else {
+                // Still check if it's first deposit for referral purposes
+                const previousApproved = await prisma.transaction.count({
+                    where: {
+                        userId: transaction.userId,
+                        type: TransactionType.DEPOSIT,
+                        status: PaymentStatus.APPROVED,
+                        id: { not: transaction.id },
+                    },
+                })
+                if (previousApproved === 0) {
+                    await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+                }
             }
 
             return transaction
@@ -102,21 +173,22 @@ export class WalletService {
 
         return await prisma.$transaction(async (tx) => {
             // Lock the wallet row to prevent concurrent withdrawals from passing the balance check
-            const wallets = await tx.$queryRaw<Array<{ id: string; balance: Decimal }>>`
-                SELECT id, balance FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
-            if (!wallet || new Decimal(wallet.balance).lessThan(new Decimal(data.amount))) {
-                throw new Error('Insufficient balance')
+            if (!wallet || new Decimal(wallet.realBalance).lessThan(new Decimal(data.amount))) {
+                throw new Error('Insufficient balance — only your real balance is withdrawable')
             }
 
-            const balanceBefore = new Decimal(wallet.balance)
-            const balanceAfter = balanceBefore.minus(new Decimal(data.amount))
+            const realBefore = new Decimal(wallet.realBalance)
+            const realAfter = realBefore.minus(new Decimal(data.amount))
+            const bonusBefore = new Decimal(wallet.bonusBalance)
 
             // Lock the balance immediately
             await tx.wallet.update({
                 where: { userId },
-                data: { balance: { decrement: data.amount } }
+                data: { realBalance: { decrement: data.amount } }
             })
 
             // Create a pending withdrawal with balance snapshot
@@ -127,14 +199,16 @@ export class WalletService {
                     amount: data.amount,
                     status: PaymentStatus.PENDING_REVIEW,
                     note: `${data.paymentMethod}: ${data.accountNumber}`,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
                 },
             })
-            return transaction
-        }).then(async (transaction) => {
+            return { transaction, realAfter, bonusBefore }
+        }).then(async ({ transaction, realAfter, bonusBefore }) => {
             // Push balance update
-            NotificationService.pushWalletUpdate(userId, Number(transaction.balanceAfter ?? 0))
+            NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
             return transaction
         })
     }
@@ -197,4 +271,3 @@ export class WalletService {
         }
     }
 }
-

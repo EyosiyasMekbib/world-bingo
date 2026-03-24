@@ -129,7 +129,7 @@ export class ReferralService {
             // Credit the referrer's wallet
             await tx.wallet.update({
                 where: { userId: referrerId },
-                data: { balance: { increment: BONUS } },
+                data: { realBalance: { increment: BONUS } },
             })
 
             // Record the bonus as a transaction on the referrer's account

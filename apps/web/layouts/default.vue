@@ -30,8 +30,8 @@ async function handleLogout() {
 
 // Format balance with ETB
 const formattedBalance = computed(() => {
-  const bal = Number(auth.wallet?.balance ?? 0)
-  return bal.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const total = Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0)
+  return total.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 })
 
 // Mobile nav toggle
@@ -447,7 +447,7 @@ const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
     />
     <WithdrawalModal
       v-model="showWithdrawal"
-      :balance="Number(auth.wallet?.balance ?? 0)"
+      :balance="Number(auth.wallet?.realBalance ?? 0)"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
 

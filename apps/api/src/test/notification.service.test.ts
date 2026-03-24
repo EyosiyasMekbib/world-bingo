@@ -21,7 +21,7 @@ describe('NotificationService (T17/T20)', () => {
                 username: 'notif_test_user',
                 phone: '+251900200001',
                 passwordHash: 'hashed:testpass',
-                wallet: { create: { balance: 0 } },
+                wallet: { create: { realBalance: 0 } },
             },
         })
         testUserId = user.id
@@ -107,7 +107,7 @@ describe('NotificationService (T17/T20)', () => {
                     username: 'notif_other',
                     phone: '+251900200002',
                     passwordHash: 'hashed:pass2',
-                    wallet: { create: { balance: 0 } },
+                    wallet: { create: { realBalance: 0 } },
                 },
             })
 

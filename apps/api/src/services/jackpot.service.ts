@@ -108,7 +108,7 @@ export class JackpotService {
             // Credit winner's wallet
             await tx.wallet.update({
                 where: { userId },
-                data: { balance: { increment: amount } },
+                data: { realBalance: { increment: amount } },
             })
 
             // Record transaction

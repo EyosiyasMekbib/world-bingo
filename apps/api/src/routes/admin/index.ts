@@ -6,6 +6,10 @@ import { BotService } from '../../services/bot.service'
 import prisma from '../../lib/prisma'
 import { GameSchedulerService } from '../../services/game-scheduler.service'
 import { HouseWalletService } from '../../services/house-wallet.service'
+import { CashbackService } from '../../services/cashback.service'
+import { NotificationService } from '../../services/notification.service'
+import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import { Decimal } from '@prisma/client/runtime/library'
 
 const templateCreateSchema = z.object({
     title: z.string().min(1),
@@ -202,6 +206,166 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/house/bots', async (_req, _reply) => {
         return HouseWalletService.getBotActivity()
+    })
+
+    // ── Player Management ──────────────────────────────────────────────────────
+
+    // Get single player detail with wallet + recent transactions
+    fastify.get('/players/:id', async (req: any, reply) => {
+        const user = await prisma.user.findUnique({
+            where: { id: req.params.id },
+            select: {
+                id: true,
+                serial: true,
+                username: true,
+                phone: true,
+                role: true,
+                isActive: true,
+                createdAt: true,
+                wallet: { select: { realBalance: true, bonusBalance: true } },
+            },
+        })
+        if (!user) return reply.status(404).send({ error: 'Player not found' })
+
+        const transactions = await prisma.transaction.findMany({
+            where: { userId: req.params.id },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+        })
+
+        const stats = await Promise.all([
+            prisma.transaction.aggregate({
+                where: { userId: req.params.id, type: TransactionType.GAME_ENTRY },
+                _count: true,
+                _sum: { amount: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { userId: req.params.id, type: TransactionType.PRIZE_WIN },
+                _count: true,
+                _sum: { amount: true },
+            }),
+        ])
+
+        return {
+            ...user,
+            transactions,
+            stats: {
+                gamesPlayed: stats[0]._count,
+                totalWagered: Number(stats[0]._sum.amount ?? 0),
+                gamesWon: stats[1]._count,
+                totalWon: Number(stats[1]._sum.amount ?? 0),
+            },
+        }
+    })
+
+    // Admin balance adjustment
+    const adjustBalanceSchema = z.object({
+        type: z.enum(['real', 'bonus']),
+        amount: z.number(),
+        note: z.string().min(1, 'Note is required for audit trail'),
+    })
+
+    fastify.post('/players/:id/adjust-balance', async (req: any, reply) => {
+        const parsed = adjustBalanceSchema.safeParse(req.body)
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+        }
+
+        const { type, amount, note } = parsed.data
+        const userId = req.params.id
+
+        const result = await prisma.$transaction(async (tx) => {
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            if (!wallet) throw new Error('Wallet not found')
+
+            const realBefore = new Decimal(wallet.realBalance)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+            const adjustAmount = new Decimal(amount)
+
+            if (type === 'real') {
+                const realAfter = realBefore.plus(adjustAmount)
+                if (realAfter.lessThan(0)) throw new Error('Adjustment would make real balance negative')
+
+                await tx.wallet.update({
+                    where: { userId },
+                    data: { realBalance: { increment: adjustAmount } },
+                })
+                await tx.transaction.create({
+                    data: {
+                        userId,
+                        type: TransactionType.ADMIN_REAL_ADJUSTMENT,
+                        amount: adjustAmount.abs(),
+                        status: PaymentStatus.APPROVED,
+                        note: `[Admin] ${note}`,
+                        balanceBefore: realBefore,
+                        balanceAfter: realAfter,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusBefore,
+                    },
+                })
+                return { realBalance: Number(realAfter), bonusBalance: Number(bonusBefore) }
+            } else {
+                const bonusAfter = bonusBefore.plus(adjustAmount)
+                if (bonusAfter.lessThan(0)) throw new Error('Adjustment would make bonus balance negative')
+
+                await tx.wallet.update({
+                    where: { userId },
+                    data: { bonusBalance: { increment: adjustAmount } },
+                })
+                await tx.transaction.create({
+                    data: {
+                        userId,
+                        type: TransactionType.ADMIN_BONUS_ADJUSTMENT,
+                        amount: adjustAmount.abs(),
+                        status: PaymentStatus.APPROVED,
+                        note: `[Admin] ${note}`,
+                        balanceBefore: realBefore,
+                        balanceAfter: realBefore,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusAfter,
+                    },
+                })
+                return { realBalance: Number(realBefore), bonusBalance: Number(bonusAfter) }
+            }
+        })
+
+        // Push real-time balance update
+        NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
+
+        return result
+    })
+
+    // ── Cashback Promotions ──────────────────────────────────────────────────
+
+    fastify.get('/cashback', async (_req, _reply) => {
+        return CashbackService.listPromotions()
+    })
+
+    const cashbackCreateSchema = z.object({
+        name: z.string().min(1),
+        percentage: z.coerce.number().min(0.01).max(100),
+        startsAt: z.string(),
+        endsAt: z.string(),
+    })
+
+    fastify.post('/cashback', async (req: any, reply) => {
+        const parsed = cashbackCreateSchema.safeParse(req.body)
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+        }
+        return CashbackService.createPromotion(parsed.data as { name: string; percentage: number; startsAt: string; endsAt: string })
+    })
+
+    fastify.patch('/cashback/:id/toggle', async (req: any, _reply) => {
+        const body = req.body as { isActive: boolean }
+        return CashbackService.togglePromotion(req.params.id, body.isActive)
+    })
+
+    fastify.post('/cashback/:id/disburse', async (req: any, _reply) => {
+        return CashbackService.disburse(req.params.id)
     })
 }
 

@@ -133,7 +133,7 @@ export class AdminService {
             if (transaction.type === TransactionType.WITHDRAWAL) {
                 await prisma.wallet.update({
                     where: { userId: transaction.userId },
-                    data: { balance: { increment: transaction.amount } },
+                    data: { realBalance: { increment: transaction.amount } },
                 })
             }
 
@@ -177,7 +177,7 @@ export class AdminService {
                     phone: true,
                     role: true,
                     createdAt: true,
-                    wallet: { select: { balance: true } },
+                    wallet: { select: { realBalance: true, bonusBalance: true } },
                 },
                 orderBy: { createdAt: 'desc' },
                 skip,

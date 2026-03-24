@@ -14,6 +14,7 @@ const features = reactive({
 const gameSettings = reactive({
   ball_interval_secs: 3,
   bot_max_spend_etb: 500,
+  first_deposit_bonus_amount: 0,
 })
 
 const fetchAll = async () => {
@@ -24,6 +25,7 @@ const fetchAll = async () => {
     features.feature_tournaments = flags.feature_tournaments ?? false
     gameSettings.ball_interval_secs = gs.ball_interval_secs ?? 3
     gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
+    gameSettings.first_deposit_bonus_amount = gs.first_deposit_bonus_amount ?? 0
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
   } finally {
@@ -46,9 +48,14 @@ const saveFlags = async () => {
 const saveGameSettings = async () => {
   savingGame.value = true
   try {
-    const result = await updateGameSettings({ ball_interval_secs: gameSettings.ball_interval_secs, bot_max_spend_etb: gameSettings.bot_max_spend_etb }) as any
+    const result = await updateGameSettings({
+      ball_interval_secs: gameSettings.ball_interval_secs,
+      bot_max_spend_etb: gameSettings.bot_max_spend_etb,
+      first_deposit_bonus_amount: gameSettings.first_deposit_bonus_amount,
+    }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
+    gameSettings.first_deposit_bonus_amount = result.first_deposit_bonus_amount
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -126,6 +133,26 @@ onMounted(fetchAll)
               <div class="flex items-center gap-2 mt-3">
                 <UInput
                   v-model.number="gameSettings.bot_max_spend_etb"
+                  type="number"
+                  min="0"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- First Deposit Bonus -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-yellow-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:gift" class="w-6 h-6 text-yellow-500" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">First Deposit Bonus (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Bonus credited to player's bonus balance on their first approved deposit. Set to 0 to disable.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.first_deposit_bonus_amount"
                   type="number"
                   min="0"
                   class="w-36"

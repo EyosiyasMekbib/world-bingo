@@ -15,7 +15,7 @@ describe('WalletService', () => {
                 passwordHash: 'hashed:testpassword',
                 wallet: {
                     create: {
-                        balance: 500,
+                        realBalance: 500,
                     },
                 },
             },
@@ -30,7 +30,7 @@ describe('WalletService', () => {
         it('should return wallet balance', async () => {
             const wallet = await WalletService.getBalance(testUserId)
             
-            expect(wallet.balance.toString()).toBe('500')
+            expect(wallet.realBalance.toString()).toBe('500')
         })
 
         it('should throw error for non-existent user', async () => {
@@ -69,7 +69,7 @@ describe('WalletService', () => {
 
             // Check wallet balance was updated
             const wallet = await WalletService.getBalance(testUserId)
-            expect(wallet.balance.toString()).toBe('1000') // 500 + 500
+            expect(wallet.realBalance.toString()).toBe('1000') // 500 + 500
         })
 
         it('should throw error for invalid transaction', async () => {
@@ -107,7 +107,7 @@ describe('WalletService', () => {
             expect(transaction.type).toBe(TransactionType.WITHDRAWAL)
 
             const wallet = await WalletService.getBalance(testUserId)
-            expect(wallet.balance.toString()).toBe('400') // 500 - 100
+            expect(wallet.realBalance.toString()).toBe('400') // 500 - 100
         })
 
         it('should throw on insufficient balance', async () => {
@@ -155,7 +155,7 @@ describe('WalletService', () => {
 
             const wallet = await WalletService.getBalance(testUserId)
             // Balance should be 200 (500 - 300), not negative
-            expect(Number(wallet.balance)).toBeGreaterThanOrEqual(0)
+            expect(Number(wallet.realBalance)).toBeGreaterThanOrEqual(0)
         })
     })
 })

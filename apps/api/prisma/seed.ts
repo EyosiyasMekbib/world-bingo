@@ -22,7 +22,7 @@ async function main() {
                 passwordHash,
                 role: 'SUPER_ADMIN',
                 wallet: {
-                    create: { balance: 10000 }
+                    create: { realBalance: 10000 }
                 }
             }
         })
@@ -99,13 +99,14 @@ async function main() {
         console.log(`Seeded ${templates.length} Game Templates`)
     }
 
-    // 4. Seed Admin Wallet (singleton house wallet)
-    console.log('Seeding Admin Wallet...')
-    const adminWalletCount = await prisma.adminWallet.count()
-    if (adminWalletCount === 0) {
-        await prisma.adminWallet.create({ data: { balance: 0 } })
-        console.log('Admin wallet created')
-    }
+    // 4. Seed House Wallet (singleton)
+    console.log('Seeding House Wallet...')
+    await prisma.$executeRaw`
+        INSERT INTO house_wallet (id, balance, "updatedAt")
+        VALUES ('house', 0, NOW())
+        ON CONFLICT (id) DO NOTHING
+    `
+    console.log('House wallet seeded')
 
     // 5. Seed default feature flags + game settings
     console.log('Seeding Feature Flags...')
@@ -113,6 +114,8 @@ async function main() {
         { key: 'feature_referrals', value: 'false' },
         { key: 'feature_tournaments', value: 'false' },
         { key: 'ball_interval_secs', value: '3' },
+        { key: 'first_deposit_bonus_amount', value: '0' },
+        { key: 'bot_max_spend_etb', value: '500' },
     ]
     for (const flag of defaultFlags) {
         await prisma.siteSetting.upsert({

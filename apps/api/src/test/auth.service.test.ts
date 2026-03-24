@@ -34,7 +34,7 @@ describe('AuthService', () => {
             })
 
             expect(wallet).toBeDefined()
-            expect(wallet?.balance.toString()).toBe('0')
+            expect(wallet?.realBalance.toString()).toBe('0')
         })
 
         it('should throw error if username exists', async () => {

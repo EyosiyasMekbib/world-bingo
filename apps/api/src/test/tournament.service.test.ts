@@ -26,7 +26,7 @@ async function createUser(username: string, phone: string, balance = 1000) {
             username,
             phone,
             passwordHash: `hashed:pass`,
-            wallet: { create: { balance } },
+            wallet: { create: { realBalance: balance } },
         },
     })
 }
@@ -108,7 +108,7 @@ describe('TournamentService', () => {
 
             // Verify balance deducted
             const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-            expect(Number(wallet!.balance)).toBe(900)
+            expect(Number(wallet!.realBalance)).toBe(900)
 
             // Verify prize pool grew (10% house edge → 90 ETB from 100)
             const updated = await prisma.tournament.findUnique({ where: { id: tournament.id } })
@@ -265,7 +265,7 @@ describe('TournamentService', () => {
             // user1 wallet should have prize
             const wallet = await prisma.wallet.findUnique({ where: { userId: user1.id } })
             // Started with 500, paid 100 entry fee → 400. Prize pool ~180 (90*2). Balance ~580
-            expect(Number(wallet!.balance)).toBeGreaterThan(400)
+            expect(Number(wallet!.realBalance)).toBeGreaterThan(400)
         })
     })
 
@@ -286,8 +286,8 @@ describe('TournamentService', () => {
             // Refunds should restore balance
             const w1 = await prisma.wallet.findUnique({ where: { userId: user1.id } })
             const w2 = await prisma.wallet.findUnique({ where: { userId: user2.id } })
-            expect(Number(w1!.balance)).toBe(500) // 500 - 100 + 100 = 500
-            expect(Number(w2!.balance)).toBe(500)
+            expect(Number(w1!.realBalance)).toBe(500) // 500 - 100 + 100 = 500
+            expect(Number(w2!.realBalance)).toBe(500)
         })
 
         it('throws when trying to cancel a COMPLETED tournament', async () => {

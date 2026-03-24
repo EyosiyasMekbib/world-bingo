@@ -91,7 +91,7 @@ async function createUserWithWallet(username: string, phone: string, balance = 5
             username,
             phone,
             passwordHash: `hashed:pass`,
-            wallet: { create: { balance } },
+            wallet: { create: { realBalance: balance } },
         },
     })
 }
@@ -154,7 +154,7 @@ describe('GameService.joinGame (T8)', () => {
 
         const wallet = await prisma.wallet.findUnique({ where: { userId } })
         // 500 - (50 * 2) = 400
-        expect(Number(wallet!.balance)).toBe(400)
+        expect(Number(wallet!.realBalance)).toBe(400)
     })
 
     it('should throw if cartela is already taken', async () => {

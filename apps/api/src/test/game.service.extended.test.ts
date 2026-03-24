@@ -94,7 +94,7 @@ async function createUserWithWallet(username: string, phone: string, balance = 5
             username,
             phone,
             passwordHash: `hashed:pass`,
-            wallet: { create: { balance } },
+            wallet: { create: { realBalance: balance } },
         },
     })
 }
@@ -229,7 +229,7 @@ describe('GameService.joinGame — Extended', () => {
 
         const wallet = await prisma.wallet.findUnique({ where: { userId } })
         // 500 - (50 * 3) = 350
-        expect(Number(wallet!.balance)).toBe(350)
+        expect(Number(wallet!.realBalance)).toBe(350)
     })
 
     it('should throw if balance is exactly 0', async () => {
@@ -249,7 +249,7 @@ describe('GameService.joinGame — Extended', () => {
         expect(entries).toHaveLength(1)
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: exactUser.id } })
-        expect(Number(wallet!.balance)).toBe(0)
+        expect(Number(wallet!.realBalance)).toBe(0)
     })
 
     it('should throw for COMPLETED game status', async () => {
@@ -562,7 +562,7 @@ describe('GameService.claimBingo — Edge Cases', () => {
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         // Prize = 100 * 1 entry * (1 - 0.10) = 90
-        expect(Number(wallet!.balance)).toBe(1000 + 90)
+        expect(Number(wallet!.realBalance)).toBe(1000 + 90)
     })
 
     it('should create a PRIZE_WIN transaction', async () => {
@@ -711,6 +711,6 @@ describe('GameService — Concurrency', () => {
 
         // Wallet should never go negative
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-        expect(Number(wallet!.balance)).toBeGreaterThanOrEqual(0)
+        expect(Number(wallet!.realBalance)).toBeGreaterThanOrEqual(0)
     })
 })
