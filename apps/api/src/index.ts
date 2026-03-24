@@ -25,6 +25,7 @@ import settingsRoutes from './routes/settings'
 import { registerBullBoard } from './routes/bull-board.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
+import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
@@ -33,8 +34,8 @@ import './workers/game-engine.worker.js'
 
 dotenv.config()
 
-if (!process.env.JWT_PRIVATE_KEY || !process.env.JWT_PUBLIC_KEY) {
-    console.error('FATAL: JWT_PRIVATE_KEY / JWT_PUBLIC_KEY not set')
+if (!jwtPrivateKey || !jwtPublicKey) {
+    console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
     process.exit(1)
 }
 
@@ -70,8 +71,8 @@ await server.register(cors, {
 
 await server.register(jwt, {
     secret: {
-        private: process.env.JWT_PRIVATE_KEY!.replace(/\\n/g, '\n'),
-        public: process.env.JWT_PUBLIC_KEY!.replace(/\\n/g, '\n'),
+        private: jwtPrivateKey,
+        public: jwtPublicKey,
     },
     sign: { algorithm: 'RS256', expiresIn: '15m' },
 })

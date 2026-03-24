@@ -39,7 +39,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/world_bingo
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:3001}
       PORT: 8080
       HOST: 0.0.0.0
@@ -89,7 +90,7 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: /api
       NUXT_API_BASE_SERVER: http://api:8080
-      NUXT_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      NUXT_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
     depends_on:
       api:
         condition: service_healthy
