@@ -20,7 +20,7 @@ export function initSocket(httpServer: HttpServer, redisUrl: string) {
 
     io = new Server(httpServer, {
         cors: {
-            origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
+            origin: process.env.CORS_ORIGIN === '*' || !process.env.CORS_ORIGIN ? '*' : process.env.CORS_ORIGIN.split(','),
             methods: ['GET', 'POST'],
             credentials: true,
         },
