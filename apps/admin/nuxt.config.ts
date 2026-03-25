@@ -39,8 +39,8 @@ export default defineNuxtConfig({
     css: ['~/assets/css/main.css'],
 
     runtimeConfig: {
-        jwtSecret: '',
-        apiBaseServer: 'http://localhost:8080', // overridden by NUXT_API_BASE_SERVER in Docker (http://api:8080)
+        // Overridden at runtime by NUXT_API_BASE_SERVER env var (set to http://api:8080 in Docker)
+        apiBaseServer: 'http://localhost:8080',
         public: {
             apiBase: 'http://localhost:8080',
         },

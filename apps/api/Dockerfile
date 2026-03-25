@@ -75,4 +75,4 @@ WORKDIR /app/apps/api
 EXPOSE 8080
 
 # Run migrations, seed the database, then start server
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node dist/index.js"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && (node_modules/.bin/tsx prisma/seed.ts || echo 'Seed skipped') && exec node dist/index.js"]

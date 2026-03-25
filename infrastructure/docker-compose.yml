@@ -1,15 +1,23 @@
+# ============================================================
+# World Bingo — Production Docker Compose
+# ============================================================
+# All tuneable values are driven by ${VAR:-default} substitution.
+# In Dokploy: set every variable in the Environment panel.
+# For local prod testing: cp .env.example .env at the repo root.
+# ============================================================
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: world_bingo
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-world_bingo}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,15 +45,21 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/world_bingo
-      REDIS_URL: redis://redis:6379
-      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
-      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:3001}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/world_bingo}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # JWT keys — supports both raw (\n-escaped) and base64-encoded formats.
+      # Set whichever format you have; the API will use whichever is non-empty.
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64:-}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
       PORT: 8080
       HOST: 0.0.0.0
+      # Public URL used to build absolute upload file URLs
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
-      UPLOAD_DIR: /app/uploads
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - uploads_data:/app/apps/api/uploads
     depends_on:
@@ -58,6 +72,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      # Give the API time to run migrations + seed before health checks begin
+      start_period: 90s
     networks:
       - dokploy-network
 
@@ -72,7 +88,10 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: /api
       NUXT_PUBLIC_WS_URL: /
-      NUXT_API_BASE_SERVER: http://api:8080
+      # Internal URL for SSR → API calls (Docker service name)
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
+      NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
+      NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
     depends_on:
       api:
         condition: service_healthy
@@ -89,8 +108,8 @@ services:
       - "3001"
     environment:
       NUXT_PUBLIC_API_BASE: /api
-      NUXT_API_BASE_SERVER: http://api:8080
-      NUXT_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
+      # Internal URL for SSR → API calls (Docker service name)
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
     depends_on:
       api:
         condition: service_healthy
