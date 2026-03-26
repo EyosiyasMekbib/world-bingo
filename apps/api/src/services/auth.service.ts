@@ -182,8 +182,10 @@ export class AuthService {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([k, v]) => `${k}=${v}`)
             .join('\n')
+        const botToken = process.env.TELEGRAM_BOT_TOKEN
+        if (!botToken) throw new Error('Telegram login is not configured on this server')
         const secretKey = crypto.createHash('sha256')
-            .update(process.env.TELEGRAM_BOT_TOKEN!)
+            .update(botToken)
             .digest()
         const expectedHash = crypto.createHmac('sha256', secretKey)
             .update(dataCheckString)

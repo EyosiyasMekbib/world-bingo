@@ -60,12 +60,16 @@ export class AuthController {
     }
 
     static async telegramLogin(request: FastifyRequest<{ Body: TelegramAuthDto }>, reply: FastifyReply) {
-        const { user, refreshToken } = await AuthService.telegramAuth(request.body)
-        const accessToken = await reply.jwtSign(
-            { id: user.id, role: user.role },
-            { expiresIn: '15m' }
-        )
-        return { user, accessToken, refreshToken }
+        try {
+            const { user, refreshToken } = await AuthService.telegramAuth(request.body)
+            const accessToken = await reply.jwtSign(
+                { id: user.id, role: user.role },
+                { expiresIn: '15m' }
+            )
+            return { user, accessToken, refreshToken }
+        } catch (err: any) {
+            reply.status(401).send({ message: err.message ?? 'Telegram authentication failed' })
+        }
     }
 }
 
