@@ -1,18 +1,56 @@
 <script setup lang="ts">
 import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
+import { useProviderGamesStore } from '~/store/provider-games'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
 const gameStore = useGameStore()
+const providerStore = useProviderGamesStore()
 const { connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel, patternIcon } = usePatternLabel()
-const { tournamentsEnabled } = useFeatureFlags()
+const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
 
 const topGamesCollapsed = ref(false)
 const roomsCollapsed = ref(false)
 const searchQuery = ref('')
+
+// Category tabs (only shown when thirdPartyGamesEnabled)
+const CATEGORY_LABELS: Record<string, string> = {
+  ALL: 'All',
+  BINGO: 'Bingo',
+  SLOTS: 'Slots',
+  LIVE: 'Live',
+  TABLE: 'Table',
+  CRASH: 'Crash',
+}
+
+const showBingoSection = computed(() =>
+  !thirdPartyGamesEnabled.value ||
+  providerStore.activeCategory === 'ALL' ||
+  providerStore.activeCategory === 'BINGO',
+)
+
+const showProviderGames = computed(() =>
+  thirdPartyGamesEnabled.value &&
+  providerStore.activeCategory !== 'BINGO',
+)
+
+function selectCategory(cat: string) {
+  providerStore.setCategory(cat)
+}
+
+async function handleLaunchGame(gameCode: string) {
+  if (!auth.isAuthenticated) {
+    navigateTo('/auth/login')
+    return
+  }
+  const url = await providerStore.launchGame(providerStore.activeProviderCode, gameCode)
+  if (url) {
+    navigateTo(`/play/${providerStore.activeProviderCode}/${gameCode}`)
+  }
+}
 
 const filteredGames = computed(() => {
   if (!searchQuery.value.trim()) return gameStore.availableGames
@@ -32,6 +70,11 @@ onMounted(async () => {
   try {
     await gameStore.fetchAvailableGames()
   } catch { /* errors are stored in gameStore.error */ }
+
+  if (thirdPartyGamesEnabled.value) {
+    await providerStore.fetchProviders()
+    await providerStore.fetchCategories()
+  }
 
   const socket = connect()
   if (!socket) return
@@ -158,21 +201,44 @@ onUnmounted(() => {
     <div class="tabs-bar">
       <div class="max-container tabs-inner">
         <div class="tabs-group">
-          <button class="tab tab--active">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-            Lobby
-          </button>
-          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            Tournaments
-          </NuxtLink>
+          <!-- Without third-party games: Lobby + Tournaments only -->
+          <template v-if="!thirdPartyGamesEnabled">
+            <button class="tab tab--active">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              Lobby
+            </button>
+            <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              Tournaments
+            </NuxtLink>
+          </template>
+
+          <!-- With third-party games: category tabs -->
+          <template v-else>
+            <button
+              v-for="cat in providerStore.displayCategories"
+              :key="cat"
+              class="tab"
+              :class="{ 'tab--active': providerStore.activeCategory === cat }"
+              @click="selectCategory(cat)"
+            >
+              {{ CATEGORY_LABELS[cat] ?? cat }}
+            </button>
+            <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              Tournaments
+            </NuxtLink>
+          </template>
         </div>
         <label class="search-bar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.4">
@@ -240,87 +306,179 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Aviator -->
-          <div class="game-card game-card--soon">
-            <div class="gc-thumb gc-thumb--soon">
-              <div class="soon-art">
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                </svg>
-                <span class="soon-label">AVIATOR</span>
+          <!-- Third-party featured games OR "Coming Soon" placeholders -->
+          <template v-if="thirdPartyGamesEnabled && providerStore.games.length">
+            <NuxtLink
+              v-for="g in providerStore.games.slice(0, 6)"
+              :key="g.gameCode"
+              :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+              class="game-card"
+            >
+              <div class="gc-thumb gc-thumb--provider">
+                <img
+                  v-if="g.imageSquare || g.imageLandscape"
+                  :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                  :alt="g.gameName"
+                  class="gc-img"
+                />
+                <div v-else class="gc-placeholder-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.3">
+                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                    <rect x="5" y="7" width="4" height="8" rx="1" />
+                    <rect x="10" y="7" width="4" height="8" rx="1" />
+                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                  </svg>
+                </div>
+                <div class="gc-cat-badge">{{ g.categoryCode }}</div>
               </div>
-              <div class="soon-badge">Soon</div>
+              <div class="gc-info">
+                <div class="gc-name">{{ g.gameName }}</div>
+                <div class="gc-meta">{{ g.categoryCode }}</div>
+              </div>
+            </NuxtLink>
+          </template>
+          <template v-else-if="!thirdPartyGamesEnabled">
+            <!-- Aviator -->
+            <div class="game-card game-card--soon">
+              <div class="gc-thumb gc-thumb--soon">
+                <div class="soon-art">
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+                  </svg>
+                  <span class="soon-label">AVIATOR</span>
+                </div>
+                <div class="soon-badge">Soon</div>
+              </div>
+              <div class="gc-info">
+                <div class="gc-name">Aviator</div>
+                <div class="gc-meta">Coming Soon</div>
+              </div>
             </div>
-            <div class="gc-info">
-              <div class="gc-name">Aviator</div>
-              <div class="gc-meta">Coming Soon</div>
-            </div>
-          </div>
 
-          <!-- Slots -->
-          <div class="game-card game-card--soon">
-            <div class="gc-thumb gc-thumb--soon">
-              <div class="soon-art">
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="3" width="20" height="18" rx="2" />
-                  <rect x="5" y="7" width="4" height="8" rx="1" />
-                  <rect x="10" y="7" width="4" height="8" rx="1" />
-                  <rect x="15" y="7" width="4" height="8" rx="1" />
-                  <line x1="2" y1="16" x2="22" y2="16" />
-                </svg>
-                <span class="soon-label">SLOTS</span>
+            <!-- Slots -->
+            <div class="game-card game-card--soon">
+              <div class="gc-thumb gc-thumb--soon">
+                <div class="soon-art">
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                    <rect x="5" y="7" width="4" height="8" rx="1" />
+                    <rect x="10" y="7" width="4" height="8" rx="1" />
+                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                    <line x1="2" y1="16" x2="22" y2="16" />
+                  </svg>
+                  <span class="soon-label">SLOTS</span>
+                </div>
+                <div class="soon-badge">Soon</div>
               </div>
-              <div class="soon-badge">Soon</div>
+              <div class="gc-info">
+                <div class="gc-name">Slot Games</div>
+                <div class="gc-meta">Coming Soon</div>
+              </div>
             </div>
-            <div class="gc-info">
-              <div class="gc-name">Slot Games</div>
-              <div class="gc-meta">Coming Soon</div>
-            </div>
-          </div>
 
-          <!-- Crash -->
-          <div class="game-card game-card--soon">
-            <div class="gc-thumb gc-thumb--soon">
-              <div class="soon-art">
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z" />
-                  <path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z" />
-                </svg>
-                <span class="soon-label">CRASH</span>
+            <!-- Crash -->
+            <div class="game-card game-card--soon">
+              <div class="gc-thumb gc-thumb--soon">
+                <div class="soon-art">
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z" />
+                    <path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z" />
+                  </svg>
+                  <span class="soon-label">CRASH</span>
+                </div>
+                <div class="soon-badge">Soon</div>
               </div>
-              <div class="soon-badge">Soon</div>
+              <div class="gc-info">
+                <div class="gc-name">Crash Game</div>
+                <div class="gc-meta">Coming Soon</div>
+              </div>
             </div>
-            <div class="gc-info">
-              <div class="gc-name">Crash Game</div>
-              <div class="gc-meta">Coming Soon</div>
-            </div>
-          </div>
 
-          <!-- Cards -->
-          <div class="game-card game-card--soon">
-            <div class="gc-thumb gc-thumb--soon">
-              <div class="soon-art">
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                  <line x1="9" y1="10" x2="15" y2="10" />
-                  <line x1="12" y1="7" x2="12" y2="13" />
-                </svg>
-                <span class="soon-label">CARDS</span>
+            <!-- Cards -->
+            <div class="game-card game-card--soon">
+              <div class="gc-thumb gc-thumb--soon">
+                <div class="soon-art">
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                    <line x1="9" y1="10" x2="15" y2="10" />
+                    <line x1="12" y1="7" x2="12" y2="13" />
+                  </svg>
+                  <span class="soon-label">CARDS</span>
+                </div>
+                <div class="soon-badge">Soon</div>
               </div>
-              <div class="soon-badge">Soon</div>
+              <div class="gc-info">
+                <div class="gc-name">Card Games</div>
+                <div class="gc-meta">Coming Soon</div>
+              </div>
             </div>
-            <div class="gc-info">
-              <div class="gc-name">Card Games</div>
-              <div class="gc-meta">Coming Soon</div>
-            </div>
-          </div>
+          </template>
 
         </div>
       </div>
     </div>
 
+    <!-- ── PROVIDER GAMES GRID (third-party categories) ─────── -->
+    <div v-if="showProviderGames" class="section">
+      <div class="max-container">
+        <div class="section-hdr">
+          <span class="section-title">{{ CATEGORY_LABELS[providerStore.activeCategory] ?? providerStore.activeCategory }}</span>
+        </div>
+
+        <div v-if="providerStore.loading && !providerStore.games.length" class="state-msg">
+          <span class="spinner"></span> Loading games…
+        </div>
+        <div v-else-if="providerStore.error" class="state-msg state-msg--error">
+          {{ providerStore.error }}
+        </div>
+        <div v-else-if="!providerStore.games.length" class="state-msg">
+          No games available in this category.
+        </div>
+
+        <div v-else class="provider-grid">
+          <NuxtLink
+            v-for="g in providerStore.games"
+            :key="g.gameCode"
+            :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+            class="pg-card"
+          >
+            <div class="pg-thumb">
+              <img
+                v-if="g.imageSquare || g.imageLandscape"
+                :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                :alt="g.gameName"
+                class="pg-img"
+              />
+              <div v-else class="pg-placeholder">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.3">
+                  <rect x="2" y="3" width="20" height="18" rx="2" />
+                  <rect x="5" y="7" width="4" height="8" rx="1" />
+                  <rect x="10" y="7" width="4" height="8" rx="1" />
+                  <rect x="15" y="7" width="4" height="8" rx="1" />
+                </svg>
+              </div>
+              <div class="pg-overlay">
+                <span class="pg-play-btn">Play</span>
+              </div>
+            </div>
+            <div class="pg-name">{{ g.gameName }}</div>
+          </NuxtLink>
+        </div>
+
+        <div v-if="providerStore.hasMore" class="load-more-wrap">
+          <button
+            class="load-more-btn"
+            :disabled="providerStore.loading"
+            @click="providerStore.loadMore()"
+          >
+            {{ providerStore.loading ? 'Loading…' : 'Load More' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── AVAILABLE BINGO ROOMS ──────────────────────────────── -->
-    <div id="rooms" class="section">
+    <div v-if="showBingoSection" id="rooms" class="section">
       <div class="max-container">
         <div class="section-hdr">
           <span class="section-title">Available Bingo Rooms</span>
@@ -1061,6 +1219,150 @@ onUnmounted(() => {
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
 }
+
+/* ── PROVIDER GAME CARD (Top Games row) ──────────────────────────────── */
+.gc-thumb--provider {
+  background: #0d1f4a;
+  overflow: hidden;
+}
+
+.gc-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gc-placeholder-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.gc-cat-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.8);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── PROVIDER GAMES GRID ─────────────────────────────────────────────── */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+@media (min-width: 480px) { .provider-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 700px) { .provider-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 900px) { .provider-grid { grid-template-columns: repeat(5, 1fr); } }
+
+.pg-card {
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(7, 24, 72, 0.8);
+  border: 1px solid #1e3a6e;
+  text-decoration: none;
+  transition: transform 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+
+.pg-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 215, 0, 0.3);
+}
+
+.pg-thumb {
+  aspect-ratio: 3/4;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0d1f4a, #1a3a6e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pg-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.pg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.pg-card:hover .pg-overlay { opacity: 1; }
+
+.pg-play-btn {
+  background: #FFD700;
+  color: #000;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 8px 22px;
+  border-radius: 8px;
+  font-family: 'Nunito', sans-serif;
+}
+
+.pg-name {
+  padding: 8px 10px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 8px;
+}
+
+.load-more-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid #1e3a6e;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  padding: 10px 32px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: 'Nunito', sans-serif;
+}
+
+.load-more-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.load-more-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ── KEYFRAMES ───────────────────────────────────────────────────────── */
 @keyframes fadeUp {

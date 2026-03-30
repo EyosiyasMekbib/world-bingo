@@ -19,6 +19,30 @@ export enum TransactionType {
     CASHBACK_BONUS = 'CASHBACK_BONUS',
     ADMIN_REAL_ADJUSTMENT = 'ADMIN_REAL_ADJUSTMENT',
     ADMIN_BONUS_ADJUSTMENT = 'ADMIN_BONUS_ADJUSTMENT',
+    TP_BET = 'TP_BET',
+    TP_WIN = 'TP_WIN',
+    TP_ROLLBACK = 'TP_ROLLBACK',
+    TP_ADJUSTMENT = 'TP_ADJUSTMENT',
+}
+
+export enum GameProviderStatus {
+    ACTIVE = 'ACTIVE',
+    INACTIVE = 'INACTIVE',
+    MAINTENANCE = 'MAINTENANCE',
+}
+
+export enum ThirdPartyTxType {
+    BET = 'BET',
+    BET_RESULT = 'BET_RESULT',
+    BET_DEBIT = 'BET_DEBIT',
+    BET_CREDIT = 'BET_CREDIT',
+    ROLLBACK = 'ROLLBACK',
+    ADJUSTMENT = 'ADJUSTMENT',
+}
+
+export enum ThirdPartyTxStatus {
+    COMPLETED = 'COMPLETED',
+    ROLLED_BACK = 'ROLLED_BACK',
 }
 
 export enum PaymentStatus {

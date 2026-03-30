@@ -23,6 +23,8 @@ import referralRoutes from './routes/referral'
 import tournamentRoutes from './routes/tournament'
 import settingsRoutes from './routes/settings'
 import { registerBullBoard } from './routes/bull-board.js'
+import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
+import gameProviderRoutes from './routes/game-provider/index.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
@@ -31,6 +33,7 @@ import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 import './workers/game-countdown.worker.js'
 import './workers/game-scheduler.worker.js'
 import './workers/game-engine.worker.js'
+import './workers/game-catalog-sync.worker.js'
 
 dotenv.config()
 
@@ -165,6 +168,19 @@ server.decorate('authenticate', async function (request: any, reply: any) {
     }
 })
 
+// Capture raw body for aggregator callback routes (needed for HMAC-SHA256 signature verification)
+server.addHook('preParsing', async (request, _reply, payload) => {
+    if (!request.url.startsWith('/v1/aggregator/')) return payload
+    const { Readable } = await import('node:stream')
+    const chunks: Buffer[] = []
+    for await (const chunk of payload) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const raw = Buffer.concat(chunks)
+    ;(request as any).rawBody = raw.toString('utf8')
+    return Readable.from(raw)
+})
+
 // Register route prefixes
 await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
@@ -174,6 +190,8 @@ await server.register(notificationRoutes, { prefix: '/user' })
 await server.register(referralRoutes, { prefix: '/referral' })
 await server.register(tournamentRoutes, { prefix: '/tournaments' })
 await server.register(settingsRoutes, { prefix: '/settings' })
+await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
+await server.register(gameProviderRoutes, { prefix: '/providers' })
 
 // T49 — BullMQ Dashboard at /admin/queues
 await registerBullBoard(server)

@@ -51,6 +51,7 @@ export default defineNuxtConfig({
         '/wallet': { ssr: true },
         '/': { ssr: false },
         '/quick/**': { ssr: false },
+        '/play/**': { ssr: false },
         '/profile': { ssr: false },
         '/transactions': { ssr: false },
         '/api/**': { proxy: 'http://api:8080/**' },

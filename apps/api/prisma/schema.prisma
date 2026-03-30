@@ -182,6 +182,10 @@ enum TransactionType {
   CASHBACK_BONUS
   ADMIN_REAL_ADJUSTMENT
   ADMIN_BONUS_ADJUSTMENT
+  TP_BET
+  TP_WIN
+  TP_ROLLBACK
+  TP_ADJUSTMENT
 }
 
 enum PaymentStatus {
@@ -413,4 +417,114 @@ enum HouseTransactionType {
   COMMISSION
   BOT_PRIZE_WIN
   REFUND_ISSUED
+}
+
+// ─── Third-Party Game Providers ───────────────────────────────────────────────
+
+enum GameProviderStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum ThirdPartyTxType {
+  BET
+  BET_RESULT
+  BET_DEBIT
+  BET_CREDIT
+  ROLLBACK
+  ADJUSTMENT
+}
+
+enum ThirdPartyTxStatus {
+  COMPLETED
+  ROLLED_BACK
+}
+
+// One row per aggregator (GASea is the first; more can be added).
+// Credentials (apiKey, apiSecret) are stored in env vars only — not in this table.
+model GameProvider {
+  id         String             @id @default(uuid())
+  code       String             @unique              // e.g. "gasea"
+  name       String                                  // e.g. "GASea"
+  status     GameProviderStatus @default(ACTIVE)
+  apiBaseUrl String                                  // e.g. "https://api.gasea.com/v3"
+  currency   String             @default("ETB")
+  config     Json?                                   // provider-specific config blob
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  vendors    GameVendor[]
+  games      ProviderGame[]
+
+  @@map("game_providers")
+}
+
+// Game studios / sub-brands within a provider (e.g. Pragmatic Play, PG Soft).
+model GameVendor {
+  id           String       @id @default(uuid())
+  providerId   String
+  code         String                              // e.g. "PP"
+  name         String                              // e.g. "Pragmatic Play"
+  categoryCode String?                             // e.g. "SLOTS,LIVE"
+  isActive     Boolean      @default(true)
+  lastSyncedAt DateTime?
+  provider     GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  games        ProviderGame[]
+
+  @@unique([providerId, code])
+  @@index([providerId, isActive])
+  @@map("game_vendors")
+}
+
+// Individual games from a provider.
+model ProviderGame {
+  id             String       @id @default(uuid())
+  providerId     String
+  vendorId       String
+  gameCode       String                              // e.g. "PP_1302" — unique within provider
+  gameName       String
+  categoryCode   String                              // e.g. "SLOTS", "LIVE", "TABLE"
+  imageSquare    String?
+  imageLandscape String?
+  languageCodes  String[]                            // e.g. ["en", "am"]
+  platformCodes  String[]                            // e.g. ["H5", "WEB"]
+  currencyCodes  String[]                            // e.g. ["ETB", "USD"]
+  isActive       Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  provider       GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  vendor         GameVendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, gameCode])
+  @@index([categoryCode])
+  @@index([isActive, categoryCode])
+  @@map("provider_games")
+}
+
+// Raw GASea transaction details + idempotency key.
+// Every wallet callback creates one row here AND one row in the existing Transaction table.
+model ThirdPartyTransaction {
+  id                    String             @id @default(uuid())
+  providerId            String
+  userId                String
+  transactionId         String                          // GASea's transactionId — idempotency key
+  externalTransactionId String?                         // vendor-level transaction ID
+  betId                 String?
+  roundId               String?
+  gameCode              String?
+  type                  ThirdPartyTxType
+  status                ThirdPartyTxStatus @default(COMPLETED)
+  betAmount             Decimal?           @db.Decimal(12, 2)
+  winAmount             Decimal?           @db.Decimal(12, 2)
+  amount                Decimal            @db.Decimal(12, 2)  // net (positive = credit, negative = debit)
+  balanceBefore         Decimal            @db.Decimal(12, 2)
+  balanceAfter          Decimal            @db.Decimal(12, 2)
+  rawRequest            Json?
+  rawResponse           Json?
+  createdAt             DateTime           @default(now())
+
+  @@unique([providerId, transactionId])
+  @@index([userId])
+  @@index([roundId])
+  @@index([createdAt])
+  @@map("third_party_transactions")
 }

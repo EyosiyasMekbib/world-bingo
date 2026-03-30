@@ -86,6 +86,33 @@ export const useAdminApi = () => {
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
 
+        // ── Game Providers ────────────────────────────────────────────────
+        getProviders: () => apiFetch<any[]>('/admin/providers'),
+        updateProviderStatus: (id: string, status: string) =>
+            apiFetch(`/admin/providers/${id}/status`, { method: 'PATCH', body: { status } }),
+        syncProvider: (code: string) =>
+            apiFetch(`/admin/providers/${code}/sync`, { method: 'POST' }),
+        getProviderVendors: (code: string) =>
+            apiFetch<any[]>(`/admin/providers/${code}/vendors`),
+        updateVendorStatus: (providerCode: string, vendorCode: string, isActive: boolean) =>
+            apiFetch(`/admin/providers/${providerCode}/vendors/${vendorCode}/status`, { method: 'PATCH', body: { isActive } }),
+        getProviderGames: (code: string, params?: { page?: number; limit?: number }) => {
+            const qs = new URLSearchParams()
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            const query = qs.toString()
+            return apiFetch<any>(`/admin/providers/${code}/games${query ? `?${query}` : ''}`)
+        },
+        updateGameStatus: (providerCode: string, gameCode: string, isActive: boolean) =>
+            apiFetch(`/admin/providers/${providerCode}/games/${gameCode}/status`, { method: 'PATCH', body: { isActive } }),
+        getProviderTransactions: (code: string, params?: { page?: number; limit?: number }) => {
+            const qs = new URLSearchParams()
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            const query = qs.toString()
+            return apiFetch<any>(`/admin/providers/${code}/transactions${query ? `?${query}` : ''}`)
+        },
+
         // ── Cashback Promotions ───────────────────────────────────────────
         getCashbackPromotions: () => apiFetch<any[]>('/admin/cashback'),
         createCashbackPromotion: (data: { name: string; percentage: number; startsAt: string; endsAt: string }) =>

@@ -106,6 +106,20 @@
     "back": "Back",
     "etb": "ETB"
   },
+  "providers": {
+    "all": "All Games",
+    "bingo": "Bingo",
+    "slots": "Slots",
+    "live": "Live Casino",
+    "table": "Table Games",
+    "crash": "Crash",
+    "loading": "Loading games…",
+    "noGames": "No games available in this category.",
+    "launching": "Launching…",
+    "play": "Play",
+    "backToLobby": "Back to Lobby",
+    "loadMore": "Load More"
+  },
   "tournament": {
     "title": "Tournaments",
     "subtitle": "Compete in multi-round bingo tournaments to win the prize pool!",

@@ -49,6 +49,11 @@ services:
       API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
+      GASEA_API_KEY: ${GASEA_API_KEY:-}
+      GASEA_API_SECRET: ${GASEA_API_SECRET:-}
+      GASEA_DEFAULT_CURRENCY: ${GASEA_DEFAULT_CURRENCY:-ETB}
+      WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
     volumes:
       - uploads_data:/app/apps/api/uploads
     depends_on:

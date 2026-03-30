@@ -8,6 +8,7 @@
 export interface FeatureFlags {
   feature_referrals: boolean
   feature_tournaments: boolean
+  feature_third_party_games: boolean
   [key: string]: boolean
 }
 
@@ -17,6 +18,7 @@ export const useFeatureFlags = () => {
   const flags = useState<FeatureFlags>('feature-flags', () => ({
     feature_referrals: false,
     feature_tournaments: false,
+    feature_third_party_games: false,
   }))
 
   const loaded = useState<boolean>('feature-flags-loaded', () => false)
@@ -48,5 +50,6 @@ export const useFeatureFlags = () => {
     /** Shorthand getters */
     referralsEnabled: computed(() => flags.value.feature_referrals),
     tournamentsEnabled: computed(() => flags.value.feature_tournaments),
+    thirdPartyGamesEnabled: computed(() => flags.value.feature_third_party_games),
   }
 }

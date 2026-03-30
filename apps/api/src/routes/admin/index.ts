@@ -338,6 +338,96 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         return result
     })
 
+    // ── Game Providers (Third-Party) ─────────────────────────────────────────
+
+    fastify.get('/providers', async (_req, _reply) => {
+        return prisma.gameProvider.findMany({ orderBy: { createdAt: 'asc' } })
+    })
+
+    fastify.patch('/providers/:id/status', async (req: any, reply) => {
+        const { status } = req.body as { status: string }
+        const allowed = ['ACTIVE', 'INACTIVE', 'MAINTENANCE']
+        if (!allowed.includes(status)) {
+            return reply.status(400).send({ error: 'Invalid status' })
+        }
+        return prisma.gameProvider.update({
+            where: { id: req.params.id },
+            data: { status: status as any },
+        })
+    })
+
+    fastify.post('/providers/:code/sync', async (req: any, reply) => {
+        const { GameCatalogService } = await import('../../services/game-catalog.service.js')
+        await GameCatalogService.syncAll(req.params.code)
+        return { success: true }
+    })
+
+    fastify.get('/providers/:code/vendors', async (req: any, _reply) => {
+        const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+        if (!provider) return _reply.status(404).send({ error: 'Provider not found' })
+        return prisma.gameVendor.findMany({ where: { providerId: provider.id }, orderBy: { name: 'asc' } })
+    })
+
+    fastify.patch('/providers/:code/vendors/:vendorCode/status', async (req: any, reply) => {
+        const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+        if (!provider) return reply.status(404).send({ error: 'Provider not found' })
+        const vendor = await prisma.gameVendor.findUnique({
+            where: { providerId_code: { providerId: provider.id, code: req.params.vendorCode } },
+        })
+        if (!vendor) return reply.status(404).send({ error: 'Vendor not found' })
+        return prisma.gameVendor.update({
+            where: { id: vendor.id },
+            data: { isActive: req.body.isActive },
+        })
+    })
+
+    fastify.get('/providers/:code/games', async (req: any, _reply) => {
+        const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+        if (!provider) return _reply.status(404).send({ error: 'Provider not found' })
+        const page = Math.max(1, Number(req.query.page ?? 1))
+        const limit = Math.min(100, Number(req.query.limit ?? 50))
+        const [data, total] = await Promise.all([
+            prisma.providerGame.findMany({
+                where: { providerId: provider.id },
+                skip: (page - 1) * limit,
+                take: limit,
+                orderBy: [{ sortOrder: 'asc' }, { gameName: 'asc' }],
+            }),
+            prisma.providerGame.count({ where: { providerId: provider.id } }),
+        ])
+        return { data, total, page, limit }
+    })
+
+    fastify.patch('/providers/:code/games/:gameCode/status', async (req: any, reply) => {
+        const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+        if (!provider) return reply.status(404).send({ error: 'Provider not found' })
+        const game = await prisma.providerGame.findUnique({
+            where: { providerId_gameCode: { providerId: provider.id, gameCode: req.params.gameCode } },
+        })
+        if (!game) return reply.status(404).send({ error: 'Game not found' })
+        return prisma.providerGame.update({
+            where: { id: game.id },
+            data: { isActive: req.body.isActive },
+        })
+    })
+
+    fastify.get('/providers/:code/transactions', async (req: any, _reply) => {
+        const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+        if (!provider) return _reply.status(404).send({ error: 'Provider not found' })
+        const page = Math.max(1, Number(req.query.page ?? 1))
+        const limit = Math.min(100, Number(req.query.limit ?? 30))
+        const [data, total] = await Promise.all([
+            prisma.thirdPartyTransaction.findMany({
+                where: { providerId: provider.id },
+                orderBy: { createdAt: 'desc' },
+                skip: (page - 1) * limit,
+                take: limit,
+            }),
+            prisma.thirdPartyTransaction.count({ where: { providerId: provider.id } }),
+        ])
+        return { data, total, page, limit }
+    })
+
     // ── Cashback Promotions ──────────────────────────────────────────────────
 
     fastify.get('/cashback', async (_req, _reply) => {
