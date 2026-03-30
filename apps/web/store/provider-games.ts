@@ -166,7 +166,7 @@ export const useProviderGamesStore = defineStore('provider-games', {
 
     setCategory(category: string) {
       this.activeCategory = category
-      if (category !== CATEGORY_ALL && category !== CATEGORY_BINGO) {
+      if (category !== CATEGORY_BINGO) {
         this.fetchGames({ reset: true })
       }
     },

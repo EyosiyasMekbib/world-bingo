@@ -63,7 +63,10 @@ async function setupRepeatingJob() {
         },
     )
 
-    console.log('[CatalogSyncWorker] Repeating sync job registered (every 6 hours)')
+    // Run an immediate sync on startup so games are available without waiting 6 hours
+    await syncQueue.add('sync-all-providers-immediate', { action: 'sync-all' }, { jobId: 'game-catalog-sync-immediate' })
+
+    console.log('[CatalogSyncWorker] Repeating sync job registered (every 6 hours) + immediate sync queued')
 }
 
 setupRepeatingJob().catch((err) => {

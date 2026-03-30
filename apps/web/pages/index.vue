@@ -74,6 +74,7 @@ onMounted(async () => {
   if (thirdPartyGamesEnabled.value) {
     await providerStore.fetchProviders()
     await providerStore.fetchCategories()
+    await providerStore.fetchGames({ reset: true })
   }
 
   const socket = connect()
