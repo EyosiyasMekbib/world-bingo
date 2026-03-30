@@ -18,10 +18,11 @@ export interface ProviderGame {
 }
 
 export interface GamesPage {
-  data: ProviderGame[]
-  total: number
-  page: number
+  games: ProviderGame[]
+  totalItems: number
+  currentPage: number
   pageSize: number
+  totalPages: number
 }
 
 const CATEGORY_ALL = 'ALL'
@@ -124,11 +125,11 @@ export const useProviderGamesStore = defineStore('provider-games', {
 
         const result = await auth.apiFetch<GamesPage>(`/providers/${code}/games?${params}`)
         if (opts.reset) {
-          this.games = result.data
+          this.games = result.games
         } else {
-          this.games = [...this.games, ...result.data]
+          this.games = [...this.games, ...result.games]
         }
-        this.total = result.total
+        this.total = result.totalItems
       } catch (e: any) {
         this.error = e?.message ?? 'Failed to load games'
       } finally {
