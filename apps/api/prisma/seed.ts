@@ -113,6 +113,7 @@ async function main() {
     const defaultFlags = [
         { key: 'feature_referrals', value: 'false' },
         { key: 'feature_tournaments', value: 'false' },
+        { key: 'feature_third_party_games', value: 'false' },
         { key: 'ball_interval_secs', value: '3' },
         { key: 'first_deposit_bonus_amount', value: '0' },
         { key: 'bot_max_spend_etb', value: '500' },
@@ -126,7 +127,23 @@ async function main() {
     }
     console.log('Feature flags seeded')
 
-    // 6. Create one WAITING game per active template so the lobby isn't empty
+    // 6. Seed GASea game provider (credentials come from env vars at runtime)
+    console.log('Seeding GASea provider...')
+    await prisma.gameProvider.upsert({
+        where: { code: 'gasea' },
+        update: {},  // don't overwrite status if admin changed it
+        create: {
+            code: 'gasea',
+            name: 'GASea',
+            status: 'ACTIVE',
+            apiBaseUrl: process.env.GASEA_API_BASE_URL ?? '',
+            currency: process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB',
+            config: {},
+        },
+    })
+    console.log('GASea provider seeded')
+
+    // 7. Create one WAITING game per active template so the lobby isn't empty
     console.log('Creating initial games from templates...')
     const templates = await prisma.gameTemplate.findMany({ where: { active: true } })
     for (const t of templates) {
