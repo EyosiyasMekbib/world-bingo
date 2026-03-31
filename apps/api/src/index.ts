@@ -88,6 +88,9 @@ await server.register(rateLimit, {
     keyGenerator: (req) => {
         return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
     },
+    // Skip rate limiting for GASea wallet callbacks — server-to-server traffic
+    // from GASea's IP must never be throttled mid-game-session.
+    skip: (req) => req.url.startsWith('/v1/aggregator/'),
     errorResponseBuilder: () => ({
         statusCode: 429,
         error: 'Too Many Requests',
