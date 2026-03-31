@@ -55,7 +55,8 @@ export default defineNuxtConfig({
         '/profile': { ssr: false },
         '/transactions': { ssr: false },
         '/api/**': { proxy: 'http://api:8080/**' },
-        '/socket.io/': { proxy: 'http://api:8080/socket.io/' }
+        '/socket.io/': { proxy: 'http://api:8080/socket.io/' },
+        '/v1/**': { proxy: 'http://api:8080/v1/**' }
     },
 
     pwa: {
