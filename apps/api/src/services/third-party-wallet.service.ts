@@ -132,19 +132,32 @@ function err(traceId: string, status: string): WalletCallbackResponse {
     return { traceId, status }
 }
 
-/** Resolve username → userId, with Redis caching. */
+/** Resolve username → userId, with Redis caching.
+ *  GASea usernames are the user UUID with dashes removed (32 hex chars).
+ *  Fall back to looking up by the username field for any other format.
+ */
 async function resolveUser(username: string): Promise<{ id: string; isActive: boolean } | null> {
     const cacheKey = `tp:user:${username}`
     const cached = await redis.get(cacheKey)
     if (cached) {
-        const parsed = JSON.parse(cached)
-        return parsed
+        return JSON.parse(cached)
     }
 
-    const user = await prisma.user.findUnique({
-        where: { username },
-        select: { id: true, isActive: true },
-    })
+    let user: { id: string; isActive: boolean } | null = null
+
+    if (/^[0-9a-f]{32}$/i.test(username)) {
+        // Restore UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        const id = `${username.slice(0, 8)}-${username.slice(8, 12)}-${username.slice(12, 16)}-${username.slice(16, 20)}-${username.slice(20)}`
+        user = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, isActive: true },
+        })
+    } else {
+        user = await prisma.user.findUnique({
+            where: { username },
+            select: { id: true, isActive: true },
+        })
+    }
 
     if (user) {
         await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
