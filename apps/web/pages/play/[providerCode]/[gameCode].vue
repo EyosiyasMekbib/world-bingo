@@ -8,7 +8,6 @@ const auth = useAuthStore()
 const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
 
-const gameUrl = ref<string | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -27,17 +26,13 @@ onMounted(async () => {
         body: { lobbyUrl, language: 'en', currency: 'ETB' },
       },
     )
-    gameUrl.value = result.gameUrl
+    // GASea requires a new window — redirect directly to the game URL
+    window.location.href = result.gameUrl
   } catch (e: any) {
     error.value = e?.data?.message ?? e?.message ?? 'Failed to launch game'
-  } finally {
     loading.value = false
   }
 })
-
-function goBack() {
-  router.push('/')
-}
 
 useHead({
   title: `Playing ${gameCode}`,
@@ -60,26 +55,9 @@ useHead({
         <line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
       <p class="play-state-text play-state-text--error">{{ error }}</p>
-      <button class="back-btn" @click="goBack">Back to Lobby</button>
+      <button class="back-btn" @click="router.push('/')">Back to Lobby</button>
     </div>
 
-    <!-- Game iframe -->
-    <template v-else-if="gameUrl">
-      <iframe
-        :src="gameUrl"
-        class="game-frame"
-        allow="fullscreen; autoplay"
-        allowfullscreen
-        frameborder="0"
-        scrolling="no"
-      />
-      <button class="float-back" @click="goBack" :title="'Back to Lobby'">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        Lobby
-      </button>
-    </template>
   </div>
 </template>
 
@@ -92,14 +70,6 @@ useHead({
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.game-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
 }
 
 .play-state {
@@ -144,32 +114,6 @@ useHead({
 }
 
 .back-btn:hover { background: #e5c500; }
-
-.float-back {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 200;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.85);
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  transition: background 0.15s, color 0.15s;
-  backdrop-filter: blur(8px);
-}
-
-.float-back:hover {
-  background: rgba(0, 0, 0, 0.9);
-  color: #FFD700;
-}
 
 @keyframes spin {
   to { transform: rotate(360deg); }
