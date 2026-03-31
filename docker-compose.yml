@@ -79,7 +79,7 @@ services:
     ports:
       - "3000"
     environment:
-      NUXT_PUBLIC_API_BASE: /api
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
       NUXT_PUBLIC_WS_URL: /
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}

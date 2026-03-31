@@ -8,6 +8,7 @@ const auth = useAuthStore()
 const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
 
+const gameUrl = ref<string | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -26,10 +27,10 @@ onMounted(async () => {
         body: { lobbyUrl, language: 'en', currency: 'ETB' },
       },
     )
-    // GASea requires a new window — redirect directly to the game URL
-    window.location.href = result.gameUrl
+    gameUrl.value = result.gameUrl
   } catch (e: any) {
     error.value = e?.data?.message ?? e?.message ?? 'Failed to launch game'
+  } finally {
     loading.value = false
   }
 })
@@ -57,6 +58,24 @@ useHead({
       <p class="play-state-text play-state-text--error">{{ error }}</p>
       <button class="back-btn" @click="router.push('/')">Back to Lobby</button>
     </div>
+
+    <!-- Game iframe -->
+    <template v-else-if="gameUrl">
+      <iframe
+        :src="gameUrl"
+        class="game-frame"
+        allow="fullscreen; autoplay"
+        allowfullscreen
+        frameborder="0"
+        scrolling="no"
+      />
+      <button class="float-back" @click="router.push('/')" title="Back to Lobby">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        Lobby
+      </button>
+    </template>
 
   </div>
 </template>
@@ -98,6 +117,36 @@ useHead({
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+.game-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.float-back {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.float-back:hover { background: rgba(0, 0, 0, 0.8); }
 
 .back-btn {
   margin-top: 8px;
