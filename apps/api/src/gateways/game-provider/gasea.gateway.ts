@@ -38,10 +38,11 @@ async function request<T>(path: string, body: object): Promise<T> {
         throw new Error(`GASea ${path} responded ${res.status}`)
     }
 
-    const json = (await res.json()) as { status: string; data?: T; message?: string }
+    const json = (await res.json()) as { status: string; data?: T; message?: string; validation?: unknown; traceId?: string }
 
     if (json.status !== 'SC_OK') {
-        throw new Error(`GASea error: ${json.status} — ${json.message ?? ''}`)
+        const detail = json.validation ? ` | validation: ${JSON.stringify(json.validation)}` : ''
+        throw new Error(`GASea error: ${json.status} — ${json.message ?? ''}${detail}`)
     }
 
     return json.data as T
