@@ -29,7 +29,7 @@ export interface LaunchGameParams {
     username: string
     gameCode: string
     language: string
-    platform: 'web' | 'H5'
+    platform: 'WEB' | 'H5'
     currency: string
     lobbyUrl: string
     ipAddress: string
