@@ -158,4 +158,112 @@ describe('WalletService', () => {
             expect(Number(wallet.realBalance)).toBeGreaterThanOrEqual(0)
         })
     })
+
+    describe('approveDeposit — first deposit bonus', () => {
+        beforeEach(async () => {
+            // Create the site setting that triggers first-deposit bonus
+            await prisma.siteSetting.create({
+                data: { key: 'first_deposit_bonus_amount', value: '100' },
+            })
+        })
+
+        it('should credit bonus balance on first deposit when setting is configured', async () => {
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 500 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.realBalance)).toBe(1000)  // 500 existing + 500 deposited
+            expect(Number(wallet.bonusBalance)).toBe(100)  // first deposit bonus
+        })
+
+        it('should create a FIRST_DEPOSIT_BONUS transaction', async () => {
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 500 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const bonusTx = await prisma.transaction.findFirst({
+                where: { userId: testUserId, type: TransactionType.FIRST_DEPOSIT_BONUS },
+            })
+            expect(bonusTx).not.toBeNull()
+            expect(Number(bonusTx!.amount)).toBe(100)
+            expect(bonusTx!.status).toBe(PaymentStatus.APPROVED)
+        })
+
+        it('should record correct bonus balance snapshots in FIRST_DEPOSIT_BONUS transaction', async () => {
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 200 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const bonusTx = await prisma.transaction.findFirst({
+                where: { userId: testUserId, type: TransactionType.FIRST_DEPOSIT_BONUS },
+            })
+            // bonusBefore = 0 (fresh user), bonusAfter = 100 (bonus awarded)
+            expect(Number(bonusTx!.bonusBalanceBefore)).toBe(0)
+            expect(Number(bonusTx!.bonusBalanceAfter)).toBe(100)
+        })
+
+        it('should NOT award bonus on second and subsequent deposits', async () => {
+            // First deposit
+            const d1 = await WalletService.initiateDeposit(testUserId, { amount: 200 })
+            await WalletService.approveDeposit(d1.id)
+
+            // Second deposit
+            const d2 = await WalletService.initiateDeposit(testUserId, { amount: 300 })
+            await WalletService.approveDeposit(d2.id)
+
+            const bonusTxCount = await prisma.transaction.count({
+                where: { userId: testUserId, type: TransactionType.FIRST_DEPOSIT_BONUS },
+            })
+            expect(bonusTxCount).toBe(1) // only the first deposit triggers bonus
+        })
+
+        it('should NOT award bonus when setting value is 0', async () => {
+            await prisma.siteSetting.update({
+                where: { key: 'first_deposit_bonus_amount' },
+                data: { value: '0' },
+            })
+
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 500 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.bonusBalance)).toBe(0)
+
+            const bonusTxCount = await prisma.transaction.count({
+                where: { userId: testUserId, type: TransactionType.FIRST_DEPOSIT_BONUS },
+            })
+            expect(bonusTxCount).toBe(0)
+        })
+
+        it('should NOT award bonus when setting is absent', async () => {
+            await prisma.siteSetting.deleteMany()
+
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 500 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.bonusBalance)).toBe(0)
+        })
+    })
+
+    describe('approveDeposit — concurrent approval (double-credit prevention)', () => {
+        it('should only credit once if two approvals race for the same transaction', async () => {
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 300 })
+
+            // Fire two concurrent approvals
+            const results = await Promise.allSettled([
+                WalletService.approveDeposit(deposit.id),
+                WalletService.approveDeposit(deposit.id),
+            ])
+
+            const successes = results.filter((r) => r.status === 'fulfilled')
+            const failures = results.filter((r) => r.status === 'rejected')
+
+            expect(successes.length).toBe(1)
+            expect(failures.length).toBe(1)
+
+            // Balance should reflect exactly one credit, not two
+            const wallet = await WalletService.getBalance(testUserId)
+            // Starting balance was 500, deposit was 300 → exactly 800
+            expect(Number(wallet.realBalance)).toBe(800)
+        })
+    })
 })

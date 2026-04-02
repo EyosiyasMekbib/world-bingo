@@ -33,7 +33,12 @@ export class WalletService {
     // Called by Admin — uses SELECT FOR UPDATE to prevent double-crediting
     static async approveDeposit(transactionId: string) {
         return await prisma.$transaction(async (tx) => {
-            const transaction = await tx.transaction.findUnique({ where: { id: transactionId } })
+            // Lock the transaction row first to prevent concurrent approvals from both
+            // passing the PENDING_REVIEW check before either commits.
+            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string }>>`
+                SELECT id, "userId", amount, status, type FROM transactions WHERE id = ${transactionId} FOR UPDATE
+            `
+            const transaction = transactions[0]
             if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
                 throw new Error('Invalid transaction')
             }
