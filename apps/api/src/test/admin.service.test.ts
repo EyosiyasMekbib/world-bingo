@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AdminService } from '../services/admin.service'
 import { WalletService } from '../services/wallet.service'
+import { HouseWalletService } from '../services/house-wallet.service'
 import { prisma } from './setup'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 
@@ -160,5 +161,20 @@ describe('AdminService.reviewTransaction', () => {
             })
             expect(refundTx).toBeNull()
         })
+    })
+})
+
+describe('AdminService.getStats', () => {
+    it('should return non-zero commission when house wallet has COMMISSION transactions', async () => {
+        await HouseWalletService.credit(500, 'COMMISSION', 'game commission')
+
+        const stats = await AdminService.getStats()
+
+        expect(stats.commission).toBe(500)
+    })
+
+    it('should return 0 commission when no house transactions exist', async () => {
+        const stats = await AdminService.getStats()
+        expect(stats.commission).toBe(0)
     })
 })

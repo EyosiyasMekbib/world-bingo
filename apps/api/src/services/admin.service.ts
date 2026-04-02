@@ -3,6 +3,7 @@ import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType 
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { Decimal } from '@prisma/client/runtime/library'
+import { HouseWalletService } from './house-wallet.service'
 
 export class AdminService {
     static async getStats() {
@@ -44,6 +45,8 @@ export class AdminService {
             return acc + houseFee
         }, 0)
 
+        const houseSummary = await HouseWalletService.getSummary()
+
         return {
             approvedDepositSum: Number(approvedDeposits._sum.amount || 0),
             declinedDepositSum: Number(declinedDeposits._sum.amount || 0),
@@ -51,7 +54,7 @@ export class AdminService {
             totalProfit: totalProfit,
             usersCount: totalUsers,
             gamesCount: gamesCount,
-            commission: 0, // Placeholder
+            commission: houseSummary.COMMISSION,
         }
     }
 
