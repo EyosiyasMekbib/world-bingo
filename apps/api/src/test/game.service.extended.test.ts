@@ -827,3 +827,83 @@ describe('GameService — Concurrency', () => {
         expect(Number(wallet!.realBalance)).toBeGreaterThanOrEqual(0)
     })
 })
+
+// ─── ClaimBingo — Balance Snapshots & House Commission ───────────────────────
+
+describe('GameService.claimBingo — balance snapshots and house accounting', () => {
+    async function setupWinningGame(opts: { ticketPrice: number; houseEdgePct: number; suffix: string }) {
+        const calledBalls = [1, 16, 31, 46, 61] // completes row 0 of default cartela
+
+        const game = await createGame({
+            status: GameStatus.IN_PROGRESS,
+            pattern: PatternType.ANY_LINE,
+            calledBalls,
+            ticketPrice: opts.ticketPrice,
+            houseEdgePct: opts.houseEdgePct,
+        })
+        const user = await prisma.user.create({
+            data: {
+                username: `snap_winner_${opts.suffix}`,
+                phone: `+25191200${opts.suffix.padStart(4, '0')}`,
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 1000 } },
+            },
+        })
+        const c = await createCartela(`SNAP-${opts.suffix}`)
+        await prisma.gameEntry.create({
+            data: { gameId: game.id, userId: user.id, cartelaId: c.id },
+        })
+        const cartelaId = c.id
+        return { game, user, cartelaId }
+    }
+
+    it('should record correct balanceBefore and balanceAfter in PRIZE_WIN transaction', async () => {
+        // ticketPrice=100, houseEdge=10%, 1 entry → prize = 100 * 0.90 = 90
+        const { game, user, cartelaId } = await setupWinningGame({ ticketPrice: 100, houseEdgePct: 10, suffix: '001' })
+
+        await GameService.claimBingo(user.id, game.id, cartelaId)
+
+        const prizeTx = await prisma.transaction.findFirst({
+            where: { userId: user.id, type: TransactionType.PRIZE_WIN },
+        })
+        expect(Number(prizeTx!.balanceBefore)).toBe(1000)
+        expect(Number(prizeTx!.balanceAfter)).toBe(1090) // 1000 + 90
+    })
+
+    it('should credit commission to house wallet', async () => {
+        // ticketPrice=100, houseEdge=10%, 1 entry → houseCut = 10
+        const { game, user, cartelaId } = await setupWinningGame({ ticketPrice: 100, houseEdgePct: 10, suffix: '002' })
+
+        await GameService.claimBingo(user.id, game.id, cartelaId)
+
+        const house = await prisma.houseWallet.findUnique({ where: { id: 'house' } })
+        expect(Number(house!.balance)).toBe(10) // houseCut = 100 * 0.10
+    })
+
+    it('should record COMMISSION HouseTransaction with correct snapshots', async () => {
+        // ticketPrice=200, houseEdge=20%, 1 entry → houseCut = 40
+        const { game, user, cartelaId } = await setupWinningGame({ ticketPrice: 200, houseEdgePct: 20, suffix: '003' })
+
+        await GameService.claimBingo(user.id, game.id, cartelaId)
+
+        const htx = await prisma.houseTransaction.findFirst({
+            where: { type: 'COMMISSION', gameId: game.id },
+        })
+        expect(htx).not.toBeNull()
+        expect(Number(htx!.amount)).toBe(40)
+        expect(Number(htx!.balanceBefore)).toBe(0)
+        expect(Number(htx!.balanceAfter)).toBe(40)
+    })
+
+    it('should create exactly one house transaction (COMMISSION only) for a real player win', async () => {
+        const { game, user, cartelaId } = await setupWinningGame({ ticketPrice: 100, houseEdgePct: 10, suffix: '004' })
+
+        await GameService.claimBingo(user.id, game.id, cartelaId)
+
+        const houseTxs = await prisma.houseTransaction.findMany({
+            where: { gameId: game.id },
+        })
+        expect(houseTxs).toHaveLength(1)
+        expect(houseTxs[0].type).toBe('COMMISSION')
+    })
+})
