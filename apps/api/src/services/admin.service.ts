@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
+import { Decimal } from '@prisma/client/runtime/library'
 
 export class AdminService {
     static async getStats() {
@@ -120,33 +121,93 @@ export class AdminService {
             return updated
         }
 
-        const transaction = await prisma.transaction.update({
-            where: { id: transactionId },
-            data: { status, note },
-        })
+        // ── REJECTED path ────────────────────────────────────────────────────
+        const existing = await prisma.transaction.findUnique({ where: { id: transactionId } })
+        if (!existing) throw new Error('Transaction not found')
+        if (existing.status !== PaymentStatus.PENDING_REVIEW) {
+            throw new Error(`Transaction is not pending review (current status: ${existing.status})`)
+        }
 
-        // Notify the user about the rejection (T27)
-        if (status === PaymentStatus.REJECTED) {
-            const label = transaction.type === TransactionType.DEPOSIT ? 'Deposit' : 'Withdrawal'
-
-            // If a withdrawal is rejected, refund the deducted balance
-            if (transaction.type === TransactionType.WITHDRAWAL) {
-                await prisma.wallet.update({
-                    where: { userId: transaction.userId },
-                    data: { realBalance: { increment: transaction.amount } },
+        if (existing.type === TransactionType.WITHDRAWAL) {
+            // Withdrawal rejection must:
+            // 1. Mark the withdrawal REJECTED
+            // 2. Re-credit the wallet using SELECT FOR UPDATE (was deducted on request)
+            // 3. Create a REFUND compensation transaction for the audit trail
+            // All in one DB transaction to prevent partial state on crash.
+            const result = await prisma.$transaction(async (tx) => {
+                // Mark withdrawal rejected
+                const updated = await tx.transaction.update({
+                    where: { id: transactionId },
+                    data: { status: PaymentStatus.REJECTED, note },
                 })
-            }
+
+                // Lock wallet row before reading balance
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${existing.userId} FOR UPDATE
+                `
+                const wallet = wallets[0]
+                if (!wallet) throw new Error('Wallet not found')
+
+                const realBefore = new Decimal(wallet.realBalance)
+                const realAfter = realBefore.plus(new Decimal(existing.amount))
+                const bonusBefore = new Decimal(wallet.bonusBalance)
+
+                // Re-credit wallet
+                await tx.wallet.update({
+                    where: { userId: existing.userId },
+                    data: { realBalance: { increment: existing.amount } },
+                })
+
+                // Create compensation transaction so audit trail shows the wallet credit
+                await tx.transaction.create({
+                    data: {
+                        userId: existing.userId,
+                        type: TransactionType.REFUND,
+                        amount: existing.amount,
+                        status: PaymentStatus.APPROVED,
+                        referenceId: transactionId,
+                        note: `Refund for rejected withdrawal${note ? `: ${note}` : ''}`,
+                        balanceBefore: realBefore,
+                        balanceAfter: realAfter,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusBefore,
+                    },
+                })
+
+                return { updated, realAfter, bonusBefore }
+            })
+
+            // Push real-time balance update after commit
+            NotificationService.pushWalletUpdate(
+                existing.userId,
+                result.realAfter.toNumber(),
+                result.bonusBefore.toNumber(),
+            )
 
             await NotificationService.create(
-                transaction.userId,
-                transaction.type === TransactionType.DEPOSIT
-                    ? NotificationType.DEPOSIT_REJECTED
-                    : NotificationType.WITHDRAWAL_PROCESSED,
-                `${label} Rejected`,
-                `Your ${label.toLowerCase()} of ${Number(transaction.amount).toFixed(2)} ETB was rejected.${note ? ` Reason: ${note}` : ''}`,
-                { transactionId, amount: Number(transaction.amount), note },
+                existing.userId,
+                NotificationType.WITHDRAWAL_PROCESSED,
+                'Withdrawal Rejected',
+                `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
+                { transactionId, amount: Number(existing.amount), note },
             ).catch(() => {})
+
+            return result.updated
         }
+
+        // DEPOSIT rejection — no wallet change (balance was never credited)
+        const transaction = await prisma.transaction.update({
+            where: { id: transactionId },
+            data: { status: PaymentStatus.REJECTED, note },
+        })
+
+        await NotificationService.create(
+            transaction.userId,
+            NotificationType.DEPOSIT_REJECTED,
+            'Deposit Rejected',
+            `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB was rejected.${note ? ` Reason: ${note}` : ''}`,
+            { transactionId, amount: Number(transaction.amount), note },
+        ).catch(() => {})
 
         return transaction
     }
