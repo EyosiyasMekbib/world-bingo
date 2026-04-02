@@ -61,6 +61,7 @@ vi.mock('../lib/game-state', () => ({
 vi.mock('../services/notification.service', () => ({
     NotificationService: {
         create: vi.fn().mockResolvedValue({ id: 'notif-1' }),
+        pushWalletUpdate: vi.fn(),
     },
 }))
 

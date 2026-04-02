@@ -34,22 +34,29 @@ vi.mock('../lib/game-state', () => ({
     getGameState: vi.fn().mockResolvedValue(null),
 }))
 
-vi.mock('../lib/redis', () => ({
-    getRedis: () => ({
+vi.mock('../lib/redis', () => {
+    const mockRedis = {
         get: vi.fn().mockResolvedValue(null),
         set: vi.fn().mockResolvedValue('OK'),
         del: vi.fn().mockResolvedValue(1),
-    }),
-    redis: {
-        get: vi.fn().mockResolvedValue(null),
-        set: vi.fn().mockResolvedValue('OK'),
-        del: vi.fn().mockResolvedValue(1),
-    },
-}))
+        sadd: vi.fn().mockResolvedValue(1),
+        srem: vi.fn().mockResolvedValue(1),
+        scard: vi.fn().mockResolvedValue(1),
+        smembers: vi.fn().mockResolvedValue([]),
+        incrby: vi.fn().mockResolvedValue(1),
+        expire: vi.fn().mockResolvedValue(1),
+    }
+    return {
+        default: mockRedis,
+        redis: mockRedis,
+        getRedis: () => mockRedis,
+    }
+})
 
 vi.mock('../services/notification.service', () => ({
     NotificationService: {
         create: vi.fn().mockResolvedValue({ id: 'notif-1' }),
+        pushWalletUpdate: vi.fn(),
     },
 }))
 
@@ -276,6 +283,112 @@ describe('GameService.joinGame — Extended', () => {
 
         expect(entries[0].cartela).toBeTruthy()
         expect(entries[0].cartela.serial).toBe('INC-C1')
+    })
+})
+
+// ─── JoinGame — Bonus-First Deduction ────────────────────────────────────────
+
+describe('GameService.joinGame — bonus-first deduction', () => {
+    let gameId: string
+
+    beforeEach(async () => {
+        const game = await createGame({ ticketPrice: 50 })
+        gameId = game.id
+    })
+
+    it('should deduct bonus balance before real balance', async () => {
+        // User has 100 bonus + 500 real. Cost = 50.
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_first_1',
+                phone: '+251911100001',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 500, bonusBalance: 100 } },
+            },
+        })
+        const c = await createCartela('BF-C1')
+        await GameService.joinGame(user.id, gameId, [c.serial])
+
+        const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+        expect(Number(wallet!.bonusBalance)).toBe(50)  // 100 - 50 (full cost from bonus)
+        expect(Number(wallet!.realBalance)).toBe(500)  // untouched
+    })
+
+    it('should use real balance when bonus is partially exhausted', async () => {
+        // User has 30 bonus + 500 real. Cost = 50.
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_first_2',
+                phone: '+251911100002',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 500, bonusBalance: 30 } },
+            },
+        })
+        const c = await createCartela('BF-C2')
+        await GameService.joinGame(user.id, gameId, [c.serial])
+
+        const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+        expect(Number(wallet!.bonusBalance)).toBe(0)   // 30 - 30 (all bonus consumed)
+        expect(Number(wallet!.realBalance)).toBe(480)  // 500 - 20 (remaining cost)
+    })
+
+    it('should record correct bonus balance snapshots in GAME_ENTRY transaction', async () => {
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_snap',
+                phone: '+251911100003',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 500, bonusBalance: 100 } },
+            },
+        })
+        const c = await createCartela('BF-C3')
+        await GameService.joinGame(user.id, gameId, [c.serial])
+
+        const tx = await prisma.transaction.findFirst({
+            where: { userId: user.id, type: TransactionType.GAME_ENTRY },
+        })
+        expect(tx).not.toBeNull()
+        expect(Number(tx!.bonusBalanceBefore)).toBe(100)
+        expect(Number(tx!.bonusBalanceAfter)).toBe(50)  // 100 - 50
+        expect(Number(tx!.balanceBefore)).toBe(500)     // real untouched
+        expect(Number(tx!.balanceAfter)).toBe(500)
+    })
+
+    it('should succeed using only bonus balance when real balance is 0', async () => {
+        // User has 0 real + 200 bonus. Cost = 50.
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_only',
+                phone: '+251911100004',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 0, bonusBalance: 200 } },
+            },
+        })
+        const c = await createCartela('BF-C4')
+
+        const entries = await GameService.joinGame(user.id, gameId, [c.serial])
+        expect(entries).toHaveLength(1)
+
+        const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+        expect(Number(wallet!.bonusBalance)).toBe(150)
+        expect(Number(wallet!.realBalance)).toBe(0)
+    })
+
+    it('should fail when combined real + bonus is less than cost', async () => {
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_poor',
+                phone: '+251911100005',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 20, bonusBalance: 20 } },
+            },
+        })
+        const c = await createCartela('BF-C5')
+
+        // Total available = 40, cost = 50 → insufficient
+        await expect(
+            GameService.joinGame(user.id, gameId, [c.serial]),
+        ).rejects.toThrow('Insufficient funds')
     })
 })
 
