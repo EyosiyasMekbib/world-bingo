@@ -3,8 +3,47 @@ export const useAdminApi = () => {
 
     return {
         fetch: apiFetch,
-        getStats: () => apiFetch<Record<string, number>>('/admin/stats'),
-        getPendingDeposits: (status?: string) => apiFetch<any[]>(`/admin/transactions/pending${status ? `?status=${status}` : ''}`),
+        getStats: () => apiFetch<{
+            approvedDepositSum: number
+            approvedWithdrawalSum: number
+            totalPrizesSum: number
+            gamesCompleted: number
+            gamesCancelled: number
+            totalPrizePools: number
+            activePlayers: number
+            houseBalance: number
+            houseCommissionEarned: number
+            providerStats: Array<{ name: string; gained: number; lost: number; net: number }>
+            declinedDepositSum: number
+            usersCount: number
+            gamesCount: number
+            totalProfit: number
+            commission: number
+        }>('/admin/stats'),
+        getPendingDeposits: (params?: {
+            status?: string
+            search?: string
+            userSerial?: number
+            from?: string
+            to?: string
+            minAmount?: number
+            maxAmount?: number
+            page?: number
+            limit?: number
+        }) => {
+            const qs = new URLSearchParams()
+            if (params?.status) qs.set('status', params.status)
+            if (params?.search) qs.set('search', params.search)
+            if (params?.userSerial) qs.set('userSerial', String(params.userSerial))
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            if (params?.minAmount !== undefined) qs.set('minAmount', String(params.minAmount))
+            if (params?.maxAmount !== undefined) qs.set('maxAmount', String(params.maxAmount))
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            const query = qs.toString()
+            return apiFetch<any>(`/admin/transactions/pending${query ? `?${query}` : ''}`)
+        },
         getTransactionsHistory: (params?: { type?: string; page?: number; limit?: number }) => {
             const qs = new URLSearchParams()
             if (params?.type) qs.set('type', params.type)
@@ -13,7 +52,30 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any[]>(`/admin/transactions/history${query ? `?${query}` : ''}`)
         },
-        getWithdrawals: (status?: string) => apiFetch<any[]>(`/admin/withdrawals${status ? `?status=${status}` : ''}`),
+        getWithdrawals: (params?: {
+            status?: string
+            search?: string
+            userSerial?: number
+            from?: string
+            to?: string
+            minAmount?: number
+            maxAmount?: number
+            page?: number
+            limit?: number
+        }) => {
+            const qs = new URLSearchParams()
+            if (params?.status) qs.set('status', params.status)
+            if (params?.search) qs.set('search', params.search)
+            if (params?.userSerial) qs.set('userSerial', String(params.userSerial))
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            if (params?.minAmount !== undefined) qs.set('minAmount', String(params.minAmount))
+            if (params?.maxAmount !== undefined) qs.set('maxAmount', String(params.maxAmount))
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            const query = qs.toString()
+            return apiFetch<any>(`/admin/withdrawals${query ? `?${query}` : ''}`)
+        },
         approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
@@ -71,15 +133,60 @@ export const useAdminApi = () => {
 
         // ── House Wallet ──────────────────────────────────────────────────────
         getHouseWallet: () => apiFetch<{ balance: string; currency: string; summary: Record<string, number> }>('/admin/house/wallet'),
-        getHouseTransactions: (params?: { page?: number; limit?: number; type?: string }) => {
+        getHouseTransactions: (params?: { page?: number; limit?: number; type?: string; from?: string; to?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
             if (params?.type) qs.set('type', params.type)
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
             const query = qs.toString()
             return apiFetch<any>(`/admin/house/transactions${query ? `?${query}` : ''}`)
         },
         getBotActivity: () => apiFetch<any[]>('/admin/house/bots'),
+        getMoneyFlow: (params?: {
+            page?: number
+            limit?: number
+            direction?: 'IN' | 'OUT'
+            types?: string[]
+            from?: string
+            to?: string
+            search?: string
+        }) => {
+            const qs = new URLSearchParams()
+            if (params?.page) qs.set('page', String(params.page))
+            if (params?.limit) qs.set('limit', String(params.limit))
+            if (params?.direction) qs.set('direction', params.direction)
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            if (params?.search) qs.set('search', params.search)
+            params?.types?.forEach(t => qs.append('type[]', t))
+            const query = qs.toString()
+            return apiFetch<{
+                rows: Array<{
+                    id: string
+                    createdAt: string
+                    type: string
+                    direction: 'IN' | 'OUT'
+                    amount: number
+                    playerName?: string
+                    playerId?: string
+                    gameId?: string
+                    source: string
+                    balanceAfter?: number
+                }>
+                total: number
+                page: number
+                limit: number
+                summary: {
+                    totalDeposited: number
+                    totalWagered: number
+                    totalPrizesOut: number
+                    houseKept: number
+                    refundsIssued: number
+                }
+            }>(`/admin/money-flow${query ? `?${query}` : ''}`)
+        },
 
         // ── Player Management ─────────────────────────────────────────────
         getPlayer: (id: string) => apiFetch<any>(`/admin/players/${id}`),
