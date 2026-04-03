@@ -9,51 +9,92 @@ export class AdminService {
     static async getStats() {
         const [
             approvedDeposits,
-            declinedDeposits,
             approvedWithdrawals,
-            totalUsers,
-            gamesCount,
+            totalPrizes,
+            gamesCompleted,
+            gamesCancelled,
+            houseSummary,
+            houseBalance,
         ] = await Promise.all([
             prisma.transaction.aggregate({
                 where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
                 _sum: { amount: true },
             }),
             prisma.transaction.aggregate({
-                where: { type: TransactionType.DEPOSIT, status: PaymentStatus.REJECTED },
-                _sum: { amount: true },
-            }),
-            prisma.transaction.aggregate({
                 where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED },
                 _sum: { amount: true },
             }),
-            prisma.user.count({ where: { role: UserRole.PLAYER } }),
+            prisma.transaction.aggregate({
+                where: { type: TransactionType.PRIZE_WIN, status: PaymentStatus.APPROVED },
+                _sum: { amount: true },
+            }),
             prisma.game.count({ where: { status: 'COMPLETED' } }),
+            prisma.game.count({ where: { status: 'CANCELLED' } }),
+            HouseWalletService.getSummary(),
+            HouseWalletService.getBalance(),
         ])
 
-        const games = await prisma.game.findMany({
+        // Active players: distinct users who have at least one game entry
+        const activePlayers = await prisma.gameEntry.groupBy({ by: ['userId'] }).then(r => r.length)
+
+        // Total prize pools from completed games
+        const completedGames = await prisma.game.findMany({
             where: { status: 'COMPLETED' },
-            include: {
-                _count: {
-                    select: { entries: true }
-                }
+            include: { _count: { select: { entries: true } } },
+        })
+        const totalPrizePools = completedGames.reduce((acc, g) => {
+            return acc + Number(g.ticketPrice) * g._count.entries
+        }, 0)
+
+        // Provider stats: gained = bets placed (amount < 0), lost = winnings paid (amount > 0)
+        const [providerGained, providerLost] = await Promise.all([
+            prisma.thirdPartyTransaction.groupBy({
+                by: ['providerId'],
+                where: { amount: { lt: 0 } },
+                _sum: { amount: true },
+            }),
+            prisma.thirdPartyTransaction.groupBy({
+                by: ['providerId'],
+                where: { amount: { gt: 0 } },
+                _sum: { amount: true },
+            }),
+        ])
+        const gainedMap = new Map(providerGained.map(r => [r.providerId, Math.abs(Number(r._sum.amount ?? 0))]))
+        const lostMap = new Map(providerLost.map(r => [r.providerId, Number(r._sum.amount ?? 0)]))
+        const allProviderIds = [...new Set([...gainedMap.keys(), ...lostMap.keys()])]
+        const providers = await prisma.gameProvider.findMany({
+            where: { id: { in: allProviderIds } },
+            select: { id: true, code: true },
+        })
+        const providerMap = new Map(providers.map(p => [p.id, p.code]))
+        const providerStats = allProviderIds.map(pid => {
+            const gained = gainedMap.get(pid) ?? 0
+            const lost = lostMap.get(pid) ?? 0
+            return {
+                name: providerMap.get(pid) ?? pid,
+                gained,
+                lost,
+                net: gained - lost,
             }
         })
 
-        const totalProfit = games.reduce((acc, game) => {
-            const totalCollected = Number(game.ticketPrice) * game._count.entries
-            const houseFee = totalCollected * (Number(game.houseEdgePct) / 100)
-            return acc + houseFee
-        }, 0)
-
-        const houseSummary = await HouseWalletService.getSummary()
-
         return {
-            approvedDepositSum: Number(approvedDeposits._sum.amount || 0),
-            declinedDepositSum: Number(declinedDeposits._sum.amount || 0),
-            approvedWithdrawalSum: Number(approvedWithdrawals._sum.amount || 0),
-            totalProfit: totalProfit,
-            usersCount: totalUsers,
-            gamesCount: gamesCount,
+            // New fields
+            approvedDepositSum: Number(approvedDeposits._sum.amount ?? 0),
+            approvedWithdrawalSum: Number(approvedWithdrawals._sum.amount ?? 0),
+            totalPrizesSum: Number(totalPrizes._sum.amount ?? 0),
+            gamesCompleted,
+            gamesCancelled,
+            totalPrizePools,
+            activePlayers,
+            houseBalance: Number(houseBalance),
+            houseCommissionEarned: houseSummary.COMMISSION,
+            providerStats,
+            // Legacy fields kept for backward compatibility
+            declinedDepositSum: 0,
+            usersCount: 0,
+            gamesCount: gamesCompleted,
+            totalProfit: houseSummary.COMMISSION,
             commission: houseSummary.COMMISSION,
         }
     }

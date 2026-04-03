@@ -12,6 +12,75 @@ vi.mock('../services/notification.service', () => ({
     },
 }))
 
+describe('AdminService.getStats — extended fields', () => {
+  let userId: string
+
+  beforeEach(async () => {
+    const user = await prisma.user.create({
+      data: {
+        username: 'stats_test_user',
+        phone: '+251900300001',
+        passwordHash: 'hashed:pass',
+        role: 'PLAYER',
+        wallet: { create: { realBalance: 500 } },
+      },
+    })
+    userId = user.id
+
+    await prisma.transaction.create({
+      data: {
+        userId, type: 'DEPOSIT', status: 'APPROVED',
+        amount: 500, balanceBefore: 0, balanceAfter: 500,
+        bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+      },
+    })
+    await prisma.transaction.create({
+      data: {
+        userId, type: 'WITHDRAWAL', status: 'APPROVED',
+        amount: 100, balanceBefore: 500, balanceAfter: 400,
+        bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+      },
+    })
+    await prisma.transaction.create({
+      data: {
+        userId, type: 'PRIZE_WIN', status: 'APPROVED',
+        amount: 200, balanceBefore: 400, balanceAfter: 600,
+        bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+      },
+    })
+  })
+
+  it('returns totalPrizesSum from PRIZE_WIN transactions', async () => {
+    const stats = await AdminService.getStats()
+    expect(stats.totalPrizesSum).toBeGreaterThanOrEqual(200)
+  })
+
+  it('returns gamesCompleted count', async () => {
+    const stats = await AdminService.getStats()
+    expect(typeof stats.gamesCompleted).toBe('number')
+  })
+
+  it('returns gamesCancelled count', async () => {
+    const stats = await AdminService.getStats()
+    expect(typeof stats.gamesCancelled).toBe('number')
+  })
+
+  it('returns houseBalance as a number', async () => {
+    const stats = await AdminService.getStats()
+    expect(typeof stats.houseBalance).toBe('number')
+  })
+
+  it('returns houseCommissionEarned from houseTransaction COMMISSION sum', async () => {
+    const stats = await AdminService.getStats()
+    expect(typeof stats.houseCommissionEarned).toBe('number')
+  })
+
+  it('returns providerStats as an array', async () => {
+    const stats = await AdminService.getStats()
+    expect(Array.isArray(stats.providerStats)).toBe(true)
+  })
+})
+
 describe('AdminService.reviewTransaction', () => {
     let userId: string
     let withdrawalTxId: string
