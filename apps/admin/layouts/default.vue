@@ -3,21 +3,41 @@ const { user, logout } = useAdminAuth()
 const { locale, setLocale } = useI18n()
 const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 
-const navItems = [
-  { label: 'Dashboard',      icon: 'i-heroicons:squares-2x2',              to: '/'                },
-  { label: 'Deposits',       icon: 'i-heroicons:arrow-down-tray',           to: '/deposits'        },
-  { label: 'Withdrawals',    icon: 'i-heroicons:arrow-up-tray',             to: '/withdrawals'     },
-  { label: 'Orders History', icon: 'i-heroicons:clipboard-document-list',   to: '/orders'          },
-  { label: 'Games',          icon: 'i-heroicons:puzzle-piece',              to: '/games'           },
-  { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',               to: '/settings/game-templates' },
-  { label: 'Feature Flags',  icon: 'i-heroicons:adjustments-horizontal',    to: '/settings/features' },
-  { label: 'House Wallet',   icon: 'i-heroicons:building-library',          to: '/house'           },
-  { label: 'Tournaments',    icon: 'i-heroicons:trophy',                    to: '/tournaments'     },
-  { label: 'Providers',      icon: 'i-heroicons:globe-alt',                 to: '/providers'       },
-  { label: 'Cashback',       icon: 'i-heroicons:gift',                      to: '/cashback'        },
-  { label: 'Players',        icon: 'i-heroicons:user-group',                to: '/players'         },
-  { label: 'Users',          icon: 'i-heroicons:users',                     to: '/users'           },
-  { label: 'Profile',        icon: 'i-heroicons:user-circle',               to: '/settings/profile'},
+const navGroups = [
+  {
+    label: null,
+    items: [
+      { label: 'Dashboard', icon: 'i-heroicons:squares-2x2', to: '/' },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',         to: '/deposits'   },
+      { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',           to: '/withdrawals' },
+      { label: 'House Wallet', icon: 'i-heroicons:building-library',        to: '/house'       },
+      { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left',       to: '/money-flow'  },
+    ],
+  },
+  {
+    label: 'Games',
+    items: [
+      { label: 'Active Games',    icon: 'i-heroicons:puzzle-piece',   to: '/games'                    },
+      { label: 'Game Templates',  icon: 'i-heroicons:cog-6-tooth',    to: '/settings/game-templates'  },
+      { label: 'Tournaments',     icon: 'i-heroicons:trophy',         to: '/tournaments'              },
+    ],
+  },
+  {
+    label: null,
+    items: [
+      { label: 'Players',      icon: 'i-heroicons:user-group',              to: '/players'           },
+      { label: 'Users',        icon: 'i-heroicons:users',                   to: '/users'             },
+      { label: 'Providers',    icon: 'i-heroicons:globe-alt',               to: '/providers'         },
+      { label: 'Cashback',     icon: 'i-heroicons:gift',                    to: '/cashback'          },
+      { label: 'Feature Flags',icon: 'i-heroicons:adjustments-horizontal',  to: '/settings/features' },
+      { label: 'Profile',      icon: 'i-heroicons:user-circle',             to: '/settings/profile'  },
+    ],
+  },
 ]
 
 const mobileOpen = ref(false)
@@ -75,19 +95,26 @@ watch(() => route.path, () => { mobileOpen.value = false })
         style="background:var(--surface-overlay); backdrop-filter: blur(16px);"
         :class="mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
       >
-        <nav class="flex-1 px-3 space-y-0.5">
-          <NuxtLink
-            v-for="item in navItems"
-            :key="item.to"
-            :to="item.to"
-            class="admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/6 transition-all"
-            :class="route.path === item.to || (item.to !== '/' && route.path.startsWith(item.to))
-              ? 'bg-yellow-400/10 text-yellow-500!'
-              : ''"
-          >
-            <UIcon :name="item.icon" class="w-4.5 h-4.5 flex-shrink-0" />
-            {{ item.label }}
-          </NuxtLink>
+        <nav class="flex-1 px-3 space-y-4">
+          <div v-for="(group, gi) in navGroups" :key="gi">
+            <p v-if="group.label" class="px-3 mb-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">
+              {{ group.label }}
+            </p>
+            <div class="space-y-0.5">
+              <NuxtLink
+                v-for="item in group.items"
+                :key="item.to"
+                :to="item.to"
+                class="admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/6 transition-all"
+                :class="route.path === item.to || (item.to !== '/' && route.path.startsWith(item.to))
+                  ? 'bg-yellow-400/10 text-yellow-500!'
+                  : ''"
+              >
+                <UIcon :name="item.icon" class="w-4.5 h-4.5 flex-shrink-0" />
+                {{ item.label }}
+              </NuxtLink>
+            </div>
+          </div>
         </nav>
 
         <div class="mt-auto px-3 pt-4 border-t border-(--surface-border)">
