@@ -28,36 +28,60 @@ const columns = [
   { accessorKey: 'actions', header: 'Actions' }
 ]
 
+// ── Data ───────────────────────────────────────────────────────────────────
 const withdrawals = ref<WithdrawalTransaction[]>([])
 const loading = ref(false)
+const page = ref(1)
+const totalPages = ref(1)
+const LIMIT = 20
+
+// ── Modals ──────────────────────────────────────────────────────────────────
 const showConfirmModal = ref(false)
 const pendingAction = ref<{ id: string; type: 'approve' | 'reject' } | null>(null)
 const declineNote = ref('')
 const viewMode = ref<'table' | 'card'>('table')
-const selectedStatus = ref('PENDING_REVIEW')
+
+// ── Filters ─────────────────────────────────────────────────────────────────
+const filterSearch = ref('')
+const filterUserSerial = ref('')
+const filterFrom = ref('')
+const filterTo = ref('')
+const filterMinAmount = ref('')
+const filterMaxAmount = ref('')
+const filterStatus = ref('PENDING_REVIEW')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const statusOptions = [
   { label: 'Pending Review', value: 'PENDING_REVIEW' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Rejected', value: 'REJECTED' },
-  { label: 'All', value: '' }
+  { label: 'All', value: '' },
 ]
 
-// Stats
+// ── Stats ───────────────────────────────────────────────────────────────────
 const approvedSum = ref(0)
 const pendingCount = computed(() =>
   withdrawals.value.filter(w => w.status === 'PENDING_REVIEW').length
 )
 
+// ── Fetch ───────────────────────────────────────────────────────────────────
 const refreshWithdrawals = async () => {
   loading.value = true
   try {
-    const [list, stats] = await Promise.all([
-      getWithdrawals(selectedStatus.value || undefined),
-      useAdminApi().getStats(),
-    ])
-    withdrawals.value = list
-    approvedSum.value = stats.approvedWithdrawalSum ?? 0
+    const result: any = await getWithdrawals({
+      status: filterStatus.value || undefined,
+      search: filterSearch.value || undefined,
+      userSerial: filterUserSerial.value ? Number(filterUserSerial.value) : undefined,
+      from: filterFrom.value || undefined,
+      to: filterTo.value || undefined,
+      minAmount: filterMinAmount.value ? Number(filterMinAmount.value) : undefined,
+      maxAmount: filterMaxAmount.value ? Number(filterMaxAmount.value) : undefined,
+      page: page.value,
+      limit: LIMIT,
+    })
+    withdrawals.value = result?.data ?? result ?? []
+    totalPages.value = result?.pagination?.totalPages ?? 1
+    approvedSum.value = 0
   } catch {
     toast.add({ title: 'Error', description: 'Failed to fetch withdrawals', color: 'error' })
   } finally {
@@ -65,6 +89,27 @@ const refreshWithdrawals = async () => {
   }
 }
 
+const onSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; refreshWithdrawals() }, 400)
+}
+
+const resetFilters = () => {
+  filterSearch.value = ''
+  filterUserSerial.value = ''
+  filterFrom.value = ''
+  filterTo.value = ''
+  filterMinAmount.value = ''
+  filterMaxAmount.value = ''
+  filterStatus.value = 'PENDING_REVIEW'
+  page.value = 1
+  refreshWithdrawals()
+}
+
+watch([page, filterStatus], refreshWithdrawals)
+onMounted(refreshWithdrawals)
+
+// ── Actions ──────────────────────────────────────────────────────────────────
 const confirmAction = (id: string, type: 'approve' | 'reject') => {
   pendingAction.value = { id, type }
   declineNote.value = ''
@@ -74,7 +119,6 @@ const confirmAction = (id: string, type: 'approve' | 'reject') => {
 const executeAction = async () => {
   if (!pendingAction.value) return
   const { id, type } = pendingAction.value
-
   try {
     if (type === 'approve') {
       await approveTransaction(id)
@@ -94,9 +138,6 @@ const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text)
   toast.add({ title: 'Copied', color: 'success' })
 }
-
-watch(selectedStatus, refreshWithdrawals)
-onMounted(refreshWithdrawals)
 </script>
 
 <template>
@@ -150,26 +191,55 @@ onMounted(refreshWithdrawals)
       </div>
     </div>
 
-    <!-- Toolbar Filters -->
-    <div class="flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
-      <USelect
-        v-model="selectedStatus"
-        :items="statusOptions"
-        icon="i-heroicons:funnel"
-        placeholder="Filter by Status"
-        class="w-full sm:w-60"
-        value-key="value"
+    <!-- Filter Toolbar -->
+    <div class="flex flex-wrap gap-3 bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
+      <UInput
+        v-model="filterSearch"
+        icon="i-heroicons:magnifying-glass"
+        placeholder="Search username or phone…"
+        class="flex-1 min-w-48"
+        @input="onSearch"
       />
-      <div v-if="selectedStatus === 'PENDING_REVIEW'" class="flex-1 min-w-75">
-        <UAlert
-          icon="i-heroicons:information-circle"
-          color="warning"
-          variant="soft"
-          class="py-1.5"
-          title="Manual Settlement"
-          description="Send funds via TeleBirr to the phone shown, then click 'Mark Transferred'."
-        />
-      </div>
+      <UInput
+        v-model="filterUserSerial"
+        placeholder="User ID"
+        class="w-28"
+        @input="onSearch"
+      />
+      <UInput v-model="filterFrom" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
+      <UInput v-model="filterTo" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
+      <UInput
+        v-model="filterMinAmount"
+        type="number"
+        placeholder="Min ETB"
+        class="w-28"
+        @input="onSearch"
+      />
+      <UInput
+        v-model="filterMaxAmount"
+        type="number"
+        placeholder="Max ETB"
+        class="w-28"
+        @input="onSearch"
+      />
+      <USelect
+        v-model="filterStatus"
+        :items="statusOptions"
+        value-key="value"
+        class="w-44"
+      />
+      <UButton color="neutral" variant="ghost" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
+    </div>
+
+    <div v-if="filterStatus === 'PENDING_REVIEW'" class="mt-2">
+      <UAlert
+        icon="i-heroicons:information-circle"
+        color="warning"
+        variant="soft"
+        class="py-1.5"
+        title="Manual Settlement"
+        description="Send funds via TeleBirr to the phone shown, then click 'Mark Transferred'."
+      />
     </div>
 
     <!-- Table View -->
@@ -288,6 +358,15 @@ onMounted(refreshWithdrawals)
         </div>
       </div>
     </div>
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between px-1 mt-3">
+      <p class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</p>
+      <div class="flex gap-2">
+        <UButton size="xs" color="neutral" variant="soft" :disabled="page <= 1" @click="page--">Prev</UButton>
+        <UButton size="xs" color="neutral" variant="soft" :disabled="page >= totalPages" @click="page++">Next</UButton>
+      </div>
+    </div>
+
     <UModal v-model:open="showConfirmModal" :title="pendingAction?.type === 'approve' ? 'Confirm Transfer' : 'Reject Withdrawal'" :ui="{ footer: 'justify-end' }">
       <template #body>
         <div class="space-y-3">
