@@ -50,29 +50,51 @@ const customReason = ref('')
 const showDeclineModal = ref(false)
 const selectedDeclineId = ref<string | null>(null)
 const viewMode = ref<'table' | 'card'>('table')
-const selectedStatus = ref('PENDING_REVIEW')
+
+// ── Filter state ─────────────────────────────────────────────────────────────
+const filterSearch = ref('')
+const filterUserSerial = ref('')
+const filterFrom = ref('')
+const filterTo = ref('')
+const filterMinAmount = ref('')
+const filterMaxAmount = ref('')
+const filterStatus = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+const page = ref(1)
+const totalPages = ref(1)
+const LIMIT = 20
 
 const statusOptions = [
-  { label: 'Pending Review', value: 'PENDING_REVIEW' },
+  { label: 'Pending Review', value: '' },
   { label: 'Approved', value: 'APPROVED' },
-  { label: 'Rejected', value: 'REJECTED' },
-  { label: 'All', value: 'ALL' }
+  { label: 'Declined', value: 'REJECTED' },
 ]
 
-// Stats
+// ── Stats ────────────────────────────────────────────────────────────────────
 const approvedSum = ref(0)
 const declinedSum = ref(0)
 const pendingCount = computed(() => pendingDeposits.value.filter(d => d.status === 'PENDING_REVIEW').length)
 
-const refreshDeposits = async () => {
+// ── Fetch ────────────────────────────────────────────────────────────────────
+const fetchDeposits = async () => {
   loading.value = true
   try {
-    const statusParam = selectedStatus.value === 'ALL' ? undefined : selectedStatus.value
-    const [deposits, stats] = await Promise.all([
-      getPendingDeposits(statusParam),
-      useAdminApi().getStats(),
-    ])
-    pendingDeposits.value = deposits
+    const result: any = await getPendingDeposits({
+      status: filterStatus.value || undefined,
+      search: filterSearch.value || undefined,
+      userSerial: filterUserSerial.value ? Number(filterUserSerial.value) : undefined,
+      from: filterFrom.value || undefined,
+      to: filterTo.value || undefined,
+      minAmount: filterMinAmount.value ? Number(filterMinAmount.value) : undefined,
+      maxAmount: filterMaxAmount.value ? Number(filterMaxAmount.value) : undefined,
+      page: page.value,
+      limit: LIMIT,
+    })
+    pendingDeposits.value = result?.data ?? result ?? []
+    totalPages.value = result?.pagination?.totalPages ?? 1
+    // fetch summary stats separately
+    const stats = await useAdminApi().getStats()
     approvedSum.value = stats.approvedDepositSum ?? 0
     declinedSum.value = stats.declinedDepositSum ?? 0
   } catch {
@@ -82,11 +104,32 @@ const refreshDeposits = async () => {
   }
 }
 
+const onSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; fetchDeposits() }, 400)
+}
+
+const resetFilters = () => {
+  filterSearch.value = ''
+  filterUserSerial.value = ''
+  filterFrom.value = ''
+  filterTo.value = ''
+  filterMinAmount.value = ''
+  filterMaxAmount.value = ''
+  filterStatus.value = ''
+  page.value = 1
+  fetchDeposits()
+}
+
+watch([page, filterStatus], fetchDeposits)
+onMounted(fetchDeposits)
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 const handleApprove = async (id: string) => {
   try {
     await approveTransaction(id)
     toast.add({ title: 'Approved ✅', description: 'Deposit credited to player wallet', color: 'success' })
-    refreshDeposits()
+    fetchDeposits()
   } catch (e: any) {
     toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to approve', color: 'error' })
   }
@@ -106,7 +149,7 @@ const handleDecline = async () => {
     await declineTransaction(selectedDeclineId.value, reason || undefined)
     toast.add({ title: 'Declined', description: 'Player has been notified', color: 'warning' })
     showDeclineModal.value = false
-    refreshDeposits()
+    fetchDeposits()
   } catch (e: any) {
     toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to decline', color: 'error' })
   }
@@ -121,7 +164,6 @@ const openReceipt = (url: string) => {
   isReceiptOpen.value = true
 }
 
-// Age helper — returns minutes elapsed since createdAt
 const ageMinutes = (createdAt: string) => {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
 }
@@ -130,9 +172,6 @@ const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text)
   toast.add({ title: 'Copied', color: 'success' })
 }
-
-watch(selectedStatus, refreshDeposits)
-onMounted(refreshDeposits)
 </script>
 
 <template>
@@ -155,7 +194,7 @@ onMounted(refreshDeposits)
             @click="viewMode = 'card'"
           />
         </UButtonGroup>
-        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="refreshDeposits" />
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchDeposits" />
       </div>
     </div>
 
@@ -175,16 +214,54 @@ onMounted(refreshDeposits)
       </div>
     </div>
 
-    <!-- Toolbar Filters -->
-    <div class="flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
-      <USelect
-        v-model="selectedStatus"
-        :items="statusOptions"
-        icon="i-heroicons:funnel"
-        placeholder="Filter by Status"
-        class="w-full sm:w-60"
-        value-key="value"
+    <!-- Filter Toolbar -->
+    <div class="flex flex-wrap gap-3 bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
+      <UInput
+        v-model="filterSearch"
+        icon="i-heroicons:magnifying-glass"
+        placeholder="Search username or phone…"
+        class="flex-1 min-w-48"
+        @input="onSearch"
       />
+      <UInput
+        v-model="filterUserSerial"
+        placeholder="User ID"
+        class="w-28"
+        @input="onSearch"
+      />
+      <UInput
+        v-model="filterFrom"
+        type="date"
+        class="w-40"
+        @change="page = 1; fetchDeposits()"
+      />
+      <UInput
+        v-model="filterTo"
+        type="date"
+        class="w-40"
+        @change="page = 1; fetchDeposits()"
+      />
+      <UInput
+        v-model="filterMinAmount"
+        type="number"
+        placeholder="Min ETB"
+        class="w-28"
+        @input="onSearch"
+      />
+      <UInput
+        v-model="filterMaxAmount"
+        type="number"
+        placeholder="Max ETB"
+        class="w-28"
+        @input="onSearch"
+      />
+      <USelect
+        v-model="filterStatus"
+        :items="statusOptions"
+        value-key="value"
+        class="w-40"
+      />
+      <UButton color="neutral" variant="ghost" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
     </div>
 
     <!-- Table View -->
@@ -313,6 +390,15 @@ onMounted(refreshDeposits)
             <UButton size="xs" color="error" variant="ghost" icon="i-heroicons:x-mark" @click="openDeclineModal(d.id)" />
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between px-1 mt-3">
+      <p class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</p>
+      <div class="flex gap-2">
+        <UButton size="xs" color="neutral" variant="soft" :disabled="page <= 1" @click="page--">Prev</UButton>
+        <UButton size="xs" color="neutral" variant="soft" :disabled="page >= totalPages" @click="page++">Next</UButton>
       </div>
     </div>
 
