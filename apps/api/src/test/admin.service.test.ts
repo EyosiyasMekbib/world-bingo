@@ -350,3 +350,76 @@ describe('AdminService.getTransactions — filter params', () => {
     result.data.forEach(tx => expect((tx as any).user.serial).toBe(99901))
   })
 })
+
+describe('AdminService.getMoneyFlow', () => {
+  let userId: string
+
+  beforeEach(async () => {
+    const user = await prisma.user.create({
+      data: {
+        username: 'flow_test_user',
+        phone: '+251900500001',
+        passwordHash: 'hashed:pass',
+        wallet: { create: { realBalance: 1000 } },
+      },
+    })
+    userId = user.id
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          userId, type: 'DEPOSIT', status: 'APPROVED',
+          amount: 300, balanceBefore: 0, balanceAfter: 300,
+          bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+        },
+        {
+          userId, type: 'PRIZE_WIN', status: 'APPROVED',
+          amount: 150, balanceBefore: 300, balanceAfter: 450,
+          bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+        },
+      ],
+    })
+  })
+
+  it('returns rows, total, summary', async () => {
+    const result = await AdminService.getMoneyFlow({ page: 1, limit: 20 })
+    expect(Array.isArray(result.rows)).toBe(true)
+    expect(typeof result.total).toBe('number')
+    expect(result.summary).toHaveProperty('totalDeposited')
+    expect(result.summary).toHaveProperty('totalWagered')
+    expect(result.summary).toHaveProperty('totalPrizesOut')
+    expect(result.summary).toHaveProperty('houseKept')
+    expect(result.summary).toHaveProperty('refundsIssued')
+  })
+
+  it('each row has required shape', async () => {
+    const result = await AdminService.getMoneyFlow({ page: 1, limit: 20 })
+    if (result.rows.length > 0) {
+      const row = result.rows[0]
+      expect(row).toHaveProperty('id')
+      expect(row).toHaveProperty('createdAt')
+      expect(row).toHaveProperty('type')
+      expect(row).toHaveProperty('direction')
+      expect(row).toHaveProperty('amount')
+      expect(row).toHaveProperty('source')
+      expect(['IN', 'OUT']).toContain(row.direction)
+    }
+  })
+
+  it('filters by direction IN', async () => {
+    const result = await AdminService.getMoneyFlow({ page: 1, limit: 20, direction: 'IN' })
+    result.rows.forEach(r => expect(r.direction).toBe('IN'))
+  })
+
+  it('DEPOSIT rows have direction IN', async () => {
+    const result = await AdminService.getMoneyFlow({ page: 1, limit: 20 })
+    const depositRows = result.rows.filter(r => r.type === 'DEPOSIT')
+    depositRows.forEach(r => expect(r.direction).toBe('IN'))
+  })
+
+  it('PRIZE_WIN rows have direction IN', async () => {
+    const result = await AdminService.getMoneyFlow({ page: 1, limit: 20 })
+    const prizeRows = result.rows.filter(r => r.type === 'PRIZE_WIN')
+    prizeRows.forEach(r => expect(r.direction).toBe('IN'))
+  })
+})

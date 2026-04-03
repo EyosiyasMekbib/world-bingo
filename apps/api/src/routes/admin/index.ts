@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
+import { AdminService } from '../../services/admin.service'
 import { GameService } from '../../services/game.service'
 import { BotService } from '../../services/bot.service'
 import prisma from '../../lib/prisma'
@@ -206,6 +207,22 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.get('/house/bots', async (_req, _reply) => {
         return HouseWalletService.getBotActivity()
+    })
+
+    fastify.get('/money-flow', async (req: any, _reply) => {
+        const q = req.query as Record<string, any>
+        const types = q['type[]']
+            ? (Array.isArray(q['type[]']) ? q['type[]'] : [q['type[]']])
+            : undefined
+        return AdminService.getMoneyFlow({
+            page: q.page ? Number(q.page) : undefined,
+            limit: q.limit ? Number(q.limit) : undefined,
+            direction: q.direction as 'IN' | 'OUT' | undefined,
+            types,
+            from: q.from ? new Date(q.from) : undefined,
+            to: q.to ? new Date(q.to) : undefined,
+            search: q.search || undefined,
+        })
     })
 
     // ── Player Management ──────────────────────────────────────────────────────

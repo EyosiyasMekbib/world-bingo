@@ -381,5 +381,168 @@ export class AdminService {
             },
         })
     }
+
+    static async getMoneyFlow(params: {
+        page?: number
+        limit?: number
+        direction?: 'IN' | 'OUT'
+        types?: string[]
+        from?: Date
+        to?: Date
+        search?: string
+    }) {
+        const page = params.page ?? 1
+        const limit = params.limit ?? 30
+        const skip = (page - 1) * limit
+
+        const dateFilter = (params.from || params.to) ? {
+            createdAt: {
+                ...(params.from && { gte: params.from }),
+                ...(params.to && { lte: params.to }),
+            },
+        } : {}
+
+        // Direction mapping
+        const IN_PLAYER_TYPES = ['DEPOSIT', 'PRIZE_WIN', 'ADMIN_REAL_ADJUSTMENT', 'ADMIN_BONUS_ADJUSTMENT', 'CASHBACK', 'REFERRAL_BONUS']
+        const IN_HOUSE_TYPES = ['COMMISSION', 'BOT_PRIZE_WIN']
+
+        // Fetch from all three sources in parallel
+        const [playerTxs, houseTxs, providerTxs] = await Promise.all([
+            prisma.transaction.findMany({
+                where: {
+                    ...dateFilter,
+                    ...(params.search && {
+                        user: {
+                            OR: [
+                                { username: { contains: params.search, mode: 'insensitive' } },
+                                { phone: { contains: params.search } },
+                            ],
+                        },
+                    }),
+                },
+                include: { user: { select: { username: true, id: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: limit * 5,
+            }),
+            prisma.houseTransaction.findMany({
+                where: { ...dateFilter },
+                orderBy: { createdAt: 'desc' },
+                take: limit * 5,
+            }),
+            prisma.thirdPartyTransaction.findMany({
+                where: { ...dateFilter },
+                orderBy: { createdAt: 'desc' },
+                take: limit * 5,
+            }),
+        ])
+
+        type FlowRow = {
+            id: string
+            createdAt: Date
+            type: string
+            direction: 'IN' | 'OUT'
+            amount: number
+            playerName?: string
+            playerId?: string
+            gameId?: string
+            source: string
+            balanceAfter?: number
+        }
+
+        const rows: FlowRow[] = []
+
+        for (const tx of playerTxs) {
+            const direction: 'IN' | 'OUT' = IN_PLAYER_TYPES.includes(tx.type) ? 'IN' : 'OUT'
+            rows.push({
+                id: tx.id,
+                createdAt: tx.createdAt,
+                type: tx.type,
+                direction,
+                amount: Number(tx.amount),
+                playerName: (tx as any).user?.username,
+                playerId: (tx as any).user?.id,
+                gameId: (tx as any).gameId ?? undefined,
+                source: 'Player Wallet',
+                balanceAfter: Number(tx.balanceAfter),
+            })
+        }
+
+        for (const tx of houseTxs) {
+            const direction: 'IN' | 'OUT' = IN_HOUSE_TYPES.includes(tx.type) ? 'IN' : 'OUT'
+            rows.push({
+                id: tx.id,
+                createdAt: tx.createdAt,
+                type: tx.type,
+                direction,
+                amount: Number(tx.amount),
+                playerId: tx.userId ?? undefined,
+                gameId: tx.gameId ?? undefined,
+                source: 'House Wallet',
+                balanceAfter: Number(tx.balanceAfter),
+            })
+        }
+
+        for (const tx of providerTxs) {
+            const net = Number(tx.amount)
+            // negative amount = debit from player = house gained (IN)
+            // positive amount = credit to player = house lost (OUT)
+            const direction: 'IN' | 'OUT' = net < 0 ? 'IN' : 'OUT'
+            rows.push({
+                id: tx.id,
+                createdAt: tx.createdAt,
+                type: `PROVIDER_${tx.type}`,
+                direction,
+                amount: Math.abs(net),
+                playerId: tx.userId,
+                source: 'Provider',
+            })
+        }
+
+        // Filter by direction
+        const afterDirection = params.direction
+            ? rows.filter(r => r.direction === params.direction)
+            : rows
+
+        // Filter by types
+        const afterTypes = params.types?.length
+            ? afterDirection.filter(r => params.types!.includes(r.type))
+            : afterDirection
+
+        // Sort descending by date and paginate
+        afterTypes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        const total = afterTypes.length
+        const paginated = afterTypes.slice(skip, skip + limit)
+
+        // Summary totals (platform-wide, not affected by filters)
+        const [depositSum, wagerSum, prizeSum, houseSummary] = await Promise.all([
+            prisma.transaction.aggregate({
+                where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
+                _sum: { amount: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { type: TransactionType.GAME_ENTRY },
+                _sum: { amount: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { type: TransactionType.PRIZE_WIN, status: PaymentStatus.APPROVED },
+                _sum: { amount: true },
+            }),
+            HouseWalletService.getSummary(),
+        ])
+
+        return {
+            rows: paginated,
+            total,
+            page,
+            limit,
+            summary: {
+                totalDeposited: Number(depositSum._sum.amount ?? 0),
+                totalWagered: Number(wagerSum._sum.amount ?? 0),
+                totalPrizesOut: Number(prizeSum._sum.amount ?? 0),
+                houseKept: houseSummary.COMMISSION,
+                refundsIssued: houseSummary.REFUND_ISSUED,
+            },
+        }
+    }
 }
 
