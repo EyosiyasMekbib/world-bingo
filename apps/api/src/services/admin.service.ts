@@ -15,6 +15,8 @@ export class AdminService {
             gamesCancelled,
             houseSummary,
             houseBalance,
+            activePlayersGroups,
+            completedGames,
         ] = await Promise.all([
             prisma.transaction.aggregate({
                 where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
@@ -32,16 +34,14 @@ export class AdminService {
             prisma.game.count({ where: { status: 'CANCELLED' } }),
             HouseWalletService.getSummary(),
             HouseWalletService.getBalance(),
+            prisma.gameEntry.groupBy({ by: ['userId'] }),
+            prisma.game.findMany({
+                where: { status: 'COMPLETED' },
+                include: { _count: { select: { entries: true } } },
+            }),
         ])
 
-        // Active players: distinct users who have at least one game entry
-        const activePlayers = await prisma.gameEntry.groupBy({ by: ['userId'] }).then(r => r.length)
-
-        // Total prize pools from completed games
-        const completedGames = await prisma.game.findMany({
-            where: { status: 'COMPLETED' },
-            include: { _count: { select: { entries: true } } },
-        })
+        const activePlayers = activePlayersGroups.length
         const totalPrizePools = completedGames.reduce((acc, g) => {
             return acc + Number(g.ticketPrice) * g._count.entries
         }, 0)

@@ -79,6 +79,33 @@ describe('AdminService.getStats — extended fields', () => {
     const stats = await AdminService.getStats()
     expect(Array.isArray(stats.providerStats)).toBe(true)
   })
+
+  it('returns correct approvedDepositSum', async () => {
+    const stats = await AdminService.getStats()
+    expect(stats.approvedDepositSum).toBeGreaterThanOrEqual(500)
+  })
+
+  it('returns correct approvedWithdrawalSum', async () => {
+    const stats = await AdminService.getStats()
+    expect(stats.approvedWithdrawalSum).toBeGreaterThanOrEqual(100)
+  })
+
+  it('returns activePlayers as a non-negative number', async () => {
+    const stats = await AdminService.getStats()
+    expect(typeof stats.activePlayers).toBe('number')
+    expect(stats.activePlayers).toBeGreaterThanOrEqual(0)
+  })
+
+  it('providerStats entries have name, gained, lost, net fields', async () => {
+    const stats = await AdminService.getStats()
+    for (const p of stats.providerStats) {
+      expect(typeof p.name).toBe('string')
+      expect(typeof p.gained).toBe('number')
+      expect(typeof p.lost).toBe('number')
+      expect(typeof p.net).toBe('number')
+      expect(p.net).toBe(p.gained - p.lost)
+    }
+  })
 })
 
 describe('AdminService.reviewTransaction', () => {
