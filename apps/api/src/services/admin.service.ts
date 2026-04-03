@@ -99,14 +99,52 @@ export class AdminService {
         }
     }
 
-    static async getTransactions(params: { type?: TransactionType; status?: PaymentStatus; page?: number; limit?: number }) {
+    static async getTransactions(params: {
+        type?: TransactionType
+        status?: PaymentStatus
+        page?: number
+        limit?: number
+        from?: Date
+        to?: Date
+        minAmount?: number
+        maxAmount?: number
+        userSerial?: number
+        search?: string
+    }) {
         const page = params.page ?? 1
         const limit = params.limit ?? 50
         const skip = (page - 1) * limit
 
-        const where = {
+        const where: any = {
             ...(params.type && { type: params.type }),
             ...(params.status && { status: params.status }),
+            ...((params.from || params.to) && {
+                createdAt: {
+                    ...(params.from && { gte: params.from }),
+                    ...(params.to && { lte: params.to }),
+                },
+            }),
+            ...((params.minAmount !== undefined || params.maxAmount !== undefined) && {
+                amount: {
+                    ...(params.minAmount !== undefined && { gte: params.minAmount }),
+                    ...(params.maxAmount !== undefined && { lte: params.maxAmount }),
+                },
+            }),
+        }
+
+        // user filter: serial and/or search — built separately to avoid overwriting
+        const userFilter: any = {}
+        if (params.userSerial !== undefined) {
+            userFilter.serial = params.userSerial
+        }
+        if (params.search) {
+            userFilter.OR = [
+                { username: { contains: params.search, mode: 'insensitive' } },
+                { phone: { contains: params.search } },
+            ]
+        }
+        if (Object.keys(userFilter).length > 0) {
+            where.user = userFilter
         }
 
         const [data, total] = await Promise.all([
@@ -114,12 +152,7 @@ export class AdminService {
                 where,
                 include: {
                     user: {
-                        select: {
-                            id: true,
-                            serial: true,
-                            username: true,
-                            phone: true,
-                        },
+                        select: { id: true, serial: true, username: true, phone: true },
                     },
                 },
                 orderBy: { createdAt: 'desc' },
@@ -131,12 +164,7 @@ export class AdminService {
 
         return {
             data,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit),
-            },
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
         }
     }
 

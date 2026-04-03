@@ -274,3 +274,79 @@ describe('AdminService.getStats', () => {
         expect(stats.commission).toBe(0)
     })
 })
+
+describe('AdminService.getTransactions — filter params', () => {
+  let userId: string
+
+  beforeEach(async () => {
+    const user = await prisma.user.create({
+      data: {
+        username: 'filter_test_user',
+        phone: '+251900400001',
+        passwordHash: 'hashed:pass',
+        serial: 99901,
+        wallet: { create: { realBalance: 1000 } },
+      },
+    })
+    userId = user.id
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          userId, type: 'DEPOSIT', status: 'APPROVED',
+          amount: 100, balanceBefore: 0, balanceAfter: 100,
+          bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+          createdAt: new Date('2026-01-15T10:00:00Z'),
+        },
+        {
+          userId, type: 'DEPOSIT', status: 'APPROVED',
+          amount: 500, balanceBefore: 100, balanceAfter: 600,
+          bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+          createdAt: new Date('2026-02-20T10:00:00Z'),
+        },
+        {
+          userId, type: 'DEPOSIT', status: 'PENDING_REVIEW',
+          amount: 250, balanceBefore: 600, balanceAfter: 850,
+          bonusBalanceBefore: 0, bonusBalanceAfter: 0,
+          createdAt: new Date('2026-03-01T10:00:00Z'),
+        },
+      ],
+    })
+  })
+
+  it('filters by from/to date range', async () => {
+    const result = await AdminService.getTransactions({
+      type: 'DEPOSIT' as any,
+      from: new Date('2026-02-01'),
+      to: new Date('2026-02-28'),
+    })
+    expect(result.data).toHaveLength(1)
+    expect(Number(result.data[0].amount)).toBe(500)
+  })
+
+  it('filters by minAmount', async () => {
+    const result = await AdminService.getTransactions({
+      type: 'DEPOSIT' as any,
+      minAmount: 200,
+    })
+    expect(result.data.length).toBeGreaterThanOrEqual(2)
+    result.data.forEach(tx => expect(Number(tx.amount)).toBeGreaterThanOrEqual(200))
+  })
+
+  it('filters by maxAmount', async () => {
+    const result = await AdminService.getTransactions({
+      type: 'DEPOSIT' as any,
+      maxAmount: 200,
+    })
+    result.data.forEach(tx => expect(Number(tx.amount)).toBeLessThanOrEqual(200))
+  })
+
+  it('filters by userSerial', async () => {
+    const result = await AdminService.getTransactions({
+      type: 'DEPOSIT' as any,
+      userSerial: 99901,
+    })
+    expect(result.data.length).toBeGreaterThanOrEqual(1)
+    result.data.forEach(tx => expect((tx as any).user.serial).toBe(99901))
+  })
+})

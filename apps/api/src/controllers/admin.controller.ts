@@ -9,32 +9,47 @@ export class AdminController {
     }
 
     static async getPendingDeposits(request: FastifyRequest, reply: FastifyReply) {
-        const { status } = (request.query as any) ?? {}
+        const q = (request.query as any) ?? {}
         const result = await AdminService.getTransactions({
             type: TransactionType.DEPOSIT,
-            status: (status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
+            status: (q.status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
+            search: q.search || undefined,
+            userSerial: q.userSerial ? Number(q.userSerial) : undefined,
+            from: q.from ? new Date(q.from) : undefined,
+            to: q.to ? new Date(q.to) : undefined,
+            minAmount: q.minAmount ? Number(q.minAmount) : undefined,
+            maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
+            page: q.page ? Number(q.page) : undefined,
+            limit: q.limit ? Number(q.limit) : undefined,
         })
-        return result.data
+        return result
     }
 
     static async getOrdersHistory(request: FastifyRequest, reply: FastifyReply) {
-        const query = (request.query as any) ?? {}
-        const { type, page = '1', limit = '20' } = query
+        const q = (request.query as any) ?? {}
         const transactions = await AdminService.getTransactions({
-            ...(type && type !== 'ALL' ? { type: type as TransactionType } : {}),
-            page: parseInt(page, 10),
-            limit: parseInt(limit, 10),
+            ...(q.type && q.type !== 'ALL' ? { type: q.type as TransactionType } : {}),
+            page: q.page ? parseInt(q.page, 10) : 1,
+            limit: q.limit ? parseInt(q.limit, 10) : 20,
         })
         return transactions
     }
 
     static async getWithdrawals(request: FastifyRequest, reply: FastifyReply) {
-        const { status } = (request.query as any) ?? {}
+        const q = (request.query as any) ?? {}
         const result = await AdminService.getTransactions({
             type: TransactionType.WITHDRAWAL,
-            status: (status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
+            status: (q.status as PaymentStatus) || PaymentStatus.PENDING_REVIEW,
+            search: q.search || undefined,
+            userSerial: q.userSerial ? Number(q.userSerial) : undefined,
+            from: q.from ? new Date(q.from) : undefined,
+            to: q.to ? new Date(q.to) : undefined,
+            minAmount: q.minAmount ? Number(q.minAmount) : undefined,
+            maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
+            page: q.page ? Number(q.page) : undefined,
+            limit: q.limit ? Number(q.limit) : undefined,
         })
-        return result.data
+        return result
     }
 
     static async approveTransaction(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
