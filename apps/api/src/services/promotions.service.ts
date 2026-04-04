@@ -1,10 +1,11 @@
 import prisma from '../lib/prisma'
+import { CashbackRefundType, CashbackFrequency } from '@world-bingo/shared-types'
 
 export interface CashbackPromoResult {
   name: string
-  refundType: 'PERCENTAGE' | 'FIXED'
+  refundType: CashbackRefundType
   refundValue: number
-  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
+  frequency: CashbackFrequency
 }
 
 export interface PromotionsResult {
@@ -41,15 +42,16 @@ export class PromotionsService {
       }),
     ])
 
-    const firstDepositBonus = bonusSetting ? Number(bonusSetting.value) : 0
+    const raw = bonusSetting ? Number(bonusSetting.value) : 0
+    const firstDepositBonus = isNaN(raw) ? 0 : raw
 
     return {
       cashback: cashbackRow
         ? {
             name: cashbackRow.name,
-            refundType: cashbackRow.refundType as 'PERCENTAGE' | 'FIXED',
+            refundType: cashbackRow.refundType as CashbackRefundType,
             refundValue: Number(cashbackRow.refundValue),
-            frequency: cashbackRow.frequency as 'DAILY' | 'WEEKLY' | 'MONTHLY',
+            frequency: cashbackRow.frequency as CashbackFrequency,
           }
         : null,
       firstDepositBonus: firstDepositBonus > 0 ? firstDepositBonus : null,
