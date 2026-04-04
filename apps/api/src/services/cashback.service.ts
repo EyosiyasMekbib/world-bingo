@@ -23,7 +23,9 @@ export function getCurrentPeriod(frequency: CashbackFrequency, now = new Date())
         const daysFromMonday = (day === 0 ? 6 : day - 1)
         const mondayDate = d - daysFromMonday
         const periodStart = new Date(Date.UTC(y, m, mondayDate, 0, 0, 0, 0))
-        const periodEnd = new Date(Date.UTC(y, m, mondayDate + 6, 23, 59, 59, 999))
+        // Add 6 days to periodStart for Sunday end — handles month boundary correctly
+        const periodEnd = new Date(periodStart.getTime() + 6 * 24 * 60 * 60 * 1000)
+        periodEnd.setUTCHours(23, 59, 59, 999)
         return { periodStart, periodEnd }
     }
 
