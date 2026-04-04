@@ -222,12 +222,17 @@ export const useAdminApi = () => {
 
         // ── Cashback Promotions ───────────────────────────────────────────
         getCashbackPromotions: () => apiFetch<any[]>('/admin/cashback'),
-        createCashbackPromotion: (data: { name: string; percentage: number; startsAt: string; endsAt: string }) =>
-            apiFetch('/admin/cashback', { method: 'POST', body: data }),
+        createCashbackPromotion: (data: {
+            name: string
+            lossThreshold: number
+            refundType: 'PERCENTAGE' | 'FIXED'
+            refundValue: number
+            frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
+            startsAt: string
+            endsAt: string
+        }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
-        disburseCashback: (id: string) =>
-            apiFetch(`/admin/cashback/${id}/disburse`, { method: 'POST' }),
     }
 }
 
