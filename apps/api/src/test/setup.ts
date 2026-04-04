@@ -25,6 +25,7 @@ afterAll(async () => {
 })
 
 async function cleanDb() {
+    await prisma.cashbackPromotion.deleteMany()
     await prisma.siteSetting.deleteMany()
     await prisma.houseTransaction.deleteMany()
     await prisma.houseWallet.deleteMany()
