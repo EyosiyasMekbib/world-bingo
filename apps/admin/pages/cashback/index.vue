@@ -1,21 +1,38 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
-const { getCashbackPromotions, createCashbackPromotion, toggleCashbackPromotion, disburseCashback } = useAdminApi()
+const { getCashbackPromotions, createCashbackPromotion, toggleCashbackPromotion } = useAdminApi()
 const toast = useToast()
 
 const promotions = ref<any[]>([])
 const loading = ref(true)
 const showCreate = ref(false)
 const creating = ref(false)
-const disbursingId = ref<string | null>(null)
 
 const form = reactive({
   name: '',
-  percentage: 10,
+  lossThreshold: 500,
+  refundType: 'PERCENTAGE' as 'PERCENTAGE' | 'FIXED',
+  refundValue: 10,
+  frequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'MONTHLY',
   startsAt: '',
   endsAt: '',
 })
+
+const refundTypeOptions = [
+  { label: 'Percentage of loss', value: 'PERCENTAGE' },
+  { label: 'Fixed amount (ETB)', value: 'FIXED' },
+]
+
+const frequencyOptions = [
+  { label: 'Daily', value: 'DAILY' },
+  { label: 'Weekly', value: 'WEEKLY' },
+  { label: 'Monthly', value: 'MONTHLY' },
+]
+
+const refundValueLabel = computed(() =>
+  form.refundType === 'PERCENTAGE' ? 'Refund Percentage (%)' : 'Refund Amount (ETB)'
+)
 
 async function fetchPromotions() {
   loading.value = true
@@ -33,14 +50,20 @@ async function create() {
   try {
     await createCashbackPromotion({
       name: form.name,
-      percentage: form.percentage,
+      lossThreshold: form.lossThreshold,
+      refundType: form.refundType,
+      refundValue: form.refundValue,
+      frequency: form.frequency,
       startsAt: new Date(form.startsAt).toISOString(),
       endsAt: new Date(form.endsAt).toISOString(),
     })
     toast.add({ title: 'Created', description: 'Cashback promotion created', color: 'success' })
     showCreate.value = false
     form.name = ''
-    form.percentage = 10
+    form.lossThreshold = 500
+    form.refundType = 'PERCENTAGE'
+    form.refundValue = 10
+    form.frequency = 'WEEKLY'
     form.startsAt = ''
     form.endsAt = ''
     await fetchPromotions()
@@ -61,24 +84,17 @@ async function toggle(promo: any) {
   }
 }
 
-async function disburse(id: string) {
-  disbursingId.value = id
-  try {
-    const result = await disburseCashback(id) as any
-    toast.add({
-      title: 'Disbursed',
-      description: `${result.disbursed} players received cashback (${result.skipped} skipped). Total: ${Number(result.total).toFixed(2)} ETB`,
-      color: 'success',
-    })
-  } catch (err: any) {
-    toast.add({ title: 'Error', description: err?.data?.error ?? 'Failed to disburse', color: 'error' })
-  } finally {
-    disbursingId.value = null
-  }
-}
-
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-ET', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function describePromo(promo: any) {
+  const threshold = Number(promo.lossThreshold).toFixed(0)
+  const val = promo.refundType === 'PERCENTAGE'
+    ? `${Number(promo.refundValue).toFixed(0)}% back`
+    : `${Number(promo.refundValue).toFixed(2)} ETB back`
+  const freq = (promo.frequency as string).toLowerCase()
+  return `Lose ${threshold} ETB → get ${val} · ${freq}`
 }
 
 onMounted(fetchPromotions)
@@ -89,7 +105,7 @@ onMounted(fetchPromotions)
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-white tracking-tight">Cashback Promotions</h1>
-        <p class="text-sm text-white/50 mt-0.5 font-medium">Create and manage cashback campaigns for players</p>
+        <p class="text-sm text-white/50 mt-0.5 font-medium">Configure automatic cashback for players who reach a loss threshold</p>
       </div>
       <UButton icon="i-heroicons:plus" label="New Promotion" color="primary" @click="showCreate = true" />
     </div>
@@ -116,22 +132,10 @@ onMounted(fetchPromotions)
               <h3 class="text-base font-bold text-white">{{ promo.name }}</h3>
               <UBadge :color="promo.isActive ? 'success' : 'neutral'" variant="soft" :label="promo.isActive ? 'Active' : 'Inactive'" />
             </div>
-            <p class="text-sm text-white/40 mt-1">{{ Number(promo.percentage) }}% cashback &middot; {{ formatDate(promo.startsAt) }} — {{ formatDate(promo.endsAt) }}</p>
-            <p class="text-xs text-white/30 mt-1">{{ promo._count?.disbursements ?? 0 }} disbursements</p>
+            <p class="text-sm text-white/40 mt-1">{{ describePromo(promo) }}</p>
+            <p class="text-xs text-white/30 mt-1">{{ formatDate(promo.startsAt) }} — {{ formatDate(promo.endsAt) }} &middot; {{ promo._count?.disbursements ?? 0 }} disbursements</p>
           </div>
-          <div class="flex items-center gap-2">
-            <USwitch :model-value="promo.isActive" color="primary" @update:model-value="toggle(promo)" />
-            <UButton
-              size="sm"
-              color="primary"
-              variant="soft"
-              icon="i-heroicons:banknotes"
-              label="Disburse"
-              :loading="disbursingId === promo.id"
-              :disabled="!promo.isActive"
-              @click="disburse(promo.id)"
-            />
-          </div>
+          <USwitch :model-value="promo.isActive" color="primary" @update:model-value="toggle(promo)" />
         </div>
       </div>
     </div>
@@ -143,8 +147,17 @@ onMounted(fetchPromotions)
           <UFormField label="Name">
             <UInput v-model="form.name" placeholder="Weekend Cashback" class="w-full" />
           </UFormField>
-          <UFormField label="Cashback Percentage">
-            <UInput v-model.number="form.percentage" type="number" min="0.01" max="100" class="w-full" />
+          <UFormField label="Loss Threshold (ETB)">
+            <UInput v-model.number="form.lossThreshold" type="number" min="1" class="w-full" />
+          </UFormField>
+          <UFormField label="Refund Type">
+            <USelect v-model="form.refundType" :options="refundTypeOptions" value-key="value" label-key="label" class="w-full" />
+          </UFormField>
+          <UFormField :label="refundValueLabel">
+            <UInput v-model.number="form.refundValue" type="number" min="0.01" class="w-full" />
+          </UFormField>
+          <UFormField label="Frequency">
+            <USelect v-model="form.frequency" :options="frequencyOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
           <UFormField label="Period Start">
             <UInput v-model="form.startsAt" type="datetime-local" class="w-full" />
