@@ -87,3 +87,14 @@ export enum TournamentStatus {
     COMPLETED = 'COMPLETED',
     CANCELLED = 'CANCELLED',
 }
+
+export enum CashbackRefundType {
+    PERCENTAGE = 'PERCENTAGE',
+    FIXED = 'FIXED',
+}
+
+export enum CashbackFrequency {
+    DAILY = 'DAILY',
+    WEEKLY = 'WEEKLY',
+    MONTHLY = 'MONTHLY',
+}
