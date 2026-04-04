@@ -169,6 +169,7 @@ export class CashbackService {
             const totalWon = winMap.get(entry.userId) ?? new Decimal(0)
             const netLoss = totalWagered.minus(totalWon)
 
+            // Qualifies when netLoss >= lossThreshold (inclusive boundary)
             if (netLoss.lt(lossThreshold)) continue
 
             // Calculate cashback amount
@@ -247,7 +248,7 @@ export class CashbackService {
                     NotificationType.CASHBACK_AWARDED,
                     'Cashback Bonus!',
                     `You received ${Number(result as Decimal).toFixed(2)} ETB cashback from "${promotion.name}".`,
-                    { promotionId, amount: Number(result) },
+                    { promotionId, amount: (result as Decimal).toFixed(2) },
                 ).catch(() => {})
             }
         }

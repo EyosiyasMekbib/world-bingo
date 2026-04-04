@@ -453,13 +453,16 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     const cashbackCreateSchema = z.object({
         name: z.string().min(1),
-        lossThreshold: z.coerce.number().min(0),
+        lossThreshold: z.coerce.number().min(1),
         refundType: z.enum(['PERCENTAGE', 'FIXED']),
-        refundValue: z.coerce.number().min(0.01),
+        refundValue: z.coerce.number().positive().max(100000),
         frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
         startsAt: z.string(),
         endsAt: z.string(),
-    })
+    }).refine(
+        (data) => new Date(data.startsAt) < new Date(data.endsAt),
+        { message: 'endsAt must be after startsAt', path: ['endsAt'] }
+    )
 
     fastify.post('/cashback', async (req: any, reply) => {
         const parsed = cashbackCreateSchema.safeParse(req.body)

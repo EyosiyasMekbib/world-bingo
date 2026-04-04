@@ -23,6 +23,7 @@ const cashbackCheckerQueue = new Queue<CashbackCheckerJobData>(QUEUE_NAMES.CASHB
         url: REDIS_URL,
         maxRetriesPerRequest: null as any,
         enableReadyCheck: false,
+        lazyConnect: true,
     } as any,
 })
 
