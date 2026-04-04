@@ -34,6 +34,7 @@ import './workers/game-countdown.worker.js'
 import './workers/game-scheduler.worker.js'
 import './workers/game-engine.worker.js'
 import './workers/game-catalog-sync.worker.js'
+import './workers/cashback-checker.worker.js'
 
 dotenv.config()
 
