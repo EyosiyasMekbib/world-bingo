@@ -453,7 +453,10 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     const cashbackCreateSchema = z.object({
         name: z.string().min(1),
-        percentage: z.coerce.number().min(0.01).max(100),
+        lossThreshold: z.coerce.number().min(0),
+        refundType: z.enum(['PERCENTAGE', 'FIXED']),
+        refundValue: z.coerce.number().min(0.01),
+        frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
         startsAt: z.string(),
         endsAt: z.string(),
     })
@@ -463,7 +466,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         if (!parsed.success) {
             return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
         }
-        return CashbackService.createPromotion(parsed.data as { name: string; percentage: number; startsAt: string; endsAt: string })
+        return CashbackService.createPromotion(parsed.data as any)
     })
 
     fastify.patch('/cashback/:id/toggle', async (req: any, _reply) => {
@@ -471,8 +474,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         return CashbackService.togglePromotion(req.params.id, body.isActive)
     })
 
-    fastify.post('/cashback/:id/disburse', async (req: any, _reply) => {
-        return CashbackService.disburse(req.params.id)
+    fastify.post('/cashback/run-checks', async (_req: any, _reply) => {
+        return CashbackService.runChecks()
     })
 }
 
