@@ -295,6 +295,17 @@ enum TournamentStatus {
   CANCELLED
 }
 
+enum CashbackRefundType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CashbackFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 model Tournament {
   id              String           @id @default(uuid())
   title           String
@@ -350,7 +361,10 @@ model TournamentGame {
 model CashbackPromotion {
   id             String                 @id @default(uuid())
   name           String
-  percentage     Decimal                @db.Decimal(5, 2)   // e.g. 10.00 = 10%
+  lossThreshold  Decimal                @db.Decimal(12, 2)   // net real-balance loss required to qualify
+  refundType     CashbackRefundType                          // PERCENTAGE or FIXED
+  refundValue    Decimal                @db.Decimal(10, 2)   // e.g. 10.00 = 10% OR 50.00 = 50 ETB flat
+  frequency      CashbackFrequency                          // evaluation window: DAILY | WEEKLY | MONTHLY
   startsAt       DateTime
   endsAt         DateTime
   isActive       Boolean                @default(true)
@@ -371,7 +385,8 @@ model CashbackDisbursement {
   promotion    CashbackPromotion @relation(fields: [promotionId], references: [id])
   user         User              @relation(fields: [userId], references: [id])
 
-  @@unique([promotionId, userId])
+  @@unique([promotionId, userId, periodStart])
+  @@index([promotionId, periodStart])
   @@map("cashback_disbursements")
 }
 
