@@ -23,6 +23,8 @@ const fetchWallet = async () => {
 // ── Transactions ─────────────────────────────────────────────────────────────
 const txPage = ref(1)
 const txFilter = ref('')
+const txFrom = ref('')
+const txTo = ref('')
 const txLoading = ref(false)
 const transactions = ref<any[]>([])
 const txTotal = ref(0)
@@ -38,7 +40,13 @@ const filterOptions = [
 const fetchTransactions = async () => {
   txLoading.value = true
   try {
-    const data = await getHouseTransactions({ page: txPage.value, limit: TX_LIMIT, type: txFilter.value || undefined })
+    const data = await getHouseTransactions({
+      page: txPage.value,
+      limit: TX_LIMIT,
+      type: txFilter.value || undefined,
+      from: txFrom.value || undefined,
+      to: txTo.value || undefined,
+    })
     transactions.value = data.transactions ?? []
     txTotal.value = data.total ?? 0
   } catch {
@@ -48,7 +56,7 @@ const fetchTransactions = async () => {
   }
 }
 
-watch([txPage, txFilter], fetchTransactions)
+watch([txPage, txFilter, txFrom, txTo], fetchTransactions)
 
 const txColumns = [
   { accessorKey: 'createdAt', header: 'Date / Time' },
@@ -133,9 +141,20 @@ onMounted(() => {
     <!-- ── Section 1: Balance card ────────────────────────────────────────── -->
     <div class="rounded-2xl border border-(--surface-border) p-6 shadow-xl" style="background:var(--surface-raised);">
       <p class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Current House Balance</p>
-      <div class="flex items-end gap-3 mb-6">
-        <span class="text-5xl font-extrabold text-yellow-400 tabular-nums">{{ balance }}</span>
-        <span class="text-xl font-bold text-yellow-400/60 mb-1">ETB</span>
+      <div class="flex items-end gap-3 mb-2">
+        <span class="text-5xl font-extrabold tabular-nums"
+          :class="Number(balance) < 0 ? 'text-red-400' : 'text-yellow-400'">
+          {{ balance }}
+        </span>
+        <span class="text-xl font-bold mb-1"
+          :class="Number(balance) < 0 ? 'text-red-400/60' : 'text-yellow-400/60'">
+          ETB
+        </span>
+      </div>
+      <div v-if="Number(balance) < 0" class="mb-4">
+        <UBadge color="error" variant="soft" icon="i-heroicons:exclamation-triangle">
+          ⚠ House is in deficit — prizes exceeded commissions
+        </UBadge>
       </div>
       <div class="grid grid-cols-3 gap-4">
         <div class="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
@@ -157,7 +176,7 @@ onMounted(() => {
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-3">
         <h2 class="text-lg font-bold text-white">Transaction History</h2>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
           <USelect
             v-model="txFilter"
             :items="filterOptions"
@@ -165,6 +184,16 @@ onMounted(() => {
             size="sm"
             class="w-40"
           />
+          <UInput v-model="txFrom" type="date" size="sm" class="w-40" />
+          <UInput v-model="txTo" type="date" size="sm" class="w-40" />
+          <UButton
+            v-if="txFilter || txFrom || txTo"
+            size="sm" color="neutral" variant="ghost"
+            icon="i-heroicons:x-mark"
+            @click="txFilter = ''; txFrom = ''; txTo = ''; txPage = 1"
+          >
+            Reset
+          </UButton>
         </div>
       </div>
 
