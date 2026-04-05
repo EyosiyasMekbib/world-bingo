@@ -152,5 +152,13 @@
     "insufficientBalance": "በቂ ቀሪ ሂሳብ የለም",
     "backToLobby": "ወደ ሎቢ ተመለስ",
     "past": "ያለፉ ውድድሮች"
+  },
+  "promo": {
+    "cashback_percentage": "በ{frequency} ኪሳራዎ {value}% ካሽባክ ያሸናሉ",
+    "cashback_fixed": "በ{frequency} ኪሳራዎ {value} ብር ካሽባክ ያሸናሉ",
+    "first_deposit": "በመጀመሪያ ብር ሲጨምሩ {amount} ብር ጉርሻ ያገኛሉ",
+    "frequency_daily": "ዕለታዊ",
+    "frequency_weekly": "ሳምንታዊ",
+    "frequency_monthly": "ወርሃዊ"
   }
 }

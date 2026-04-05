@@ -152,5 +152,13 @@
     "insufficientBalance": "Insufficient Balance",
     "backToLobby": "Back to Lobby",
     "past": "Past Tournaments"
+  },
+  "promo": {
+    "cashback_percentage": "Get {value}% cashback on your {frequency} losses",
+    "cashback_fixed": "Get {value} ETB cashback on your {frequency} losses",
+    "first_deposit": "Get {amount} ETB bonus on your first deposit",
+    "frequency_daily": "daily",
+    "frequency_weekly": "weekly",
+    "frequency_monthly": "monthly"
   }
 }
