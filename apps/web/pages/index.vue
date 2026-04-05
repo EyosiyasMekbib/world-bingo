@@ -2,11 +2,13 @@
 import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
+import { usePromotionsStore } from '~/store/promotions'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
 const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()
+const promotionsStore = usePromotionsStore()
 const { connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel, patternIcon } = usePatternLabel()
@@ -70,6 +72,8 @@ onMounted(async () => {
   try {
     await gameStore.fetchAvailableGames()
   } catch { /* errors are stored in gameStore.error */ }
+
+  promotionsStore.fetch()
 
   if (thirdPartyGamesEnabled.value) {
     await providerStore.fetchProviders()
@@ -197,6 +201,12 @@ onUnmounted(() => {
         <span class="dot"></span>
       </div>
     </section>
+
+    <!-- ── PROMOTION BANNERS ─────────────────────────────────── -->
+    <div class="max-container flex flex-col gap-2 px-4 pt-4">
+      <CashbackBanner />
+      <FirstDepositBanner />
+    </div>
 
     <!-- ── GAME TYPE TABS ─────────────────────────────────────── -->
     <div class="tabs-bar">
