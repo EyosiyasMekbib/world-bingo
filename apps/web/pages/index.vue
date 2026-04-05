@@ -16,12 +16,8 @@ const { patternLabel, patternIcon } = usePatternLabel()
 const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
 
 const topGamesCollapsed = ref(false)
+const bingoCollapsed = ref(false)
 const searchQuery = ref('')
-const categoryCollapsed = reactive<Record<string, boolean>>({})
-
-function toggleCategory(title: string) {
-  categoryCollapsed[title] = !categoryCollapsed[title]
-}
 
 // Category tabs (only shown when thirdPartyGamesEnabled)
 const CATEGORY_LABELS: Record<string, string> = {
@@ -68,15 +64,6 @@ const filteredGames = computed(() => {
   )
 })
 
-const gamesByCategory = computed<{ title: string; games: Game[] }[]>(() => {
-  const map = new Map<string, Game[]>()
-  for (const game of filteredGames.value) {
-    const key = game.title || 'Other'
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(game)
-  }
-  return Array.from(map.entries()).map(([title, games]) => ({ title, games }))
-})
 
 const featuredGame = computed(() =>
   featuredTemplateId.value
@@ -558,76 +545,70 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- One section per template category -->
-      <template v-if="!gameStore.loadingGames && !gameStore.error && filteredGames.length">
-        <div
-          v-for="cat in gamesByCategory"
-          :key="cat.title"
-          class="section"
-        >
-          <div class="max-container">
-            <div class="section-hdr">
-              <span class="section-title">{{ cat.title }}</span>
-              <button class="collapse-btn" @click="toggleCategory(cat.title)">
-                {{ categoryCollapsed[cat.title] ? 'Expand' : 'Collapse' }}
-              </button>
-            </div>
+      <!-- Single Bingo section -->
+      <div v-if="!gameStore.loadingGames && !gameStore.error && filteredGames.length" class="section">
+        <div class="max-container">
+          <div class="section-hdr">
+            <span class="section-title">Bingo</span>
+            <button class="collapse-btn" @click="bingoCollapsed = !bingoCollapsed">
+              {{ bingoCollapsed ? 'Expand' : 'Collapse' }}
+            </button>
+          </div>
 
-            <div v-show="!categoryCollapsed[cat.title]" class="rooms-grid">
-              <div
-                v-for="(game, idx) in cat.games"
-                :key="game.id"
-                class="room-card"
-                :style="{ '--delay': `${idx * 60}ms` }"
-              >
-                <!-- Row 1: Label + Pattern badge -->
-                <div class="rc-row-1">
-                  <span class="rc-ticket-label">TICKET PRICE</span>
-                  <span class="rc-pattern">{{ patternLabel(game.pattern) }}</span>
+          <div v-show="!bingoCollapsed" class="rooms-grid">
+            <div
+              v-for="(game, idx) in filteredGames"
+              :key="game.id"
+              class="room-card"
+              :style="{ '--delay': `${idx * 60}ms` }"
+            >
+              <!-- Row 1: Label + Pattern badge -->
+              <div class="rc-row-1">
+                <span class="rc-ticket-label">TICKET PRICE</span>
+                <span class="rc-pattern">{{ patternLabel(game.pattern) }}</span>
+              </div>
+
+              <!-- Row 2: Price + Timer/Live -->
+              <div class="rc-row-2">
+                <div class="rc-price-block">
+                  <span class="rc-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
+                  <span class="rc-etb">ETB</span>
                 </div>
-
-                <!-- Row 2: Price + Timer/Live -->
-                <div class="rc-row-2">
-                  <div class="rc-price-block">
-                    <span class="rc-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
-                    <span class="rc-etb">ETB</span>
-                  </div>
-                  <div class="rc-timer" :class="{ 'rc-timer--live': game.status !== 'WAITING' }">
-                    <template v-if="game.status !== 'WAITING'">
-                      <span class="live-dot-sm"></span>
-                      LIVE
-                    </template>
-                    <template v-else>
-                      <GameCountdown
-                        v-if="gameStore.countdowns[game.id]"
-                        :starts-at="gameStore.countdowns[game.id]"
-                        compact
-                      />
-                      <template v-else>1:00</template>
-                    </template>
-                  </div>
+                <div class="rc-timer" :class="{ 'rc-timer--live': game.status !== 'WAITING' }">
+                  <template v-if="game.status !== 'WAITING'">
+                    <span class="live-dot-sm"></span>
+                    LIVE
+                  </template>
+                  <template v-else>
+                    <GameCountdown
+                      v-if="gameStore.countdowns[game.id]"
+                      :starts-at="gameStore.countdowns[game.id]"
+                      compact
+                    />
+                    <template v-else>1:00</template>
+                  </template>
                 </div>
+              </div>
 
-                <!-- Row 3: Players + CTA -->
-                <div class="rc-row-3">
-                  <div class="rc-players">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="rc-player-icon">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }} / {{ (game as any).maxPlayers ?? 10 }} players
-                  </div>
-                  <NuxtLink v-if="game.status === 'WAITING'" :to="`/quick/${game.id}`" class="rc-join">
-                    Join Game →
-                  </NuxtLink>
-                  <div v-else class="rc-join rc-join--live">
-                    {{ game.status === 'STARTING' ? 'Starting...' : 'Game Live' }}
-                  </div>
+              <!-- Row 3: Players + CTA -->
+              <div class="rc-row-3">
+                <div class="rc-players">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="rc-player-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }} / {{ (game as any).maxPlayers ?? 10 }} players
+                </div>
+                <NuxtLink v-if="game.status === 'WAITING'" :to="`/quick/${game.id}`" class="rc-join">
+                  Join Game →
+                </NuxtLink>
+                <div v-else class="rc-join rc-join--live">
+                  {{ game.status === 'STARTING' ? 'Starting...' : 'Game Live' }}
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </template>
+      </div>
 
     </div>
 
