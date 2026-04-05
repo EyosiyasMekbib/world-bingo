@@ -18,6 +18,7 @@ const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
 const topGamesCollapsed = ref(false)
 const bingoCollapsed = ref(false)
 const searchQuery = ref('')
+const showAuthPrompt = ref(false)
 
 // Category tabs (only shown when thirdPartyGamesEnabled)
 const CATEGORY_LABELS: Record<string, string> = {
@@ -53,6 +54,14 @@ async function handleLaunchGame(gameCode: string) {
   if (url) {
     navigateTo(`/play/${providerStore.activeProviderCode}/${gameCode}`)
   }
+}
+
+function handleJoinGame(gameId: string) {
+  if (!auth.isAuthenticated) {
+    showAuthPrompt.value = true
+    return
+  }
+  navigateTo(`/quick/${gameId}`)
 }
 
 const filteredGames = computed(() => {
@@ -598,9 +607,9 @@ onUnmounted(() => {
                   </svg>
                   {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }} / {{ (game as any).maxPlayers ?? 10 }} players
                 </div>
-                <NuxtLink v-if="game.status === 'WAITING'" :to="`/quick/${game.id}`" class="rc-join">
+                <button v-if="game.status === 'WAITING'" class="rc-join" @click="handleJoinGame(game.id)">
                   Join Game →
-                </NuxtLink>
+                </button>
                 <div v-else class="rc-join rc-join--live">
                   {{ game.status === 'STARTING' ? 'Starting...' : 'Game Live' }}
                 </div>
@@ -612,6 +621,8 @@ onUnmounted(() => {
 
     </div>
 
+    <!-- Auth Prompt Modal -->
+    <AuthPromptModal v-model="showAuthPrompt" />
   </div>
 </template>
 
