@@ -8,6 +8,7 @@ const DEFAULTS: Record<string, string> = {
     ball_interval_secs: '3',
     bot_max_spend_etb: '500',
     first_deposit_bonus_amount: '0',
+    featured_template_id: '',
 }
 
 /**
@@ -52,13 +53,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     }, async (_req, _reply) => {
         await ensureDefaults()
         const rows = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id'] } },
         })
         const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
         return {
             ball_interval_secs: Number(map.ball_interval_secs ?? 3),
             bot_max_spend_etb: Number(map.bot_max_spend_etb ?? 500),
             first_deposit_bonus_amount: Number(map.first_deposit_bonus_amount ?? 0),
+            featured_template_id: map.featured_template_id ?? '',
         }
     })
 
@@ -74,7 +76,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         ],
     }, async (req: any, _reply) => {
-        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number }
+        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string }
         const updates: Record<string, string> = {}
         if (body.ball_interval_secs != null) {
             updates.ball_interval_secs = String(Math.max(1, Math.min(30, Number(body.ball_interval_secs))))
@@ -85,6 +87,9 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (body.first_deposit_bonus_amount != null) {
             updates.first_deposit_bonus_amount = String(Math.max(0, Number(body.first_deposit_bonus_amount)))
         }
+        if (body.featured_template_id !== undefined) {
+            updates.featured_template_id = body.featured_template_id
+        }
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({
                 where: { key },
@@ -92,10 +97,15 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
                 create: { key, value },
             })
         }
+        const saved = await prisma.siteSetting.findMany({
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id'] } },
+        })
+        const savedMap = Object.fromEntries(saved.map((r) => [r.key, r.value]))
         return {
-            ball_interval_secs: Number(updates.ball_interval_secs ?? (await prisma.siteSetting.findUnique({ where: { key: 'ball_interval_secs' } }))?.value ?? 3),
-            bot_max_spend_etb: Number(updates.bot_max_spend_etb ?? (await prisma.siteSetting.findUnique({ where: { key: 'bot_max_spend_etb' } }))?.value ?? 500),
-            first_deposit_bonus_amount: Number(updates.first_deposit_bonus_amount ?? (await prisma.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } }))?.value ?? 0),
+            ball_interval_secs: Number(savedMap.ball_interval_secs ?? 3),
+            bot_max_spend_etb: Number(savedMap.bot_max_spend_etb ?? 500),
+            first_deposit_bonus_amount: Number(savedMap.first_deposit_bonus_amount ?? 0),
+            featured_template_id: savedMap.featured_template_id ?? '',
         }
     })
 
@@ -125,6 +135,14 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         return results
+    })
+
+    // ── Public: GET /settings/featured-game ─────────────────────────────────
+    // Returns the featured template ID for the home page hero (no auth needed).
+    fastify.get('/featured-game', async (_req, _reply) => {
+        const row = await prisma.siteSetting.findUnique({ where: { key: 'featured_template_id' } })
+        const value = row?.value ?? ''
+        return { templateId: value.trim() !== '' ? value : null }
     })
 }
 
