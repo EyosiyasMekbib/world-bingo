@@ -56,6 +56,7 @@ export interface Game {
     startedAt?: Date
     endedAt?: Date
     winnerId?: string
+    templateId?: string | null
 }
 
 export interface Transaction {
