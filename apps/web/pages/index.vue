@@ -10,6 +10,7 @@ const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()
 const promotionsStore = usePromotionsStore()
 const { connect } = useSocket()
+const featuredTemplateId = ref<string | null>(null)
 const config = useRuntimeConfig()
 const { patternLabel, patternIcon } = usePatternLabel()
 const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
@@ -77,6 +78,12 @@ const gamesByCategory = computed<{ title: string; games: Game[] }[]>(() => {
   return Array.from(map.entries()).map(([title, games]) => ({ title, games }))
 })
 
+const featuredGame = computed(() =>
+  featuredTemplateId.value
+    ? gameStore.availableGames.find((g) => g.templateId === featuredTemplateId.value) ?? null
+    : null,
+)
+
 function scrollToRooms() {
   document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })
 }
@@ -88,6 +95,10 @@ onMounted(async () => {
   } catch { /* errors are stored in gameStore.error */ }
 
   promotionsStore.fetch()
+
+  $fetch<{ templateId: string | null }>(`${config.public.apiBase}/settings/featured-game`)
+    .then((r) => { featuredTemplateId.value = r.templateId })
+    .catch(() => {})
 
   if (thirdPartyGamesEnabled.value) {
     await providerStore.fetchProviders()
@@ -151,62 +162,88 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="hero-art">
-          <!-- Front bingo card -->
-          <div class="bingo-card bingo-card--front">
-            <div class="bc-cell">3</div>
-            <div class="bc-cell">17</div>
-            <div class="bc-cell">32</div>
-            <div class="bc-cell bc-cell--gold">46</div>
-            <div class="bc-cell">61</div>
-            <div class="bc-cell bc-cell--blue">5</div>
-            <div class="bc-cell">20</div>
-            <div class="bc-cell">35</div>
-            <div class="bc-cell">51</div>
-            <div class="bc-cell bc-cell--gold">69</div>
-            <div class="bc-cell">9</div>
-            <div class="bc-cell">28</div>
-            <div class="bc-cell bc-cell--free">FREE</div>
-            <div class="bc-cell">53</div>
-            <div class="bc-cell">74</div>
-            <div class="bc-cell">14</div>
-            <div class="bc-cell bc-cell--blue">24</div>
-            <div class="bc-cell">39</div>
-            <div class="bc-cell">48</div>
-            <div class="bc-cell">63</div>
-            <div class="bc-cell bc-cell--blue">1</div>
-            <div class="bc-cell">16</div>
-            <div class="bc-cell">44</div>
-            <div class="bc-cell">60</div>
-            <div class="bc-cell bc-cell--blue">75</div>
-          </div>
-          <!-- Back bingo card -->
-          <div class="bingo-card bingo-card--back">
-            <div class="bc-cell">7</div>
-            <div class="bc-cell">19</div>
-            <div class="bc-cell bc-cell--blue">33</div>
-            <div class="bc-cell">49</div>
-            <div class="bc-cell">62</div>
-            <div class="bc-cell">2</div>
-            <div class="bc-cell bc-cell--blue">21</div>
-            <div class="bc-cell">36</div>
-            <div class="bc-cell bc-cell--blue">52</div>
-            <div class="bc-cell">70</div>
-            <div class="bc-cell">11</div>
-            <div class="bc-cell">29</div>
-            <div class="bc-cell bc-cell--free">FREE</div>
-            <div class="bc-cell">55</div>
-            <div class="bc-cell bc-cell--blue">71</div>
-            <div class="bc-cell">4</div>
-            <div class="bc-cell bc-cell--blue">18</div>
-            <div class="bc-cell">43</div>
-            <div class="bc-cell bc-cell--blue">59</div>
-            <div class="bc-cell">72</div>
-            <div class="bc-cell">13</div>
-            <div class="bc-cell">29</div>
-            <div class="bc-cell bc-cell--blue">40</div>
-            <div class="bc-cell">47</div>
-            <div class="bc-cell">64</div>
-          </div>
+          <!-- Featured game card — shown when admin configured a template -->
+          <template v-if="featuredGame">
+            <div class="featured-game-card">
+              <div class="fg-label">FEATURED GAME</div>
+              <div class="fg-title">{{ featuredGame.title }}</div>
+              <div class="fg-price">{{ Number(featuredGame.ticketPrice).toLocaleString() }} <span class="fg-etb">ETB</span></div>
+              <div class="fg-meta">
+                {{ patternLabel(featuredGame.pattern) }}
+                &nbsp;·&nbsp;
+                {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}
+                /
+                {{ (featuredGame as any).maxPlayers ?? 10 }} players
+              </div>
+              <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fg-join">
+                Join Now →
+              </NuxtLink>
+              <div v-else class="fg-live">
+                <span class="live-dot"></span>
+                {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'LIVE' }}
+              </div>
+            </div>
+          </template>
+
+          <!-- Default art — shown when no featured game is configured -->
+          <template v-else>
+            <!-- Front bingo card -->
+            <div class="bingo-card bingo-card--front">
+              <div class="bc-cell">3</div>
+              <div class="bc-cell">17</div>
+              <div class="bc-cell">32</div>
+              <div class="bc-cell bc-cell--gold">46</div>
+              <div class="bc-cell">61</div>
+              <div class="bc-cell bc-cell--blue">5</div>
+              <div class="bc-cell">20</div>
+              <div class="bc-cell">35</div>
+              <div class="bc-cell">51</div>
+              <div class="bc-cell bc-cell--gold">69</div>
+              <div class="bc-cell">9</div>
+              <div class="bc-cell">28</div>
+              <div class="bc-cell bc-cell--free">FREE</div>
+              <div class="bc-cell">53</div>
+              <div class="bc-cell">74</div>
+              <div class="bc-cell">14</div>
+              <div class="bc-cell bc-cell--blue">24</div>
+              <div class="bc-cell">39</div>
+              <div class="bc-cell">48</div>
+              <div class="bc-cell">63</div>
+              <div class="bc-cell bc-cell--blue">1</div>
+              <div class="bc-cell">16</div>
+              <div class="bc-cell">44</div>
+              <div class="bc-cell">60</div>
+              <div class="bc-cell bc-cell--blue">75</div>
+            </div>
+            <!-- Back bingo card -->
+            <div class="bingo-card bingo-card--back">
+              <div class="bc-cell">7</div>
+              <div class="bc-cell">19</div>
+              <div class="bc-cell bc-cell--blue">33</div>
+              <div class="bc-cell">49</div>
+              <div class="bc-cell">62</div>
+              <div class="bc-cell">2</div>
+              <div class="bc-cell bc-cell--blue">21</div>
+              <div class="bc-cell">36</div>
+              <div class="bc-cell bc-cell--blue">52</div>
+              <div class="bc-cell">70</div>
+              <div class="bc-cell">11</div>
+              <div class="bc-cell">29</div>
+              <div class="bc-cell bc-cell--free">FREE</div>
+              <div class="bc-cell">55</div>
+              <div class="bc-cell bc-cell--blue">71</div>
+              <div class="bc-cell">4</div>
+              <div class="bc-cell bc-cell--blue">18</div>
+              <div class="bc-cell">43</div>
+              <div class="bc-cell bc-cell--blue">59</div>
+              <div class="bc-cell">72</div>
+              <div class="bc-cell">13</div>
+              <div class="bc-cell">29</div>
+              <div class="bc-cell bc-cell--blue">40</div>
+              <div class="bc-cell">47</div>
+              <div class="bc-cell">64</div>
+            </div>
+          </template>
         </div>
       </div>
       <div class="hero-dots">
@@ -798,6 +835,71 @@ onUnmounted(() => {
   background: #FFD700;
   width: 20px;
   border-radius: 3px;
+}
+
+/* ── FEATURED GAME CARD (hero art replacement) ───────────────────────── */
+.featured-game-card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 20px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+  backdrop-filter: blur(8px);
+}
+.fg-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #f59e0b;
+  text-transform: uppercase;
+}
+.fg-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+}
+.fg-price {
+  font-size: 32px;
+  font-weight: 900;
+  color: #f59e0b;
+  line-height: 1;
+}
+.fg-etb {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(245,158,11,0.7);
+}
+.fg-meta {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  font-weight: 600;
+}
+.fg-join {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f59e0b;
+  color: #000;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.15s;
+  align-self: flex-start;
+}
+.fg-join:hover { background: #fbbf24; }
+.fg-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4ade80;
+  font-weight: 800;
+  font-size: 14px;
 }
 
 /* ── TABS BAR ────────────────────────────────────────────────────────── */
