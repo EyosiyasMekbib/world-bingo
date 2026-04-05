@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { getFeatureFlags, updateFeatureFlags, getGameSettings, updateGameSettings } = useAdminApi()
+const { getFeatureFlags, updateFeatureFlags, getGameSettings, updateGameSettings, getGameTemplates } = useAdminApi()
 const toast = useToast()
 
 const loading = ref(true)
@@ -16,18 +16,23 @@ const gameSettings = reactive({
   ball_interval_secs: 3,
   bot_max_spend_etb: 500,
   first_deposit_bonus_amount: 0,
+  featured_template_id: '',
 })
+
+const templates = ref<{ id: string; title: string; active: boolean }[]>([])
 
 const fetchAll = async () => {
   loading.value = true
   try {
-    const [flags, gs] = await Promise.all([getFeatureFlags(), getGameSettings()])
+    const [flags, gs, tmpl] = await Promise.all([getFeatureFlags(), getGameSettings(), getGameTemplates()])
     features.feature_referrals = flags.feature_referrals ?? false
     features.feature_tournaments = flags.feature_tournaments ?? false
     features.feature_third_party_games = flags.feature_third_party_games ?? false
     gameSettings.ball_interval_secs = gs.ball_interval_secs ?? 3
     gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
     gameSettings.first_deposit_bonus_amount = gs.first_deposit_bonus_amount ?? 0
+    gameSettings.featured_template_id = gs.featured_template_id ?? ''
+    templates.value = Array.isArray(tmpl) ? tmpl.filter((t: any) => t.active) : []
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
   } finally {
@@ -54,10 +59,12 @@ const saveGameSettings = async () => {
       ball_interval_secs: gameSettings.ball_interval_secs,
       bot_max_spend_etb: gameSettings.bot_max_spend_etb,
       first_deposit_bonus_amount: gameSettings.first_deposit_bonus_amount,
+      featured_template_id: gameSettings.featured_template_id,
     }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
     gameSettings.first_deposit_bonus_amount = result.first_deposit_bonus_amount
+    gameSettings.featured_template_id = result.featured_template_id ?? ''
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -160,6 +167,25 @@ onMounted(fetchAll)
                   class="w-36"
                 />
                 <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Featured Hero Game -->
+          <div class="flex items-start gap-4 mb-4 mt-4 pt-4 border-t border-white/10">
+            <div class="p-3 rounded-xl border border-amber-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:star" class="w-6 h-6 text-amber-400" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Featured Hero Game</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Select a game template to feature in the home page hero banner. Leave empty to show the default bingo card art.</p>
+              <div class="mt-3">
+                <USelect
+                  v-model="gameSettings.featured_template_id"
+                  :options="[{ label: '— None (default art) —', value: '' }, ...templates.map(t => ({ label: t.title, value: t.id }))]"
+                  class="w-72"
+                  placeholder="Select a template…"
+                />
               </div>
             </div>
           </div>
