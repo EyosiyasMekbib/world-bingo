@@ -66,7 +66,11 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/packages/game-logic/dist ./packages/game-logic/dist
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
+# Copy entrypoint script
+COPY apps/api/entrypoint.sh ./apps/api/entrypoint.sh
+
 RUN mkdir -p /app/apps/api/uploads && \
+    chmod +x /app/apps/api/entrypoint.sh && \
     chown -R appuser:appgroup /app
 USER appuser
 
@@ -74,5 +78,5 @@ WORKDIR /app/apps/api
 
 EXPOSE 8080
 
-# Run migrations, seed the database, then start server
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && (node_modules/.bin/tsx prisma/seed.ts || echo 'Seed skipped') && exec node dist/index.js"]
+# Run entrypoint script that handles migrations and starts server
+ENTRYPOINT ["./entrypoint.sh"]
