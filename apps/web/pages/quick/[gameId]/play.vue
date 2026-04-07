@@ -701,8 +701,10 @@ async function init() {
       gameStore.myEntries = existingEntries
     }
 
-    // Load cartelas for join phase (needed even if already joined for card display)
-    await gameStore.fetchAvailableCartelas(gameId)
+    // Load cartelas for join phase only — not needed when rejoining an active game
+    if (rawStatus !== 'IN_PROGRESS') {
+      await gameStore.fetchAvailableCartelas(gameId)
+    }
 
     // Refresh wallet so balance is current
     await auth.fetchWallet()
