@@ -107,8 +107,12 @@ export class GameController {
         // For live games, Redis holds the authoritative ball list; DB lags behind.
         let calledBalls: number[] = (game as any).calledBalls ?? []
         if (game.status === GameStatus.IN_PROGRESS) {
-            const redisBalls = await getCalledBalls(game.id)
-            if (redisBalls.length > 0) calledBalls = redisBalls
+            try {
+                const redisBalls = await getCalledBalls(game.id)
+                if (redisBalls.length > 0) calledBalls = redisBalls
+            } catch (err) {
+                request.log.warn({ err, gameId: game.id }, 'Redis unavailable; serving stale calledBalls from DB')
+            }
         }
 
         return { ...game, calledBalls, currentPlayers: distinctPlayers }
