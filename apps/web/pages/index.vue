@@ -2,6 +2,7 @@
 import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
+import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import type { Game } from '@world-bingo/shared-types'
 
@@ -20,7 +21,7 @@ const bingoCollapsed = ref(false)
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
 
-// Category tabs (only shown when thirdPartyGamesEnabled)
+// Category labels
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All',
   BINGO: 'Bingo',
@@ -30,19 +31,50 @@ const CATEGORY_LABELS: Record<string, string> = {
   CRASH: 'Crash',
 }
 
-const showBingoSection = computed(() =>
-  !thirdPartyGamesEnabled.value ||
-  providerStore.activeCategory === 'ALL' ||
-  providerStore.activeCategory === 'BINGO',
+const showBingoSection = computed(() => true)
+
+// Per-category games for section-based layout
+const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
+const categoryGamesLoading = ref<Record<string, boolean>>({})
+
+async function fetchCategoryGames(category: string) {
+  const code = providerStore.activeProviderCode
+  if (!code) return
+  categoryGamesLoading.value[category] = true
+  try {
+    const result = await auth.apiFetch<{ games: ProviderGame[] }>(`/providers/${code}/games?page=1&pageSize=20&category=${category}`)
+    categoryGamesMap.value[category] = result.games
+  } catch {
+    categoryGamesMap.value[category] = []
+  } finally {
+    delete categoryGamesLoading.value[category]
+  }
+}
+
+const providerCategories = computed(() =>
+  providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL'),
 )
 
-const showProviderGames = computed(() =>
-  thirdPartyGamesEnabled.value &&
-  providerStore.activeCategory !== 'BINGO',
-)
+// Hero slider
+const currentSlide = ref(0)
+let slideTimer: ReturnType<typeof setInterval> | null = null
 
-function selectCategory(cat: string) {
-  providerStore.setCategory(cat)
+const heroSlides = [
+  { id: 'bingo', type: 'bingo' as const },
+  { id: 'chicken-road', type: 'ad' as const, title: 'Chicken Road', tag: 'CRASH GAME', tagline: 'Cross the road. Dodge the fryer. Multiply your bet with every step.', color: '#f97316' },
+  { id: 'aviator', type: 'ad' as const, title: 'Aviator', tag: 'MULTIPLIER GAME', tagline: "Watch the plane climb. Cash out before it crashes.", color: '#3b82f6' },
+]
+
+function goToSlide(idx: number) {
+  currentSlide.value = idx
+  if (slideTimer) clearInterval(slideTimer)
+  startSlideTimer()
+}
+
+function startSlideTimer() {
+  slideTimer = setInterval(() => {
+    currentSlide.value = (currentSlide.value + 1) % heroSlides.length
+  }, 5000)
 }
 
 async function handleLaunchGame(gameCode: string) {
@@ -99,8 +131,12 @@ onMounted(async () => {
   if (thirdPartyGamesEnabled.value) {
     await providerStore.fetchProviders()
     await providerStore.fetchCategories()
-    await providerStore.fetchGames({ reset: true })
+    // Load games per category (sections layout — no tab switching)
+    const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
+    await Promise.all(cats.map((c) => fetchCategoryGames(c)))
   }
+
+  startSlideTimer()
 
   const socket = connect()
   if (!socket) return
@@ -131,6 +167,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (slideTimer) clearInterval(slideTimer)
   const socket = connect()
   socket?.emit('lobby:unsubscribe')
 })
@@ -142,110 +179,173 @@ onUnmounted(() => {
     <!-- ── HERO BANNER ───────────────────────────────────────── -->
     <section class="hero">
       <div class="hero-bg"></div>
-      <div class="hero-inner max-container">
-        <div class="hero-text">
-          <div class="hero-badge">
-            <span class="badge-dot"></span>
-            NOW LIVE — ETHIOPIA'S #1 BINGO
-          </div>
-          <h1 class="hero-title">Play <span class="hero-accent">Bingo</span>,<br>Win Real ETB</h1>
-          <p class="hero-sub">Join thousands of players. Pick your cartela, call BINGO, get paid instantly.</p>
-          <button class="hero-cta" @click="scrollToRooms">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            Play Now
-          </button>
-        </div>
-        <div class="hero-art">
-          <!-- Featured game card — shown when admin configured a template -->
-          <template v-if="featuredGame">
-            <div class="featured-game-card">
-              <div class="fg-label">FEATURED GAME</div>
-              <div class="fg-title">{{ featuredGame.title }}</div>
-              <div class="fg-price">{{ Number(featuredGame.ticketPrice).toLocaleString() }} <span class="fg-etb">ETB</span></div>
-              <div class="fg-meta">
-                {{ patternLabel(featuredGame.pattern) }}
-                &nbsp;·&nbsp;
-                {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}
-                /
-                {{ (featuredGame as any).maxPlayers ?? 10 }} players
-              </div>
-              <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fg-join">
-                Join Now →
-              </NuxtLink>
-              <div v-else class="fg-live">
-                <span class="live-dot"></span>
-                {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'LIVE' }}
-              </div>
-            </div>
-          </template>
 
-          <!-- Default art — shown when no featured game is configured -->
-          <template v-else>
-            <!-- Front bingo card -->
-            <div class="bingo-card bingo-card--front">
-              <div class="bc-cell">3</div>
-              <div class="bc-cell">17</div>
-              <div class="bc-cell">32</div>
-              <div class="bc-cell bc-cell--gold">46</div>
-              <div class="bc-cell">61</div>
-              <div class="bc-cell bc-cell--blue">5</div>
-              <div class="bc-cell">20</div>
-              <div class="bc-cell">35</div>
-              <div class="bc-cell">51</div>
-              <div class="bc-cell bc-cell--gold">69</div>
-              <div class="bc-cell">9</div>
-              <div class="bc-cell">28</div>
-              <div class="bc-cell bc-cell--free">FREE</div>
-              <div class="bc-cell">53</div>
-              <div class="bc-cell">74</div>
-              <div class="bc-cell">14</div>
-              <div class="bc-cell bc-cell--blue">24</div>
-              <div class="bc-cell">39</div>
-              <div class="bc-cell">48</div>
-              <div class="bc-cell">63</div>
-              <div class="bc-cell bc-cell--blue">1</div>
-              <div class="bc-cell">16</div>
-              <div class="bc-cell">44</div>
-              <div class="bc-cell">60</div>
-              <div class="bc-cell bc-cell--blue">75</div>
+      <Transition name="hero-fade" mode="out-in">
+        <!-- Slide 0: Bingo -->
+        <div v-if="currentSlide === 0" key="bingo" class="hero-inner max-container">
+          <div class="hero-text">
+            <div class="hero-badge">
+              <span class="badge-dot"></span>
+              NOW LIVE — ETHIOPIA'S #1 BINGO
             </div>
-            <!-- Back bingo card -->
-            <div class="bingo-card bingo-card--back">
-              <div class="bc-cell">7</div>
-              <div class="bc-cell">19</div>
-              <div class="bc-cell bc-cell--blue">33</div>
-              <div class="bc-cell">49</div>
-              <div class="bc-cell">62</div>
-              <div class="bc-cell">2</div>
-              <div class="bc-cell bc-cell--blue">21</div>
-              <div class="bc-cell">36</div>
-              <div class="bc-cell bc-cell--blue">52</div>
-              <div class="bc-cell">70</div>
-              <div class="bc-cell">11</div>
-              <div class="bc-cell">29</div>
-              <div class="bc-cell bc-cell--free">FREE</div>
-              <div class="bc-cell">55</div>
-              <div class="bc-cell bc-cell--blue">71</div>
-              <div class="bc-cell">4</div>
-              <div class="bc-cell bc-cell--blue">18</div>
-              <div class="bc-cell">43</div>
-              <div class="bc-cell bc-cell--blue">59</div>
-              <div class="bc-cell">72</div>
-              <div class="bc-cell">13</div>
-              <div class="bc-cell">29</div>
-              <div class="bc-cell bc-cell--blue">40</div>
-              <div class="bc-cell">47</div>
-              <div class="bc-cell">64</div>
-            </div>
-          </template>
+            <h1 class="hero-title">Play <span class="hero-accent">Bingo</span>,<br>Win Real ETB</h1>
+            <p class="hero-sub">Join thousands of players. Pick your cartela, call BINGO, get paid instantly.</p>
+            <button class="hero-cta" @click="scrollToRooms">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Play Now
+            </button>
+          </div>
+          <div class="hero-art">
+            <template v-if="featuredGame">
+              <div class="featured-game-card">
+                <div class="fg-label">FEATURED GAME</div>
+                <div class="fg-title">{{ featuredGame.title }}</div>
+                <div class="fg-price">{{ Number(featuredGame.ticketPrice).toLocaleString() }} <span class="fg-etb">ETB</span></div>
+                <div class="fg-meta">
+                  {{ patternLabel(featuredGame.pattern) }}
+                  &nbsp;·&nbsp;
+                  {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}
+                  /
+                  {{ (featuredGame as any).maxPlayers ?? 10 }} players
+                </div>
+                <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fg-join">
+                  Join Now →
+                </NuxtLink>
+                <div v-else class="fg-live">
+                  <span class="live-dot"></span>
+                  {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'LIVE' }}
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="bingo-card bingo-card--front">
+                <div class="bc-cell">3</div><div class="bc-cell">17</div><div class="bc-cell">32</div><div class="bc-cell bc-cell--gold">46</div><div class="bc-cell">61</div>
+                <div class="bc-cell bc-cell--blue">5</div><div class="bc-cell">20</div><div class="bc-cell">35</div><div class="bc-cell">51</div><div class="bc-cell bc-cell--gold">69</div>
+                <div class="bc-cell">9</div><div class="bc-cell">28</div><div class="bc-cell bc-cell--free">FREE</div><div class="bc-cell">53</div><div class="bc-cell">74</div>
+                <div class="bc-cell">14</div><div class="bc-cell bc-cell--blue">24</div><div class="bc-cell">39</div><div class="bc-cell">48</div><div class="bc-cell">63</div>
+                <div class="bc-cell bc-cell--blue">1</div><div class="bc-cell">16</div><div class="bc-cell">44</div><div class="bc-cell">60</div><div class="bc-cell bc-cell--blue">75</div>
+              </div>
+              <div class="bingo-card bingo-card--back">
+                <div class="bc-cell">7</div><div class="bc-cell">19</div><div class="bc-cell bc-cell--blue">33</div><div class="bc-cell">49</div><div class="bc-cell">62</div>
+                <div class="bc-cell">2</div><div class="bc-cell bc-cell--blue">21</div><div class="bc-cell">36</div><div class="bc-cell bc-cell--blue">52</div><div class="bc-cell">70</div>
+                <div class="bc-cell">11</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--free">FREE</div><div class="bc-cell">55</div><div class="bc-cell bc-cell--blue">71</div>
+                <div class="bc-cell">4</div><div class="bc-cell bc-cell--blue">18</div><div class="bc-cell">43</div><div class="bc-cell bc-cell--blue">59</div><div class="bc-cell">72</div>
+                <div class="bc-cell">13</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--blue">40</div><div class="bc-cell">47</div><div class="bc-cell">64</div>
+              </div>
+            </template>
+          </div>
         </div>
-      </div>
+
+        <!-- Slide 1: Chicken Road -->
+        <div v-else-if="currentSlide === 1" key="chicken-road" class="hero-inner max-container">
+          <div class="hero-text">
+            <div class="hero-badge" style="border-color:rgba(249,115,22,0.35)">
+              <span class="badge-dot" style="background:#f97316;animation:none"></span>
+              CRASH GAME — COMING SOON
+            </div>
+            <h1 class="hero-title">Play <span style="color:#f97316">Chicken</span><br>Road</h1>
+            <p class="hero-sub">Cross the road. Dodge the fryer. Multiply your bet with every step you take.</p>
+            <button class="hero-cta hero-cta--ad" style="--ad-color:#f97316" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Coming Soon
+            </button>
+          </div>
+          <div class="hero-art hero-art--ad">
+            <div class="ad-art ad-art--chicken">
+              <div class="ad-art-icon">
+                <svg width="72" height="72" viewBox="0 0 64 64" fill="none">
+                  <!-- Road -->
+                  <rect x="8" y="38" width="48" height="18" rx="3" fill="rgba(255,255,255,0.08)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
+                  <rect x="20" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
+                  <rect x="36" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
+                  <!-- Chicken body -->
+                  <ellipse cx="32" cy="28" rx="9" ry="10" fill="rgba(249,115,22,0.9)"/>
+                  <circle cx="32" cy="16" r="6" fill="rgba(249,115,22,0.9)"/>
+                  <!-- Beak -->
+                  <polygon points="35,15 39,17 35,19" fill="#fbbf24"/>
+                  <!-- Eye -->
+                  <circle cx="30" cy="15" r="2" fill="#fff"/>
+                  <circle cx="30" cy="15" r="1" fill="#000"/>
+                  <!-- Wings -->
+                  <ellipse cx="22" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(-15 22 28)"/>
+                  <ellipse cx="42" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(15 42 28)"/>
+                  <!-- Comb -->
+                  <path d="M29 10 Q31 6 33 10 Q31 8 29 10" fill="#ef4444"/>
+                  <!-- Multiplier labels -->
+                  <text x="10" y="56" font-size="8" fill="rgba(249,115,22,0.8)" font-weight="bold" font-family="monospace">1.5×</text>
+                  <text x="26" y="56" font-size="8" fill="rgba(249,115,22,0.9)" font-weight="bold" font-family="monospace">3×</text>
+                  <text x="42" y="56" font-size="8" fill="#f97316" font-weight="bold" font-family="monospace">9×</text>
+                </svg>
+              </div>
+              <div class="ad-multiplier">
+                <span class="ad-mult-num" style="color:#f97316">9×</span>
+                <span class="ad-mult-label">MAX MULTIPLIER</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slide 2: Aviator -->
+        <div v-else key="aviator" class="hero-inner max-container">
+          <div class="hero-text">
+            <div class="hero-badge" style="border-color:rgba(59,130,246,0.35)">
+              <span class="badge-dot" style="background:#3b82f6;animation:none"></span>
+              MULTIPLIER GAME — COMING SOON
+            </div>
+            <h1 class="hero-title">Play <span style="color:#60a5fa">Aviator</span></h1>
+            <p class="hero-sub">Watch the plane climb. The multiplier rises. Cash out before it crashes — or lose it all.</p>
+            <button class="hero-cta hero-cta--ad" style="--ad-color:#3b82f6" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Coming Soon
+            </button>
+          </div>
+          <div class="hero-art hero-art--ad">
+            <div class="ad-art ad-art--aviator">
+              <div class="ad-art-icon">
+                <svg width="80" height="72" viewBox="0 0 80 72" fill="none">
+                  <!-- Trail/path -->
+                  <path d="M10 55 Q30 40 62 18" stroke="rgba(59,130,246,0.35)" stroke-width="2" stroke-dasharray="4 3"/>
+                  <!-- Plane body -->
+                  <g transform="translate(58,16) rotate(-30)">
+                    <path d="M0 0 L-16 6 L-8 0 L-16 -6 Z" fill="#3b82f6"/>
+                    <!-- Wings -->
+                    <path d="M-8 0 L-14 -12 L-4 -8 Z" fill="#60a5fa"/>
+                    <path d="M-8 0 L-14 12 L-4 8 Z" fill="#60a5fa"/>
+                    <!-- Tail -->
+                    <path d="M-16 0 L-20 -6 L-16 -2 Z" fill="#93c5fd"/>
+                  </g>
+                  <!-- Multiplier label -->
+                  <rect x="20" y="10" width="42" height="20" rx="6" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                  <text x="41" y="24" font-size="11" fill="#60a5fa" font-weight="bold" font-family="monospace" text-anchor="middle">×24.58</text>
+                  <!-- Graph line -->
+                  <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18" stroke="rgba(59,130,246,0.6)" stroke-width="2" fill="none"/>
+                  <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18 L58 62 Z" fill="rgba(59,130,246,0.08)"/>
+                </svg>
+              </div>
+              <div class="ad-multiplier">
+                <span class="ad-mult-num" style="color:#60a5fa">∞×</span>
+                <span class="ad-mult-label">UNLIMITED MULTIPLIER</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
       <div class="hero-dots">
-        <span class="dot dot--active"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
+        <button
+          v-for="(slide, i) in heroSlides"
+          :key="slide.id"
+          class="dot"
+          :class="{ 'dot--active': currentSlide === i }"
+          :aria-label="`Go to slide ${i + 1}`"
+          @click="goToSlide(i)"
+        ></button>
       </div>
     </section>
 
@@ -259,44 +359,21 @@ onUnmounted(() => {
     <div class="tabs-bar">
       <div class="max-container tabs-inner">
         <div class="tabs-group">
-          <!-- Without third-party games: Lobby + Tournaments only -->
-          <template v-if="!thirdPartyGamesEnabled">
-            <button class="tab tab--active">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-              Lobby
-            </button>
-            <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              Tournaments
-            </NuxtLink>
-          </template>
-
-          <!-- With third-party games: category tabs -->
-          <template v-else>
-            <button
-              v-for="cat in providerStore.displayCategories"
-              :key="cat"
-              class="tab"
-              :class="{ 'tab--active': providerStore.activeCategory === cat }"
-              @click="selectCategory(cat)"
-            >
-              {{ CATEGORY_LABELS[cat] ?? cat }}
-            </button>
-            <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              Tournaments
-            </NuxtLink>
-          </template>
+          <button class="tab tab--active">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            Lobby
+          </button>
+          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            Tournaments
+          </NuxtLink>
         </div>
         <label class="search-bar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.4">
@@ -477,65 +554,57 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ── PROVIDER GAMES GRID (third-party categories) ─────── -->
-    <div v-if="showProviderGames" class="section">
-      <div class="max-container">
-        <div class="section-hdr">
-          <span class="section-title">{{ CATEGORY_LABELS[providerStore.activeCategory] ?? providerStore.activeCategory }}</span>
-        </div>
+    <!-- ── PROVIDER GAMES — one section per category ─────────── -->
+    <template v-if="thirdPartyGamesEnabled && providerCategories.length">
+      <div
+        v-for="cat in providerCategories"
+        :key="cat"
+        class="section"
+      >
+        <div class="max-container">
+          <div class="section-hdr">
+            <span class="section-title">{{ CATEGORY_LABELS[cat] ?? cat }}</span>
+          </div>
 
-        <div v-if="providerStore.loading && !providerStore.games.length" class="state-msg">
-          <span class="spinner"></span> Loading games…
-        </div>
-        <div v-else-if="providerStore.error" class="state-msg state-msg--error">
-          {{ providerStore.error }}
-        </div>
-        <div v-else-if="!providerStore.games.length" class="state-msg">
-          No games available in this category.
-        </div>
-
-        <div v-else class="provider-grid">
-          <NuxtLink
-            v-for="g in providerStore.games"
-            :key="g.gameCode"
-            :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-            class="pg-card"
-          >
-            <div class="pg-thumb">
-              <img
-                v-if="g.imageSquare || g.imageLandscape"
-                :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                :alt="g.gameName"
-                class="pg-img"
-                loading="lazy"
-              />
-              <div v-else class="pg-placeholder">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.3">
-                  <rect x="2" y="3" width="20" height="18" rx="2" />
-                  <rect x="5" y="7" width="4" height="8" rx="1" />
-                  <rect x="10" y="7" width="4" height="8" rx="1" />
-                  <rect x="15" y="7" width="4" height="8" rx="1" />
-                </svg>
+          <div v-if="categoryGamesLoading[cat]" class="state-msg">
+            <span class="spinner"></span> Loading…
+          </div>
+          <div v-else-if="!categoryGamesMap[cat]?.length" class="state-msg">
+            No games available.
+          </div>
+          <div v-else class="provider-grid">
+            <NuxtLink
+              v-for="g in categoryGamesMap[cat]"
+              :key="g.gameCode"
+              :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+              class="pg-card"
+            >
+              <div class="pg-thumb">
+                <img
+                  v-if="g.imageSquare || g.imageLandscape"
+                  :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                  :alt="g.gameName"
+                  class="pg-img"
+                  loading="lazy"
+                />
+                <div v-else class="pg-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.3">
+                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                    <rect x="5" y="7" width="4" height="8" rx="1" />
+                    <rect x="10" y="7" width="4" height="8" rx="1" />
+                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                  </svg>
+                </div>
+                <div class="pg-overlay">
+                  <span class="pg-play-btn">Play</span>
+                </div>
               </div>
-              <div class="pg-overlay">
-                <span class="pg-play-btn">Play</span>
-              </div>
-            </div>
-            <div class="pg-name">{{ g.gameName }}</div>
-          </NuxtLink>
-        </div>
-
-        <div v-if="providerStore.hasMore" class="load-more-wrap">
-          <button
-            class="load-more-btn"
-            :disabled="providerStore.loading"
-            @click="providerStore.loadMore()"
-          >
-            {{ providerStore.loading ? 'Loading…' : 'Load More' }}
-          </button>
+              <div class="pg-name">{{ g.gameName }}</div>
+            </NuxtLink>
+          </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- ── BINGO ROOMS (by category) ────────────────────────────── -->
     <div v-if="showBingoSection" id="rooms">
@@ -638,9 +707,9 @@ onUnmounted(() => {
 }
 
 .max-container {
-  max-width: 1060px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
 }
 
 /* ── HERO ────────────────────────────────────────────────────────────── */
@@ -830,7 +899,11 @@ onUnmounted(() => {
   height: 6px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: background 0.2s, width 0.2s;
 }
+
+.dot:hover { background: rgba(255,255,255,0.4); }
 
 .dot--active {
   background: var(--brand-primary);
@@ -987,7 +1060,7 @@ onUnmounted(() => {
 
 /* ── SECTIONS ────────────────────────────────────────────────────────── */
 .section {
-  padding: 22px 0 4px;
+  padding: 16px 0 4px;
 }
 
 .section-hdr {
@@ -1184,6 +1257,12 @@ onUnmounted(() => {
   .rooms-grid {
     grid-template-columns: repeat(3, 1fr);
     padding-bottom: 40px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .rooms-grid {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -1422,8 +1501,9 @@ onUnmounted(() => {
 }
 
 @media (min-width: 480px) { .provider-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (min-width: 700px) { .provider-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 900px) { .provider-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 700px) { .provider-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 900px) { .provider-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (min-width: 1200px) { .provider-grid { grid-template-columns: repeat(8, 1fr); } }
 
 .pg-card {
   border-radius: 12px;
@@ -1525,6 +1605,73 @@ onUnmounted(() => {
 .load-more-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.9); }
 .load-more-btn:disabled { opacity: 0.5; cursor: default; }
 .load-more-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+/* ── HERO SLIDER ─────────────────────────────────────────────────────── */
+.hero-fade-enter-active,
+.hero-fade-leave-active {
+  transition: opacity 0.35s var(--wb-ease-out), transform 0.35s var(--wb-ease-out);
+}
+.hero-fade-enter-from { opacity: 0; transform: translateX(24px); }
+.hero-fade-leave-to   { opacity: 0; transform: translateX(-24px); }
+
+.hero-dots button {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+}
+
+/* ── AD SLIDE ART ────────────────────────────────────────────────────── */
+.hero-cta--ad {
+  background: var(--ad-color, #f97316);
+  color: #fff;
+  opacity: 0.85;
+  cursor: default;
+}
+
+.hero-art--ad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ad-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 24px 32px;
+  min-width: 200px;
+}
+
+.ad-art-icon {
+  opacity: 0.9;
+}
+
+.ad-multiplier {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.ad-mult-num {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 36px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ad-mult-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+}
 
 /* ── KEYFRAMES ───────────────────────────────────────────────────────── */
 @keyframes fadeUp {
