@@ -19,7 +19,7 @@ const { apiFetch } = useAdminAuth()
 const toast = useToast()
 
 const statusOptions = [
-  { label: 'All', value: '' },
+  { label: 'All', value: '__ALL__' },
   { label: 'Waiting', value: 'WAITING' },
   { label: 'Starting', value: 'STARTING' },
   { label: 'In Progress', value: 'IN_PROGRESS' },
@@ -43,7 +43,7 @@ const columns = [
 
 const games = ref<GameRow[]>([])
 const loading = ref(false)
-const selectedStatus = ref('')
+const selectedStatus = ref('__ALL__')
 const page = ref(1)
 const total = ref(0)
 const limit = 15
@@ -69,7 +69,7 @@ const refreshGames = async () => {
   loading.value = true
   try {
     const result = await getGames({
-      status: selectedStatus.value || undefined,
+      status: selectedStatus.value === '__ALL__' ? undefined : selectedStatus.value,
       page: page.value,
       limit,
     })

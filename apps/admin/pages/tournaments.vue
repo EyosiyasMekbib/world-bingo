@@ -18,18 +18,18 @@ const newTournament = reactive({
 })
 
 const statusOptions = [
-  { label: 'All', value: '' },
+  { label: 'All', value: '__ALL__' },
   { label: 'Registration', value: TournamentStatus.REGISTRATION },
   { label: 'In Progress', value: TournamentStatus.IN_PROGRESS },
   { label: 'Completed', value: TournamentStatus.COMPLETED },
   { label: 'Cancelled', value: TournamentStatus.CANCELLED },
 ]
-const selectedStatus = ref('')
+const selectedStatus = ref('__ALL__')
 
 const filtered = computed(() =>
-  selectedStatus.value
-    ? tournaments.value.filter((t) => t.status === selectedStatus.value)
-    : tournaments.value,
+  selectedStatus.value === '__ALL__'
+    ? tournaments.value
+    : tournaments.value.filter((t) => t.status === selectedStatus.value),
 )
 
 const columns = [

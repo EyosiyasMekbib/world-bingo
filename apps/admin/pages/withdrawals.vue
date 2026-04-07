@@ -55,7 +55,7 @@ const statusOptions = [
   { label: 'Pending Review', value: 'PENDING_REVIEW' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Rejected', value: 'REJECTED' },
-  { label: 'All', value: '' },
+  { label: 'All', value: '__ALL__' },
 ]
 
 // ── Stats ───────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ const refreshWithdrawals = async () => {
   loading.value = true
   try {
     const result: any = await getWithdrawals({
-      status: filterStatus.value || undefined,
+      status: filterStatus.value === '__ALL__' ? undefined : filterStatus.value,
       search: filterSearch.value || undefined,
       userSerial: filterUserSerial.value ? Number(filterUserSerial.value) : undefined,
       from: filterFrom.value || undefined,

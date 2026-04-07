@@ -12,7 +12,7 @@ const limit = 20
 const totalPages = ref(1)
 const totalUsers = ref(0)
 const searchQuery = ref('')
-const selectedRole = ref('')
+const selectedRole = ref('__ALL__')
 const viewMode = ref<'table' | 'card'>('table')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -28,7 +28,7 @@ const detailUser = ref<any>(null)
 
 // ── Role options ───────────────────────────────────────────────────────────
 const roleOptions = [
-  { label: 'All Roles', value: '' },
+  { label: 'All Roles', value: '__ALL__' },
   { label: 'Player', value: 'PLAYER' },
   { label: 'Admin', value: 'ADMIN' },
   { label: 'Super Admin', value: 'SUPER_ADMIN' },
@@ -42,7 +42,7 @@ async function fetchUsers() {
       page: page.value,
       limit,
       search: searchQuery.value || undefined,
-      role: selectedRole.value || undefined
+      role: selectedRole.value === '__ALL__' ? undefined : selectedRole.value
     }) as any
     users.value = result?.data ?? result ?? []
     if (result?.pagination) {
@@ -200,7 +200,7 @@ const copyToClipboard = (text: string) => {
                   <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-black text-xs shrink-0 bg-(--brand-primary)">
                     {{ user.username[0].toUpperCase() }}
                   </div>
-                  <button class="font-semibold text-zinc-200 hover:text-yellow-500 transition-colors" @click="openDetail(user)">
+                  <button class="font-semibold text-zinc-200 hover:text-yellow-500 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-400 rounded" :aria-label="`View profile for ${user.username}`" @click="openDetail(user)">
                     {{ user.username }}
                   </button>
                 </div>
@@ -211,7 +211,8 @@ const copyToClipboard = (text: string) => {
                   <UButton
                     icon="i-heroicons:clipboard-document"
                     variant="ghost" color="primary" size="xs"
-                    class="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                    :aria-label="`Copy phone number ${user.phone}`"
+                    class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5"
                     @click="copyToClipboard(user.phone)"
                   />
                 </div>
@@ -354,7 +355,7 @@ const copyToClipboard = (text: string) => {
               <p class="font-bold font-mono text-white text-base tracking-tight">{{ detailUser.phone }}</p>
               <UButton
                 icon="i-heroicons:clipboard-document"
-                class="absolute top-2 right-2 opacity-30 hover:opacity-100 transition-opacity"
+                class="absolute top-2 right-2 opacity-30 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                 variant="ghost" color="primary" size="xs"
                 @click="copyToClipboard(detailUser.phone)"
               />
@@ -374,7 +375,7 @@ const copyToClipboard = (text: string) => {
               <p class="font-mono text-xs text-white/30 break-all leading-relaxed">{{ detailUser.id }}</p>
               <UButton
                 icon="i-heroicons:clipboard-document"
-                class="absolute top-2 right-2 opacity-30 hover:opacity-100 transition-opacity"
+                class="absolute top-2 right-2 opacity-30 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                 variant="ghost" color="neutral" size="xs"
                 @click="copyToClipboard(detailUser.id)"
               />

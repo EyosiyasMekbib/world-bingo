@@ -38,7 +38,7 @@ const handleLogin = async () => {
     <div class="relative w-full max-w-sm">
       <!-- Logo -->
       <div class="flex flex-col items-center mb-8">
-        <img src="/logo.png" alt="Logo" class="w-20 h-20 object-contain mb-4" />
+        <img src="/logo.png" alt="World Bingo" class="w-20 h-20 object-contain mb-4" />
         <h1 class="text-2xl font-bold text-white tracking-tight">Admin Portal</h1>
         <p class="text-sm text-white/50 mt-1">World Bingo Management</p>
       </div>

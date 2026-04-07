@@ -58,7 +58,7 @@ const filterFrom = ref('')
 const filterTo = ref('')
 const filterMinAmount = ref('')
 const filterMaxAmount = ref('')
-const filterStatus = ref('')
+const filterStatus = ref('PENDING_REVIEW')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const page = ref(1)
@@ -66,7 +66,8 @@ const totalPages = ref(1)
 const LIMIT = 20
 
 const statusOptions = [
-  { label: 'Pending Review', value: '' },
+  { label: 'All', value: '__ALL__' },
+  { label: 'Pending Review', value: 'PENDING_REVIEW' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Declined', value: 'REJECTED' },
 ]
@@ -81,7 +82,7 @@ const fetchDeposits = async () => {
   loading.value = true
   try {
     const result: any = await getPendingDeposits({
-      status: filterStatus.value || undefined,
+      status: filterStatus.value === '__ALL__' ? undefined : filterStatus.value,
       search: filterSearch.value || undefined,
       userSerial: filterUserSerial.value ? Number(filterUserSerial.value) : undefined,
       from: filterFrom.value || undefined,
@@ -116,7 +117,7 @@ const resetFilters = () => {
   filterTo.value = ''
   filterMinAmount.value = ''
   filterMaxAmount.value = ''
-  filterStatus.value = ''
+  filterStatus.value = 'PENDING_REVIEW'
   page.value = 1
   fetchDeposits()
 }

@@ -24,7 +24,7 @@ const columns = [
 ]
 
 const typeOptions = [
-  { label: 'All Types', value: '' },
+  { label: 'All Types', value: '__ALL__' },
   { label: 'Deposit', value: 'DEPOSIT' },
   { label: 'Withdrawal', value: 'WITHDRAWAL' },
   { label: 'Game Entry', value: 'GAME_ENTRY' },
@@ -34,7 +34,7 @@ const typeOptions = [
 
 const history = ref<OrderTransaction[]>([])
 const loading = ref(false)
-const selectedType = ref('')
+const selectedType = ref('__ALL__')
 const page = ref(1)
 const limit = 20
 const total = ref(0)
@@ -45,7 +45,7 @@ const refreshHistory = async () => {
   loading.value = true
   try {
     const result = await getTransactionsHistory({
-      type: selectedType.value || undefined,
+      type: selectedType.value === '__ALL__' ? undefined : selectedType.value,
       page: page.value,
       limit,
     })

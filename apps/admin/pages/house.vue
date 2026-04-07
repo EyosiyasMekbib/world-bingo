@@ -22,7 +22,7 @@ const fetchWallet = async () => {
 
 // ── Transactions ─────────────────────────────────────────────────────────────
 const txPage = ref(1)
-const txFilter = ref('')
+const txFilter = ref('__ALL__')
 const txFrom = ref('')
 const txTo = ref('')
 const txLoading = ref(false)
@@ -31,7 +31,7 @@ const txTotal = ref(0)
 const TX_LIMIT = 20
 
 const filterOptions = [
-  { label: 'All Types', value: '' },
+  { label: 'All Types', value: '__ALL__' },
   { label: 'Commission', value: 'COMMISSION' },
   { label: 'Bot Win', value: 'BOT_PRIZE_WIN' },
   { label: 'Refund', value: 'REFUND_ISSUED' },
@@ -43,7 +43,7 @@ const fetchTransactions = async () => {
     const data = await getHouseTransactions({
       page: txPage.value,
       limit: TX_LIMIT,
-      type: txFilter.value || undefined,
+      type: txFilter.value === '__ALL__' ? undefined : txFilter.value,
       from: txFrom.value || undefined,
       to: txTo.value || undefined,
     })
@@ -187,10 +187,10 @@ onMounted(() => {
           <UInput v-model="txFrom" type="date" size="sm" class="w-40" />
           <UInput v-model="txTo" type="date" size="sm" class="w-40" />
           <UButton
-            v-if="txFilter || txFrom || txTo"
+            v-if="txFilter !== '__ALL__' || txFrom || txTo"
             size="sm" color="neutral" variant="ghost"
             icon="i-heroicons:x-mark"
-            @click="txFilter = ''; txFrom = ''; txTo = ''; txPage = 1"
+            @click="txFilter = '__ALL__'; txFrom = ''; txTo = ''; txPage = 1"
           >
             Reset
           </UButton>

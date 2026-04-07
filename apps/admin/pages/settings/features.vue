@@ -16,7 +16,7 @@ const gameSettings = reactive({
   ball_interval_secs: 3,
   bot_max_spend_etb: 500,
   first_deposit_bonus_amount: 0,
-  featured_template_id: '',
+  featured_template_id: '__NONE__',
 })
 
 const templates = ref<{ id: string; title: string; active: boolean }[]>([])
@@ -31,7 +31,7 @@ const fetchAll = async () => {
     gameSettings.ball_interval_secs = gs.ball_interval_secs ?? 3
     gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
     gameSettings.first_deposit_bonus_amount = gs.first_deposit_bonus_amount ?? 0
-    gameSettings.featured_template_id = gs.featured_template_id ?? ''
+    gameSettings.featured_template_id = gs.featured_template_id ?? '__NONE__'
     templates.value = Array.isArray(tmpl) ? tmpl.filter((t: any) => t.active) : []
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
@@ -59,12 +59,12 @@ const saveGameSettings = async () => {
       ball_interval_secs: gameSettings.ball_interval_secs,
       bot_max_spend_etb: gameSettings.bot_max_spend_etb,
       first_deposit_bonus_amount: gameSettings.first_deposit_bonus_amount,
-      featured_template_id: gameSettings.featured_template_id,
+      featured_template_id: gameSettings.featured_template_id === '__NONE__' ? null : gameSettings.featured_template_id,
     }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
     gameSettings.first_deposit_bonus_amount = result.first_deposit_bonus_amount
-    gameSettings.featured_template_id = result.featured_template_id ?? ''
+    gameSettings.featured_template_id = result.featured_template_id ?? '__NONE__'
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -182,7 +182,7 @@ onMounted(fetchAll)
               <div class="mt-3">
                 <USelect
                   v-model="gameSettings.featured_template_id"
-                  :options="[{ label: '— None (default art) —', value: '' }, ...templates.map(t => ({ label: t.title, value: t.id }))]"
+                  :items="[{ label: '— None (default art) —', value: '__NONE__' }, ...templates.map(t => ({ label: t.title, value: t.id }))]"
                   class="w-72"
                   placeholder="Select a template…"
                 />

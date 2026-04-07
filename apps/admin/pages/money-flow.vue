@@ -19,7 +19,7 @@ const summary = ref({
 })
 
 // ── Filters ────────────────────────────────────────────────────────────────
-const filterDirection = ref('')
+const filterDirection = ref('__ALL__')
 const filterSearch = ref('')
 const filterFrom = ref('')
 const filterTo = ref('')
@@ -33,7 +33,7 @@ const TYPE_OPTIONS = [
 ]
 
 const directionOptions = [
-  { label: 'All Directions', value: '' },
+  { label: 'All Directions', value: '__ALL__' },
   { label: 'IN (received)', value: 'IN' },
   { label: 'OUT (paid)', value: 'OUT' },
 ]
@@ -45,7 +45,7 @@ const fetch = async () => {
     const result = await getMoneyFlow({
       page: page.value,
       limit: LIMIT,
-      direction: filterDirection.value as 'IN' | 'OUT' | undefined || undefined,
+      direction: filterDirection.value === '__ALL__' ? undefined : filterDirection.value as 'IN' | 'OUT',
       types: filterTypes.value.length ? filterTypes.value : undefined,
       from: filterFrom.value || undefined,
       to: filterTo.value || undefined,
@@ -67,7 +67,7 @@ const onSearch = () => {
 }
 
 const resetFilters = () => {
-  filterDirection.value = ''
+  filterDirection.value = '__ALL__'
   filterSearch.value = ''
   filterFrom.value = ''
   filterTo.value = ''

@@ -41,8 +41,40 @@ const navGroups = [
 ]
 
 const mobileOpen = ref(false)
+const menuButtonRef = ref<HTMLButtonElement | null>(null)
 const route = useRoute()
+const isDesktop = ref(false)
+
+onMounted(() => {
+  const mq = window.matchMedia('(min-width: 768px)')
+  isDesktop.value = mq.matches
+  mq.addEventListener('change', (e) => { isDesktop.value = e.matches })
+})
+
+// Sidebar is hidden (and should be inert) only when on mobile AND not open
+const isMobileHidden = computed(() => !isDesktop.value && !mobileOpen.value)
+
 watch(() => route.path, () => { mobileOpen.value = false })
+
+function openSidebar() {
+  mobileOpen.value = true
+}
+
+function closeSidebar() {
+  mobileOpen.value = false
+  nextTick(() => menuButtonRef.value?.focus())
+}
+
+function isNavActive(to: string) {
+  return to === '/' ? route.path === '/' : route.path.startsWith(to)
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && mobileOpen.value) closeSidebar()
+}
+
+onMounted(() => document.addEventListener('keydown', handleKeydown))
+onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 </script>
 
 <template>
@@ -54,11 +86,18 @@ watch(() => route.path, () => { mobileOpen.value = false })
 
       <!-- Logo + mobile burger -->
       <div class="flex items-center gap-3">
-        <button class="md:hidden p-1.5 rounded-lg hover:bg-white/8 transition-colors" @click="mobileOpen = !mobileOpen">
-          <UIcon name="i-heroicons:bars-3" class="w-5 h-5 text-zinc-300" />
+        <button
+          ref="menuButtonRef"
+          class="md:hidden p-1.5 rounded-lg hover:bg-white/8 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-400"
+          :aria-expanded="mobileOpen"
+          aria-controls="mobile-sidebar"
+          :aria-label="mobileOpen ? 'Close navigation menu' : 'Open navigation menu'"
+          @click="mobileOpen ? closeSidebar() : openSidebar()"
+        >
+          <UIcon :name="mobileOpen ? 'i-heroicons:x-mark' : 'i-heroicons:bars-3'" class="w-5 h-5 text-zinc-300" />
         </button>
         <NuxtLink to="/" class="flex items-center gap-2 group">
-          <img src="/logo.png" alt="Logo" class="w-8 h-8 object-contain" />
+          <img src="/logo.png" alt="World Bingo" class="w-8 h-8 object-contain" />
           <span class="font-bold text-base text-yellow-500/90 tracking-tight group-hover:text-yellow-400 transition-colors hidden sm:block">
             Admin
           </span>
@@ -78,7 +117,7 @@ watch(() => route.path, () => { mobileOpen.value = false })
           <span class="text-zinc-200 text-sm font-medium">{{ user?.username ?? 'Admin' }}</span>
         </div>
         <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons:arrow-left-on-rectangle"
-          title="Logout" @click="logout()" />
+          aria-label="Sign out" @click="logout()" />
       </div>
     </header>
 
@@ -87,13 +126,16 @@ watch(() => route.path, () => { mobileOpen.value = false })
       <!-- ── Sidebar ───────────────────────────────────────────────── -->
       <!-- Mobile overlay -->
       <Transition name="fade">
-        <div v-if="mobileOpen" class="fixed inset-0 z-30 bg-black/60 md:hidden" @click="mobileOpen = false" />
+        <div v-if="mobileOpen" class="fixed inset-0 z-30 bg-black/60 md:hidden" aria-hidden="true" @click="closeSidebar" />
       </Transition>
 
       <aside
+        id="mobile-sidebar"
         class="fixed md:sticky top-14 left-0 z-30 h-[calc(100vh-3.5rem)] w-60 flex-shrink-0 flex flex-col py-4 overflow-y-auto transition-transform duration-200 border-r border-(--surface-border)"
         style="background:var(--surface-overlay); backdrop-filter: blur(16px);"
         :class="mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+        :aria-hidden="isMobileHidden ? 'true' : undefined"
+        :inert="isMobileHidden ? true : undefined"
       >
         <nav class="flex-1 px-3 space-y-4">
           <div v-for="(group, gi) in navGroups" :key="gi">
@@ -105,10 +147,9 @@ watch(() => route.path, () => { mobileOpen.value = false })
                 v-for="item in group.items"
                 :key="item.to"
                 :to="item.to"
-                class="admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/6 transition-all"
-                :class="route.path === item.to || (item.to !== '/' && route.path.startsWith(item.to))
-                  ? 'bg-yellow-400/10 text-yellow-500!'
-                  : ''"
+                class="admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/6 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-400"
+                :class="isNavActive(item.to) ? 'bg-yellow-400/10 text-yellow-500!' : ''"
+                :aria-current="isNavActive(item.to) ? 'page' : undefined"
               >
                 <UIcon :name="item.icon" class="w-4.5 h-4.5 flex-shrink-0" />
                 {{ item.label }}
