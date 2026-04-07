@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import prisma from '../lib/prisma'
 import { CreateGameDto, GameStatus, PatternType, UserRole } from '@world-bingo/shared-types'
+import { getCalledBalls } from '../lib/game-state'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 
 export class GameController {
@@ -98,11 +99,19 @@ export class GameController {
                 _count: { select: { entries: true } },
             },
         })
-        
+
         if (!game) return reply.status(404).send({ message: 'Game not found' })
-        // Attach a distinct player count for the UI
+
         const distinctPlayers = new Set(game.entries.map((e: any) => e.userId)).size
-        return { ...game, currentPlayers: distinctPlayers }
+
+        // For live games, Redis holds the authoritative ball list; DB lags behind.
+        let calledBalls: number[] = (game as any).calledBalls ?? []
+        if (game.status === GameStatus.IN_PROGRESS) {
+            const redisBalls = await getCalledBalls(game.id)
+            if (redisBalls.length > 0) calledBalls = redisBalls
+        }
+
+        return { ...game, calledBalls, currentPlayers: distinctPlayers }
     }
 
     static async getAvailableCartelas(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
