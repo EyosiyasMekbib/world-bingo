@@ -11,7 +11,6 @@
           class="cartela__cell"
           :class="{
             'cartela__cell--free': ri === 2 && ci === 2,
-            'cartela__cell--marked': isCalled(ri, ci),
             'cartela__cell--winner-line': isWinner && isWinnerCell(ri, ci),
           }"
         >
