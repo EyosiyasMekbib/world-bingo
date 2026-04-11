@@ -14,6 +14,16 @@ export class WalletService {
     }
 
     static async initiateDeposit(userId: string, data: DepositDto) {
+        // Reject duplicate payment transaction IDs
+        if (data.transactionId) {
+            const existing = await prisma.transaction.findUnique({
+                where: { paymentTransactionId: data.transactionId },
+            })
+            if (existing) {
+                throw Object.assign(new Error('Transaction ID already used'), { statusCode: 409 })
+            }
+        }
+
         // Create a pending transaction
         const transaction = await prisma.transaction.create({
             data: {

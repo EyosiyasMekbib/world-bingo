@@ -142,7 +142,7 @@ model Transaction {
   balanceAfter         Decimal?          @db.Decimal(12, 2)
   bonusBalanceBefore   Decimal?          @db.Decimal(12, 2)
   bonusBalanceAfter    Decimal?          @db.Decimal(12, 2)
-  paymentTransactionId String?
+  paymentTransactionId String?           @unique
   senderName           String?
   senderAccount        String?
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -54,20 +54,34 @@ export class WalletController {
                 return reply.status(400).send({ error: 'Amount is required and must be positive' })
             }
 
-            const transaction = await WalletService.initiateDeposit(userId, {
-                amount,
-                receiptUrl,
-                transactionId,
-                senderName,
-                senderAccount,
-            })
-            return reply.status(201).send(transaction)
+            try {
+                const transaction = await WalletService.initiateDeposit(userId, {
+                    amount,
+                    receiptUrl,
+                    transactionId,
+                    senderName,
+                    senderAccount,
+                })
+                return reply.status(201).send(transaction)
+            } catch (err: any) {
+                if (err.statusCode === 409) {
+                    return reply.status(409).send({ error: err.message })
+                }
+                throw err
+            }
         }
 
         // Fallback: JSON body (backward compat)
         const body = request.body as DepositDto
-        const transaction = await WalletService.initiateDeposit(userId, body)
-        return reply.status(201).send(transaction)
+        try {
+            const transaction = await WalletService.initiateDeposit(userId, body)
+            return reply.status(201).send(transaction)
+        } catch (err: any) {
+            if (err.statusCode === 409) {
+                return reply.status(409).send({ error: err.message })
+            }
+            throw err
+        }
     }
 
     static async withdraw(request: FastifyRequest<{ Body: WithdrawalDto }>, reply: FastifyReply) {

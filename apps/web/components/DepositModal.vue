@@ -40,7 +40,17 @@
           <!-- TeleBirr Transaction ID -->
           <div class="field">
             <label>TeleBirr Transaction ID <span class="required">*</span></label>
-            <input v-model="form.transactionId" type="text" placeholder="e.g. TLB202601011234" class="input" />
+            <input
+              v-model="form.transactionId"
+              type="text"
+              placeholder="e.g. TLB202601011234"
+              class="input"
+              :class="{ 'input--error': fieldError === 'transactionId' }"
+              @input="if (fieldError === 'transactionId') { fieldError = ''; error = '' }"
+            />
+            <span v-if="fieldError === 'transactionId'" class="field-error-msg">
+              Already used — check your pending deposits below.
+            </span>
           </div>
 
           <!-- Sender Name -->
@@ -81,8 +91,30 @@
           </div>
 
           <!-- Error / Success -->
-          <p v-if="error" class="msg error">{{ error }}</p>
-          <p v-if="success" class="msg success">✅ Deposit submitted! Pending admin verification.</p>
+          <div v-if="error" class="error-banner" :class="{ 'error-banner--field': fieldError === 'transactionId' }">
+            <div class="error-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <div class="error-body">
+              <span class="error-title">{{ errorTitle }}</span>
+              <span v-if="errorHint" class="error-hint">{{ errorHint }}</span>
+            </div>
+          </div>
+          <div v-if="success" class="success-banner">
+            <div class="success-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div class="success-body">
+              <span class="success-title">Deposit submitted</span>
+              <span class="success-hint">Pending admin verification — usually within 15 minutes.</span>
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -122,8 +154,19 @@ const form = reactive({
 })
 
 const error = ref('')
+const fieldError = ref('')
 const success = ref(false)
 const loading = ref(false)
+
+const errorTitle = computed(() => {
+  if (fieldError.value === 'transactionId') return 'This Transaction ID has already been submitted.'
+  return error.value
+})
+
+const errorHint = computed(() => {
+  if (fieldError.value === 'transactionId') return 'If you sent money, your deposit may already be pending review. Check your transaction history or enter a different Transaction ID.'
+  return ''
+})
 
 const canSubmit = computed(() =>
   form.amount >= 10 &&
@@ -186,7 +229,15 @@ async function submit() {
       resetForm()
     }, 2000)
   } catch (e: any) {
-    error.value = e?.data?.message ?? e?.message ?? 'Deposit failed. Please try again.'
+    const status = e?.status ?? e?.statusCode ?? e?.response?.status
+    const serverMsg = e?.data?.error ?? e?.data?.message ?? e?.message
+    if (status === 409) {
+      fieldError.value = 'transactionId'
+      error.value = serverMsg ?? 'Transaction ID already used.'
+    } else {
+      fieldError.value = ''
+      error.value = serverMsg ?? 'Deposit failed. Please try again.'
+    }
   } finally {
     loading.value = false
   }
@@ -202,6 +253,7 @@ function resetForm() {
   uploadProgress.value = 0
   success.value = false
   error.value = ''
+  fieldError.value = ''
 }
 </script>
 
@@ -348,23 +400,113 @@ label {
   display: none;
 }
 
-.msg {
-  font-size: 0.875rem;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  margin: 0;
+/* ── Field-level error ─────────────────────────────────────────── */
+.input--error {
+  border-color: #f87171 !important;
+  background: rgba(239, 68, 68, 0.06) !important;
 }
 
-.msg.error {
-  background: rgba(220, 38, 38, 0.1);
+.field-error-msg {
+  font-size: 0.75rem;
   color: #f87171;
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  margin-top: 0.1rem;
 }
 
-.msg.success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #86efac;
+/* ── Error banner ──────────────────────────────────────────────── */
+.error-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  animation: slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.error-banner--field {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.error-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: #f87171;
+  margin-top: 1px;
+}
+
+.error-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.error-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.error-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f87171;
+  line-height: 1.4;
+}
+
+.error-hint {
+  font-size: 0.78rem;
+  color: rgba(248, 113, 113, 0.75);
+  line-height: 1.5;
+}
+
+/* ── Success banner ────────────────────────────────────────────── */
+.success-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: rgba(34, 197, 94, 0.08);
   border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  animation: slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.success-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: #4ade80;
+  margin-top: 1px;
+}
+
+.success-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.success-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.success-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4ade80;
+}
+
+.success-hint {
+  font-size: 0.78rem;
+  color: rgba(74, 222, 128, 0.7);
+  line-height: 1.5;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .modal-footer {
