@@ -20,6 +20,7 @@ const topGamesCollapsed = ref(false)
 const bingoCollapsed = ref(false)
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
+const selectedCategory = ref('ALL')
 
 // Category labels
 const CATEGORY_LABELS: Record<string, string> = {
@@ -31,7 +32,33 @@ const CATEGORY_LABELS: Record<string, string> = {
   CRASH: 'Crash',
 }
 
-const showBingoSection = computed(() => true)
+const CATEGORY_ICONS: Record<string, string> = {
+  ALL: '◈',
+  BINGO: '⬡',
+  SLOTS: '🎰',
+  LIVE: '●',
+  TABLE: '♠',
+  CRASH: '🚀',
+}
+
+const allCategories = computed(() => {
+  const base = ['ALL', 'BINGO']
+  const providerCats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
+  return [...base, ...providerCats]
+})
+
+function selectCategory(cat: string) {
+  selectedCategory.value = cat
+  searchQuery.value = ''
+}
+
+const showBingoSection = computed(() =>
+  selectedCategory.value === 'ALL' || selectedCategory.value === 'BINGO',
+)
+
+function showProviderCategory(cat: string) {
+  return selectedCategory.value === 'ALL' || selectedCategory.value === cat
+}
 
 // Per-category games for section-based layout
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
