@@ -12,6 +12,8 @@ const stats = ref<{
   activePlayers: number
   houseBalance: number
   houseCommissionEarned: number
+  totalProviderProfit: number
+  totalProfit: number
   providerStats: Array<{ name: string; gained: number; lost: number; net: number }>
 } | null>(null)
 
@@ -92,6 +94,17 @@ const houseIsDeficit = computed(() => (stats.value?.houseBalance ?? 0) < 0)
         <span class="kpi-value">{{ fmtInt(stats?.activePlayers ?? 0) }}</span>
         <span class="kpi-label">Active Players</span>
       </div>
+      <div class="kpi-divider"></div>
+
+      <div class="kpi-item kpi-item--highlight">
+        <span class="kpi-value kpi-value--brand">{{ fmt(stats?.totalProfit ?? 0) }}</span>
+        <span class="kpi-label">Total Profit <span class="kpi-unit">ETB</span></span>
+        <div class="kpi-breakdown">
+          <span>Bingo {{ fmt(stats?.houseCommissionEarned ?? 0) }}</span>
+          <span class="kpi-sep">·</span>
+          <span>Providers {{ fmt(stats?.totalProviderProfit ?? 0) }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- ── Main content grid ─────────────────────────────────────────── -->
@@ -146,9 +159,31 @@ const houseIsDeficit = computed(() => (stats.value?.houseBalance ?? 0) < 0)
                 <td><span class="status-tag status-tag--warning">Pools</span></td>
               </tr>
               <tr>
-                <td>House Commission Earned</td>
+                <td>Bingo Commission Earned</td>
                 <td class="num" style="color: var(--positive)">{{ fmt(stats?.houseCommissionEarned ?? 0) }}</td>
                 <td><span class="status-tag status-tag--positive">Revenue</span></td>
+              </tr>
+              <tr>
+                <td>Provider Games Profit</td>
+                <td class="num" :style="{ color: (stats?.totalProviderProfit ?? 0) >= 0 ? 'var(--positive)' : 'var(--negative)' }">
+                  {{ (stats?.totalProviderProfit ?? 0) >= 0 ? '+' : '' }}{{ fmt(stats?.totalProviderProfit ?? 0) }}
+                </td>
+                <td>
+                  <span class="status-tag" :class="(stats?.totalProviderProfit ?? 0) >= 0 ? 'status-tag--positive' : 'status-tag--negative'">
+                    {{ (stats?.totalProviderProfit ?? 0) >= 0 ? 'Revenue' : 'Loss' }}
+                  </span>
+                </td>
+              </tr>
+              <tr class="row-highlight">
+                <td><strong>Total Profit</strong></td>
+                <td class="num" style="font-weight:700" :style="{ color: (stats?.totalProfit ?? 0) >= 0 ? 'var(--brand-primary)' : 'var(--negative)' }">
+                  {{ fmt(stats?.totalProfit ?? 0) }}
+                </td>
+                <td>
+                  <span class="status-tag" :class="(stats?.totalProfit ?? 0) >= 0 ? 'status-tag--warning' : 'status-tag--negative'">
+                    {{ (stats?.totalProfit ?? 0) >= 0 ? 'Profit' : 'Loss' }}
+                  </span>
+                </td>
               </tr>
               <tr :class="houseIsDeficit ? 'row-alert' : ''">
                 <td>House Wallet Balance</td>
@@ -344,6 +379,23 @@ const houseIsDeficit = computed(() => (stats.value?.houseBalance ?? 0) < 0)
   flex-shrink: 0;
   margin: 14px 0;
 }
+
+.kpi-item--highlight {
+  background: rgba(245, 158, 11, 0.04);
+  border-left: 2px solid rgba(245, 158, 11, 0.3);
+}
+
+.kpi-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.kpi-sep { color: var(--surface-border); }
 
 /* ── Content grid ────────────────────────────────────────────────────── */
 .content-grid {
