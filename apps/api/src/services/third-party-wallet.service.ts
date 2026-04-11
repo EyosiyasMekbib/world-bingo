@@ -375,7 +375,7 @@ export class ThirdPartyWalletService {
                 where: {
                     providerId: await getProviderId(),
                     userId: user.id,
-                    transactionId: params.externalTransactionId,
+                    externalTransactionId: params.externalTransactionId,
                     type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
                 },
             })
@@ -708,7 +708,7 @@ export class ThirdPartyWalletService {
                 where: {
                     providerId: await getProviderId(),
                     userId: user.id,
-                    transactionId: params.externalTransactionId,
+                    externalTransactionId: params.externalTransactionId,
                     type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
                 },
             })
