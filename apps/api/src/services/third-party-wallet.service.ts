@@ -239,7 +239,7 @@ export class ThirdPartyWalletService {
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
-                const betAmount = new Decimal(params.amount)
+                const betAmount = new Decimal(params.amount).abs()
 
                 if (totalBefore.lessThan(betAmount)) {
                     throw { code: 'SC_INSUFFICIENT_FUNDS' }
@@ -320,7 +320,7 @@ export class ThirdPartyWalletService {
                             gameCode: params.gameCode,
                             type: ThirdPartyTxType.BET,
                             status: ThirdPartyTxStatus.FAILED,
-                            betAmount: new Decimal(params.amount),
+                            betAmount: new Decimal(params.amount).abs(),
                             amount: new Decimal(0),
                             balanceBefore: currentBalance,
                             balanceAfter: currentBalance,
