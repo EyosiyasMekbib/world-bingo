@@ -357,7 +357,8 @@ export class ThirdPartyWalletService {
 
         // For result types that follow a prior /bet call, verify the original bet exists
         // END is a round-end notification — no prior bet required
-        if (params.resultType === 'WIN' || params.resultType === 'LOSE') {
+        // WIN/LOSE with betAmount=0 are free-spin/bonus results — no prior bet required
+        if ((params.resultType === 'WIN' || params.resultType === 'LOSE') && params.betAmount > 0) {
             const priorBet = await prisma.thirdPartyTransaction.findFirst({
                 where: {
                     providerId: await getProviderId(),
