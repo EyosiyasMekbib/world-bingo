@@ -181,11 +181,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 <style scoped>
 /* ── Shell ───────────────────────────────────────────────────────────── */
 .admin-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--surface-base);
   color: var(--text-primary);
+  overflow: hidden;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────── */
@@ -317,6 +318,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 .admin-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -343,13 +345,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   border-right: 1px solid var(--surface-border);
   overflow-y: auto;
   transform: translateX(-100%);
-  transition: transform 0.18s ease;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @media (min-width: 768px) {
   .admin-sidebar {
-    position: sticky;
-    transform: translateX(0) !important;
+    position: relative;
+    top: auto;
+    height: 100%;
+    transform: none !important;
+    z-index: 1;
+    will-change: auto;
   }
 }
 
@@ -468,6 +474,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   flex: 1;
   overflow-y: auto;
   min-width: 0;
+  min-height: 0;
   padding: 28px 24px;
 }
 

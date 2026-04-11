@@ -125,3 +125,33 @@ html, body {
 }
 .ui-table td { border-bottom: 1px solid var(--surface-line) !important; }
 tbody tr:hover { background: rgba(255,255,255,0.018) !important; }
+
+/* ── Nuxt UI form input overrides ──────────────────────────────────────── */
+/* Nuxt UI v3 defaults to near-black input backgrounds in dark mode.
+   Override to match the navy brand surface palette. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select,
+textarea {
+  background-color: var(--surface-overlay) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Nuxt UI v3 generates wrapper divs with inline bg classes — target them */
+[class*="rounded"][class*="ring"] > input,
+[class*="rounded"][class*="ring"] > div > input,
+[class*="rounded"][class*="border"] > input {
+  background-color: var(--surface-overlay) !important;
+}
+
+/* Override the group/wrapper background Nuxt UI adds around inputs */
+:is(input, select, textarea):focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+/* Ensure placeholder text matches brand */
+::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1;
+}
