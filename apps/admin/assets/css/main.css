@@ -1,74 +1,127 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* ── Design tokens ─────────────────────────────────────────────────────── */
 :root {
-  --surface-base: #000A38;
-  --surface-raised: #041433;
-  --surface-overlay: #0b1f47;
-  --surface-border: #132b5e;
-  
-  --brand-primary: #FFD700;
-  --brand-primary-dim: #cca800;
-  --brand-glow: rgba(255, 215, 0, 0.15);
-  
-  --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.6);
+  --surface-base:    #030c22;
+  --surface-raised:  #071026;
+  --surface-overlay: #0b162e;
+  --surface-border:  rgba(255, 255, 255, 0.07);
+  --surface-line:    rgba(255, 255, 255, 0.04);
+
+  --brand-primary:     #f59e0b;
+  --brand-primary-dim: #d97706;
+  --brand-glow:        rgba(245, 158, 11, 0.07);
+
+  --text-primary:   #dde6f5;
+  --text-secondary: rgba(190, 210, 240, 0.5);
+  --text-muted:     rgba(190, 210, 240, 0.28);
+
+  --positive:        #34d399;
+  --positive-bg:     rgba(52, 211, 153, 0.07);
+  --positive-border: rgba(52, 211, 153, 0.18);
+  --negative:        #f87171;
+  --negative-bg:     rgba(248, 113, 113, 0.07);
+  --negative-border: rgba(248, 113, 113, 0.18);
 }
 
+/* ── Base ──────────────────────────────────────────────────────────────── */
 html, body {
-  font-family: 'Space Grotesk', 'Nunito', system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   background: var(--surface-base);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
 }
 
-/* Layered mesh background for premium feel */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 215, 0, 0.05) 0%, transparent 100%),
-    radial-gradient(ellipse 50% 50% at 100% 100%, rgba(66, 99, 235, 0.05) 0%, transparent 100%),
-    var(--surface-base);
+/* ── Sidebar active nav link ───────────────────────────────────────────── */
+.admin-nav-link {
+  position: relative;
+  border-left: 2px solid transparent;
+  border-radius: 0 6px 6px 0;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
 
-/* Glassmorphism effects */
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 1rem;
-}
-
-/* Sidebar nav active state */
 .admin-nav-link.router-link-active,
 .admin-nav-link.router-link-exact-active {
-  background: var(--brand-glow);
   color: var(--brand-primary) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.2);
+  background: var(--brand-glow) !important;
+  border-left-color: var(--brand-primary) !important;
 }
 
-/* Nuxt UI Overrides */
-.ui-button-solid-primary {
-  background-color: var(--brand-primary) !important;
-  color: #000 !important;
+/* ── Admin card ────────────────────────────────────────────────────────── */
+.admin-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+}
+
+/* ── Data table ────────────────────────────────────────────────────────── */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.admin-table thead tr { border-bottom: 1px solid var(--surface-border); }
+.admin-table thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.admin-table thead th.num { text-align: right; }
+.admin-table tbody tr {
+  border-bottom: 1px solid var(--surface-line);
+  transition: background 0.1s ease;
+}
+.admin-table tbody tr:last-child { border-bottom: none; }
+.admin-table tbody tr:hover { background: rgba(255,255,255,0.018); }
+.admin-table tbody td {
+  padding: 11px 16px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.admin-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+.admin-table tbody td.muted { color: var(--text-secondary); font-size: 12px; }
 
-.ui-button-solid-primary:hover {
-  background-color: var(--brand-primary-dim) !important;
+/* ── Status tags ───────────────────────────────────────────────────────── */
+.status-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
 }
+.status-tag--positive { color: var(--positive); background: var(--positive-bg); border-color: var(--positive-border); }
+.status-tag--negative { color: var(--negative); background: var(--negative-bg); border-color: var(--negative-border); }
+.status-tag--warning  { color: #fbbf24; background: rgba(251,191,36,0.07); border-color: rgba(251,191,36,0.18); }
+.status-tag--neutral  { color: var(--text-secondary); background: rgba(255,255,255,0.04); border-color: var(--surface-border); }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.13); }
 
-/* Table styling */
-.ui-table th { background: rgba(255,255,255,0.02) !important; color: var(--text-secondary) !important; font-size: 0.75rem !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; }
-.ui-table td { border-bottom: 1px solid rgba(255,255,255,0.03) !important; }
-tbody tr:hover { background: rgba(255,255,255,0.02) !important; }
+/* ── Nuxt UI table overrides ───────────────────────────────────────────── */
+.ui-table th {
+  background: rgba(255,255,255,0.018) !important;
+  color: var(--text-muted) !important;
+  font-size: 0.6875rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+}
+.ui-table td { border-bottom: 1px solid var(--surface-line) !important; }
+tbody tr:hover { background: rgba(255,255,255,0.018) !important; }

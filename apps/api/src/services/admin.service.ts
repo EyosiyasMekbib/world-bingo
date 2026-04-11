@@ -78,8 +78,11 @@ export class AdminService {
             }
         })
 
+        const totalProviderProfit = providerStats.reduce((sum, p) => sum + p.net, 0)
+        const bingoProfit = houseSummary.COMMISSION
+        const totalProfit = bingoProfit + totalProviderProfit
+
         return {
-            // New fields
             approvedDepositSum: Number(approvedDeposits._sum.amount ?? 0),
             approvedWithdrawalSum: Number(approvedWithdrawals._sum.amount ?? 0),
             totalPrizesSum: Number(totalPrizes._sum.amount ?? 0),
@@ -88,14 +91,15 @@ export class AdminService {
             totalPrizePools,
             activePlayers,
             houseBalance: Number(houseBalance),
-            houseCommissionEarned: houseSummary.COMMISSION,
+            houseCommissionEarned: bingoProfit,
+            totalProviderProfit,
+            totalProfit,
             providerStats,
-            // Legacy fields kept for backward compatibility
+            // Legacy fields
             declinedDepositSum: 0,
             usersCount: 0,
             gamesCount: gamesCompleted,
-            totalProfit: houseSummary.COMMISSION,
-            commission: houseSummary.COMMISSION,
+            commission: bingoProfit,
         }
     }
 

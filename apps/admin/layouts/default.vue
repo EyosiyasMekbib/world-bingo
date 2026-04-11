@@ -13,29 +13,29 @@ const navGroups = [
   {
     label: 'Finance',
     items: [
-      { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',         to: '/deposits'   },
-      { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',           to: '/withdrawals' },
-      { label: 'House Wallet', icon: 'i-heroicons:building-library',        to: '/house'       },
-      { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left',       to: '/money-flow'  },
+      { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',   to: '/deposits'    },
+      { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',     to: '/withdrawals' },
+      { label: 'House Wallet', icon: 'i-heroicons:building-library',  to: '/house'       },
+      { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left', to: '/money-flow'  },
     ],
   },
   {
     label: 'Games',
     items: [
-      { label: 'Active Games',    icon: 'i-heroicons:puzzle-piece',   to: '/games'                    },
-      { label: 'Game Templates',  icon: 'i-heroicons:cog-6-tooth',    to: '/settings/game-templates'  },
-      { label: 'Tournaments',     icon: 'i-heroicons:trophy',         to: '/tournaments'              },
+      { label: 'Active Games',   icon: 'i-heroicons:puzzle-piece',  to: '/games'                   },
+      { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',   to: '/settings/game-templates' },
+      { label: 'Tournaments',    icon: 'i-heroicons:trophy',        to: '/tournaments'             },
     ],
   },
   {
-    label: null,
+    label: 'Management',
     items: [
-      { label: 'Players',      icon: 'i-heroicons:user-group',              to: '/players'           },
-      { label: 'Users',        icon: 'i-heroicons:users',                   to: '/users'             },
-      { label: 'Providers',    icon: 'i-heroicons:globe-alt',               to: '/providers'         },
-      { label: 'Cashback',     icon: 'i-heroicons:gift',                    to: '/cashback'          },
-      { label: 'Feature Flags',icon: 'i-heroicons:adjustments-horizontal',  to: '/settings/features' },
-      { label: 'Profile',      icon: 'i-heroicons:user-circle',             to: '/settings/profile'  },
+      { label: 'Players',       icon: 'i-heroicons:user-group',             to: '/players'           },
+      { label: 'Users',         icon: 'i-heroicons:users',                  to: '/users'             },
+      { label: 'Providers',     icon: 'i-heroicons:globe-alt',              to: '/providers'         },
+      { label: 'Cashback',      icon: 'i-heroicons:gift',                   to: '/cashback'          },
+      { label: 'Feature Flags', icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features' },
+      { label: 'Profile',       icon: 'i-heroicons:user-circle',            to: '/settings/profile'  },
     ],
   },
 ]
@@ -51,14 +51,11 @@ onMounted(() => {
   mq.addEventListener('change', (e) => { isDesktop.value = e.matches })
 })
 
-// Sidebar is hidden (and should be inert) only when on mobile AND not open
 const isMobileHidden = computed(() => !isDesktop.value && !mobileOpen.value)
 
 watch(() => route.path, () => { mobileOpen.value = false })
 
-function openSidebar() {
-  mobileOpen.value = true
-}
+function openSidebar() { mobileOpen.value = true }
 
 function closeSidebar() {
   mobileOpen.value = false
@@ -78,106 +75,407 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col" style="background:var(--surface-base);color:var(--text-primary);">
+  <div class="admin-shell">
 
-    <!-- ── Top header ─────────────────────────────────────────────── -->
-    <header class="sticky top-0 z-40 h-14 flex items-center justify-between px-4 md:px-6 border-b border-(--surface-border)"
-      style="background:rgba(0,10,56,0.92);backdrop-filter:blur(12px);">
-
-      <!-- Logo + mobile burger -->
-      <div class="flex items-center gap-3">
+    <!-- ── Header ──────────────────────────────────────────────────── -->
+    <header class="admin-header">
+      <div class="header-left">
         <button
           ref="menuButtonRef"
-          class="md:hidden p-1.5 rounded-lg hover:bg-white/8 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-400"
+          class="burger-btn md:hidden"
           :aria-expanded="mobileOpen"
-          aria-controls="mobile-sidebar"
-          :aria-label="mobileOpen ? 'Close navigation menu' : 'Open navigation menu'"
+          aria-controls="admin-sidebar"
+          :aria-label="mobileOpen ? 'Close menu' : 'Open menu'"
           @click="mobileOpen ? closeSidebar() : openSidebar()"
         >
-          <UIcon :name="mobileOpen ? 'i-heroicons:x-mark' : 'i-heroicons:bars-3'" class="w-5 h-5 text-zinc-300" />
+          <UIcon :name="mobileOpen ? 'i-heroicons:x-mark' : 'i-heroicons:bars-3'" class="w-5 h-5" />
         </button>
-        <NuxtLink to="/" class="flex items-center gap-2 group">
-          <img src="/logo.png" alt="World Bingo" class="w-8 h-8 object-contain" />
-          <span class="font-bold text-base text-yellow-500/90 tracking-tight group-hover:text-yellow-400 transition-colors hidden sm:block">
-            Admin
-          </span>
+
+        <NuxtLink to="/" class="brand-link">
+          <img src="/logo.png" alt="World Bingo" class="brand-logo" />
+          <div class="brand-text">
+            <span class="brand-name">World Bingo</span>
+            <span class="brand-sub">Admin Console</span>
+          </div>
         </NuxtLink>
       </div>
 
-      <!-- Right actions -->
-      <div class="flex items-center gap-2">
-        <UButton
-          size="xs" color="neutral" variant="ghost"
-          :label="locale === 'en' ? 'አማ' : 'EN'"
-          class="hidden sm:flex"
-          @click="toggleLocale"
-        />
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--surface-border) text-sm" style="background:var(--surface-raised);">
-          <UIcon name="i-heroicons:user-circle" class="w-4 h-4 text-yellow-500" />
-          <span class="text-zinc-200 text-sm font-medium">{{ user?.username ?? 'Admin' }}</span>
+      <div class="header-right">
+        <button class="locale-btn hidden sm:flex" @click="toggleLocale">
+          {{ locale === 'en' ? 'አማ' : 'EN' }}
+        </button>
+
+        <div class="user-chip">
+          <UIcon name="i-heroicons:user-circle" class="w-4 h-4 opacity-50" />
+          <span>{{ user?.username ?? 'Admin' }}</span>
         </div>
-        <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons:arrow-left-on-rectangle"
-          aria-label="Sign out" @click="logout()" />
+
+        <button class="signout-btn" aria-label="Sign out" @click="logout()">
+          <UIcon name="i-heroicons:arrow-left-on-rectangle" class="w-4 h-4" />
+        </button>
       </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="admin-body">
 
-      <!-- ── Sidebar ───────────────────────────────────────────────── -->
-      <!-- Mobile overlay -->
+      <!-- ── Sidebar overlay (mobile) ─────────────────────────────── -->
       <Transition name="fade">
-        <div v-if="mobileOpen" class="fixed inset-0 z-30 bg-black/60 md:hidden" aria-hidden="true" @click="closeSidebar" />
+        <div
+          v-if="mobileOpen"
+          class="sidebar-overlay md:hidden"
+          aria-hidden="true"
+          @click="closeSidebar"
+        />
       </Transition>
 
+      <!-- ── Sidebar ───────────────────────────────────────────────── -->
       <aside
-        id="mobile-sidebar"
-        class="fixed md:sticky top-14 left-0 z-30 h-[calc(100vh-3.5rem)] w-60 flex-shrink-0 flex flex-col py-4 overflow-y-auto transition-transform duration-200 border-r border-(--surface-border)"
-        style="background:var(--surface-overlay); backdrop-filter: blur(16px);"
-        :class="mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+        id="admin-sidebar"
+        class="admin-sidebar"
+        :class="mobileOpen ? 'sidebar--open' : ''"
         :aria-hidden="isMobileHidden ? 'true' : undefined"
         :inert="isMobileHidden ? true : undefined"
       >
-        <nav class="flex-1 px-3 space-y-4">
-          <div v-for="(group, gi) in navGroups" :key="gi">
-            <p v-if="group.label" class="px-3 mb-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">
-              {{ group.label }}
-            </p>
-            <div class="space-y-0.5">
+        <nav class="sidebar-nav">
+          <template v-for="(group, gi) in navGroups" :key="gi">
+
+            <!-- Group separator with label -->
+            <div v-if="group.label" class="nav-group-label">
+              <span>{{ group.label }}</span>
+              <div class="nav-group-rule"></div>
+            </div>
+
+            <div class="nav-group-items" :class="{ 'nav-group-items--first': !group.label && gi === 0 }">
               <NuxtLink
                 v-for="item in group.items"
                 :key="item.to"
                 :to="item.to"
-                class="admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/6 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-400"
-                :class="isNavActive(item.to) ? 'bg-yellow-400/10 text-yellow-500!' : ''"
+                class="admin-nav-link nav-item"
+                :class="{ 'nav-item--active': isNavActive(item.to) }"
                 :aria-current="isNavActive(item.to) ? 'page' : undefined"
               >
-                <UIcon :name="item.icon" class="w-4.5 h-4.5 flex-shrink-0" />
-                {{ item.label }}
+                <UIcon :name="item.icon" class="nav-icon" />
+                <span>{{ item.label }}</span>
               </NuxtLink>
             </div>
-          </div>
+          </template>
         </nav>
 
-        <div class="mt-auto px-3 pt-4 border-t border-(--surface-border)">
-          <button
-            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 hover:text-red-400 hover:bg-red-500/8 transition-all"
-            @click="logout()"
-          >
-            <UIcon name="i-heroicons:arrow-left-on-rectangle" class="w-4.5 h-4.5" />
-            Sign out
+        <div class="sidebar-footer">
+          <button class="signout-full" @click="logout()">
+            <UIcon name="i-heroicons:arrow-left-on-rectangle" class="w-4 h-4" />
+            Sign Out
           </button>
         </div>
       </aside>
 
-      <!-- ── Main content ──────────────────────────────────────────── -->
-      <main class="flex-1 overflow-y-auto min-w-0 p-5 md:p-7">
+      <!-- ── Main ──────────────────────────────────────────────────── -->
+      <main class="admin-main">
         <slot />
       </main>
+
     </div>
   </div>
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+/* ── Shell ───────────────────────────────────────────────────────────── */
+.admin-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(3, 12, 34, 0.96);
+  border-bottom: 1px solid var(--surface-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.burger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.burger-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
+.burger-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+  gap: 1px;
+}
+.brand-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-primary);
+  letter-spacing: -0.01em;
+}
+.brand-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: none;
+}
+@media (min-width: 640px) { .brand-sub { display: block; } }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.locale-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: none;
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.locale-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.signout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.signout-btn:hover { background: rgba(248,113,113,0.08); color: #f87171; }
+.signout-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+/* ── Body ────────────────────────────────────────────────────────────── */
+.admin-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar overlay ─────────────────────────────────────────────────── */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0,0,0,0.6);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.admin-sidebar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  z-index: 30;
+  width: 224px;
+  height: calc(100vh - 52px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border-right: 1px solid var(--surface-border);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.18s ease;
+}
+
+@media (min-width: 768px) {
+  .admin-sidebar {
+    position: sticky;
+    transform: translateX(0) !important;
+  }
+}
+
+.sidebar--open { transform: translateX(0); }
+
+/* ── Nav ─────────────────────────────────────────────────────────────── */
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 0;
+}
+
+.nav-group-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 16px 6px;
+}
+
+.nav-group-label span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.nav-group-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--surface-border);
+}
+
+.nav-group-items {
+  padding: 0 8px;
+}
+
+.nav-group-items--first {
+  padding-top: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 1px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 0 6px 6px 0;
+  border-left: 2px solid transparent;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.nav-item:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.04);
+}
+
+.nav-item--active,
+.nav-item.router-link-active,
+.nav-item.router-link-exact-active {
+  color: var(--brand-primary) !important;
+  background: var(--brand-glow) !important;
+  border-left-color: var(--brand-primary) !important;
+  font-weight: 600;
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: -2px;
+}
+
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.nav-item--active .nav-icon,
+.nav-item.router-link-active .nav-icon {
+  opacity: 1;
+}
+
+/* ── Sidebar footer ──────────────────────────────────────────────────── */
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid var(--surface-border);
+}
+
+.signout-full {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.signout-full:hover { background: rgba(248,113,113,0.07); color: #f87171; }
+.signout-full:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+/* ── Main ────────────────────────────────────────────────────────────── */
+.admin-main {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+  padding: 28px 24px;
+}
+
+@media (min-width: 768px) {
+  .admin-main { padding: 32px 32px; }
+}
+
+/* ── Transitions ─────────────────────────────────────────────────────── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
