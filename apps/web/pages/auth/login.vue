@@ -153,6 +153,7 @@ definePageMeta({ layout: 'auth' as any })
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const config = useRuntimeConfig()
 const errorMsg = ref('')
 const loading = ref(false)
@@ -163,12 +164,17 @@ const form = reactive({ identifier: '', password: '' })
 
 const showWelcomeBack = computed(() => !!auth.user && !auth.isAuthenticated)
 
+const redirectPath = computed(() => {
+  const r = route.query.redirect
+  return typeof r === 'string' && r.startsWith('/') ? r : '/'
+})
+
 async function handleCredentialsLogin() {
   errorMsg.value = ''
   loading.value = true
   try {
     await auth.login({ identifier: form.identifier, password: form.password })
-    await router.push('/')
+    await router.push(redirectPath.value)
   } catch (e: any) {
     errorMsg.value = e?.data?.message || 'Invalid credentials. Please try again.'
   } finally {
@@ -180,7 +186,7 @@ function handleTelegramCallback(user: TelegramAuthDto) {
   loading.value = true
   errorMsg.value = ''
   auth.telegramLogin(user)
-    .then(() => router.push('/'))
+    .then(() => router.push(redirectPath.value))
     .catch((e: any) => {
       errorMsg.value = e?.data?.message || 'Authentication failed. Please try again.'
     })

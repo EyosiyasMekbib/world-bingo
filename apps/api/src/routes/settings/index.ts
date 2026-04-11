@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma'
 const DEFAULTS: Record<string, string> = {
     feature_referrals: 'false',
     feature_tournaments: 'false',
+    feature_third_party_games: 'true',
     ball_interval_secs: '3',
     bot_max_spend_etb: '500',
     first_deposit_bonus_amount: '0',

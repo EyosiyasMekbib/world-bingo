@@ -14,7 +14,7 @@ const { connect } = useSocket()
 const featuredTemplateId = ref<string | null>(null)
 const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
-const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
+const { tournamentsEnabled } = useFeatureFlags()
 
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
@@ -150,9 +150,10 @@ onMounted(async () => {
     .then((r) => { featuredTemplateId.value = r.templateId })
     .catch(() => {})
 
-  if (thirdPartyGamesEnabled.value) {
-    await providerStore.fetchProviders()
+  await providerStore.fetchProviders()
+  if (providerStore.activeProviderCode) {
     await providerStore.fetchCategories()
+    await providerStore.fetchGames({ reset: true })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
     await Promise.all(cats.map((c) => fetchCategoryGames(c)))
   }
@@ -447,7 +448,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Third-party games OR Coming Soon tiles -->
-          <template v-if="thirdPartyGamesEnabled && providerStore.games.length">
+          <template v-if="providerStore.games.length">
             <NuxtLink
               v-for="g in providerStore.games.slice(0, 6)"
               :key="g.gameCode"
@@ -474,7 +475,7 @@ onUnmounted(() => {
             </NuxtLink>
           </template>
 
-          <template v-else-if="!thirdPartyGamesEnabled">
+          <template v-else-if="!providerStore.games.length">
             <div class="type-tile type-tile--soon">
               <div class="tt-thumb">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -521,7 +522,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ── PROVIDER GAMES — per-category sections ────────────────── -->
-    <template v-if="thirdPartyGamesEnabled && providerCategories.length">
+    <template v-if="providerCategories.length">
       <div
         v-for="cat in providerCategories"
         :key="cat"

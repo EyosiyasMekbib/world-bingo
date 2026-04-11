@@ -14,7 +14,7 @@ const error = ref<string | null>(null)
 
 onMounted(async () => {
   if (!auth.isAuthenticated) {
-    router.replace('/auth/login')
+    router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
     return
   }
 
