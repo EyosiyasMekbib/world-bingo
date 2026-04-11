@@ -13,32 +13,20 @@ const promotionsStore = usePromotionsStore()
 const { connect } = useSocket()
 const featuredTemplateId = ref<string | null>(null)
 const config = useRuntimeConfig()
-const { patternLabel, patternIcon } = usePatternLabel()
+const { patternLabel } = usePatternLabel()
 const { tournamentsEnabled, thirdPartyGamesEnabled } = useFeatureFlags()
 
-const topGamesCollapsed = ref(false)
-const bingoCollapsed = ref(false)
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
 const selectedCategory = ref('ALL')
 
-// Category labels
 const CATEGORY_LABELS: Record<string, string> = {
-  ALL: 'All',
+  ALL: 'All Games',
   BINGO: 'Bingo',
   SLOTS: 'Slots',
   LIVE: 'Live',
   TABLE: 'Table',
   CRASH: 'Crash',
-}
-
-const CATEGORY_ICONS: Record<string, string> = {
-  ALL: '◈',
-  BINGO: '⬡',
-  SLOTS: '🎰',
-  LIVE: '●',
-  TABLE: '♠',
-  CRASH: '🚀',
 }
 
 const allCategories = computed(() => {
@@ -60,7 +48,6 @@ function showProviderCategory(cat: string) {
   return selectedCategory.value === 'ALL' || selectedCategory.value === cat
 }
 
-// Per-category games for section-based layout
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
 const categoryGamesLoading = ref<Record<string, boolean>>({})
 
@@ -69,7 +56,9 @@ async function fetchCategoryGames(category: string) {
   if (!code) return
   categoryGamesLoading.value[category] = true
   try {
-    const result = await auth.apiFetch<{ games: ProviderGame[] }>(`/providers/${code}/games?page=1&pageSize=20&category=${category}`)
+    const result = await $fetch<{ games: ProviderGame[] }>(
+      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=20&category=${category}`
+    )
     categoryGamesMap.value[category] = result.games
   } catch {
     categoryGamesMap.value[category] = []
@@ -82,7 +71,6 @@ const providerCategories = computed(() =>
   providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL'),
 )
 
-// Hero slider
 const currentSlide = ref(0)
 let slideTimer: ReturnType<typeof setInterval> | null = null
 
@@ -98,21 +86,30 @@ function goToSlide(idx: number) {
   startSlideTimer()
 }
 
+function prevSlide() {
+  goToSlide((currentSlide.value - 1 + heroSlides.length) % heroSlides.length)
+}
+
+function nextSlide() {
+  goToSlide((currentSlide.value + 1) % heroSlides.length)
+}
+
 function startSlideTimer() {
   slideTimer = setInterval(() => {
     currentSlide.value = (currentSlide.value + 1) % heroSlides.length
   }, 5000)
 }
 
-async function handleLaunchGame(gameCode: string) {
-  if (!auth.isAuthenticated) {
-    navigateTo('/auth/login')
-    return
-  }
-  const url = await providerStore.launchGame(providerStore.activeProviderCode, gameCode)
-  if (url) {
-    navigateTo(`/play/${providerStore.activeProviderCode}/${gameCode}`)
-  }
+// Touch swipe support
+const touchStartX = ref(0)
+function onTouchStart(e: TouchEvent) {
+  touchStartX.value = e.changedTouches[0].clientX
+}
+function onTouchEnd(e: TouchEvent) {
+  const dx = e.changedTouches[0].clientX - touchStartX.value
+  if (Math.abs(dx) < 40) return
+  if (dx < 0) nextSlide()
+  else prevSlide()
 }
 
 function handleJoinGame(gameId: string) {
@@ -132,7 +129,6 @@ const filteredGames = computed(() => {
   )
 })
 
-
 const featuredGame = computed(() =>
   featuredTemplateId.value
     ? gameStore.availableGames.find((g) => g.templateId === featuredTemplateId.value) ?? null
@@ -143,11 +139,10 @@ function scrollToRooms() {
   document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })
 }
 
-// Fetch data on mount
 onMounted(async () => {
   try {
     await gameStore.fetchAvailableGames()
-  } catch { /* errors are stored in gameStore.error */ }
+  } catch { /* errors stored in gameStore.error */ }
 
   promotionsStore.fetch()
 
@@ -158,7 +153,6 @@ onMounted(async () => {
   if (thirdPartyGamesEnabled.value) {
     await providerStore.fetchProviders()
     await providerStore.fetchCategories()
-    // Load games per category (sections layout — no tab switching)
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
     await Promise.all(cats.map((c) => fetchCategoryGames(c)))
   }
@@ -182,12 +176,10 @@ onMounted(async () => {
     gameStore.onGameUpdated(game)
   })
 
-  // Live player count updates from the new room state machine
   ;(socket as any).on('player_count_update', (payload: { gameId: string; playerCount: number }) => {
     gameStore.onPlayerCountUpdate(payload.gameId, payload.playerCount)
   })
 
-  // Listen for countdown events (game reached minPlayers, 60s countdown started)
   socket.on('game:countdown', (payload: { gameId: string; countdownSecs: number; startsAt: string }) => {
     gameStore.onGameCountdown(payload)
   })
@@ -203,46 +195,60 @@ onUnmounted(() => {
 <template>
   <div class="lobby-page">
 
-    <!-- ── HERO BANNER ───────────────────────────────────────── -->
-    <section class="hero">
+    <!-- ── HERO ─────────────────────────────────────────────────── -->
+    <section class="hero" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
       <div class="hero-bg"></div>
+
+      <!-- Arrow navigation (desktop only) -->
+      <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </button>
 
       <Transition name="hero-fade" mode="out-in">
         <!-- Slide 0: Bingo -->
         <div v-if="currentSlide === 0" key="bingo" class="hero-inner max-container">
           <div class="hero-text">
-            <div class="hero-badge">
-              <span class="badge-dot"></span>
-              NOW LIVE — ETHIOPIA'S #1 BINGO
-            </div>
+            <p class="hero-eyebrow">
+              <span class="eyebrow-dot"></span>
+              Ethiopia's #1 Bingo Platform
+            </p>
             <h1 class="hero-title">Play <span class="hero-accent">Bingo</span>,<br>Win Real ETB</h1>
             <p class="hero-sub">Join thousands of players. Pick your cartela, call BINGO, get paid instantly.</p>
             <button class="hero-cta" @click="scrollToRooms">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0">
+              Play Now
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M8 5v14l11-7z" />
               </svg>
-              Play Now
             </button>
           </div>
+
           <div class="hero-art">
             <template v-if="featuredGame">
-              <div class="featured-game-card">
-                <div class="fg-label">FEATURED GAME</div>
-                <div class="fg-title">{{ featuredGame.title }}</div>
-                <div class="fg-price">{{ Number(featuredGame.ticketPrice).toLocaleString() }} <span class="fg-etb">ETB</span></div>
-                <div class="fg-meta">
+              <div class="featured-card">
+                <div class="fc-eyebrow">Featured Game</div>
+                <div class="fc-title">{{ featuredGame.title }}</div>
+                <div class="fc-price">
+                  {{ Number(featuredGame.ticketPrice).toLocaleString() }}
+                  <span class="fc-currency">ETB</span>
+                </div>
+                <div class="fc-meta">
                   {{ patternLabel(featuredGame.pattern) }}
                   &nbsp;·&nbsp;
-                  {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}
-                  /
-                  {{ (featuredGame as any).maxPlayers ?? 10 }} players
+                  {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}/{{ (featuredGame as any).maxPlayers ?? 10 }} players
                 </div>
-                <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fg-join">
-                  Join Now →
+                <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fc-join">
+                  Join Now
                 </NuxtLink>
-                <div v-else class="fg-live">
+                <div v-else class="fc-live">
                   <span class="live-dot"></span>
-                  {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'LIVE' }}
+                  {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'Live Now' }}
                 </div>
               </div>
             </template>
@@ -250,14 +256,14 @@ onUnmounted(() => {
               <div class="bingo-card bingo-card--front">
                 <div class="bc-cell">3</div><div class="bc-cell">17</div><div class="bc-cell">32</div><div class="bc-cell bc-cell--gold">46</div><div class="bc-cell">61</div>
                 <div class="bc-cell bc-cell--blue">5</div><div class="bc-cell">20</div><div class="bc-cell">35</div><div class="bc-cell">51</div><div class="bc-cell bc-cell--gold">69</div>
-                <div class="bc-cell">9</div><div class="bc-cell">28</div><div class="bc-cell bc-cell--free">FREE</div><div class="bc-cell">53</div><div class="bc-cell">74</div>
+                <div class="bc-cell">9</div><div class="bc-cell">28</div><div class="bc-cell bc-cell--free">FR</div><div class="bc-cell">53</div><div class="bc-cell">74</div>
                 <div class="bc-cell">14</div><div class="bc-cell bc-cell--blue">24</div><div class="bc-cell">39</div><div class="bc-cell">48</div><div class="bc-cell">63</div>
                 <div class="bc-cell bc-cell--blue">1</div><div class="bc-cell">16</div><div class="bc-cell">44</div><div class="bc-cell">60</div><div class="bc-cell bc-cell--blue">75</div>
               </div>
               <div class="bingo-card bingo-card--back">
                 <div class="bc-cell">7</div><div class="bc-cell">19</div><div class="bc-cell bc-cell--blue">33</div><div class="bc-cell">49</div><div class="bc-cell">62</div>
                 <div class="bc-cell">2</div><div class="bc-cell bc-cell--blue">21</div><div class="bc-cell">36</div><div class="bc-cell bc-cell--blue">52</div><div class="bc-cell">70</div>
-                <div class="bc-cell">11</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--free">FREE</div><div class="bc-cell">55</div><div class="bc-cell bc-cell--blue">71</div>
+                <div class="bc-cell">11</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--free">FR</div><div class="bc-cell">55</div><div class="bc-cell bc-cell--blue">71</div>
                 <div class="bc-cell">4</div><div class="bc-cell bc-cell--blue">18</div><div class="bc-cell">43</div><div class="bc-cell bc-cell--blue">59</div><div class="bc-cell">72</div>
                 <div class="bc-cell">13</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--blue">40</div><div class="bc-cell">47</div><div class="bc-cell">64</div>
               </div>
@@ -268,49 +274,32 @@ onUnmounted(() => {
         <!-- Slide 1: Chicken Road -->
         <div v-else-if="currentSlide === 1" key="chicken-road" class="hero-inner max-container">
           <div class="hero-text">
-            <div class="hero-badge" style="border-color:rgba(249,115,22,0.35)">
-              <span class="badge-dot" style="background:#f97316;animation:none"></span>
-              CRASH GAME — COMING SOON
-            </div>
-            <h1 class="hero-title">Play <span style="color:#f97316">Chicken</span><br>Road</h1>
-            <p class="hero-sub">Cross the road. Dodge the fryer. Multiply your bet with every step you take.</p>
-            <button class="hero-cta hero-cta--ad" style="--ad-color:#f97316" disabled>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-              Coming Soon
-            </button>
+            <p class="hero-eyebrow" style="--dot-color:#f97316">
+              <span class="eyebrow-dot" style="background:#f97316"></span>
+              Crash Game · Coming Soon
+            </p>
+            <h1 class="hero-title">Chicken<br><span style="color:#f97316">Road</span></h1>
+            <p class="hero-sub">Cross the road. Dodge the fryer. Multiply your bet with every step.</p>
+            <button class="hero-cta hero-cta--muted" disabled>Coming Soon</button>
           </div>
-          <div class="hero-art hero-art--ad">
-            <div class="ad-art ad-art--chicken">
-              <div class="ad-art-icon">
-                <svg width="72" height="72" viewBox="0 0 64 64" fill="none">
-                  <!-- Road -->
-                  <rect x="8" y="38" width="48" height="18" rx="3" fill="rgba(255,255,255,0.08)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
-                  <rect x="20" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
-                  <rect x="36" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
-                  <!-- Chicken body -->
-                  <ellipse cx="32" cy="28" rx="9" ry="10" fill="rgba(249,115,22,0.9)"/>
-                  <circle cx="32" cy="16" r="6" fill="rgba(249,115,22,0.9)"/>
-                  <!-- Beak -->
-                  <polygon points="35,15 39,17 35,19" fill="#fbbf24"/>
-                  <!-- Eye -->
-                  <circle cx="30" cy="15" r="2" fill="#fff"/>
-                  <circle cx="30" cy="15" r="1" fill="#000"/>
-                  <!-- Wings -->
-                  <ellipse cx="22" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(-15 22 28)"/>
-                  <ellipse cx="42" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(15 42 28)"/>
-                  <!-- Comb -->
-                  <path d="M29 10 Q31 6 33 10 Q31 8 29 10" fill="#ef4444"/>
-                  <!-- Multiplier labels -->
-                  <text x="10" y="56" font-size="8" fill="rgba(249,115,22,0.8)" font-weight="bold" font-family="monospace">1.5×</text>
-                  <text x="26" y="56" font-size="8" fill="rgba(249,115,22,0.9)" font-weight="bold" font-family="monospace">3×</text>
-                  <text x="42" y="56" font-size="8" fill="#f97316" font-weight="bold" font-family="monospace">9×</text>
-                </svg>
-              </div>
-              <div class="ad-multiplier">
+          <div class="hero-art hero-art--centered">
+            <div class="ad-card" style="--ad-accent:#f97316">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <rect x="8" y="38" width="48" height="18" rx="3" fill="rgba(255,255,255,0.06)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
+                <rect x="20" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
+                <rect x="36" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
+                <ellipse cx="32" cy="28" rx="9" ry="10" fill="rgba(249,115,22,0.9)"/>
+                <circle cx="32" cy="16" r="6" fill="rgba(249,115,22,0.9)"/>
+                <polygon points="35,15 39,17 35,19" fill="#fbbf24"/>
+                <circle cx="30" cy="15" r="2" fill="#fff"/>
+                <circle cx="30" cy="15" r="1" fill="#000"/>
+                <ellipse cx="22" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(-15 22 28)"/>
+                <ellipse cx="42" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(15 42 28)"/>
+                <path d="M29 10 Q31 6 33 10 Q31 8 29 10" fill="#ef4444"/>
+              </svg>
+              <div class="ad-mult">
                 <span class="ad-mult-num" style="color:#f97316">9×</span>
-                <span class="ad-mult-label">MAX MULTIPLIER</span>
+                <span class="ad-mult-label">Max Multiplier</span>
               </div>
             </div>
           </div>
@@ -319,287 +308,236 @@ onUnmounted(() => {
         <!-- Slide 2: Aviator -->
         <div v-else key="aviator" class="hero-inner max-container">
           <div class="hero-text">
-            <div class="hero-badge" style="border-color:rgba(59,130,246,0.35)">
-              <span class="badge-dot" style="background:#3b82f6;animation:none"></span>
-              MULTIPLIER GAME — COMING SOON
-            </div>
-            <h1 class="hero-title">Play <span style="color:#60a5fa">Aviator</span></h1>
-            <p class="hero-sub">Watch the plane climb. The multiplier rises. Cash out before it crashes — or lose it all.</p>
-            <button class="hero-cta hero-cta--ad" style="--ad-color:#3b82f6" disabled>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-              Coming Soon
-            </button>
+            <p class="hero-eyebrow" style="--dot-color:#3b82f6">
+              <span class="eyebrow-dot" style="background:#3b82f6"></span>
+              Multiplier Game · Coming Soon
+            </p>
+            <h1 class="hero-title"><span style="color:#60a5fa">Aviator</span></h1>
+            <p class="hero-sub">Watch the plane climb. The multiplier rises. Cash out before it crashes.</p>
+            <button class="hero-cta hero-cta--muted" disabled>Coming Soon</button>
           </div>
-          <div class="hero-art hero-art--ad">
-            <div class="ad-art ad-art--aviator">
-              <div class="ad-art-icon">
-                <svg width="80" height="72" viewBox="0 0 80 72" fill="none">
-                  <!-- Trail/path -->
-                  <path d="M10 55 Q30 40 62 18" stroke="rgba(59,130,246,0.35)" stroke-width="2" stroke-dasharray="4 3"/>
-                  <!-- Plane body -->
-                  <g transform="translate(58,16) rotate(-30)">
-                    <path d="M0 0 L-16 6 L-8 0 L-16 -6 Z" fill="#3b82f6"/>
-                    <!-- Wings -->
-                    <path d="M-8 0 L-14 -12 L-4 -8 Z" fill="#60a5fa"/>
-                    <path d="M-8 0 L-14 12 L-4 8 Z" fill="#60a5fa"/>
-                    <!-- Tail -->
-                    <path d="M-16 0 L-20 -6 L-16 -2 Z" fill="#93c5fd"/>
-                  </g>
-                  <!-- Multiplier label -->
-                  <rect x="20" y="10" width="42" height="20" rx="6" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
-                  <text x="41" y="24" font-size="11" fill="#60a5fa" font-weight="bold" font-family="monospace" text-anchor="middle">×24.58</text>
-                  <!-- Graph line -->
-                  <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18" stroke="rgba(59,130,246,0.6)" stroke-width="2" fill="none"/>
-                  <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18 L58 62 Z" fill="rgba(59,130,246,0.08)"/>
-                </svg>
-              </div>
-              <div class="ad-multiplier">
+          <div class="hero-art hero-art--centered">
+            <div class="ad-card" style="--ad-accent:#3b82f6">
+              <svg width="72" height="64" viewBox="0 0 80 72" fill="none" aria-hidden="true">
+                <path d="M10 55 Q30 40 62 18" stroke="rgba(59,130,246,0.35)" stroke-width="2" stroke-dasharray="4 3"/>
+                <g transform="translate(58,16) rotate(-30)">
+                  <path d="M0 0 L-16 6 L-8 0 L-16 -6 Z" fill="#3b82f6"/>
+                  <path d="M-8 0 L-14 -12 L-4 -8 Z" fill="#60a5fa"/>
+                  <path d="M-8 0 L-14 12 L-4 8 Z" fill="#60a5fa"/>
+                </g>
+                <rect x="20" y="10" width="42" height="20" rx="6" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <text x="41" y="24" font-size="11" fill="#60a5fa" font-weight="bold" font-family="monospace" text-anchor="middle">×24.58</text>
+                <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18" stroke="rgba(59,130,246,0.6)" stroke-width="2" fill="none"/>
+                <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18 L58 62 Z" fill="rgba(59,130,246,0.08)"/>
+              </svg>
+              <div class="ad-mult">
                 <span class="ad-mult-num" style="color:#60a5fa">∞×</span>
-                <span class="ad-mult-label">UNLIMITED MULTIPLIER</span>
+                <span class="ad-mult-label">Unlimited Multiplier</span>
               </div>
             </div>
           </div>
         </div>
       </Transition>
 
-      <div class="hero-dots">
+      <div class="hero-dots" role="tablist" aria-label="Slide navigation">
         <button
           v-for="(slide, i) in heroSlides"
           :key="slide.id"
           class="dot"
           :class="{ 'dot--active': currentSlide === i }"
           :aria-label="`Go to slide ${i + 1}`"
+          role="tab"
+          :aria-selected="currentSlide === i"
           @click="goToSlide(i)"
         ></button>
       </div>
     </section>
 
-    <!-- ── PROMOTION BANNERS ─────────────────────────────────── -->
-    <div class="max-container flex flex-col gap-2 px-4 pt-4">
+    <!-- ── PROMO BANNERS ─────────────────────────────────────────── -->
+    <div class="max-container promos-row">
       <CashbackBanner />
       <FirstDepositBanner />
     </div>
 
-    <!-- ── GAME TYPE TABS ─────────────────────────────────────── -->
-    <div class="tabs-bar">
-      <div class="max-container tabs-inner">
-        <div class="tabs-group">
-          <button class="tab tab--active">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
+    <!-- ── FILTER BAR ────────────────────────────────────────────── -->
+    <div class="filter-bar">
+      <div class="max-container filter-inner">
+        <nav class="cat-strip" aria-label="Game categories">
+          <button
+            v-for="cat in allCategories"
+            :key="cat"
+            class="cat-pill"
+            :class="{ 'cat-pill--active': selectedCategory === cat }"
+            @click="selectCategory(cat)"
+          >
+            <!-- ALL -->
+            <svg v-if="cat === 'ALL'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
             </svg>
-            Lobby
+            <!-- BINGO -->
+            <svg v-else-if="cat === 'BINGO'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="2"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="16" y1="2" x2="16" y2="22"/><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="16" x2="22" y2="16"/>
+            </svg>
+            <!-- SLOTS -->
+            <svg v-else-if="cat === 'SLOTS'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/><line x1="2" y1="16" x2="22" y2="16"/>
+            </svg>
+            <!-- LIVE -->
+            <svg v-else-if="cat === 'LIVE'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 000 11.4M17.7 6.3a8 8 0 010 11.4M3.5 3.5a13 13 0 000 17M20.5 3.5a13 13 0 010 17"/>
+            </svg>
+            <!-- TABLE -->
+            <svg v-else-if="cat === 'TABLE'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+            </svg>
+            <!-- CRASH -->
+            <svg v-else-if="cat === 'CRASH'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            <!-- default -->
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            {{ CATEGORY_LABELS[cat] ?? cat }}
           </button>
-          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="tab">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
+          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="cat-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M8 3h8v11a4 4 0 01-8 0V3z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/>
             </svg>
             Tournaments
           </NuxtLink>
-        </div>
-        <label class="search-bar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.4">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </nav>
+
+        <label class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search games…"
+            placeholder="Search games..."
             class="search-input"
+            aria-label="Search games"
           />
         </label>
       </div>
     </div>
 
-    <!-- ── TOP GAMES ROW ──────────────────────────────────────── -->
-    <div class="section">
+    <!-- ── TOP GAMES ROW ─────────────────────────────────────────── -->
+    <div class="top-row">
       <div class="max-container">
-        <div class="section-hdr">
-          <span class="section-title">Top Games</span>
-          <button class="collapse-btn" @click="topGamesCollapsed = !topGamesCollapsed">
-            {{ topGamesCollapsed ? 'Expand' : 'Collapse' }}
-          </button>
-        </div>
-        <div v-show="!topGamesCollapsed" class="games-scroll">
+        <div class="top-row-scroll">
 
-          <!-- Bingo — LIVE -->
-          <div class="game-card">
-            <div class="gc-thumb gc-thumb--bingo">
-              <div class="mini-grid">
-                <div class="mg-cell">7</div>
-                <div class="mg-cell mg-cell--m">23</div>
-                <div class="mg-cell">41</div>
-                <div class="mg-cell">54</div>
-                <div class="mg-cell mg-cell--m">68</div>
-                <div class="mg-cell mg-cell--m">12</div>
-                <div class="mg-cell">29</div>
-                <div class="mg-cell mg-cell--m">43</div>
-                <div class="mg-cell">58</div>
-                <div class="mg-cell">71</div>
-                <div class="mg-cell">3</div>
-                <div class="mg-cell mg-cell--m">30</div>
-                <div class="mg-cell mg-cell--f">FR</div>
-                <div class="mg-cell">60</div>
-                <div class="mg-cell mg-cell--m">75</div>
-                <div class="mg-cell">14</div>
-                <div class="mg-cell">27</div>
-                <div class="mg-cell">44</div>
-                <div class="mg-cell mg-cell--m">57</div>
-                <div class="mg-cell">72</div>
-                <div class="mg-cell mg-cell--m">9</div>
-                <div class="mg-cell">32</div>
-                <div class="mg-cell">46</div>
-                <div class="mg-cell">62</div>
-                <div class="mg-cell mg-cell--m">74</div>
+          <!-- Bingo tile -->
+          <div class="type-tile type-tile--bingo">
+            <div class="tt-thumb">
+              <div class="mini-grid" aria-hidden="true">
+                <div class="mg-cell">7</div><div class="mg-cell mg-cell--m">23</div><div class="mg-cell">41</div><div class="mg-cell">54</div><div class="mg-cell mg-cell--m">68</div>
+                <div class="mg-cell mg-cell--m">12</div><div class="mg-cell">29</div><div class="mg-cell mg-cell--m">43</div><div class="mg-cell">58</div><div class="mg-cell">71</div>
+                <div class="mg-cell">3</div><div class="mg-cell mg-cell--m">30</div><div class="mg-cell mg-cell--f">FR</div><div class="mg-cell">60</div><div class="mg-cell mg-cell--m">75</div>
+                <div class="mg-cell">14</div><div class="mg-cell">27</div><div class="mg-cell">44</div><div class="mg-cell mg-cell--m">57</div><div class="mg-cell">72</div>
+                <div class="mg-cell mg-cell--m">9</div><div class="mg-cell">32</div><div class="mg-cell">46</div><div class="mg-cell">62</div><div class="mg-cell mg-cell--m">74</div>
               </div>
-              <div class="gc-live-badge"><span class="live-dot"></span> LIVE</div>
+              <div class="tt-live-badge"><span class="live-dot"></span>Live</div>
             </div>
-            <div class="gc-info">
-              <div class="gc-name">Bingo</div>
-              <div class="gc-meta">
-                From {{ gameStore.availableGames.length > 0 ? Math.min(...gameStore.availableGames.map((g: Game) => Number(g.ticketPrice))).toLocaleString() : 10 }} ETB
-                · {{ gameStore.availableGames.length }} rooms open
-              </div>
+            <div class="tt-label">Bingo</div>
+            <div class="tt-meta">
+              From {{ gameStore.availableGames.length > 0 ? Math.min(...gameStore.availableGames.map((g: Game) => Number(g.ticketPrice))).toLocaleString() : 10 }} ETB
             </div>
           </div>
 
-          <!-- Third-party featured games OR "Coming Soon" placeholders -->
+          <!-- Third-party games OR Coming Soon tiles -->
           <template v-if="thirdPartyGamesEnabled && providerStore.games.length">
             <NuxtLink
               v-for="g in providerStore.games.slice(0, 6)"
               :key="g.gameCode"
               :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-              class="game-card"
+              class="type-tile"
             >
-              <div class="gc-thumb gc-thumb--provider">
+              <div class="tt-thumb tt-thumb--provider">
                 <img
                   v-if="g.imageSquare || g.imageLandscape"
                   :src="g.imageSquare ?? g.imageLandscape ?? ''"
                   :alt="g.gameName"
-                  class="gc-img"
+                  class="tt-img"
                   loading="lazy"
                 />
-                <div v-else class="gc-placeholder-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.3">
-                    <rect x="2" y="3" width="20" height="18" rx="2" />
-                    <rect x="5" y="7" width="4" height="8" rx="1" />
-                    <rect x="10" y="7" width="4" height="8" rx="1" />
-                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                <div v-else class="tt-placeholder">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.3" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
                   </svg>
                 </div>
-                <div class="gc-cat-badge">{{ g.categoryCode }}</div>
+                <div class="tt-cat-badge">{{ g.categoryCode }}</div>
               </div>
-              <div class="gc-info">
-                <div class="gc-name">{{ g.gameName }}</div>
-                <div class="gc-meta">{{ g.categoryCode }}</div>
-              </div>
+              <div class="tt-label">{{ g.gameName }}</div>
+              <div class="tt-meta">{{ g.categoryCode }}</div>
             </NuxtLink>
           </template>
+
           <template v-else-if="!thirdPartyGamesEnabled">
-            <!-- Aviator -->
-            <div class="game-card game-card--soon">
-              <div class="gc-thumb gc-thumb--soon">
-                <div class="soon-art">
-                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                  </svg>
-                  <span class="soon-label">AVIATOR</span>
-                </div>
-                <div class="soon-badge">Soon</div>
+            <div class="type-tile type-tile--soon">
+              <div class="tt-thumb">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+                <div class="tt-soon-badge">Soon</div>
               </div>
-              <div class="gc-info">
-                <div class="gc-name">Aviator</div>
-                <div class="gc-meta">Coming Soon</div>
-              </div>
+              <div class="tt-label">Aviator</div>
+              <div class="tt-meta">Coming Soon</div>
             </div>
-
-            <!-- Slots -->
-            <div class="game-card game-card--soon">
-              <div class="gc-thumb gc-thumb--soon">
-                <div class="soon-art">
-                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="3" width="20" height="18" rx="2" />
-                    <rect x="5" y="7" width="4" height="8" rx="1" />
-                    <rect x="10" y="7" width="4" height="8" rx="1" />
-                    <rect x="15" y="7" width="4" height="8" rx="1" />
-                    <line x1="2" y1="16" x2="22" y2="16" />
-                  </svg>
-                  <span class="soon-label">SLOTS</span>
-                </div>
-                <div class="soon-badge">Soon</div>
+            <div class="type-tile type-tile--soon">
+              <div class="tt-thumb">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/><line x1="2" y1="16" x2="22" y2="16"/>
+                </svg>
+                <div class="tt-soon-badge">Soon</div>
               </div>
-              <div class="gc-info">
-                <div class="gc-name">Slot Games</div>
-                <div class="gc-meta">Coming Soon</div>
-              </div>
+              <div class="tt-label">Slots</div>
+              <div class="tt-meta">Coming Soon</div>
             </div>
-
-            <!-- Crash -->
-            <div class="game-card game-card--soon">
-              <div class="gc-thumb gc-thumb--soon">
-                <div class="soon-art">
-                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z" />
-                    <path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z" />
-                  </svg>
-                  <span class="soon-label">CRASH</span>
-                </div>
-                <div class="soon-badge">Soon</div>
+            <div class="type-tile type-tile--soon">
+              <div class="tt-thumb">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/>
+                </svg>
+                <div class="tt-soon-badge">Soon</div>
               </div>
-              <div class="gc-info">
-                <div class="gc-name">Crash Game</div>
-                <div class="gc-meta">Coming Soon</div>
-              </div>
+              <div class="tt-label">Crash</div>
+              <div class="tt-meta">Coming Soon</div>
             </div>
-
-            <!-- Cards -->
-            <div class="game-card game-card--soon">
-              <div class="gc-thumb gc-thumb--soon">
-                <div class="soon-art">
-                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    <line x1="9" y1="10" x2="15" y2="10" />
-                    <line x1="12" y1="7" x2="12" y2="13" />
-                  </svg>
-                  <span class="soon-label">CARDS</span>
-                </div>
-                <div class="soon-badge">Soon</div>
+            <div class="type-tile type-tile--soon">
+              <div class="tt-thumb">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+                </svg>
+                <div class="tt-soon-badge">Soon</div>
               </div>
-              <div class="gc-info">
-                <div class="gc-name">Card Games</div>
-                <div class="gc-meta">Coming Soon</div>
-              </div>
+              <div class="tt-label">Table</div>
+              <div class="tt-meta">Coming Soon</div>
             </div>
           </template>
-
         </div>
       </div>
     </div>
 
-    <!-- ── PROVIDER GAMES — one section per category ─────────── -->
+    <!-- ── PROVIDER GAMES — per-category sections ────────────────── -->
     <template v-if="thirdPartyGamesEnabled && providerCategories.length">
       <div
         v-for="cat in providerCategories"
         :key="cat"
-        class="section"
+        v-show="showProviderCategory(cat)"
+        class="content-section"
       >
         <div class="max-container">
-          <div class="section-hdr">
-            <span class="section-title">{{ CATEGORY_LABELS[cat] ?? cat }}</span>
-          </div>
+          <h2 class="section-heading">{{ CATEGORY_LABELS[cat] ?? cat }}</h2>
 
           <div v-if="categoryGamesLoading[cat]" class="state-msg">
-            <span class="spinner"></span> Loading…
+            <span class="spinner" aria-hidden="true"></span> Loading...
           </div>
           <div v-else-if="!categoryGamesMap[cat]?.length" class="state-msg">
             No games available.
           </div>
-          <div v-else class="provider-grid">
+          <div v-else class="pg-grid">
             <NuxtLink
               v-for="g in categoryGamesMap[cat]"
               :key="g.gameCode"
@@ -615,15 +553,12 @@ onUnmounted(() => {
                   loading="lazy"
                 />
                 <div v-else class="pg-placeholder">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.3">
-                    <rect x="2" y="3" width="20" height="18" rx="2" />
-                    <rect x="5" y="7" width="4" height="8" rx="1" />
-                    <rect x="10" y="7" width="4" height="8" rx="1" />
-                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.3" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
                   </svg>
                 </div>
-                <div class="pg-overlay">
-                  <span class="pg-play-btn">Play</span>
+                <div class="pg-hover">
+                  <span class="pg-play">Play</span>
                 </div>
               </div>
               <div class="pg-name">{{ g.gameName }}</div>
@@ -633,126 +568,116 @@ onUnmounted(() => {
       </div>
     </template>
 
-    <!-- ── BINGO ROOMS (by category) ────────────────────────────── -->
-    <div v-if="showBingoSection" id="rooms">
+    <!-- ── BINGO ROOMS ────────────────────────────────────────────── -->
+    <div v-if="showBingoSection" id="rooms" class="content-section">
+      <div class="max-container">
 
-      <!-- Loading / error / empty — shown once above all categories -->
-      <div class="section">
-        <div class="max-container">
-          <div v-if="gameStore.loadingGames" class="state-msg">
-            <span class="spinner"></span> Loading games…
-          </div>
-          <div v-else-if="gameStore.error" class="state-msg state-msg--error">
-            Could not load games
-            <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
-          </div>
-          <div v-else-if="!filteredGames.length" class="state-msg">
-            {{ searchQuery ? 'No games match your search.' : 'No games available right now. Check back soon!' }}
-          </div>
+        <div v-if="gameStore.loadingGames" class="state-msg">
+          <span class="spinner" aria-hidden="true"></span> Loading games...
         </div>
-      </div>
+        <div v-else-if="gameStore.error" class="state-msg state-msg--error">
+          Could not load games.
+          <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
+        </div>
+        <div v-else-if="!filteredGames.length" class="state-msg">
+          {{ searchQuery ? 'No games match your search.' : 'No games available right now. Check back soon.' }}
+        </div>
 
-      <!-- Single Bingo section -->
-      <div v-if="!gameStore.loadingGames && !gameStore.error && filteredGames.length" class="section">
-        <div class="max-container">
-          <div class="section-hdr">
-            <span class="section-title">Bingo</span>
-            <button class="collapse-btn" @click="bingoCollapsed = !bingoCollapsed">
-              {{ bingoCollapsed ? 'Expand' : 'Collapse' }}
-            </button>
-          </div>
-
-          <div v-show="!bingoCollapsed" class="rooms-grid">
+        <template v-else>
+          <h2 class="section-heading">Bingo Rooms</h2>
+          <div class="rooms-grid">
             <div
               v-for="(game, idx) in filteredGames"
               :key="game.id"
-              class="room-card"
-              :style="{ '--delay': `${idx * 60}ms` }"
+              class="room-tile"
+              :style="{ '--delay': `${idx * 50}ms` }"
             >
-              <!-- Row 1: Label + Pattern badge -->
-              <div class="rc-row-1">
-                <span class="rc-ticket-label">TICKET PRICE</span>
-                <span class="rc-pattern">{{ patternLabel(game.pattern) }}</span>
-              </div>
-
-              <!-- Row 2: Price + Timer/Live -->
-              <div class="rc-row-2">
-                <div class="rc-price-block">
-                  <span class="rc-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
-                  <span class="rc-etb">ETB</span>
+              <!-- Thumbnail area -->
+              <div class="rt-thumb">
+                <!-- Status badge -->
+                <div v-if="game.status !== 'WAITING'" class="rt-badge rt-badge--live">
+                  <span class="live-dot-sm"></span> Live
                 </div>
-                <div class="rc-timer" :class="{ 'rc-timer--live': game.status !== 'WAITING' }">
-                  <template v-if="game.status !== 'WAITING'">
-                    <span class="live-dot-sm"></span>
-                    LIVE
-                  </template>
-                  <template v-else>
-                    <GameCountdown
-                      v-if="gameStore.countdowns[game.id]"
-                      :starts-at="gameStore.countdowns[game.id]"
-                      compact
-                    />
-                    <template v-else>1:00</template>
-                  </template>
+                <div v-else-if="gameStore.countdowns[game.id]" class="rt-badge rt-badge--timer">
+                  <GameCountdown :starts-at="gameStore.countdowns[game.id]" compact />
+                </div>
+                <div v-else class="rt-badge rt-badge--timer">1:00</div>
+
+                <!-- Pattern badge -->
+                <div class="rt-pattern">{{ patternLabel(game.pattern) }}</div>
+
+                <!-- Price -->
+                <div class="rt-price-wrap">
+                  <span class="rt-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
+                  <span class="rt-currency">ETB</span>
                 </div>
               </div>
 
-              <!-- Row 3: Players + CTA -->
-              <div class="rc-row-3">
-                <div class="rc-players">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="rc-player-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <!-- Footer -->
+              <div class="rt-footer">
+                <div class="rt-players">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
                   </svg>
-                  {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }} / {{ (game as any).maxPlayers ?? 10 }} players
+                  {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
                 </div>
-                <button v-if="game.status === 'WAITING'" class="rc-join" @click="handleJoinGame(game.id)">
-                  Join Game →
+                <button
+                  v-if="game.status === 'WAITING'"
+                  class="rt-join"
+                  @click="handleJoinGame(game.id)"
+                >
+                  Join
                 </button>
-                <div v-else class="rc-join rc-join--live">
-                  {{ game.status === 'STARTING' ? 'Starting...' : 'Game Live' }}
+                <div v-else class="rt-join rt-join--live">
+                  {{ game.status === 'STARTING' ? 'Starting' : 'Live' }}
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
-
     </div>
 
-    <!-- Auth Prompt Modal -->
     <AuthPromptModal v-model="showAuthPrompt" />
   </div>
 </template>
 
 <style scoped>
-/* ── Page wrapper ────────────────────────────────────────────────────── */
+/* ── Page ─────────────────────────────────────────────────────────────── */
 .lobby-page {
   min-height: 100vh;
   background: var(--surface-base);
   font-family: var(--font-body);
-  padding-bottom: 40px;
+  padding-bottom: 48px;
 }
 
 .max-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 20px;
 }
 
-/* ── HERO ────────────────────────────────────────────────────────────── */
+/* ── HERO ──────────────────────────────────────────────────────────────── */
 .hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #020e2e 0%, #061840 50%, #0a254f 100%);
-  padding-bottom: 28px;
+  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  /* Fixed height so all slides are identical — no layout shift on transition */
+  height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 620px) {
+  .hero { height: 240px; }
 }
 
 .hero-bg {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 55% 90% at 75% 50%, rgba(255, 215, 0, 0.07) 0%, transparent 65%),
-    radial-gradient(ellipse 40% 60% at 15% 40%, rgba(6, 182, 212, 0.06) 0%, transparent 60%);
+    radial-gradient(ellipse 50% 80% at 72% 50%, rgba(245, 158, 11, 0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 35% 55% at 15% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -762,9 +687,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 36px;
+  flex: 1;
+  padding-top: 28px;
   padding-bottom: 12px;
-  gap: 24px;
+  gap: 32px;
 }
 
 .hero-text {
@@ -772,28 +698,24 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-.hero-badge {
+.hero-eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 10px;
-  font-weight: 800;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 5px 12px;
-  border-radius: 20px;
-  width: fit-content;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
 }
 
-.badge-dot {
-  width: 7px;
-  height: 7px;
+.eyebrow-dot {
+  width: 6px;
+  height: 6px;
   background: var(--brand-primary);
   border-radius: 50%;
   flex-shrink: 0;
@@ -802,23 +724,21 @@ onUnmounted(() => {
 
 .hero-title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: clamp(36px, 7vw, 52px);
+  font-size: clamp(34px, 6.5vw, 50px);
   font-weight: 700;
-  color: #fff;
+  color: #f0f4ff;
   line-height: 1.05;
   margin: 0;
 }
 
-.hero-accent {
-  color: var(--brand-primary);
-}
+.hero-accent { color: var(--brand-primary); }
 
 .hero-sub {
   font-size: 14px;
-  color: rgba(160, 195, 245, 0.75);
+  color: rgba(180, 205, 240, 0.65);
   margin: 0;
-  line-height: 1.55;
-  max-width: 380px;
+  line-height: 1.6;
+  max-width: 360px;
 }
 
 .hero-cta {
@@ -826,43 +746,42 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   background: var(--brand-primary);
-  color: #000;
+  color: #0a0f1a;
   font-weight: 800;
   font-size: 14px;
-  padding: 11px 24px;
-  border-radius: 10px;
+  padding: 11px 22px;
+  border-radius: 8px;
   border: none;
-  text-decoration: none;
-  width: fit-content;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--wb-ease-out), transform var(--duration-fast) var(--wb-ease-out);
+  width: fit-content;
+  font-family: var(--font-body);
+  transition: background 0.15s ease, transform 0.15s ease;
 }
-
-.hero-cta:hover {
-  background: var(--brand-primary-dim);
-  transform: translateY(-2px);
+.hero-cta:hover { background: #fbbf24; transform: translateY(-1px); }
+.hero-cta:active { transform: translateY(0); }
+.hero-cta:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+.hero-cta--muted {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.45);
+  cursor: default;
 }
+.hero-cta--muted:hover { background: rgba(255,255,255,0.08); transform: none; }
 
-.hero-cta:active {
-  transform: translateY(0);
-}
-
-.hero-cta:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 3px;
-}
-
-/* ── HERO ART ──────────────────────────────────────────────────────── */
+/* ── HERO ART ────────────────────────────────────────────────────────── */
 .hero-art {
   flex-shrink: 0;
   position: relative;
-  height: 210px;
-  width: 260px;
+  height: 200px;
+  width: 250px;
 }
 
-@media (max-width: 640px) {
-  .hero-art { display: none; }
+.hero-art--centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+@media (max-width: 620px) { .hero-art { display: none; } }
 
 .bingo-card {
   position: absolute;
@@ -870,577 +789,652 @@ onUnmounted(() => {
   grid-template-columns: repeat(5, 1fr);
   gap: 3px;
   padding: 8px;
-  border-radius: 12px;
+  border-radius: 10px;
 }
-
 .bingo-card--front {
-  width: 148px;
-  right: 90px;
-  top: 12px;
+  width: 145px;
+  right: 85px;
+  top: 10px;
   transform: rotate(-5deg);
   z-index: 2;
-  border: 1px solid rgba(255, 215, 0, 0.45);
-  background: rgba(0, 0, 0, 0.38);
-  box-shadow: 0 0 24px rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.1);
 }
-
 .bingo-card--back {
-  width: 120px;
-  right: 8px;
-  top: 48px;
+  width: 115px;
+  right: 6px;
+  top: 45px;
   transform: rotate(4deg);
-  opacity: 0.4;
+  opacity: 0.35;
   z-index: 1;
-  border: 1px solid rgba(6, 182, 212, 0.4);
+  border: 1px solid rgba(6, 182, 212, 0.35);
   background: rgba(0, 0, 0, 0.3);
 }
-
 .bc-cell {
   aspect-ratio: 1;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.07);
-  font-size: 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 8px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'Rajdhani', sans-serif;
 }
+.bc-cell--blue { background: var(--accent-dim); color: rgba(255,255,255,0.9); }
+.bc-cell--gold { background: rgba(245,158,11,0.25); color: var(--brand-primary); }
+.bc-cell--free { background: var(--brand-primary); color: #0a0f1a; font-size: 5px; font-weight: 900; }
 
-.bc-cell--blue  { background: var(--accent-dim); color: #fff; }
-.bc-cell--gold  { background: var(--brand-primary-dim); color: #fff; }
-.bc-cell--free  { background: var(--brand-primary); color: #000; font-size: 6px; font-weight: 900; }
+/* ── FEATURED CARD ───────────────────────────────────────────────────── */
+.featured-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 16px;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 210px;
+}
+.fc-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+.fc-title { font-size: 20px; font-weight: 800; color: #f0f4ff; line-height: 1.2; }
+.fc-price {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 30px;
+  font-weight: 900;
+  color: var(--brand-primary);
+  line-height: 1;
+}
+.fc-currency { font-size: 15px; font-weight: 700; color: rgba(245,158,11,0.65); }
+.fc-meta { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 600; }
+.fc-join {
+  display: inline-flex;
+  align-items: center;
+  background: var(--brand-primary);
+  color: #0a0f1a;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 9px 18px;
+  min-height: 44px;
+  border-radius: 8px;
+  text-decoration: none;
+  align-self: flex-start;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.fc-join:hover { background: #fbbf24; transform: translateY(-1px); }
+.fc-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #34d399;
+  font-weight: 700;
+  font-size: 13px;
+}
 
+/* ── AD CARD ─────────────────────────────────────────────────────────── */
+.ad-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 24px 28px;
+  min-width: 185px;
+}
+.ad-mult {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.ad-mult-num {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+}
+.ad-mult-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ── HERO ARROWS ─────────────────────────────────────────────────────── */
+.hero-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.hero-arrow:hover {
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  transform: translateY(-50%) scale(1.08);
+}
+.hero-arrow:active { transform: translateY(-50%) scale(0.96); }
+.hero-arrow:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.hero-arrow--prev { left: 16px; }
+.hero-arrow--next { right: 16px; }
+
+@media (max-width: 640px) { .hero-arrow { display: none; } }
+
+/* ── HERO DOTS ───────────────────────────────────────────────────────── */
 .hero-dots {
   position: relative;
   z-index: 2;
   display: flex;
   justify-content: center;
   gap: 5px;
-  margin-top: 20px;
+  padding: 10px 0 14px;
+  flex-shrink: 0;
 }
-
+.hero-dots button {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+}
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
-  cursor: pointer;
-  transition: background 0.2s, width 0.2s;
+  transition: background 0.2s ease, width 0.2s ease;
 }
-
 .dot:hover { background: rgba(255,255,255,0.4); }
+.dot--active { background: var(--brand-primary); width: 18px; border-radius: 3px; }
 
-.dot--active {
-  background: var(--brand-primary);
-  width: 20px;
-  border-radius: 3px;
-}
+/* ── HERO TRANSITION ─────────────────────────────────────────────────── */
+/* The Transition wrapper becomes a block child — make it fill flex space */
+.hero > .hero-fade-enter-active,
+.hero > .hero-fade-leave-active,
+.hero-inner { flex: 1; }
 
-/* ── FEATURED GAME CARD (hero art replacement) ───────────────────────── */
-.featured-game-card {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(245,158,11,0.3);
-  border-radius: 20px;
-  padding: 28px 24px;
+.hero-fade-enter-active,
+.hero-fade-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; display: flex; flex: 1; }
+.hero-fade-enter-from { opacity: 0; transform: translateX(20px); }
+.hero-fade-leave-to   { opacity: 0; transform: translateX(-20px); }
+
+/* ── PROMOS ──────────────────────────────────────────────────────────── */
+.promos-row {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 220px;
-  backdrop-filter: blur(8px);
+  gap: 8px;
+  padding-top: 12px;
+  padding-bottom: 4px;
 }
-.fg-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #f59e0b;
-  text-transform: uppercase;
+
+/* ── FILTER BAR ──────────────────────────────────────────────────────── */
+.filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(6, 14, 36, 0.95);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
-.fg-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: #fff;
-  line-height: 1.2;
+
+.filter-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
 }
-.fg-price {
-  font-size: 32px;
-  font-weight: 900;
-  color: #f59e0b;
-  line-height: 1;
+
+.cat-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
 }
-.fg-etb {
-  font-size: 16px;
-  font-weight: 700;
-  color: rgba(245,158,11,0.7);
-}
-.fg-meta {
+.cat-strip::-webkit-scrollbar { display: none; }
+
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
   font-size: 13px;
-  color: rgba(255,255,255,0.55);
   font-weight: 600;
-}
-.fg-join {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--brand-primary);
-  color: #000;
-  font-weight: 800;
-  font-size: 14px;
-  padding: 10px 20px;
-  min-height: 44px;
-  border-radius: 10px;
-  text-decoration: none;
-  transition: background var(--duration-fast) var(--wb-ease-out), transform var(--duration-fast) var(--wb-ease-out);
-  align-self: flex-start;
-}
-.fg-join:hover { background: #fbbf24; transform: translateY(-1px); }
-.fg-join:active { transform: translateY(0); }
-.fg-join:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
-.fg-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #4ade80;
-  font-weight: 800;
-  font-size: 14px;
-}
-
-/* ── TABS BAR ────────────────────────────────────────────────────────── */
-.tabs-bar {
-  background: rgba(4, 20, 51, 0.88);
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.tabs-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tabs-group {
-  display: flex;
-  align-items: center;
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 16px;
-  font-size: 13px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255,255,255,0.5);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: color var(--duration-fast) var(--wb-ease-out);
-  text-decoration: none;
+  white-space: nowrap;
   font-family: var(--font-body);
-  margin-bottom: -1px;
+  transition: color 0.15s ease, background 0.15s ease;
+  text-decoration: none;
+  flex-shrink: 0;
 }
+.cat-pill svg { opacity: 0.6; flex-shrink: 0; }
+.cat-pill:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.05); }
+.cat-pill:hover svg { opacity: 0.85; }
+.cat-pill--active { color: var(--brand-primary); background: rgba(245,158,11,0.1); }
+.cat-pill--active svg { opacity: 1; color: var(--brand-primary); }
+.cat-pill:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: -2px; border-radius: 6px; }
 
-.tab:hover { color: rgba(255, 255, 255, 0.75); }
-.tab:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: -2px; }
-
-.tab--active {
-  color: var(--brand-primary);
-  border-bottom-color: var(--brand-primary);
-}
-
-.search-bar {
+.search-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  padding: 7px 14px;
-  color: rgba(255, 255, 255, 0.35);
-  font-size: 13px;
-  font-family: var(--font-body);
-  min-width: 200px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 7px;
+  padding: 7px 12px;
+  color: rgba(255,255,255,0.3);
   cursor: text;
-  transition: border-color var(--duration-fast) var(--wb-ease-out);
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
 }
-
-.search-bar:focus-within {
-  border-color: rgba(255, 215, 0, 0.4);
-}
-
+.search-wrap:focus-within { border-color: rgba(245,158,11,0.35); }
 .search-input {
   background: none;
   border: none;
   outline: none;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255,255,255,0.75);
   font-size: 13px;
   font-family: var(--font-body);
-  width: 100%;
+  width: 160px;
+}
+.search-input::placeholder { color: rgba(255,255,255,0.3); }
+
+@media (max-width: 560px) { .search-wrap { display: none; } }
+
+/* ── TOP GAMES ROW ───────────────────────────────────────────────────── */
+.top-row {
+  padding: 16px 0 0;
 }
 
-.search-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
-}
-
-@media (max-width: 640px) { .search-bar { display: none; } }
-
-/* ── SECTIONS ────────────────────────────────────────────────────────── */
-.section {
-  padding: 16px 0 4px;
-}
-
-.section-hdr {
+.top-row-scroll {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.section-title {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.01em;
-}
-
-.collapse-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--surface-border);
-  color: rgba(255, 255, 255, 0.6);
-  border-radius: 8px;
-  padding: 5px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--wb-ease-out), color var(--duration-fast) var(--wb-ease-out);
-  font-family: var(--font-body);
-}
-
-.collapse-btn:hover { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.85); }
-.collapse-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
-
-/* ── TOP GAMES SCROLL ────────────────────────────────────────────────── */
-.games-scroll {
-  display: flex;
-  gap: 14px;
+  gap: 12px;
   overflow-x: auto;
-  padding-bottom: 10px;
   scrollbar-width: none;
   -ms-overflow-style: none;
   margin: 0 -20px;
-  padding-left: 20px;
-  padding-right: 20px;
+  padding: 0 20px 12px;
 }
+.top-row-scroll::-webkit-scrollbar { display: none; }
 
-.games-scroll::-webkit-scrollbar { display: none; }
-
-/* ── GAME CARD (TOP GAMES) ───────────────────────────────────────────── */
-.game-card {
-  width: 180px;
+.type-tile {
+  width: 160px;
   flex-shrink: 0;
-  border-radius: 14px;
+  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--surface-border);
-  background: rgba(7, 24, 72, 0.8);
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(10, 22, 55, 0.75);
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--wb-ease-out), border-color var(--duration-fast) var(--wb-ease-out);
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
+.type-tile:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.25); }
+.type-tile:active { transform: translateY(0); }
+.type-tile--soon { cursor: default; }
+.type-tile--soon:hover { transform: none; border-color: rgba(255,255,255,0.07); }
 
-.game-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--brand-primary-glow);
-}
-
-.game-card:active {
-  transform: translateY(-1px);
-}
-
-.game-card--soon { cursor: default; }
-.game-card--soon:hover { transform: none; border-color: #1e3a6e; }
-
-.gc-thumb {
-  height: 125px;
+.tt-thumb {
+  height: 110px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: linear-gradient(145deg, #0d2050, #1a3870);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.tt-thumb--provider {
+  background: #0d2050;
+  overflow: hidden;
+}
+.tt-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tt-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.gc-thumb--bingo { background: linear-gradient(135deg, #0d1f4a, #1a3a6e); }
-.gc-thumb--soon {
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid #1e3a6e;
-}
+.type-tile--bingo .tt-thumb { background: linear-gradient(145deg, #091840, #142e62); }
 
 .mini-grid {
-  width: 90px;
+  width: 82px;
   padding: 5px;
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 9px;
-  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 7px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 2px;
 }
-
 .mg-cell {
   aspect-ratio: 1;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 7px;
+  background: rgba(255,255,255,0.05);
+  font-size: 6.5px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255,255,255,0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'Rajdhani', sans-serif;
 }
+.mg-cell--m { background: var(--accent-dim); color: rgba(255,255,255,0.9); }
+.mg-cell--f { background: var(--brand-primary); color: #0a0f1a; font-size: 5px; font-weight: 900; }
 
-.mg-cell--m { background: var(--accent-dim); color: #fff; }
-.mg-cell--f { background: var(--brand-primary); color: #000; font-size: 5px; font-weight: 900; }
-
-.gc-live-badge {
+.tt-live-badge {
   position: absolute;
-  top: 7px;
-  left: 7px;
-  background: #ef4444;
+  top: 6px;
+  left: 6px;
+  background: #dc2626;
   color: #fff;
-  border-radius: 5px;
-  padding: 2px 8px;
+  border-radius: 4px;
+  padding: 2px 7px;
   font-size: 9px;
   font-weight: 800;
   display: flex;
   align-items: center;
   gap: 4px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
-.live-dot {
-  width: 5px;
-  height: 5px;
-  background: #fff;
-  border-radius: 50%;
-  animation: blink 1s infinite;
-  flex-shrink: 0;
-}
-
-.soon-art {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.soon-label {
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.4);
-  letter-spacing: 0.08em;
-}
-
-.soon-badge {
+.tt-cat-badge {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  background: rgba(139, 92, 246, 0.2);
-  border: 1px solid rgba(139, 92, 246, 0.35);
-  color: #c4b5fd;
-  border-radius: 5px;
-  padding: 2px 7px;
+  top: 6px;
+  left: 6px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  border-radius: 4px;
+  padding: 2px 6px;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.gc-info {
-  padding: 10px 12px;
+.tt-soon-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid rgba(139,92,246,0.3);
+  color: #c4b5fd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
-.gc-name {
+.tt-label {
+  padding: 8px 10px 2px;
   font-family: 'Rajdhani', sans-serif;
   font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: #e8eef8;
 }
-
-.gc-meta {
+.tt-meta {
+  padding: 0 10px 9px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  margin-top: 2px;
+  color: rgba(255,255,255,0.38);
 }
 
-/* ── ROOMS GRID ──────────────────────────────────────────────────────── */
-.rooms-grid {
+/* ── CONTENT SECTIONS ────────────────────────────────────────────────── */
+.content-section {
+  padding: 20px 0 0;
+}
+
+.section-heading {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: #e0e8f8;
+  letter-spacing: 0.01em;
+  margin: 0 0 14px;
+}
+
+/* ── PROVIDER GAME GRID ──────────────────────────────────────────────── */
+.pg-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  padding-bottom: 0;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 4px;
 }
+@media (min-width: 480px) { .pg-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 640px) { .pg-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 900px) { .pg-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (min-width: 1200px) { .pg-grid { grid-template-columns: repeat(9, 1fr); } }
 
-@media (min-width: 700px) {
-  .rooms-grid {
-    grid-template-columns: repeat(3, 1fr);
-    padding-bottom: 40px;
-  }
+.pg-card {
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 22, 55, 0.7);
+  border: 1px solid rgba(255,255,255,0.06);
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
 }
+.pg-card:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.2); }
+.pg-card:active { transform: translateY(0); }
 
-@media (min-width: 1100px) {
-  .rooms-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* ── ROOM CARD ───────────────────────────────────────────────────────── */
-.room-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--surface-border);
-  border-radius: 14px;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  animation: fadeUp var(--duration-normal) var(--wb-ease-out) both;
-  animation-delay: var(--delay, 0ms);
-  transition: border-color var(--duration-fast) var(--wb-ease-out), background var(--duration-fast) var(--wb-ease-out), box-shadow var(--duration-fast) var(--wb-ease-out);
-}
-
-.room-card:hover {
-  border-color: rgba(245, 158, 11, 0.3);
-  background: rgba(255, 255, 255, 0.065);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.rc-row-1 {
+.pg-thumb {
+  aspect-ratio: 3/4;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #0d2050, #1a3870);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
 }
+.pg-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 
-.rc-ticket-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.4);
+.pg-hover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
+.pg-card:hover .pg-hover { opacity: 1; }
 
-.rc-pattern {
-  background: rgba(6, 182, 212, 0.1);
-  border: 1px solid rgba(6, 182, 212, 0.25);
-  color: #06b6d4;
+.pg-play {
+  background: var(--brand-primary);
+  color: #0a0f1a;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 7px 18px;
   border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 11px;
+}
+
+.pg-name {
+  padding: 7px 9px 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8d4e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── BINGO ROOMS GRID ────────────────────────────────────────────────── */
+.rooms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding-bottom: 8px;
+}
+@media (min-width: 560px) { .rooms-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 800px) { .rooms-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1100px) { .rooms-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 1400px) { .rooms-grid { grid-template-columns: repeat(6, 1fr); } }
+
+/* ── ROOM TILE ───────────────────────────────────────────────────────── */
+.room-tile {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(10, 22, 55, 0.75);
+  animation: fadeUp 0.3s ease both;
+  animation-delay: var(--delay, 0ms);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.room-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245,158,11,0.22);
+}
+.room-tile:active { transform: translateY(0); }
+
+/* Thumbnail */
+.rt-thumb {
+  position: relative;
+  padding: 28px 16px 24px;
+  background: linear-gradient(155deg, #091840 0%, #142e62 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  min-height: 120px;
+}
+
+.rt-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rt-badge--live {
+  background: #dc2626;
+  color: #fff;
+}
+.rt-badge--timer {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--brand-primary);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+}
+
+.rt-pattern {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  color: #22d3ee;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.rc-row-2 {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-}
-
-.rc-price-block {
+.rt-price-wrap {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-}
-
-.rc-price {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 40px;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-}
-
-.rc-etb {
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.5);
-  font-weight: 600;
-}
-
-.rc-timer {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-  color: #FFD700;
-  display: flex;
-  align-items: center;
   gap: 5px;
+}
+.rt-price {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 700;
+  color: #f0f4ff;
   line-height: 1;
 }
-
-.rc-timer--live {
-  color: #10b981;
-  font-size: 16px;
-  font-family: 'Nunito', sans-serif;
-  font-weight: 800;
+.rt-currency {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.4);
 }
 
-.live-dot-sm {
-  width: 7px;
-  height: 7px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: blink 1s infinite;
-  flex-shrink: 0;
-}
-
-.rc-row-3 {
+/* Footer */
+.rt-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  padding: 10px 12px;
 }
 
-.rc-players {
+.rt-players {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
   font-weight: 600;
 }
+.rt-slash { color: rgba(255,255,255,0.2); margin: 0 1px; }
 
-.rc-player-icon {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-}
-
-.rc-join {
+.rt-join {
   background: var(--brand-primary);
-  color: #000;
+  color: #0a0f1a;
   border: none;
-  border-radius: 22px;
-  padding: 9px 18px;
-  min-height: 44px;
-  font-size: 13px;
+  border-radius: 6px;
+  padding: 7px 14px;
+  min-height: 34px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
   text-decoration: none;
-  transition: background var(--duration-fast) var(--wb-ease-out), transform var(--duration-fast) var(--wb-ease-out);
-  display: inline-flex;
-  align-items: center;
   font-family: var(--font-body);
   white-space: nowrap;
   flex-shrink: 0;
+  transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
 }
-
-.rc-join:hover:not(.rc-join--live) { background: var(--brand-primary-dim); transform: translateY(-1px); }
-.rc-join:active:not(.rc-join--live) { transform: translateY(0); }
-.rc-join:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
-
-.rc-join--live {
-  background: var(--status-success);
-  color: #fff;
+.rt-join:hover:not(.rt-join--live) { background: #fbbf24; }
+.rt-join:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+.rt-join--live {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
   cursor: default;
+  font-size: 11px;
 }
 
 /* ── STATE MESSAGES ──────────────────────────────────────────────────── */
@@ -1449,274 +1443,68 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255,255,255,0.4);
   padding: 3rem 0;
   font-size: 14px;
   text-align: center;
 }
-
-.state-msg--error { flex-direction: column; color: #ef4444; }
+.state-msg--error { flex-direction: column; color: #f87171; }
 
 .retry-btn {
   padding: 6px 16px;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  border: 1px solid rgba(245,158,11,0.35);
   color: var(--brand-primary);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--wb-ease-out);
   font-family: var(--font-body);
+  transition: background 0.15s ease;
 }
-
-.retry-btn:hover { background: var(--brand-primary-glow); }
+.retry-btn:hover { background: rgba(245,158,11,0.08); }
 .retry-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
 
 .spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #FFD700;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.08);
+  border-top-color: var(--brand-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
 }
 
-/* ── PROVIDER GAME CARD (Top Games row) ──────────────────────────────── */
-.gc-thumb--provider {
-  background: #0d1f4a;
-  overflow: hidden;
+/* ── LIVE DOTS ───────────────────────────────────────────────────────── */
+.live-dot {
+  width: 5px;
+  height: 5px;
+  background: #fff;
+  border-radius: 50%;
+  animation: blink 1.2s infinite;
+  flex-shrink: 0;
 }
-
-.gc-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.gc-placeholder-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.gc-cat-badge {
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.8);
-  border-radius: 5px;
-  padding: 2px 7px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* ── PROVIDER GAMES GRID ─────────────────────────────────────────────── */
-.provider-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  padding-bottom: 8px;
-}
-
-@media (min-width: 480px) { .provider-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (min-width: 700px) { .provider-grid { grid-template-columns: repeat(5, 1fr); } }
-@media (min-width: 900px) { .provider-grid { grid-template-columns: repeat(6, 1fr); } }
-@media (min-width: 1200px) { .provider-grid { grid-template-columns: repeat(8, 1fr); } }
-
-.pg-card {
-  border-radius: 12px;
-  overflow: hidden;
-  background: rgba(7, 24, 72, 0.8);
-  border: 1px solid var(--surface-border);
-  text-decoration: none;
-  transition: transform var(--duration-fast) var(--wb-ease-out), border-color var(--duration-fast) var(--wb-ease-out);
-  cursor: pointer;
-}
-
-.pg-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--brand-primary-glow);
-}
-
-.pg-card:active {
-  transform: translateY(-1px);
-}
-
-.pg-thumb {
-  aspect-ratio: 3/4;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, #0d1f4a, #1a3a6e);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pg-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.pg-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.pg-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--wb-ease-out);
-}
-
-.pg-card:hover .pg-overlay { opacity: 1; }
-
-.pg-play-btn {
-  background: #FFD700;
-  color: #000;
-  font-weight: 800;
-  font-size: 13px;
-  padding: 8px 22px;
-  border-radius: 8px;
-  font-family: 'Nunito', sans-serif;
-}
-
-.pg-name {
-  padding: 8px 10px;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.load-more-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 20px 0 8px;
-}
-
-.load-more-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--surface-border);
-  color: rgba(255, 255, 255, 0.7);
-  border-radius: 10px;
-  padding: 10px 32px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--wb-ease-out), color var(--duration-fast) var(--wb-ease-out);
-  font-family: var(--font-body);
-}
-
-.load-more-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.9); }
-.load-more-btn:disabled { opacity: 0.5; cursor: default; }
-.load-more-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
-
-/* ── HERO SLIDER ─────────────────────────────────────────────────────── */
-.hero-fade-enter-active,
-.hero-fade-leave-active {
-  transition: opacity 0.35s var(--wb-ease-out), transform 0.35s var(--wb-ease-out);
-}
-.hero-fade-enter-from { opacity: 0; transform: translateX(24px); }
-.hero-fade-leave-to   { opacity: 0; transform: translateX(-24px); }
-
-.hero-dots button {
-  background: none;
-  border: none;
-  padding: 4px;
-  cursor: pointer;
-}
-
-/* ── AD SLIDE ART ────────────────────────────────────────────────────── */
-.hero-cta--ad {
-  background: var(--ad-color, #f97316);
-  color: #fff;
-  opacity: 0.85;
-  cursor: default;
-}
-
-.hero-art--ad {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ad-art {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 20px;
-  padding: 24px 32px;
-  min-width: 200px;
-}
-
-.ad-art-icon {
-  opacity: 0.9;
-}
-
-.ad-multiplier {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.ad-mult-num {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 36px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.ad-mult-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: rgba(255,255,255,0.45);
-  text-transform: uppercase;
+.live-dot-sm {
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  animation: blink 1.2s infinite;
+  flex-shrink: 0;
 }
 
 /* ── KEYFRAMES ───────────────────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.2; }
+  50%       { opacity: 0.25; }
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.35; }
 }
 </style>

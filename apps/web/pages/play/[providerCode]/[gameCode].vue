@@ -84,38 +84,52 @@ useHead({
 .play-page {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
   z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Subtle radial accent — same as lobby hero bg */
+.play-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 60% at 70% 50%, rgba(245, 158, 11, 0.06) 0%, transparent 65%),
+    radial-gradient(ellipse 35% 50% at 20% 40%, rgba(6, 182, 212, 0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
 .play-state {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(200, 215, 240, 0.7);
   font-family: 'Nunito', sans-serif;
 }
 
-.play-state--error { color: #ef4444; }
+.play-state--error { color: #f87171; }
 
 .play-state-text {
   font-size: 15px;
   margin: 0;
+  font-weight: 600;
 }
 
-.play-state-text--error { color: #ef4444; }
+.play-state-text--error { color: #f87171; }
 
 .play-spinner {
-  width: 48px;
-  height: 48px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #FFD700;
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #f59e0b;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin 0.75s linear infinite;
 }
 
 .game-frame {
@@ -133,36 +147,47 @@ useHead({
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: rgba(2, 11, 32, 0.72);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 13px;
   font-weight: 700;
   padding: 8px 14px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
   font-family: 'Nunito', sans-serif;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 10;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.float-back:hover { background: rgba(0, 0, 0, 0.8); }
+.float-back:hover {
+  background: rgba(2, 11, 32, 0.88);
+  color: #fff;
+}
+
+.float-back:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
 
 .back-btn {
   margin-top: 8px;
-  background: #FFD700;
-  color: #000;
+  background: #f59e0b;
+  color: #0a0f1a;
   font-weight: 800;
   font-size: 14px;
   padding: 10px 28px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   cursor: pointer;
   font-family: 'Nunito', sans-serif;
-  transition: background 0.15s;
+  transition: background 0.15s ease;
 }
 
-.back-btn:hover { background: #e5c500; }
+.back-btn:hover { background: #fbbf24; }
+.back-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
 
 @keyframes spin {
   to { transform: rotate(360deg); }

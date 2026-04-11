@@ -10,12 +10,12 @@ const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 /**
  * Player-facing provider/game routes.
  * All mounted under /providers (configured in index.ts).
- * All require JWT authentication.
+ * Listing endpoints (providers, games, categories) are public.
+ * Launch and terminate require JWT authentication.
  */
 const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
     // ── List active providers ──────────────────────────────────────────────────
     fastify.get('/', {
-        preValidation: [fastify.authenticate],
         handler: async () => {
             return prisma.gameProvider.findMany({
                 where: { status: 'ACTIVE' },
@@ -41,7 +41,6 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
 
     // ── List games for a provider (paginated, filterable) ─────────────────────
     fastify.get('/:providerCode/games', {
-        preValidation: [fastify.authenticate],
         handler: async (req) => {
             const { providerCode } = req.params as { providerCode: string }
             const { category, page = '1', pageSize = '50', search, vendorCode } =
@@ -69,7 +68,6 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
 
     // ── Get game categories for a provider ────────────────────────────────────
     fastify.get('/:providerCode/categories', {
-        preValidation: [fastify.authenticate],
         handler: async (req) => {
             const { providerCode } = req.params as { providerCode: string }
             return GameCatalogService.getCategories(providerCode)

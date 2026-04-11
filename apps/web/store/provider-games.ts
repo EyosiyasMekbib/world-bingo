@@ -71,9 +71,9 @@ export const useProviderGamesStore = defineStore('provider-games', {
 
   actions: {
     async fetchProviders() {
-      const auth = (await import('~/store/auth')).useAuthStore()
+      const config = useRuntimeConfig()
       try {
-        const data = await auth.apiFetch<ProviderInfo[]>('/providers')
+        const data = await $fetch<ProviderInfo[]>(`${config.public.apiBase}/providers`)
         this.providers = data
         if (data.length > 0 && !this.activeProviderCode) {
           this.activeProviderCode = data[0].code
@@ -86,9 +86,9 @@ export const useProviderGamesStore = defineStore('provider-games', {
     async fetchCategories(providerCode?: string) {
       const code = providerCode ?? this.activeProviderCode
       if (!code) return
-      const auth = (await import('~/store/auth')).useAuthStore()
+      const config = useRuntimeConfig()
       try {
-        const data = await auth.apiFetch<string[]>(`/providers/${code}/categories`)
+        const data = await $fetch<string[]>(`${config.public.apiBase}/providers/${code}/categories`)
         this.categories = data
       } catch {
         // Non-fatal — categories may be empty
@@ -114,7 +114,7 @@ export const useProviderGamesStore = defineStore('provider-games', {
       this.loading = true
       this.error = null
 
-      const auth = (await import('~/store/auth')).useAuthStore()
+      const config = useRuntimeConfig()
       try {
         const params = new URLSearchParams({
           page: String(this.page),
@@ -123,7 +123,7 @@ export const useProviderGamesStore = defineStore('provider-games', {
         if (category) params.set('category', category)
         if (this.searchQuery) params.set('search', this.searchQuery)
 
-        const result = await auth.apiFetch<GamesPage>(`/providers/${code}/games?${params}`)
+        const result = await $fetch<GamesPage>(`${config.public.apiBase}/providers/${code}/games?${params}`)
         if (opts.reset) {
           this.games = result.games
         } else {
