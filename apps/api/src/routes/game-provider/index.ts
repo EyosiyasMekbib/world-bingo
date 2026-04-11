@@ -84,14 +84,15 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 gameCode: string
             }
             const user = (req as any).user as { id: string; username: string }
-            const { language = 'en', platform = 'WEB' } =
-                req.body as { language?: string; platform?: 'WEB' | 'H5' }
+            const { language = 'en', platform = 'web' } =
+                req.body as { language?: string; platform?: 'web' | 'H5' }
 
             const ipAddress =
                 (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip
 
             const gateway = getGameProviderGateway(providerCode)
-            const lobbyUrl = `${process.env.WEB_BASE_URL ?? 'https://www.aradabingo.bet'}/`
+            const rawBase = process.env.WEB_BASE_URL || 'https://www.aradabingo.bet'
+            const lobbyUrl = rawBase.startsWith('http') ? rawBase.replace(/\/$/, '') + '/' : `https://${rawBase.replace(/\/$/, '')}/`
 
             // GASea requires 3–40 alphanumeric username. Derive a stable identifier
             // from the user's UUID by stripping dashes (32 hex chars, always valid).
