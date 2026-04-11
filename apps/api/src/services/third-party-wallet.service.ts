@@ -356,7 +356,7 @@ export class ThirdPartyWalletService {
         }
 
         // For result types that follow a prior /bet call, verify the original bet exists
-        // END is a round-end notification — no prior bet required
+        // END is a round-end notification — no prior bet required unless externalTransactionId references one
         // WIN/LOSE with betAmount=0 are free-spin/bonus results — no prior bet required
         if ((params.resultType === 'WIN' || params.resultType === 'LOSE') && params.betAmount > 0) {
             const priorBet = await prisma.thirdPartyTransaction.findFirst({
@@ -364,6 +364,18 @@ export class ThirdPartyWalletService {
                     providerId: await getProviderId(),
                     userId: user.id,
                     betId: params.betId,
+                    type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                },
+            })
+            if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
+        }
+
+        if (params.resultType === 'END' && params.externalTransactionId) {
+            const priorBet = await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId: await getProviderId(),
+                    userId: user.id,
+                    transactionId: params.externalTransactionId,
                     type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
                 },
             })
