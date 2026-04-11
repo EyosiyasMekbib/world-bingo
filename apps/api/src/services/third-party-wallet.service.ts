@@ -596,16 +596,6 @@ export class ThirdPartyWalletService {
         })
 
         if (!originalBet) {
-            // Check if the original transaction failed due to insufficient funds
-            const failedBet = await prisma.thirdPartyTransaction.findFirst({
-                where: {
-                    providerId: await getProviderId(),
-                    userId: user.id,
-                    betId: params.betId,
-                    status: ThirdPartyTxStatus.FAILED,
-                },
-            })
-            if (failedBet) return err(params.traceId, 'SC_INSUFFICIENT_FUNDS')
             return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
