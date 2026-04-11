@@ -691,6 +691,17 @@ export class ThirdPartyWalletService {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
 
+        if (params.externalTransactionId) {
+            const priorBet = await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId: await getProviderId(),
+                    userId: user.id,
+                    transactionId: params.externalTransactionId,
+                    type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                },
+            })
+            if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
+        }
 
         const adjustAmount = new Decimal(params.amount)
 
