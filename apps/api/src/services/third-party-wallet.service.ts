@@ -689,17 +689,6 @@ export class ThirdPartyWalletService {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
 
-        // If this adjustment references an original transaction, verify it exists
-        if (params.externalTransactionId) {
-            const providerId = await getProviderId()
-            const referencedTx = await prisma.thirdPartyTransaction.findFirst({
-                where: {
-                    providerId,
-                    transactionId: params.externalTransactionId,
-                },
-            })
-            if (!referencedTx) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
-        }
 
         const adjustAmount = new Decimal(params.amount)
 
