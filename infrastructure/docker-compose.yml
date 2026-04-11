@@ -60,6 +60,7 @@ services:
       API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
     volumes:
       - uploads_data:/app/apps/api/uploads
     depends_on:

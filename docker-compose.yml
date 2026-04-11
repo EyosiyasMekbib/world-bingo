@@ -54,6 +54,7 @@ services:
       GASEA_API_SECRET: ${GASEA_API_SECRET:-}
       GASEA_DEFAULT_CURRENCY: ${GASEA_DEFAULT_CURRENCY:-ETB}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
     volumes:
       - uploads_data:/app/apps/api/uploads
     depends_on:

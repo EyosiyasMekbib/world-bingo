@@ -83,6 +83,9 @@ await server.register(jwt, {
 })
 
 // Global rate limiting: 100 requests / minute per IP
+const rateLimitWhitelist = new Set(
+    (process.env.RATE_LIMIT_WHITELIST ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+)
 await server.register(rateLimit, {
     global: true,
     max: 100,
@@ -92,7 +95,12 @@ await server.register(rateLimit, {
     },
     // Skip rate limiting for GASea wallet callbacks — server-to-server traffic
     // from GASea's IP must never be throttled mid-game-session.
-    skip: (req) => req.url.startsWith('/v1/aggregator/'),
+    // Also skip IPs explicitly whitelisted via RATE_LIMIT_WHITELIST env var.
+    skip: (req) => {
+        if (req.url.startsWith('/v1/aggregator/')) return true
+        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        return rateLimitWhitelist.has(ip)
+    },
     errorResponseBuilder: () => ({
         statusCode: 429,
         error: 'Too Many Requests',
