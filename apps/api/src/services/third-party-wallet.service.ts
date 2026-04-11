@@ -371,12 +371,16 @@ export class ThirdPartyWalletService {
         }
 
         if (params.resultType === 'END' && params.externalTransactionId) {
+            const providerId = await getProviderId()
             const priorBet = await prisma.thirdPartyTransaction.findFirst({
                 where: {
-                    providerId: await getProviderId(),
+                    providerId,
                     userId: user.id,
-                    externalTransactionId: params.externalTransactionId,
                     type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                    OR: [
+                        { transactionId: params.externalTransactionId },
+                        { externalTransactionId: params.externalTransactionId },
+                    ],
                 },
             })
             if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
@@ -704,12 +708,16 @@ export class ThirdPartyWalletService {
         }
 
         if (params.externalTransactionId) {
+            const providerId = await getProviderId()
             const priorBet = await prisma.thirdPartyTransaction.findFirst({
                 where: {
-                    providerId: await getProviderId(),
+                    providerId,
                     userId: user.id,
-                    externalTransactionId: params.externalTransactionId,
                     type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                    OR: [
+                        { transactionId: params.externalTransactionId },
+                        { externalTransactionId: params.externalTransactionId },
+                    ],
                 },
             })
             if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
