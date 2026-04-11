@@ -11,7 +11,7 @@ export interface WalletCallbackResponse {
     data?: {
         username: string
         currency: string
-        balance: number
+        balance: string
         timestamp: number
     }
 }
@@ -122,7 +122,7 @@ function ok(traceId: string, username: string, balance: Decimal): WalletCallback
         data: {
             username,
             currency: CURRENCY,
-            balance: balance.toNumber(),
+            balance: balance.toString(),
             timestamp: Date.now(),
         },
     }
@@ -302,6 +302,36 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
+            if (e?.code === 'SC_INSUFFICIENT_FUNDS') {
+                // Persist a FAILED record so rollback can identify this betId as insufficient-funds
+                try {
+                    const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+                    const currentBalance = wallet
+                        ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+                        : new Decimal(0)
+                    await prisma.thirdPartyTransaction.create({
+                        data: {
+                            providerId: await getProviderId(),
+                            userId: user.id,
+                            transactionId: params.transactionId,
+                            betId: params.betId,
+                            externalTransactionId: params.externalTransactionId,
+                            roundId: params.roundId,
+                            gameCode: params.gameCode,
+                            type: ThirdPartyTxType.BET,
+                            status: ThirdPartyTxStatus.FAILED,
+                            betAmount: new Decimal(params.amount),
+                            amount: new Decimal(0),
+                            balanceBefore: currentBalance,
+                            balanceAfter: currentBalance,
+                            rawRequest: params as any,
+                        },
+                    })
+                } catch {
+                    // ignore duplicate key on retry — idempotency
+                }
+                return err(params.traceId, e.code)
+            }
             if (e?.code) return err(params.traceId, e.code)
             throw e
         }
@@ -323,6 +353,19 @@ export class ThirdPartyWalletService {
         const existing = await findExisting(params.transactionId)
         if (existing) {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
+        }
+
+        // For result types that follow a prior /bet call, verify the original bet exists
+        if (params.resultType === 'WIN' || params.resultType === 'LOSE' || params.resultType === 'END') {
+            const priorBet = await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId: await getProviderId(),
+                    userId: user.id,
+                    betId: params.betId,
+                    type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                },
+            })
+            if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
         // END result = no wallet operation needed
@@ -406,14 +449,24 @@ export class ThirdPartyWalletService {
                 txType = TransactionType.TP_BET
         }
 
+        let balanceAttempt: Decimal | null = null
+
         try {
             const result = await prisma.$transaction(async (tx) => {
                 const wallet = await lockWallet(tx, user.id)
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
+                balanceAttempt = totalBefore
 
-                // For debits, check sufficient funds
+                // BET_WIN / BET_LOSE combine bet deduction + result in one call.
+                // The bet portion must always be covered by the player's balance,
+                // even when net change is positive (win > bet).
+                if (params.resultType === 'BET_WIN' || params.resultType === 'BET_LOSE') {
+                    if (totalBefore.lessThan(betAmt)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                }
+
+                // For net debits, also check sufficient funds
                 if (netChange.lessThan(0)) {
                     const debit = netChange.abs()
                     if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
@@ -480,6 +533,33 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
+            if (e?.code === 'SC_INSUFFICIENT_FUNDS' && balanceAttempt !== null) {
+                // Record the failed attempt so rollback can identify it and return SC_INSUFFICIENT_FUNDS
+                try {
+                    await prisma.thirdPartyTransaction.create({
+                        data: {
+                            providerId: await getProviderId(),
+                            userId: user.id,
+                            transactionId: params.transactionId,
+                            betId: params.betId,
+                            externalTransactionId: params.externalTransactionId,
+                            roundId: params.roundId,
+                            gameCode: params.gameCode,
+                            type: ThirdPartyTxType.BET_RESULT,
+                            status: ThirdPartyTxStatus.FAILED,
+                            betAmount: betAmt,
+                            winAmount: winAmt,
+                            amount: new Decimal(0),
+                            balanceBefore: balanceAttempt,
+                            balanceAfter: balanceAttempt,
+                            rawRequest: params as any,
+                        },
+                    })
+                } catch {
+                    // ignore duplicate key on retry — idempotency
+                }
+                return err(params.traceId, e.code)
+            }
             if (e?.code) return err(params.traceId, e.code)
             throw e
         }
@@ -516,21 +596,41 @@ export class ThirdPartyWalletService {
         })
 
         if (!originalBet) {
+            // Check if the original transaction failed due to insufficient funds
+            const failedBet = await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId: await getProviderId(),
+                    userId: user.id,
+                    betId: params.betId,
+                    status: ThirdPartyTxStatus.FAILED,
+                },
+            })
+            if (failedBet) return err(params.traceId, 'SC_INSUFFICIENT_FUNDS')
             return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
-        const refundAmount = originalBet.amount.abs()
+        // Negate the original amount to undo its effect:
+        //   BET/BET_DEBIT had amount < 0 (debit) → rollbackDelta > 0 (credit back)
+        //   BET_RESULT BET_WIN had amount > 0 (net credit) → rollbackDelta < 0 (debit back)
+        const rollbackDelta = originalBet.amount.negated()
 
+        try {
         const result = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
-            const balanceAfter = realBefore.plus(refundAmount).plus(bonusBefore)
+
+            // If undoing a credit (e.g. BET_WIN), ensure player still has funds
+            if (rollbackDelta.lessThan(0) && totalBefore.lessThan(rollbackDelta.abs())) {
+                throw { code: 'SC_INSUFFICIENT_FUNDS' }
+            }
+
+            const balanceAfter = totalBefore.plus(rollbackDelta)
 
             await tx.wallet.update({
                 where: { userId: user.id },
-                data: { realBalance: { increment: refundAmount } },
+                data: { realBalance: { increment: rollbackDelta } },
             })
 
             // Mark original as rolled back
@@ -550,7 +650,7 @@ export class ThirdPartyWalletService {
                     gameCode: params.gameCode,
                     type: ThirdPartyTxType.ROLLBACK,
                     status: ThirdPartyTxStatus.COMPLETED,
-                    amount: refundAmount,
+                    amount: rollbackDelta,
                     balanceBefore: totalBefore,
                     balanceAfter,
                     rawRequest: params as any,
@@ -561,7 +661,7 @@ export class ThirdPartyWalletService {
                 data: {
                     userId: user.id,
                     type: TransactionType.TP_ROLLBACK,
-                    amount: refundAmount,
+                    amount: rollbackDelta.abs(),
                     status: PaymentStatus.APPROVED,
                     note: `TP rollback: ${params.gameCode} round ${params.roundId}`,
                     referenceId: params.transactionId,
@@ -576,6 +676,10 @@ export class ThirdPartyWalletService {
         })
 
         return ok(params.traceId, params.username, result)
+        } catch (e: any) {
+            if (e?.code) return err(params.traceId, e.code)
+            throw e
+        }
     }
 
     /**
@@ -593,6 +697,18 @@ export class ThirdPartyWalletService {
         const existing = await findExisting(params.transactionId)
         if (existing) {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
+        }
+
+        // If this adjustment references an original transaction, verify it exists
+        if (params.externalTransactionId) {
+            const providerId = await getProviderId()
+            const referencedTx = await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId,
+                    transactionId: params.externalTransactionId,
+                },
+            })
+            if (!referencedTx) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
         const adjustAmount = new Decimal(params.amount)

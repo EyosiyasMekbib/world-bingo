@@ -43,6 +43,7 @@ export enum ThirdPartyTxType {
 export enum ThirdPartyTxStatus {
     COMPLETED = 'COMPLETED',
     ROLLED_BACK = 'ROLLED_BACK',
+    FAILED = 'FAILED',
 }
 
 export enum PaymentStatus {
