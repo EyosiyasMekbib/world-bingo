@@ -22,6 +22,8 @@ const selectedCategory = ref('ALL')
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
+  TRENDING: 'Trending',
+  POPULAR: 'Popular',
   BINGO: 'Bingo',
   SLOTS: 'Slots',
   LIVE: 'Live',
@@ -30,7 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const allCategories = computed(() => {
-  const base = ['ALL', 'BINGO']
+  const base = ['ALL', 'TRENDING', 'POPULAR', 'BINGO']
   const providerCats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
   return [...base, ...providerCats]
 })
@@ -41,11 +43,52 @@ function selectCategory(cat: string) {
 }
 
 const showBingoSection = computed(() =>
-  selectedCategory.value === 'ALL' || selectedCategory.value === 'BINGO',
+  ['ALL', 'BINGO', 'TRENDING', 'POPULAR'].includes(selectedCategory.value),
 )
 
 function showProviderCategory(cat: string) {
-  return selectedCategory.value === 'ALL' || selectedCategory.value === cat
+  return ['ALL', 'TRENDING', 'POPULAR'].includes(selectedCategory.value) || selectedCategory.value === cat
+}
+
+// TRENDING: live/starting games first, then by player count
+const trendingBingoGames = computed(() => {
+  const weight = (s: string) => s === 'IN_PROGRESS' ? 0 : s === 'STARTING' ? 1 : s === 'LOCKING' ? 2 : 3
+  return [...gameStore.availableGames].sort((a, b) => {
+    const sw = weight(a.status) - weight(b.status)
+    if (sw !== 0) return sw
+    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
+    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
+    return bp - ap
+  })
+})
+
+// POPULAR: most players, then cheapest ticket
+const popularBingoGames = computed(() => {
+  return [...gameStore.availableGames].sort((a, b) => {
+    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
+    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
+    if (bp !== ap) return bp - ap
+    return Number(a.ticketPrice) - Number(b.ticketPrice)
+  })
+})
+
+const BINGO_HOME_LIMIT = 12
+const PROVIDER_HOME_LIMIT = 12
+
+const activeBingoGames = computed(() => {
+  if (selectedCategory.value === 'TRENDING') return trendingBingoGames.value
+  if (selectedCategory.value === 'POPULAR') return popularBingoGames.value
+  return filteredGames.value
+})
+
+const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
+const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT && !searchQuery.value.trim())
+
+function getCategoryDisplayGames(cat: string) {
+  return (categoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
+}
+function categoryHasMore(cat: string) {
+  return (categoryGamesMap.value[cat]?.length ?? 0) > PROVIDER_HOME_LIMIT
 }
 
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
@@ -375,6 +418,14 @@ onUnmounted(() => {
             <svg v-if="cat === 'ALL'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
             </svg>
+            <!-- TRENDING -->
+            <svg v-else-if="cat === 'TRENDING'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+            </svg>
+            <!-- POPULAR -->
+            <svg v-else-if="cat === 'POPULAR'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
             <!-- BINGO -->
             <svg v-else-if="cat === 'BINGO'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="2" y="2" width="20" height="20" rx="2"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="16" y1="2" x2="16" y2="22"/><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="16" x2="22" y2="16"/>
@@ -420,6 +471,11 @@ onUnmounted(() => {
             class="search-input"
             aria-label="Search games"
           />
+          <button v-if="searchQuery" class="search-clear" aria-label="Clear search" @click="searchQuery = ''">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </label>
       </div>
     </div>
@@ -538,33 +594,43 @@ onUnmounted(() => {
           <div v-else-if="!categoryGamesMap[cat]?.length" class="state-msg">
             No games available.
           </div>
-          <div v-else class="pg-grid">
-            <NuxtLink
-              v-for="g in categoryGamesMap[cat]"
-              :key="g.gameCode"
-              :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-              class="pg-card"
-            >
-              <div class="pg-thumb">
-                <img
-                  v-if="g.imageSquare || g.imageLandscape"
-                  :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                  :alt="g.gameName"
-                  class="pg-img"
-                  loading="lazy"
-                />
-                <div v-else class="pg-placeholder">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.3" aria-hidden="true">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
-                  </svg>
+          <template v-else>
+            <div class="pg-grid">
+              <NuxtLink
+                v-for="g in getCategoryDisplayGames(cat)"
+                :key="g.gameCode"
+                :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+                class="pg-card"
+              >
+                <div class="pg-thumb">
+                  <img
+                    v-if="g.imageSquare || g.imageLandscape"
+                    :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                    :alt="g.gameName"
+                    class="pg-img"
+                    loading="lazy"
+                  />
+                  <div v-else class="pg-placeholder">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.3" aria-hidden="true">
+                      <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
+                    </svg>
+                  </div>
+                  <div class="pg-hover">
+                    <span class="pg-play">Play</span>
+                  </div>
                 </div>
-                <div class="pg-hover">
-                  <span class="pg-play">Play</span>
-                </div>
-              </div>
-              <div class="pg-name">{{ g.gameName }}</div>
-            </NuxtLink>
-          </div>
+                <div class="pg-name">{{ g.gameName }}</div>
+              </NuxtLink>
+            </div>
+            <div v-if="categoryHasMore(cat)" class="more-row">
+              <NuxtLink :to="`/games/${cat.toLowerCase()}`" class="more-btn">
+                See All {{ CATEGORY_LABELS[cat] ?? cat }} Games
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </NuxtLink>
+            </div>
+          </template>
         </div>
       </div>
     </template>
@@ -585,10 +651,12 @@ onUnmounted(() => {
         </div>
 
         <template v-else>
-          <h2 class="section-heading">Bingo Rooms</h2>
+          <h2 class="section-heading">
+            {{ selectedCategory === 'TRENDING' ? 'Trending Bingo' : selectedCategory === 'POPULAR' ? 'Popular Bingo' : 'Bingo Rooms' }}
+          </h2>
           <div class="rooms-grid">
             <div
-              v-for="(game, idx) in filteredGames"
+              v-for="(game, idx) in displayedBingoGames"
               :key="game.id"
               class="room-tile"
               :style="{ '--delay': `${idx * 50}ms` }"
@@ -634,6 +702,14 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+          </div>
+          <div v-if="hasMoreBingo" class="more-row">
+            <NuxtLink to="/games/bingo" class="more-btn">
+              See All Bingo Rooms
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </NuxtLink>
           </div>
         </template>
       </div>
@@ -1070,7 +1146,38 @@ onUnmounted(() => {
 }
 .search-input::placeholder { color: rgba(255,255,255,0.3); }
 
-@media (max-width: 560px) { .search-wrap { display: none; } }
+.search-clear {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+.search-clear:hover { color: rgba(255,255,255,0.7); }
+
+@media (max-width: 640px) {
+  .filter-inner {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-bottom: 8px;
+  }
+  .cat-strip {
+    flex: 0 0 100%;
+    padding-bottom: 6px;
+  }
+  .search-wrap {
+    flex: 0 0 100%;
+    margin: 0 0 2px;
+  }
+  .search-input {
+    width: 100%;
+    flex: 1;
+  }
+}
 
 /* ── TOP GAMES ROW ───────────────────────────────────────────────────── */
 .top-row {
@@ -1493,6 +1600,39 @@ onUnmounted(() => {
   animation: blink 1.2s infinite;
   flex-shrink: 0;
 }
+
+/* ── MORE ROW ────────────────────────────────────────────────────────── */
+.more-row {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 4px;
+}
+
+.more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--brand-primary);
+  background: rgba(245, 158, 11, 0.06);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+}
+.more-btn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.5);
+  transform: translateY(-1px);
+}
+.more-btn:active { transform: translateY(0); }
+.more-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+.more-btn svg { transition: transform 0.15s ease; }
+.more-btn:hover svg { transform: translateX(2px); }
 
 /* ── KEYFRAMES ───────────────────────────────────────────────────────── */
 @keyframes fadeUp {
