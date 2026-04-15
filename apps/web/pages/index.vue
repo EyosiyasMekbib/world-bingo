@@ -486,7 +486,7 @@ onUnmounted(() => {
         <div class="top-row-scroll">
 
           <!-- Bingo tile -->
-          <div class="type-tile type-tile--bingo">
+          <NuxtLink to="/games/bingo" class="type-tile type-tile--bingo">
             <div class="tt-thumb">
               <div class="mini-grid" aria-hidden="true">
                 <div class="mg-cell">7</div><div class="mg-cell mg-cell--m">23</div><div class="mg-cell">41</div><div class="mg-cell">54</div><div class="mg-cell mg-cell--m">68</div>
@@ -501,7 +501,7 @@ onUnmounted(() => {
             <div class="tt-meta">
               From {{ gameStore.availableGames.length > 0 ? Math.min(...gameStore.availableGames.map((g: Game) => Number(g.ticketPrice))).toLocaleString() : 10 }} ETB
             </div>
-          </div>
+          </NuxtLink>
 
           <!-- Third-party games OR Coming Soon tiles -->
           <template v-if="providerStore.games.length">
