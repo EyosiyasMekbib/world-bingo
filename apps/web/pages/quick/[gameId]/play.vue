@@ -68,7 +68,16 @@
         </div>
         <div class="header-right">
           <button class="audio-btn" @click="audioEnabled = !audioEnabled" :title="audioEnabled ? 'Mute' : 'Unmute'">
-            {{ audioEnabled ? '🔊' : '🔇' }}
+            <svg v-if="audioEnabled" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <line x1="23" y1="9" x2="17" y2="15"/>
+              <line x1="17" y1="9" x2="23" y2="15"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -518,6 +527,33 @@ function toggleTick(entryId: string, num: number) {
   else ticks.add(num)
 }
 
+// ── Amharic TTS ────────────────────────────────────────────────────────────
+const amharicNumbers: Record<number, string> = {
+  1:'and', 2:'hulet', 3:'sost', 4:'araat', 5:'amist',
+  6:'sidist', 7:'sebat', 8:'simint', 9:'zetegn', 10:'asr',
+  11:'asra and', 12:'asra hulet', 13:'asra sost', 14:'asra araat', 15:'asra amist',
+  16:'asra sidist', 17:'asra sebat', 18:'asra simint', 19:'asra zetegn', 20:'haya',
+  21:'haya and', 22:'haya hulet', 23:'haya sost', 24:'haya araat', 25:'haya amist',
+  26:'haya sidist', 27:'haya sebat', 28:'haya simint', 29:'haya zetegn', 30:'selasa',
+  31:'selasa and', 32:'selasa hulet', 33:'selasa sost', 34:'selasa araat', 35:'selasa amist',
+  36:'selasa sidist', 37:'selasa sebat', 38:'selasa simint', 39:'selasa zetegn', 40:'arba',
+  41:'arba and', 42:'arba hulet', 43:'arba sost', 44:'arba araat', 45:'arba amist',
+  46:'arba sidist', 47:'arba sebat', 48:'arba simint', 49:'arba zetegn', 50:'hamsa',
+  51:'hamsa and', 52:'hamsa hulet', 53:'hamsa sost', 54:'hamsa araat', 55:'hamsa amist',
+  56:'hamsa sidist', 57:'hamsa sebat', 58:'hamsa simint', 59:'hamsa zetegn', 60:'silsa',
+  61:'silsa and', 62:'silsa hulet', 63:'silsa sost', 64:'silsa araat', 65:'silsa amist',
+  66:'silsa sidist', 67:'silsa sebat', 68:'silsa simint', 69:'silsa zetegn', 70:'seba',
+  71:'seba and', 72:'seba hulet', 73:'seba sost', 74:'seba araat', 75:'seba amist',
+}
+
+function getBallColumn(ball: number): string {
+  if (ball <= 15) return 'B'
+  if (ball <= 30) return 'I'
+  if (ball <= 45) return 'N'
+  if (ball <= 60) return 'G'
+  return 'O'
+}
+
 // ── Audio ──────────────────────────────────────────────────────────────────
 function ensureAudioCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -528,26 +564,28 @@ function ensureAudioCtx(): AudioContext | null {
 
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
-  const ctx = ensureAudioCtx()
-  if (!ctx) return
-  const freqs = [523.25, 659.25, 783.99, 987.77, 1174.66]
-  const freq = freqs[Math.min(Math.floor((ball - 1) / 15), 4)]
-  const now = ctx.currentTime
-  const o1 = ctx.createOscillator(); const g1 = ctx.createGain()
-  o1.connect(g1); g1.connect(ctx.destination)
-  o1.type = 'sine'
-  o1.frequency.setValueAtTime(freq, now)
-  o1.frequency.exponentialRampToValueAtTime(freq * 0.88, now + 0.18)
-  g1.gain.setValueAtTime(0.45, now)
-  g1.gain.exponentialRampToValueAtTime(0.001, now + 0.55)
-  o1.start(now); o1.stop(now + 0.55)
-  const o2 = ctx.createOscillator(); const g2 = ctx.createGain()
-  o2.connect(g2); g2.connect(ctx.destination)
-  o2.type = 'triangle'
-  o2.frequency.setValueAtTime(freq * 1.5, now)
-  g2.gain.setValueAtTime(0.18, now)
-  g2.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
-  o2.start(now); o2.stop(now + 0.35)
+
+  const col = getBallColumn(ball)
+  const numWord = amharicNumbers[ball] ?? ball.toString()
+  const text = `${col} ${numWord}`
+
+  if (!('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'en-US'
+  utter.rate = 0.88
+  utter.pitch = 1.05
+
+  const voices = window.speechSynthesis.getVoices()
+  const femaleVoice = voices.find(v =>
+    v.lang.startsWith('en') &&
+    /zira|samantha|karen|moira|fiona|victoria|susan|female|woman/i.test(v.name)
+  ) ?? voices.find(v => v.lang.startsWith('en'))
+
+  if (femaleVoice) utter.voice = femaleVoice
+
+  window.speechSynthesis.speak(utter)
 }
 
 function playCountdownBeep(secs: number) {
@@ -725,6 +763,11 @@ await init()
 
 // ── Socket ─────────────────────────────────────────────────────────────────
 onMounted(() => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.getVoices()
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
+  }
+
   const socket = connect()
   if (!socket) return
 
