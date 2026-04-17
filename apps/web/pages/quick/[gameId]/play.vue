@@ -67,7 +67,7 @@
           </div>
         </div>
         <div class="header-right">
-          <button class="audio-btn" @click="audioEnabled = !audioEnabled" :title="audioEnabled ? 'Mute' : 'Unmute'">
+          <button class="audio-btn" @click="unlockAudio(); audioEnabled = !audioEnabled" :title="audioEnabled ? 'Mute' : 'Unmute'">
             <svg v-if="audioEnabled" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -390,6 +390,8 @@ const manualTicks = ref<Record<string, Set<number>>>({})
 let countdownTickTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
 let audioCtx: AudioContext | null = null
+let audioUnlocked = false
+const ballAudioCache: Record<string, HTMLAudioElement> = {}
 
 const COLUMNS = ['B', 'I', 'N', 'G', 'O']
 
@@ -524,6 +526,22 @@ function getBallColumn(ball: number): string {
   return 'o'
 }
 
+// iOS/Android require audio to be created inside a user gesture before
+// programmatic play (from socket events) is allowed.
+function unlockAudio() {
+  if (audioUnlocked) return
+  audioUnlocked = true
+  for (let n = 1; n <= 75; n++) {
+    const key = `${getBallColumn(n)}${n}`
+    const audio = new Audio(`/audio/${key}.mp3`)
+    audio.preload = 'auto'
+    ballAudioCache[key] = audio
+  }
+  ensureAudioCtx()
+  document.removeEventListener('touchstart', unlockAudio)
+  document.removeEventListener('click', unlockAudio)
+}
+
 // ── Audio ──────────────────────────────────────────────────────────────────
 function ensureAudioCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -534,8 +552,9 @@ function ensureAudioCtx(): AudioContext | null {
 
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
-  const col = getBallColumn(ball)
-  const audio = new Audio(`/audio/${col}${ball}.mp3`)
+  const key = `${getBallColumn(ball)}${ball}`
+  const audio = ballAudioCache[key] ?? new Audio(`/audio/${key}.mp3`)
+  audio.currentTime = 0
   audio.play().catch(() => {})
 }
 
@@ -592,6 +611,7 @@ function startCountdown(startsAt: string) {
 // ── Join ───────────────────────────────────────────────────────────────────
 async function handleJoin() {
   if (!selectedSerials.value.length) return
+  unlockAudio()
   joining.value = true
   joinError.value = ''
   try {
@@ -714,6 +734,9 @@ await init()
 
 // ── Socket ─────────────────────────────────────────────────────────────────
 onMounted(() => {
+  document.addEventListener('touchstart', unlockAudio, { once: true })
+  document.addEventListener('click', unlockAudio, { once: true })
+
   const socket = connect()
   if (!socket) return
 
@@ -771,10 +794,8 @@ onMounted(() => {
 
   socket.on('game:ball-called', (payload: any) => {
     gameStore.onBallCalled(payload)
-    if (payload.gameId === gameId) playBallSound(payload.ball)
   })
 
-  // new_call is the spec alias — handle alongside legacy game:ball-called
   ;(socket as any).on('new_call', (payload: any) => {
     gameStore.onBallCalled(payload)
     if (payload.gameId === gameId) playBallSound(payload.ball)
@@ -838,6 +859,8 @@ onUnmounted(() => {
   if (countdownTickTimer) clearInterval(countdownTickTimer)
   if (redirectTimer) clearInterval(redirectTimer)
   if (audioCtx) { audioCtx.close(); audioCtx = null }
+  document.removeEventListener('touchstart', unlockAudio)
+  document.removeEventListener('click', unlockAudio)
 })
 </script>
 
