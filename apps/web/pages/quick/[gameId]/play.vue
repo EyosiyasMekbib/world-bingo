@@ -389,7 +389,9 @@ const manualTicks = ref<Record<string, Set<number>>>({})
 
 let countdownTickTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null
 let audioCtx: AudioContext | null = null
+let audioUnlocked = false
 const ballAudioBuffers: Record<string, AudioBuffer> = {}
 
 const COLUMNS = ['B', 'I', 'N', 'G', 'O']
@@ -531,7 +533,9 @@ function getBallColumn(ball: number): string {
 function ensureAudioCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
   if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-  if (audioCtx.state === 'suspended') audioCtx.resume()
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {})
+  }
   return audioCtx
 }
 
@@ -541,19 +545,65 @@ function ensureAudioCtx(): AudioContext | null {
 async function preloadBallAudio() {
   const ctx = ensureAudioCtx()
   if (!ctx) return
+  let loaded = 0
+  let failed = 0
   const loads = []
   for (let n = 1; n <= 75; n++) {
     const key = `${getBallColumn(n)}${n}`
-    if (ballAudioBuffers[key]) continue
+    if (ballAudioBuffers[key]) { loaded++; continue }
     loads.push(
       fetch(`/audio/${key}.mp3`)
-        .then(r => r.arrayBuffer())
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status} for ${key}.mp3`)
+          return r.arrayBuffer()
+        })
         .then(buf => ctx.decodeAudioData(buf))
-        .then(decoded => { ballAudioBuffers[key] = decoded })
-        .catch(() => {})
+        .then(decoded => { ballAudioBuffers[key] = decoded; loaded++ })
+        .catch(err => { failed++; console.warn(`[Audio] Failed to load ${key}.mp3:`, err) })
     )
   }
   await Promise.all(loads)
+  console.log(`[Audio] Preload complete: ${loaded} loaded, ${failed} failed, ctx.state=${ctx.state}`)
+}
+
+// Load a single ball's audio on-demand (fallback if preload missed it)
+async function loadBallAudioOnDemand(key: string): Promise<AudioBuffer | null> {
+  const ctx = ensureAudioCtx()
+  if (!ctx) return null
+  try {
+    const r = await fetch(`/audio/${key}.mp3`)
+    if (!r.ok) return null
+    const buf = await r.arrayBuffer()
+    const decoded = await ctx.decodeAudioData(buf)
+    ballAudioBuffers[key] = decoded
+    return decoded
+  } catch {
+    return null
+  }
+}
+
+// Play a silent buffer every 20s to prevent iOS from auto-suspending the
+// AudioContext during the waiting period between join and game start.
+function startKeepAlive() {
+  stopKeepAlive()
+  keepAliveTimer = setInterval(() => {
+    if (!audioCtx || audioCtx.state === 'closed') return
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {})
+    }
+    // Play inaudible 1-sample buffer to keep context alive
+    try {
+      const buf = audioCtx.createBuffer(1, 1, 22050)
+      const src = audioCtx.createBufferSource()
+      src.buffer = buf
+      src.connect(audioCtx.destination)
+      src.start(0)
+    } catch {}
+  }, 20_000)
+}
+
+function stopKeepAlive() {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null }
 }
 
 // Called once on any user gesture.
@@ -568,7 +618,10 @@ function unlockAudio() {
   src.buffer = buf
   src.connect(ctx.destination)
   src.start(0)
+  audioUnlocked = true
+  console.log(`[Audio] Unlocked. ctx.state=${ctx.state}`)
   preloadBallAudio()
+  startKeepAlive()
   document.removeEventListener('touchstart', unlockAudio)
   document.removeEventListener('click', unlockAudio)
 }
@@ -576,17 +629,33 @@ function unlockAudio() {
 // iOS auto-suspends AudioContext when page is backgrounded. Resume on return.
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible' && audioCtx?.state === 'suspended') {
-    audioCtx.resume()
+    audioCtx.resume().catch(() => {})
   }
 }
 
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
   const ctx = ensureAudioCtx()
-  if (!ctx) return
+  if (!ctx) { console.warn('[Audio] No AudioContext'); return }
+  if (ctx.state !== 'running') {
+    console.warn(`[Audio] Context state: ${ctx.state}, attempting resume`)
+    ctx.resume().catch(() => {})
+  }
   const key = `${getBallColumn(ball)}${ball}`
-  const buffer = ballAudioBuffers[key]
-  if (!buffer) return
+  let buffer = ballAudioBuffers[key]
+  if (!buffer) {
+    console.warn(`[Audio] Buffer not loaded for ${key}, loading on-demand`)
+    // Fire-and-forget: load and play when ready (will miss this ball but be ready for next)
+    loadBallAudioOnDemand(key).then(buf => {
+      if (buf && audioEnabled.value && audioCtx?.state === 'running') {
+        const source = audioCtx.createBufferSource()
+        source.buffer = buf
+        source.connect(audioCtx.destination)
+        source.start(0)
+      }
+    })
+    return
+  }
   const source = ctx.createBufferSource()
   source.buffer = buffer
   source.connect(ctx.destination)
@@ -894,7 +963,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (countdownTickTimer) clearInterval(countdownTickTimer)
   if (redirectTimer) clearInterval(redirectTimer)
+  stopKeepAlive()
   if (audioCtx) { audioCtx.close(); audioCtx = null }
+  audioUnlocked = false
   document.removeEventListener('touchstart', unlockAudio)
   document.removeEventListener('click', unlockAudio)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
