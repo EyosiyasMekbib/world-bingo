@@ -164,12 +164,19 @@ function handleJoinGame(gameId: string) {
 }
 
 const filteredGames = computed(() => {
-  if (!searchQuery.value.trim()) return gameStore.availableGames
   const q = searchQuery.value.trim().toLowerCase()
-  return gameStore.availableGames.filter((g: Game) =>
-    String(g.ticketPrice).includes(q) ||
-    g.status.toLowerCase().includes(q)
-  )
+  return gameStore.availableGames.filter((g: Game) => {
+    if (q) {
+      const label = patternLabel(g.pattern).toLowerCase()
+      if (
+        !String(g.ticketPrice).includes(q) &&
+        !g.status.toLowerCase().includes(q) &&
+        !label.includes(q) &&
+        !(g as any).title?.toLowerCase().includes(q)
+      ) return false
+    }
+    return true
+  })
 })
 
 const featuredGame = computed(() =>
@@ -585,7 +592,9 @@ onUnmounted(() => {
         v-show="showProviderCategory(cat)"
         class="content-section"
       >
-        <div class="max-container">
+        <div class="max-container section-with-label">
+          <div class="section-side-label" aria-hidden="true">{{ CATEGORY_LABELS[cat] ?? cat }}</div>
+          <div class="section-body">
           <h2 class="section-heading">{{ CATEGORY_LABELS[cat] ?? cat }}</h2>
 
           <div v-if="categoryGamesLoading[cat]" class="state-msg">
@@ -631,13 +640,16 @@ onUnmounted(() => {
               </NuxtLink>
             </div>
           </template>
+          </div><!-- /section-body -->
         </div>
       </div>
     </template>
 
     <!-- ── BINGO ROOMS ────────────────────────────────────────────── -->
     <div v-if="showBingoSection" id="rooms" class="content-section">
-      <div class="max-container">
+      <div class="max-container section-with-label">
+        <div class="section-side-label" aria-hidden="true">Bingo</div>
+        <div class="section-body">
 
         <div v-if="gameStore.loadingGames" class="state-msg">
           <span class="spinner" aria-hidden="true"></span> Loading games...
@@ -712,6 +724,7 @@ onUnmounted(() => {
             </NuxtLink>
           </div>
         </template>
+        </div><!-- /section-body -->
       </div>
     </div>
 
@@ -1323,6 +1336,39 @@ onUnmounted(() => {
   padding: 20px 0 0;
 }
 
+/* ── SECTION SIDE LABEL ──────────────────────────────────────────────── */
+.section-with-label {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+
+.section-side-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245,158,11,0.35);
+  flex-shrink: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  border-left: 1px solid rgba(245,158,11,0.15);
+  margin-right: 16px;
+  padding: 8px 0;
+}
+
+.section-body {
+  flex: 1;
+  min-width: 0;
+}
+
 .section-heading {
   font-family: 'Rajdhani', sans-serif;
   font-size: 17px;
@@ -1403,11 +1449,11 @@ onUnmounted(() => {
 /* ── BINGO ROOMS GRID ────────────────────────────────────────────────── */
 .rooms-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   padding-bottom: 8px;
 }
-@media (min-width: 560px) { .rooms-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 560px) { .rooms-grid { gap: 10px; } }
 @media (min-width: 800px) { .rooms-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (min-width: 1100px) { .rooms-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (min-width: 1400px) { .rooms-grid { grid-template-columns: repeat(6, 1fr); } }
@@ -1543,6 +1589,22 @@ onUnmounted(() => {
   color: #34d399;
   cursor: default;
   font-size: 11px;
+}
+
+/* Mobile 3-col compact adjustments */
+@media (max-width: 559px) {
+  .rt-thumb {
+    padding: 22px 10px 16px;
+    min-height: 90px;
+  }
+  .rt-price { font-size: 20px; }
+  .rt-currency { font-size: 11px; }
+  .rt-badge { padding: 2px 5px; font-size: 9px; top: 6px; left: 6px; }
+  .rt-pattern { padding: 2px 5px; font-size: 9px; top: 6px; right: 6px; }
+  .rt-footer { padding: 8px 8px; gap: 4px; }
+  .rt-players { font-size: 10px; gap: 3px; }
+  .rt-join { padding: 5px 8px; min-height: 28px; font-size: 11px; }
+  .section-side-label { display: none; }
 }
 
 /* ── STATE MESSAGES ──────────────────────────────────────────────────── */
