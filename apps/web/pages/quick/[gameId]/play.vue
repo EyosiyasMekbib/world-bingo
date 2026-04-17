@@ -527,31 +527,13 @@ function toggleTick(entryId: string, num: number) {
   else ticks.add(num)
 }
 
-// ── Amharic TTS ────────────────────────────────────────────────────────────
-const amharicNumbers: Record<number, string> = {
-  1:'and', 2:'hulet', 3:'sost', 4:'araat', 5:'amist',
-  6:'sidist', 7:'sebat', 8:'simint', 9:'zetegn', 10:'asr',
-  11:'asra and', 12:'asra hulet', 13:'asra sost', 14:'asra araat', 15:'asra amist',
-  16:'asra sidist', 17:'asra sebat', 18:'asra simint', 19:'asra zetegn', 20:'haya',
-  21:'haya and', 22:'haya hulet', 23:'haya sost', 24:'haya araat', 25:'haya amist',
-  26:'haya sidist', 27:'haya sebat', 28:'haya simint', 29:'haya zetegn', 30:'selasa',
-  31:'selasa and', 32:'selasa hulet', 33:'selasa sost', 34:'selasa araat', 35:'selasa amist',
-  36:'selasa sidist', 37:'selasa sebat', 38:'selasa simint', 39:'selasa zetegn', 40:'arba',
-  41:'arba and', 42:'arba hulet', 43:'arba sost', 44:'arba araat', 45:'arba amist',
-  46:'arba sidist', 47:'arba sebat', 48:'arba simint', 49:'arba zetegn', 50:'hamsa',
-  51:'hamsa and', 52:'hamsa hulet', 53:'hamsa sost', 54:'hamsa araat', 55:'hamsa amist',
-  56:'hamsa sidist', 57:'hamsa sebat', 58:'hamsa simint', 59:'hamsa zetegn', 60:'silsa',
-  61:'silsa and', 62:'silsa hulet', 63:'silsa sost', 64:'silsa araat', 65:'silsa amist',
-  66:'silsa sidist', 67:'silsa sebat', 68:'silsa simint', 69:'silsa zetegn', 70:'seba',
-  71:'seba and', 72:'seba hulet', 73:'seba sost', 74:'seba araat', 75:'seba amist',
-}
-
+// ── Ball column helper ──────────────────────────────────────────────────────
 function getBallColumn(ball: number): string {
-  if (ball <= 15) return 'B'
-  if (ball <= 30) return 'I'
-  if (ball <= 45) return 'N'
-  if (ball <= 60) return 'G'
-  return 'O'
+  if (ball <= 15) return 'b'
+  if (ball <= 30) return 'i'
+  if (ball <= 45) return 'n'
+  if (ball <= 60) return 'g'
+  return 'o'
 }
 
 // ── Audio ──────────────────────────────────────────────────────────────────
@@ -564,28 +546,9 @@ function ensureAudioCtx(): AudioContext | null {
 
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
-
   const col = getBallColumn(ball)
-  const numWord = amharicNumbers[ball] ?? ball.toString()
-  const text = `${col} ${numWord}`
-
-  if (!('speechSynthesis' in window)) return
-  window.speechSynthesis.cancel()
-
-  const utter = new SpeechSynthesisUtterance(text)
-  utter.lang = 'en-US'
-  utter.rate = 0.88
-  utter.pitch = 1.05
-
-  const voices = window.speechSynthesis.getVoices()
-  const femaleVoice = voices.find(v =>
-    v.lang.startsWith('en') &&
-    /zira|samantha|karen|moira|fiona|victoria|susan|female|woman/i.test(v.name)
-  ) ?? voices.find(v => v.lang.startsWith('en'))
-
-  if (femaleVoice) utter.voice = femaleVoice
-
-  window.speechSynthesis.speak(utter)
+  const audio = new Audio(`/audio/${col}${ball}.mp3`)
+  audio.play().catch(() => {})
 }
 
 function playCountdownBeep(secs: number) {
@@ -763,11 +726,6 @@ await init()
 
 // ── Socket ─────────────────────────────────────────────────────────────────
 onMounted(() => {
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.getVoices()
-    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
-  }
-
   const socket = connect()
   if (!socket) return
 
