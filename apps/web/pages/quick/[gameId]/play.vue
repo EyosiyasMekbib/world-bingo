@@ -319,16 +319,14 @@
                       :key="`${r}-${c}`"
                       class="bcg-cell"
                       :class="{
-                        'auto-marked': isCellMarked(num, r, c),
                         'free-space': r === 2 && c === 2,
-                        'just-called': num === gameStore.lastCalledBall && !(r === 2 && c === 2),
                         'manually-ticked': isManuallyTicked(entry.id, num, r, c),
                       }"
                       @click="!(r === 2 && c === 2) && toggleTick(entry.id, num)"
                     >
                       <span v-if="r === 2 && c === 2" class="free-star">★</span>
                       <span v-else>{{ num }}</span>
-                      <span v-if="isManuallyTicked(entry.id, num, r, c) && !isCellMarked(num, r, c)" class="tick-mark">✓</span>
+                      <span v-if="isManuallyTicked(entry.id, num, r, c)" class="tick-mark">✓</span>
                     </div>
                   </div>
                 </div>
@@ -484,19 +482,11 @@ function canClaimBingo(cartela: Cartela, entryId: string): boolean {
   const calledSet = new Set<number>(gameStore.calledBalls)
   const ticks = manualTicks.value[entryId] || new Set<number>()
 
-  // A cell counts as "marked" only if:
-  // 1. It is the free space (row 2, col 2)
-  // 2. OR it is in calledBalls AND it was manually ticked by the player
   const validMarkedSet = new Set<number>()
   grid.forEach((row, r) => {
     row.forEach((num, c) => {
-      if (r === 2 && c === 2) {
-        // Free space doesn't have a number in the Set context, but the pattern checker handles it
-        // Actually, checkPattern uses createMarkedGrid which checks (r===2 && c===2)
-        // So we just need to ensure the calledBalls passed to it allows the check to succeed
-      } else if (calledSet.has(num) && ticks.has(num)) {
-        validMarkedSet.add(num)
-      }
+      if (r === 2 && c === 2) return
+      if (calledSet.has(num) && ticks.has(num)) validMarkedSet.add(num)
     })
   })
 
@@ -519,9 +509,7 @@ function isManuallyTicked(entryId: string, num: number, r: number, c: number): b
 }
 
 function toggleTick(entryId: string, num: number) {
-  if (!manualTicks.value[entryId]) {
-    manualTicks.value[entryId] = new Set()
-  }
+  if (!manualTicks.value[entryId]) manualTicks.value[entryId] = new Set()
   const ticks = manualTicks.value[entryId]
   if (ticks.has(num)) ticks.delete(num)
   else ticks.add(num)
