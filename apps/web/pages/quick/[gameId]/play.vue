@@ -390,8 +390,7 @@ const manualTicks = ref<Record<string, Set<number>>>({})
 let countdownTickTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
 let audioCtx: AudioContext | null = null
-let audioUnlocked = false
-const ballAudioCache: Record<string, HTMLAudioElement> = {}
+const ballAudioBuffers: Record<string, AudioBuffer> = {}
 
 const COLUMNS = ['B', 'I', 'N', 'G', 'O']
 
@@ -528,20 +527,6 @@ function getBallColumn(ball: number): string {
 
 // iOS/Android require audio to be created inside a user gesture before
 // programmatic play (from socket events) is allowed.
-function unlockAudio() {
-  if (audioUnlocked) return
-  audioUnlocked = true
-  for (let n = 1; n <= 75; n++) {
-    const key = `${getBallColumn(n)}${n}`
-    const audio = new Audio(`/audio/${key}.mp3`)
-    audio.preload = 'auto'
-    ballAudioCache[key] = audio
-  }
-  ensureAudioCtx()
-  document.removeEventListener('touchstart', unlockAudio)
-  document.removeEventListener('click', unlockAudio)
-}
-
 // ── Audio ──────────────────────────────────────────────────────────────────
 function ensureAudioCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -550,12 +535,62 @@ function ensureAudioCtx(): AudioContext | null {
   return audioCtx
 }
 
+// Fetch + decode all 75 MP3s into AudioBuffers using the already-unlocked
+// AudioContext. Must be called after ensureAudioCtx() has been invoked during
+// a user gesture so the context is running.
+async function preloadBallAudio() {
+  const ctx = ensureAudioCtx()
+  if (!ctx) return
+  const loads = []
+  for (let n = 1; n <= 75; n++) {
+    const key = `${getBallColumn(n)}${n}`
+    if (ballAudioBuffers[key]) continue
+    loads.push(
+      fetch(`/audio/${key}.mp3`)
+        .then(r => r.arrayBuffer())
+        .then(buf => ctx.decodeAudioData(buf))
+        .then(decoded => { ballAudioBuffers[key] = decoded })
+        .catch(() => {})
+    )
+  }
+  await Promise.all(loads)
+}
+
+// Called once on any user gesture.
+// iOS Safari requires source.start() to fire during the gesture — resume() alone
+// is not sufficient. Playing a 1-sample silent buffer satisfies this requirement.
+function unlockAudio() {
+  const ctx = ensureAudioCtx()
+  if (!ctx) return
+  // Silent 1-sample buffer: the actual iOS unlock trigger
+  const buf = ctx.createBuffer(1, 1, 22050)
+  const src = ctx.createBufferSource()
+  src.buffer = buf
+  src.connect(ctx.destination)
+  src.start(0)
+  preloadBallAudio()
+  document.removeEventListener('touchstart', unlockAudio)
+  document.removeEventListener('click', unlockAudio)
+}
+
+// iOS auto-suspends AudioContext when page is backgrounded. Resume on return.
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible' && audioCtx?.state === 'suspended') {
+    audioCtx.resume()
+  }
+}
+
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
+  const ctx = ensureAudioCtx()
+  if (!ctx) return
   const key = `${getBallColumn(ball)}${ball}`
-  const audio = ballAudioCache[key] ?? new Audio(`/audio/${key}.mp3`)
-  audio.currentTime = 0
-  audio.play().catch(() => {})
+  const buffer = ballAudioBuffers[key]
+  if (!buffer) return
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.connect(ctx.destination)
+  source.start(0)
 }
 
 function playCountdownBeep(secs: number) {
@@ -736,6 +771,7 @@ await init()
 onMounted(() => {
   document.addEventListener('touchstart', unlockAudio, { once: true })
   document.addEventListener('click', unlockAudio, { once: true })
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   const socket = connect()
   if (!socket) return
@@ -861,6 +897,7 @@ onUnmounted(() => {
   if (audioCtx) { audioCtx.close(); audioCtx = null }
   document.removeEventListener('touchstart', unlockAudio)
   document.removeEventListener('click', unlockAudio)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
