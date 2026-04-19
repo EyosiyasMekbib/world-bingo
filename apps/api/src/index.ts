@@ -181,21 +181,6 @@ server.decorate('authenticate', async function (request: any, reply: any) {
     }
 })
 
-// Capture raw body for aggregator callback routes (needed for HMAC-SHA256 signature verification)
-server.addHook('preParsing', async (request, _reply, payload) => {
-    if (!request.url.startsWith('/v1/aggregator/')) return payload
-    const { PassThrough } = await import('node:stream')
-    const chunks: Buffer[] = []
-    for await (const chunk of payload) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-    }
-    const raw = Buffer.concat(chunks)
-    ;(request as any).rawBody = raw.toString('utf8')
-    const pt = new PassThrough()
-    pt.end(raw)
-    return pt
-})
-
 // Register route prefixes
 await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })

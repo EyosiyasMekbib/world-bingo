@@ -9,6 +9,25 @@ import { ThirdPartyWalletService } from '../../services/third-party-wallet.servi
  * No JWT auth — validated via HMAC-SHA256 X-Signature header instead.
  */
 const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
+    // ── Raw body capture for HMAC signature verification ──────────────────────
+    // Override the JSON parser in this encapsulated scope so we can store the
+    // exact bytes GASea signed. This runs inside Fastify's normal parsing
+    // pipeline — no fragile stream re-creation needed.
+    fastify.removeContentTypeParser('application/json')
+    fastify.addContentTypeParser(
+        'application/json',
+        { parseAs: 'buffer' },
+        (req, body, done) => {
+            const raw = (body as Buffer).toString('utf8')
+            ;(req as any).rawBody = raw
+            try {
+                done(null, JSON.parse(raw))
+            } catch (err) {
+                done(err as Error, undefined)
+            }
+        },
+    )
+
     // ── Balance ────────────────────────────────────────────────────────────────
     fastify.post('/balance', {
         preHandler: [verifyGaseaSignature],

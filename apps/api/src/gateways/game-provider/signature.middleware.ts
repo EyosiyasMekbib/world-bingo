@@ -16,25 +16,14 @@ function getSecret(): string {
     return _secret
 }
 
-/** HMAC-SHA256 helper */
-function hmac(secret: string, data: string): string {
-    return crypto.createHmac('sha256', secret).update(data).digest('hex')
-}
-
-/** Constant-time signature comparison */
-function signaturesMatch(received: string, expected: string): boolean {
-    const a = Buffer.from(received)
-    const b = Buffer.from(expected)
-    return a.length === b.length && crypto.timingSafeEqual(a, b)
-}
-
 /**
  * Fastify preHandler that verifies the X-Signature header sent by GASea on
- * every wallet callback. Uses HMAC-SHA256 of the raw request body.
+ * every wallet callback.
  *
- * GASea Seamless Wallet API v3.1.0 excludes the `token` field from the
- * signed payload. We try the raw body first, then fall back to body-without-token.
+ * Per GASea Seamless Wallet API v3.1.0: X-Signature = HMAC-SHA256(secret, rawBody).
+ * The entire request body (including token) is signed.
  *
+ * rawBody is set by the custom content type parser in wallet.ts.
  * All responses are HTTP 200 — GASea interprets non-200 as a network failure.
  */
 export async function verifyGaseaSignature(
@@ -51,39 +40,33 @@ export async function verifyGaseaSignature(
         })
     }
 
-    const hasRawBody = typeof (request as any).rawBody === 'string' && (request as any).rawBody.length > 0
-    const rawBody: string = hasRawBody
-        ? (request as any).rawBody
-        : JSON.stringify(request.body ?? {})
-
-    if (!hasRawBody) {
-        request.log.warn('[GASea] rawBody missing on %s — using JSON.stringify fallback', request.url)
+    const rawBody: string | undefined = (request as any).rawBody
+    if (!rawBody) {
+        request.log.error('[GASea] rawBody not set on %s — content type parser did not fire', request.url)
+        return reply.status(200).send({
+            traceId: (request.body as any)?.traceId ?? '',
+            status: 'SC_INVALID_SIGNATURE',
+        })
     }
 
     const secret = getSecret()
+    const expected = crypto
+        .createHmac('sha256', secret)
+        .update(rawBody)
+        .digest('hex')
 
-    // ── Attempt 1: verify against the raw body as-is ─────────────────────────
-    const expectedRaw = hmac(secret, rawBody)
-    if (signaturesMatch(signature, expectedRaw)) return // ✓ passed
+    // Constant-time comparison to prevent timing attacks
+    const sigBuf = Buffer.from(signature)
+    const expBuf = Buffer.from(expected)
 
-    // ── Attempt 2: verify excluding `token` from the payload ─────────────────
-    // GASea's seamless wallet API excludes the session token from the HMAC.
-    try {
-        const parsed = request.body as Record<string, unknown> | null
-        if (parsed && typeof parsed === 'object' && 'token' in parsed) {
-            const { token: _excluded, ...withoutToken } = parsed
-            const expectedNoToken = hmac(secret, JSON.stringify(withoutToken))
-            if (signaturesMatch(signature, expectedNoToken)) return // ✓ passed
-        }
-    } catch { /* body parse edge case — fall through to reject */ }
-
-    // ── Both failed ──────────────────────────────────────────────────────────
-    request.log.warn(
-        '[GASea] Signature mismatch on %s | received=%s expectedRaw=%s rawBodyLen=%d hasRawBody=%s',
-        request.url, signature, expectedRaw, rawBody.length, hasRawBody,
-    )
-    return reply.status(200).send({
-        traceId: (request.body as any)?.traceId ?? '',
-        status: 'SC_INVALID_SIGNATURE',
-    })
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        request.log.warn(
+            '[GASea] Signature mismatch on %s | received=%s expected=%s bodyLen=%d',
+            request.url, signature, expected, rawBody.length,
+        )
+        return reply.status(200).send({
+            traceId: (request.body as any)?.traceId ?? '',
+            status: 'SC_INVALID_SIGNATURE',
+        })
+    }
 }

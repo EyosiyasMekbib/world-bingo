@@ -12,6 +12,7 @@ export interface WalletCallbackResponse {
         username: string
         currency: string
         balance: string
+        timestamp: number
     }
 }
 
@@ -122,6 +123,7 @@ function ok(traceId: string, username: string, balance: Decimal): WalletCallback
             username,
             currency: CURRENCY,
             balance: balance.toFixed(8),
+            timestamp: Date.now(),
         },
     }
 }
