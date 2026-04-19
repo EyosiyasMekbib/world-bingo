@@ -64,9 +64,27 @@ export async function verifyGaseaSignature(
         crypto.timingSafeEqual(sigBuf, expBuf)
 
     if (!valid) {
+        // Diagnostic: try verifying without the `token` field.
+        // Some GASea API versions exclude token from the signed payload.
+        let tokenExclusionWouldPass = false
+        try {
+            const parsed = JSON.parse(rawBody)
+            if (parsed && typeof parsed === 'object' && 'token' in parsed) {
+                const { token: _removed, ...withoutToken } = parsed
+                const expectedNoToken = crypto
+                    .createHmac('sha256', secret)
+                    .update(JSON.stringify(withoutToken))
+                    .digest('hex')
+                tokenExclusionWouldPass = expectedNoToken === expected
+                    ? false // same as original — token wasn't in body
+                    : (Buffer.from(signature).length === Buffer.from(expectedNoToken).length &&
+                       crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedNoToken)))
+            }
+        } catch { /* ignore parse errors */ }
+
         request.log.warn(
-            '[GASea] Signature mismatch on %s | received=%s expected=%s rawBodyLen=%d hasRawBody=%s',
-            request.url, signature, expected, rawBody.length, hasRawBody,
+            '[GASea] Signature mismatch on %s | received=%s expected=%s rawBodyLen=%d hasRawBody=%s tokenExclusionWouldPass=%s',
+            request.url, signature, expected, rawBody.length, hasRawBody, tokenExclusionWouldPass,
         )
         return reply.status(200).send({
             traceId: (request.body as any)?.traceId ?? '',
