@@ -389,10 +389,10 @@ const manualTicks = ref<Record<string, Set<number>>>({})
 
 let countdownTickTimer: ReturnType<typeof setInterval> | null = null
 let redirectTimer: ReturnType<typeof setInterval> | null = null
-let keepAliveTimer: ReturnType<typeof setInterval> | null = null
 let audioCtx: AudioContext | null = null
 let audioUnlocked = false
-const ballAudioBuffers: Record<string, AudioBuffer> = {}
+// Pool of reusable <audio> elements for ball sounds
+const audioElPool: HTMLAudioElement[] = []
 
 const COLUMNS = ['B', 'I', 'N', 'G', 'O']
 
@@ -527,106 +527,54 @@ function getBallColumn(ball: number): string {
   return 'o'
 }
 
-// iOS/Android require audio to be created inside a user gesture before
-// programmatic play (from socket events) is allowed.
 // ── Audio ──────────────────────────────────────────────────────────────────
+// Ball sounds use plain HTMLAudioElement (simple, reliable across all browsers).
+// Countdown beeps & win melody use AudioContext (oscillator synthesis).
+
 function ensureAudioCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
   if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {})
-  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
   return audioCtx
 }
 
-// Fetch + decode all 75 MP3s into AudioBuffers using the already-unlocked
-// AudioContext. Must be called after ensureAudioCtx() has been invoked during
-// a user gesture so the context is running.
-async function preloadBallAudio() {
-  const ctx = ensureAudioCtx()
-  if (!ctx) return
-  let loaded = 0
-  let failed = 0
-  const loads = []
-  for (let n = 1; n <= 75; n++) {
-    const key = `${getBallColumn(n)}${n}`
-    if (ballAudioBuffers[key]) { loaded++; continue }
-    loads.push(
-      fetch(`/audio/${key}.mp3`)
-        .then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status} for ${key}.mp3`)
-          return r.arrayBuffer()
-        })
-        .then(buf => ctx.decodeAudioData(buf))
-        .then(decoded => { ballAudioBuffers[key] = decoded; loaded++ })
-        .catch(err => { failed++; console.warn(`[Audio] Failed to load ${key}.mp3:`, err) })
-    )
+// Get or create a reusable <audio> element from the pool.
+function getPooledAudio(): HTMLAudioElement {
+  let el = audioElPool.find(a => a.paused && !a.seeking)
+  if (!el) {
+    el = new Audio()
+    el.preload = 'auto'
+    audioElPool.push(el)
   }
-  await Promise.all(loads)
-  console.log(`[Audio] Preload complete: ${loaded} loaded, ${failed} failed, ctx.state=${ctx.state}`)
+  return el
 }
 
-// Load a single ball's audio on-demand (fallback if preload missed it)
-async function loadBallAudioOnDemand(key: string): Promise<AudioBuffer | null> {
-  const ctx = ensureAudioCtx()
-  if (!ctx) return null
-  try {
-    const r = await fetch(`/audio/${key}.mp3`)
-    if (!r.ok) return null
-    const buf = await r.arrayBuffer()
-    const decoded = await ctx.decodeAudioData(buf)
-    ballAudioBuffers[key] = decoded
-    return decoded
-  } catch {
-    return null
-  }
-}
-
-// Play a silent buffer every 20s to prevent iOS from auto-suspending the
-// AudioContext during the waiting period between join and game start.
-function startKeepAlive() {
-  stopKeepAlive()
-  keepAliveTimer = setInterval(() => {
-    if (!audioCtx || audioCtx.state === 'closed') return
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {})
-    }
-    // Play inaudible 1-sample buffer to keep context alive
-    try {
-      const buf = audioCtx.createBuffer(1, 1, 22050)
-      const src = audioCtx.createBufferSource()
-      src.buffer = buf
-      src.connect(audioCtx.destination)
-      src.start(0)
-    } catch {}
-  }, 20_000)
-}
-
-function stopKeepAlive() {
-  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null }
-}
-
-// Called once on any user gesture.
-// iOS Safari requires source.start() to fire during the gesture — resume() alone
-// is not sufficient. Playing a 1-sample silent buffer satisfies this requirement.
+// Called on first user gesture — unlocks both HTMLAudioElement and AudioContext.
 function unlockAudio() {
-  const ctx = ensureAudioCtx()
-  if (!ctx) return
-  // Silent 1-sample buffer: the actual iOS unlock trigger
-  const buf = ctx.createBuffer(1, 1, 22050)
-  const src = ctx.createBufferSource()
-  src.buffer = buf
-  src.connect(ctx.destination)
-  src.start(0)
+  if (audioUnlocked) return
   audioUnlocked = true
-  console.log(`[Audio] Unlocked. ctx.state=${ctx.state}`)
-  preloadBallAudio()
-  startKeepAlive()
+
+  // 1) Unlock HTMLAudioElement by playing a tiny silent WAV from a data URI.
+  //    This satisfies iOS/Android autoplay policy for all future .play() calls.
+  const silentEl = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=')
+  silentEl.volume = 0.01
+  silentEl.play().then(() => silentEl.remove()).catch(() => {})
+
+  // 2) Unlock AudioContext for oscillator beeps
+  const ctx = ensureAudioCtx()
+  if (ctx) {
+    const buf = ctx.createBuffer(1, 1, 22050)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(ctx.destination)
+    src.start(0)
+  }
+
+  console.log('[Audio] Unlocked via user gesture')
   document.removeEventListener('touchstart', unlockAudio)
   document.removeEventListener('click', unlockAudio)
 }
 
-// iOS auto-suspends AudioContext when page is backgrounded. Resume on return.
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible' && audioCtx?.state === 'suspended') {
     audioCtx.resume().catch(() => {})
@@ -635,31 +583,11 @@ function handleVisibilityChange() {
 
 function playBallSound(ball: number) {
   if (!audioEnabled.value) return
-  const ctx = ensureAudioCtx()
-  if (!ctx) { console.warn('[Audio] No AudioContext'); return }
-  if (ctx.state !== 'running') {
-    console.warn(`[Audio] Context state: ${ctx.state}, attempting resume`)
-    ctx.resume().catch(() => {})
-  }
   const key = `${getBallColumn(ball)}${ball}`
-  let buffer = ballAudioBuffers[key]
-  if (!buffer) {
-    console.warn(`[Audio] Buffer not loaded for ${key}, loading on-demand`)
-    // Fire-and-forget: load and play when ready (will miss this ball but be ready for next)
-    loadBallAudioOnDemand(key).then(buf => {
-      if (buf && audioEnabled.value && audioCtx?.state === 'running') {
-        const source = audioCtx.createBufferSource()
-        source.buffer = buf
-        source.connect(audioCtx.destination)
-        source.start(0)
-      }
-    })
-    return
-  }
-  const source = ctx.createBufferSource()
-  source.buffer = buffer
-  source.connect(ctx.destination)
-  source.start(0)
+  const el = getPooledAudio()
+  el.src = `/audio/${key}.mp3`
+  el.currentTime = 0
+  el.play().catch(err => console.warn(`[Audio] play ${key} failed:`, err))
 }
 
 function playCountdownBeep(secs: number) {
@@ -963,8 +891,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (countdownTickTimer) clearInterval(countdownTickTimer)
   if (redirectTimer) clearInterval(redirectTimer)
-  stopKeepAlive()
   if (audioCtx) { audioCtx.close(); audioCtx = null }
+  audioElPool.forEach(el => { el.pause(); el.src = '' })
+  audioElPool.length = 0
   audioUnlocked = false
   document.removeEventListener('touchstart', unlockAudio)
   document.removeEventListener('click', unlockAudio)
