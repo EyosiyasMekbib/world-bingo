@@ -67,7 +67,7 @@
           </div>
         </div>
         <div class="header-right">
-          <button class="audio-btn" @click="unlockAudio(); audioEnabled = !audioEnabled" :title="audioEnabled ? 'Mute' : 'Unmute'">
+          <button class="audio-btn" :class="{ 'audio-off': !audioEnabled }" @click="toggleAudio" :title="audioEnabled ? 'Mute' : 'Enable Audio'">
             <svg v-if="audioEnabled" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -81,6 +81,18 @@
           </button>
         </div>
       </div>
+
+      <!-- Audio hint toast -->
+      <Transition name="audio-hint">
+        <div v-if="showAudioHint" class="audio-hint-toast" @click="toggleAudio">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+          Tap to enable audio
+        </div>
+      </Transition>
 
       <!-- ══════════════════════════════════════════════════════════════ -->
       <!-- PHASE 1: JOIN — select cartelas and pay                       -->
@@ -372,7 +384,9 @@ const claimingBingo = ref(false)
 const showWinnerOverlay = ref(false)
 const showCancelledOverlay = ref(false)
 const redirectCountdown = ref(10)
-const audioEnabled = ref(true)
+const audioEnabled = ref(false)
+const showAudioHint = ref(false)
+let audioHintTimer: ReturnType<typeof setTimeout> | null = null
 
 const selectedSerials = ref<string[]>([])
 const joining = ref(false)
@@ -581,8 +595,33 @@ function handleVisibilityChange() {
   }
 }
 
+function toggleAudio() {
+  if (!audioEnabled.value) {
+    // Enabling — must unlock on this gesture
+    unlockAudio()
+    audioEnabled.value = true
+    showAudioHint.value = false
+    if (audioHintTimer) { clearTimeout(audioHintTimer); audioHintTimer = null }
+  } else {
+    audioEnabled.value = false
+  }
+}
+
+function showAudioHintBriefly() {
+  if (audioEnabled.value || showAudioHint.value) return
+  showAudioHint.value = true
+  if (audioHintTimer) clearTimeout(audioHintTimer)
+  audioHintTimer = setTimeout(() => {
+    showAudioHint.value = false
+    audioHintTimer = null
+  }, 4000)
+}
+
 function playBallSound(ball: number) {
-  if (!audioEnabled.value) return
+  if (!audioEnabled.value) {
+    showAudioHintBriefly()
+    return
+  }
   const key = `${getBallColumn(ball)}${ball}`
   const el = getPooledAudio()
   el.src = `/audio/${key}.mp3`
@@ -643,7 +682,6 @@ function startCountdown(startsAt: string) {
 // ── Join ───────────────────────────────────────────────────────────────────
 async function handleJoin() {
   if (!selectedSerials.value.length) return
-  unlockAudio()
   joining.value = true
   joinError.value = ''
   try {
@@ -891,6 +929,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (countdownTickTimer) clearInterval(countdownTickTimer)
   if (redirectTimer) clearInterval(redirectTimer)
+  if (audioHintTimer) clearTimeout(audioHintTimer)
   if (audioCtx) { audioCtx.close(); audioCtx = null }
   audioElPool.forEach(el => { el.pause(); el.src = '' })
   audioElPool.length = 0
@@ -1367,6 +1406,22 @@ onUnmounted(() => {
   border-radius: 8px; cursor: pointer; font-size: 1rem; transition: background 0.15s;
 }
 .audio-btn:hover { background: rgba(255,255,255,0.1); }
+.audio-btn.audio-off { border-color: rgba(239,68,68,0.3); color: #f87171; }
+.audio-btn.audio-off:hover { background: rgba(239,68,68,0.1); }
+
+/* Audio hint toast */
+.audio-hint-toast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: rgba(15,15,25,0.95); border: 1px solid rgba(239,68,68,0.4);
+  color: #f87171; font-size: 0.85rem; font-weight: 600;
+  padding: 0.6rem 1.1rem; border-radius: 24px; z-index: 500;
+  display: flex; align-items: center; gap: 0.5rem;
+  cursor: pointer; white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.audio-hint-enter-active { transition: all 0.25s ease; }
+.audio-hint-leave-active { transition: all 0.2s ease; }
+.audio-hint-enter-from, .audio-hint-leave-to { opacity: 0; transform: translateX(-50%) translateY(10px); }
 
 /* ── 60s Countdown Ring ──────────────────────────────────────────────────── */
 .countdown-section {
