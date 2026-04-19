@@ -20,8 +20,9 @@ function getSecret(): string {
  * Fastify preHandler that verifies the X-Signature header sent by GASea on
  * every wallet callback.
  *
- * Per GASea Seamless Wallet API v3.1.0: X-Signature = HMAC-SHA256(secret, rawBody).
- * The entire request body (including token) is signed.
+ * Per GASea Seamless Wallet API: X-Signature = HMAC-SHA256(secret, body_without_token).
+ * The `token` field is excluded from signature computation because it is
+ * operator-provided session data, not part of GASea's signed payload.
  *
  * rawBody is set by the custom content type parser in wallet.ts.
  * All responses are HTTP 200 — GASea interprets non-200 as a network failure.
@@ -49,10 +50,24 @@ export async function verifyGaseaSignature(
         })
     }
 
+    // GASea signs the body WITHOUT the `token` field
+    let signablePayload: string
+    try {
+        const parsed = JSON.parse(rawBody)
+        if (parsed && typeof parsed === 'object' && 'token' in parsed) {
+            const { token: _excluded, ...withoutToken } = parsed
+            signablePayload = JSON.stringify(withoutToken)
+        } else {
+            signablePayload = rawBody
+        }
+    } catch {
+        signablePayload = rawBody
+    }
+
     const secret = getSecret()
     const expected = crypto
         .createHmac('sha256', secret)
-        .update(rawBody)
+        .update(signablePayload)
         .digest('hex')
 
     // Constant-time comparison to prevent timing attacks
@@ -62,7 +77,7 @@ export async function verifyGaseaSignature(
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         request.log.warn(
             '[GASea] Signature mismatch on %s | received=%s expected=%s bodyLen=%d',
-            request.url, signature, expected, rawBody.length,
+            request.url, signature, expected, signablePayload.length,
         )
         return reply.status(200).send({
             traceId: (request.body as any)?.traceId ?? '',
