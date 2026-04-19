@@ -618,10 +618,7 @@ function showAudioHintBriefly() {
 }
 
 function playBallSound(ball: number) {
-  if (!audioEnabled.value) {
-    showAudioHintBriefly()
-    return
-  }
+  if (!audioEnabled.value) return
   const key = `${getBallColumn(ball)}${ball}`
   const el = getPooledAudio()
   el.src = `/audio/${key}.mp3`
@@ -660,6 +657,11 @@ function playWinSound() {
     o.start(t); o.stop(t + 0.5)
   })
 }
+
+// Show audio hint once when the game goes live and audio is still off
+watch(phase, (val) => {
+  if (val === 'active' && !audioEnabled.value) showAudioHintBriefly()
+})
 
 // ── Countdown ──────────────────────────────────────────────────────────────
 let lastBeepSec = -1
