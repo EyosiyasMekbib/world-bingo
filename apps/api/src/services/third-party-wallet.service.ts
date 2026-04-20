@@ -231,7 +231,7 @@ export class ThirdPartyWalletService {
         const existing = await findExisting(params.transactionId)
         if (existing) {
             if (existing.status === ThirdPartyTxStatus.FAILED) {
-                return err(params.traceId, 'SC_INSUFFICIENT_BALANCE')
+                return err(params.traceId, 'SC_INSUFFICIENT_FUNDS')
             }
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
@@ -245,7 +245,7 @@ export class ThirdPartyWalletService {
                 const betAmount = new Decimal(params.amount).abs()
 
                 if (totalBefore.lessThan(betAmount)) {
-                    throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                    throw { code: 'SC_INSUFFICIENT_FUNDS' }
                 }
 
                 // Deduct from realBalance first, then bonus
@@ -305,7 +305,7 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
-            if (e?.code === 'SC_INSUFFICIENT_BALANCE') {
+            if (e?.code === 'SC_INSUFFICIENT_FUNDS') {
                 // Persist a FAILED record so rollback can identify this betId as insufficient-funds
                 try {
                     const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
@@ -356,7 +356,7 @@ export class ThirdPartyWalletService {
         const existing = await findExisting(params.transactionId)
         if (existing) {
             if (existing.status === ThirdPartyTxStatus.FAILED) {
-                return err(params.traceId, 'SC_INSUFFICIENT_BALANCE')
+                return err(params.traceId, 'SC_INSUFFICIENT_FUNDS')
             }
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
@@ -481,13 +481,13 @@ export class ThirdPartyWalletService {
                 // The bet portion must always be covered by the player's balance,
                 // even when net change is positive (win > bet).
                 if (params.resultType === 'BET_WIN' || params.resultType === 'BET_LOSE') {
-                    if (totalBefore.lessThan(betAmt)) throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                    if (totalBefore.lessThan(betAmt)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
                 }
 
                 // For net debits, also check sufficient funds
                 if (netChange.lessThan(0)) {
                     const debit = netChange.abs()
-                    if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                    if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
                 }
 
                 let newReal = realBefore.plus(netChange.greaterThan(0) ? netChange : 0)
@@ -551,8 +551,8 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
-            if (e?.code === 'SC_INSUFFICIENT_BALANCE' && balanceAttempt !== null) {
-                // Record the failed attempt so rollback can identify it and return SC_INSUFFICIENT_BALANCE
+            if (e?.code === 'SC_INSUFFICIENT_FUNDS' && balanceAttempt !== null) {
+                // Record the failed attempt so rollback can identify it and return SC_INSUFFICIENT_FUNDS
                 try {
                     await prisma.thirdPartyTransaction.create({
                         data: {
@@ -635,7 +635,7 @@ export class ThirdPartyWalletService {
 
             // If undoing a credit (e.g. BET_WIN), ensure player still has funds
             if (rollbackDelta.lessThan(0) && totalBefore.lessThan(rollbackDelta.abs())) {
-                throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                throw { code: 'SC_INSUFFICIENT_FUNDS' }
             }
 
             const balanceAfter = totalBefore.plus(rollbackDelta)
@@ -738,7 +738,7 @@ export class ThirdPartyWalletService {
 
                 if (adjustAmount.lessThan(0)) {
                     const debit = adjustAmount.abs()
-                    if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                    if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
                 }
 
                 const newReal = realBefore.plus(adjustAmount)
@@ -818,7 +818,7 @@ export class ThirdPartyWalletService {
 
                 const debitAmount = params.takeAll === 1 ? totalBefore : new Decimal(params.amount)
 
-                if (totalBefore.lessThan(debitAmount)) throw { code: 'SC_INSUFFICIENT_BALANCE' }
+                if (totalBefore.lessThan(debitAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
 
                 // Deduct from realBalance first, then bonus
                 let newReal: Decimal

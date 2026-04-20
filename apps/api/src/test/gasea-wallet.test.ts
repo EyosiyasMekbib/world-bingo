@@ -345,7 +345,7 @@ describe('GROUP 3 — Insufficient Balance', () => {
         await setBalance(validUserId, 1)
     })
 
-    it('3.01 wallet/balance returns SC_OK then wallet/bet with amount > balance → SC_INSUFFICIENT_BALANCE', async () => {
+    it('3.01 wallet/balance returns SC_OK then wallet/bet with amount > balance → SC_INSUFFICIENT_FUNDS', async () => {
         const balRes = await post('balance', {
             traceId: uid(), username: VALID_USER, currency: CURRENCY, token: TOKEN,
         })
@@ -359,10 +359,10 @@ describe('GROUP 3 — Insufficient Balance', () => {
             amount: 99_999_999,
             currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
         })
-        expect(betRes.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(betRes.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
-    it('3.02 wallet/bet_result [WIN] with amount > balance → SC_INSUFFICIENT_BALANCE', async () => {
+    it('3.02 wallet/bet_result [WIN] with amount > balance → SC_INSUFFICIENT_FUNDS', async () => {
         const betRes = await post('bet_result', {
             traceId: uid(),
             username: VALID_USER,
@@ -375,10 +375,10 @@ describe('GROUP 3 — Insufficient Balance', () => {
             currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
             betTime: Date.now(), settledTime: Date.now(),
         })
-        expect(betRes.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(betRes.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
-    it('3.03 wallet/bet_result [BET_LOSE] with betAmount > balance → SC_INSUFFICIENT_BALANCE', async () => {
+    it('3.03 wallet/bet_result [BET_LOSE] with betAmount > balance → SC_INSUFFICIENT_FUNDS', async () => {
         const betRes = await post('bet_result', {
             traceId: uid(),
             username: VALID_USER,
@@ -391,7 +391,7 @@ describe('GROUP 3 — Insufficient Balance', () => {
             currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
             betTime: Date.now(), settledTime: Date.now(),
         })
-        expect(betRes.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(betRes.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
     it('3.04 wallet/bet then wallet/rollback — rollback restores even when original bet failed', async () => {
@@ -405,7 +405,7 @@ describe('GROUP 3 — Insufficient Balance', () => {
             amount: 99_999_999,
             currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
         })
-        expect(betRes.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(betRes.status).toBe('SC_INSUFFICIENT_FUNDS')
 
         // Rollback on a failed bet → SC_TRANSACTION_NOT_EXISTS (nothing to roll back)
         const rbRes = await post('rollback', {
@@ -417,7 +417,7 @@ describe('GROUP 3 — Insufficient Balance', () => {
         expect(rbRes.status).toBe('SC_TRANSACTION_NOT_EXISTS')
     })
 
-    it('3.05 wallet/adjustment [DEBIT] with amount > balance → SC_INSUFFICIENT_BALANCE', async () => {
+    it('3.05 wallet/adjustment [DEBIT] with amount > balance → SC_INSUFFICIENT_FUNDS', async () => {
         const adjRes = await post('adjustment', {
             traceId: uid(),
             username: VALID_USER,
@@ -426,16 +426,16 @@ describe('GROUP 3 — Insufficient Balance', () => {
             amount: -99_999_999,
             currency: CURRENCY, timestamp: Date.now(),
         })
-        expect(adjRes.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(adjRes.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
-    it('3.06 wallet/bet_debit with amount > balance → SC_INSUFFICIENT_BALANCE', async () => {
+    it('3.06 wallet/bet_debit with amount > balance → SC_INSUFFICIENT_FUNDS', async () => {
         const res = await post('bet_debit', {
             traceId: uid(), username: VALID_USER, transactionId: uid(),
             roundId: uid(), amount: 99_999_999, currency: CURRENCY,
             gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
         })
-        expect(res.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(res.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 })
 
@@ -827,7 +827,7 @@ describe('GROUP 8 — Idempotency', () => {
         expect(second.data.balance).toBe(first.data.balance)
     })
 
-    it('8.06 wallet/bet with insufficient balance, same transactionId returns SC_INSUFFICIENT_BALANCE again', async () => {
+    it('8.06 wallet/bet with insufficient balance, same transactionId returns SC_INSUFFICIENT_FUNDS again', async () => {
         await setBalance(validUserId, 1)
         const betId = uid()
         const txId  = uid()
@@ -840,11 +840,11 @@ describe('GROUP 8 — Idempotency', () => {
 
         const first  = await post('bet', body)
         const second = await post('bet', { ...body, traceId: uid() })
-        expect(first.status).toBe('SC_INSUFFICIENT_BALANCE')
-        expect(second.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(first.status).toBe('SC_INSUFFICIENT_FUNDS')
+        expect(second.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
-    it('8.07 wallet/bet_result [BET_WIN] with insufficient balance — same transactionId returns SC_INSUFFICIENT_BALANCE', async () => {
+    it('8.07 wallet/bet_result [BET_WIN] with insufficient balance — same transactionId returns SC_INSUFFICIENT_FUNDS', async () => {
         await setBalance(validUserId, 1)
 
         const txId  = uid()
@@ -863,11 +863,11 @@ describe('GROUP 8 — Idempotency', () => {
 
         const first  = await post('bet_result', body)
         const second = await post('bet_result', { ...body, traceId: uid() })
-        expect(first.status).toBe('SC_INSUFFICIENT_BALANCE')
-        expect(second.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(first.status).toBe('SC_INSUFFICIENT_FUNDS')
+        expect(second.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
-    it('8.08 wallet/bet_result [BET_LOSE] with insufficient balance — same transactionId returns SC_INSUFFICIENT_BALANCE', async () => {
+    it('8.08 wallet/bet_result [BET_LOSE] with insufficient balance — same transactionId returns SC_INSUFFICIENT_FUNDS', async () => {
         await setBalance(validUserId, 1)
 
         const txId  = uid()
@@ -886,8 +886,8 @@ describe('GROUP 8 — Idempotency', () => {
 
         const first  = await post('bet_result', body)
         const second = await post('bet_result', { ...body, traceId: uid() })
-        expect(first.status).toBe('SC_INSUFFICIENT_BALANCE')
-        expect(second.status).toBe('SC_INSUFFICIENT_BALANCE')
+        expect(first.status).toBe('SC_INSUFFICIENT_FUNDS')
+        expect(second.status).toBe('SC_INSUFFICIENT_FUNDS')
     })
 
     it('8.09 wallet/adjustment called twice with same transactionId returns same response', async () => {
