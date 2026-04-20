@@ -7,11 +7,14 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
  */
 let _secret: string | null = null
 function getSecret(): string {
-    if (_secret === null) {
-        _secret = process.env.GASEA_API_SECRET ?? ''
-        if (!_secret) {
+    if (!_secret) {
+        const s = (process.env.GASEA_API_SECRET ?? '').trim()
+        if (!s) {
+            // Do NOT cache empty — re-read on every call until the env var is set
             console.warn('[GASea] WARNING: GASEA_API_SECRET is empty — all signature checks will fail')
+            return ''
         }
+        _secret = s
     }
     return _secret
 }
@@ -30,7 +33,7 @@ export async function verifyGaseaSignature(
     request: FastifyRequest,
     reply: FastifyReply,
 ): Promise<void> {
-    const signature = request.headers['x-signature']
+    let signature = request.headers['x-signature']
 
     if (!signature || typeof signature !== 'string') {
         request.log.warn('[GASea] Missing X-Signature header on %s', request.url)
@@ -39,6 +42,9 @@ export async function verifyGaseaSignature(
             status: 'SC_INVALID_SIGNATURE',
         })
     }
+
+    // Normalize signature format (some gateways might append spaces or uppercase it)
+    signature = signature.trim().toLowerCase()
 
     const rawBody: string | undefined = (request as any).rawBody
     if (!rawBody) {

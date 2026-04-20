@@ -122,7 +122,7 @@ function ok(traceId: string, username: string, balance: Decimal): WalletCallback
         data: {
             username,
             currency: CURRENCY,
-            balance: balance.toFixed(8),
+            balance: balance.toFixed(8, Decimal.ROUND_DOWN),
             timestamp: Date.now(),
         },
     }

@@ -1,4 +1,4 @@
-import Fastify from 'fastify'
+import Fastify, { type FastifyError } from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
@@ -96,7 +96,7 @@ await server.register(rateLimit, {
     // Skip rate limiting for GASea wallet callbacks — server-to-server traffic
     // from GASea's IP must never be throttled mid-game-session.
     // Also skip IPs explicitly whitelisted via RATE_LIMIT_WHITELIST env var.
-    skip: (req) => {
+    allowList: (req) => {
         if (req.url.startsWith('/v1/aggregator/')) return true
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
         return rateLimitWhitelist.has(ip)
@@ -138,7 +138,7 @@ await server.register(swaggerUi, {
     routePrefix: '/docs',
 })
 
-server.setErrorHandler((error, request, reply) => {
+server.setErrorHandler<FastifyError>((error, request, reply) => {
     // Map common service errors to appropriate status codes
     if (error.message === 'Invalid credentials' || error.message === 'Invalid refresh token') {
         return reply.status(401).send({
