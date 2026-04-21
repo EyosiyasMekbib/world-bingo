@@ -128,20 +128,36 @@ export async function verifyGaseaSignature(
       const unquotedIntegerRegex =
         new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+)\\.0+`, 'g')
 
-      // ── NEW: number→string (the core GASea bug: signs with quoted floats, sends unquoted) ──
-      // Matches any unquoted decimal/float amount field and wraps the value in quotes
+      // ── number→string variants ──
+      // Floats-only: quotes unquoted decimal amount fields (e.g. betAmount:26502.50... → "betAmount":"26502.50...")
       const numToStringDecimalRegex =
         new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+\\.\\d+)`, 'g')
 
-      // Variant: quote every unquoted float amount (number→string, preserve exact decimal representation)
+      // All amounts: quotes both integers AND floats (e.g. winAmount:10 → "winAmount":"10")
+      // Negative lookahead prevents over-matching already-quoted or concatenated values.
+      const numToStringAllRegex =
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)(?![\\d.])`, 'g')
+
+      // Variant: quote only float amount fields, preserve exact value (handles bet_debit float amounts)
       const numToStrBody = rawBody.replace(numToStringDecimalRegex, '"$1":"$2"')
       candidates.push({ name: 'numberToString', body: numToStrBody })
 
-      // Variant: quote unquoted float, then also strip trailing zeros from the quoted value
+      // Variant: quote only floats then strip trailing zeros from the quoted string
       const numToStrBodyStripped = numToStrBody
         .replace(decimalFieldsRegex, '"$1":"$2"')
         .replace(decimalFieldsIntegerRegex, '"$1":"$2"')
       candidates.push({ name: 'numberToStringStripZeros', body: numToStrBodyStripped })
+
+      // Variant: quote ALL amount fields (int + float) — covers bet_result where GASea signs with
+      // all numeric fields as strings (winAmount:10 → "winAmount":"10", betAmount:26502.5... → "betAmount":"26502.5...")
+      const numToStrAllBody = rawBody.replace(numToStringAllRegex, '"$1":"$2"')
+      candidates.push({ name: 'numberToStringAll', body: numToStrAllBody })
+
+      // Variant: quote all amount fields then strip trailing zeros from the quoted values
+      const numToStrAllBodyStripped = numToStrAllBody
+        .replace(decimalFieldsRegex, '"$1":"$2"')
+        .replace(decimalFieldsIntegerRegex, '"$1":"$2"')
+      candidates.push({ name: 'numberToStringAllStripZeros', body: numToStrAllBodyStripped })
 
       // Build trimmed-zeros body for subsequent variants
       alternateBody = rawBody
