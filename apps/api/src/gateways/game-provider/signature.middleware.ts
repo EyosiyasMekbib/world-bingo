@@ -76,27 +76,30 @@ export async function verifyGaseaSignature(
         
         let alternateBody = rawBody;
         try {
-            const bodyObj = JSON.parse(rawBody);
-            // GASea incorrectly stringifies amounts like "11614.99882734100" but seems to sign them as numeric `11614.998827341` when generating X-Signature or conversely, signs the JSON differently.
-            // Check if we can produce the correct signature by removing trailing zeros from string number representations
-            alternateBody = rawBody.replace(/"amount"\s*:\s*"(\d+\.\d*?[1-9])0+"/g, '"amount":"$1"');
-            alternateBody = alternateBody.replace(/"amount"\s*:\s*"(\d+)\.0+"/g, '"amount":"$1"');
+            // GASea testing servers inconsistently format numeric fields before signing (sometimes stripping trailing zeros or quotes).
+            // This regex targets all the decimal properties we know GASea uses: amount, betAmount, winAmount, winLoss, jackpotAmount, effectiveTurnover
+            const decimalFieldsRegex = /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?\d+\.\d*?[1-9])0+"/g;
+            const decimalFieldsIntegerRegex = /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?\d+)\.0+"/g;
+            const stringToNumRegex = /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?[\d\.]+)"/g;
+
+            alternateBody = rawBody.replace(decimalFieldsRegex, '"$1":"$2"');
+            alternateBody = alternateBody.replace(decimalFieldsIntegerRegex, '"$1":"$2"');
             
             // Try formatting as integer / float instead of string
-            const numBody = rawBody.replace(/"amount"\s*:\s*"([\d\.]+)"/g, '"amount":$1');
+            const numBody = rawBody.replace(stringToNumRegex, '"$1":$2');
             const exp2 = crypto.createHmac('sha256', secret).update(numBody).digest('hex')
             if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp2))) {
                 return; // Valid!
             }
 
-            // Also try formatting with string zeros truncated
+            // Try formatting with string zeros truncated
             const exp3 = crypto.createHmac('sha256', secret).update(alternateBody).digest('hex')
             if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp3))) {
                 return; // Valid!
             }
             
-            // What if it is number format but with truncated 0s
-            const numBodyTrunc = alternateBody.replace(/"amount"\s*:\s*"([\d\.]+)"/g, '"amount":$1');
+            // Try number format but with truncated 0s
+            const numBodyTrunc = alternateBody.replace(stringToNumRegex, '"$1":$2');
             const exp4 = crypto.createHmac('sha256', secret).update(numBodyTrunc).digest('hex')
             if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp4))) {
                 return; // Valid!
