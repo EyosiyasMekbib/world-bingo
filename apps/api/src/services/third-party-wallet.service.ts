@@ -11,7 +11,7 @@ export interface WalletCallbackResponse {
     data?: {
         username: string
         currency: string
-        balance: string
+        balance: number
         timestamp: number
     }
 }
@@ -122,7 +122,7 @@ function ok(traceId: string, username: string, balance: Decimal): WalletCallback
         data: {
             username,
             currency: CURRENCY,
-            balance: balance.toFixed(8, Decimal.ROUND_HALF_UP),
+            balance: Number(balance.toFixed(8, Decimal.ROUND_HALF_UP)),
             timestamp: Date.now(),
         },
     }
