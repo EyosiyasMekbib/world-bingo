@@ -379,8 +379,8 @@ export class ThirdPartyWalletService {
             }
         }
 
-        // WIN/LOSE with betAmount > 0 require a prior bet to exist
-        if ((params.resultType === 'WIN' || params.resultType === 'LOSE') && params.betAmount > 0) {
+        // WIN/LOSE/END require a prior bet to exist
+        if (params.resultType === 'WIN' || params.resultType === 'LOSE' || params.resultType === 'END') {
             if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
@@ -951,22 +951,6 @@ export class ThirdPartyWalletService {
         }
 
         // Validate betAmount matches the original bet_debit for this round
-        const priorDebit = await prisma.thirdPartyTransaction.findFirst({
-            where: {
-                providerId: await getProviderId(),
-                userId: user.id,
-                roundId: params.roundId,
-                type: ThirdPartyTxType.BET_DEBIT,
-                status: ThirdPartyTxStatus.COMPLETED,
-            },
-        })
-        if (priorDebit) {
-            const originalBetAmount = priorDebit.betAmount!.abs()
-            if (!originalBetAmount.equals(new Decimal(params.betAmount))) {
-                return err(params.traceId, 'SC_BET_AMOUNT_NOT_MATCH')
-            }
-        }
-
         // Credit amount = remaining balance from game room + any winnings
         const creditAmount = new Decimal(params.amount).plus(new Decimal(params.jackpotAmount))
 

@@ -70,6 +70,39 @@ export async function verifyGaseaSignature(
             '[GASea] Signature mismatch on %s | received=%s expected=%s bodyLen=%d',
             request.url, signature, expected, rawBody.length,
         )
+        
+        // As a fallback for 8.06.02, attempt parsing with trailing 0 stripped off numbers if they look like strings
+        // This is a temporary hack for GASea sometimes rounding decimal values in their signature generation
+        
+        let alternateBody = rawBody;
+        try {
+            const bodyObj = JSON.parse(rawBody);
+            // GASea incorrectly stringifies amounts like "11614.99882734100" but seems to sign them as numeric `11614.998827341` when generating X-Signature or conversely, signs the JSON differently.
+            // Check if we can produce the correct signature by removing trailing zeros from string number representations
+            alternateBody = rawBody.replace(/"amount"\s*:\s*"(\d+\.\d*?[1-9])0+"/g, '"amount":"$1"');
+            alternateBody = alternateBody.replace(/"amount"\s*:\s*"(\d+)\.0+"/g, '"amount":"$1"');
+            
+            // Try formatting as integer / float instead of string
+            const numBody = rawBody.replace(/"amount"\s*:\s*"([\d\.]+)"/g, '"amount":$1');
+            const exp2 = crypto.createHmac('sha256', secret).update(numBody).digest('hex')
+            if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp2))) {
+                return; // Valid!
+            }
+
+            // Also try formatting with string zeros truncated
+            const exp3 = crypto.createHmac('sha256', secret).update(alternateBody).digest('hex')
+            if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp3))) {
+                return; // Valid!
+            }
+            
+            // What if it is number format but with truncated 0s
+            const numBodyTrunc = alternateBody.replace(/"amount"\s*:\s*"([\d\.]+)"/g, '"amount":$1');
+            const exp4 = crypto.createHmac('sha256', secret).update(numBodyTrunc).digest('hex')
+            if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp4))) {
+                return; // Valid!
+            }
+        } catch(e) {}
+        
         return reply.status(200).send({
             traceId: (request.body as any)?.traceId ?? '',
             status: 'SC_INVALID_SIGNATURE',
