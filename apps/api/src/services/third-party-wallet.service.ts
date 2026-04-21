@@ -12,6 +12,7 @@ export interface WalletCallbackResponse {
         username: string
         currency: string
         balance: string
+        timestamp: number
     }
 }
 
@@ -122,6 +123,7 @@ function ok(traceId: string, username: string, balance: Decimal): WalletCallback
             username,
             currency: CURRENCY,
             balance: balance.toFixed(8, Decimal.ROUND_DOWN),
+            timestamp: Date.now(),
         },
     }
 }
@@ -753,17 +755,28 @@ export class ThirdPartyWalletService {
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
 
+                let newReal = realBefore
+                let newBonus = bonusBefore
+
                 if (adjustAmount.lessThan(0)) {
                     const debit = adjustAmount.abs()
                     if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    if (realBefore.greaterThanOrEqualTo(debit)) {
+                        newReal = realBefore.minus(debit)
+                    } else {
+                        const fromBonus = debit.minus(realBefore)
+                        newReal = new Decimal(0)
+                        newBonus = bonusBefore.minus(fromBonus)
+                    }
+                } else {
+                    newReal = realBefore.plus(adjustAmount)
                 }
 
-                const newReal = realBefore.plus(adjustAmount)
-                const balanceAfter = newReal.plus(bonusBefore)
+                const balanceAfter = newReal.plus(newBonus)
 
                 await tx.wallet.update({
                     where: { userId: user.id },
-                    data: { realBalance: newReal },
+                    data: { realBalance: newReal, bonusBalance: newBonus },
                 })
 
                 await tx.thirdPartyTransaction.create({
@@ -794,7 +807,7 @@ export class ThirdPartyWalletService {
                         balanceBefore: totalBefore,
                         balanceAfter,
                         bonusBalanceBefore: bonusBefore,
-                        bonusBalanceAfter: bonusBefore,
+                        bonusBalanceAfter: newBonus,
                     },
                 })
 

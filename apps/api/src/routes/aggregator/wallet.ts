@@ -92,7 +92,7 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 winAmount: number
                 effectiveTurnover: number
                 winLoss: number
-                jackpotAmount: number
+                jackpotAmount?: number
                 resultType: 'WIN' | 'BET_WIN' | 'BET_LOSE' | 'LOSE' | 'END'
                 isFreespin: number
                 isEndRound: number
@@ -100,7 +100,7 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 token?: string
                 gameCode: string
                 betTime: number
-                settledTime: number
+                settledTime?: number
             }
             return ThirdPartyWalletService.processBetResult({
                 traceId: body.traceId,
@@ -113,7 +113,7 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 winAmount: body.winAmount,
                 effectiveTurnover: body.effectiveTurnover,
                 winLoss: body.winLoss,
-                jackpotAmount: body.jackpotAmount,
+                jackpotAmount: body.jackpotAmount ?? 0,
                 resultType: body.resultType,
                 isFreespin: body.isFreespin,
                 isEndRound: body.isEndRound,
@@ -121,7 +121,7 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 token: body.token,
                 gameCode: body.gameCode,
                 betTime: body.betTime,
-                settledTime: body.settledTime,
+                settledTime: body.settledTime ?? 0,
             })
         },
     })
@@ -229,12 +229,12 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 winAmount: number
                 effectiveTurnover: number
                 winLoss: number
-                jackpotAmount: number
+                jackpotAmount?: number
                 currency: string
                 token?: string
                 gameCode: string
                 betTime: number
-                settledTime: number
+                settledTime?: number
                 timestamp: number
             }
             return ThirdPartyWalletService.processBetCredit({
@@ -249,12 +249,12 @@ const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
                 winAmount: body.winAmount,
                 effectiveTurnover: body.effectiveTurnover,
                 winLoss: body.winLoss,
-                jackpotAmount: body.jackpotAmount,
+                jackpotAmount: body.jackpotAmount ?? 0,
                 currency: body.currency,
                 token: body.token,
                 gameCode: body.gameCode,
                 betTime: body.betTime,
-                settledTime: body.settledTime,
+                settledTime: body.settledTime ?? 0,
                 timestamp: body.timestamp,
             })
         },
