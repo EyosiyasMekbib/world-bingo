@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream'
 import type { FastifyPluginAsync } from 'fastify'
 import { verifyGaseaSignature } from '../../gateways/game-provider/signature.middleware.js'
 import { ThirdPartyWalletService } from '../../services/third-party-wallet.service.js'
@@ -10,23 +11,19 @@ import { ThirdPartyWalletService } from '../../services/third-party-wallet.servi
  */
 const aggregatorWalletRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Raw body capture for HMAC signature verification ──────────────────────
-    // Override the JSON parser in this encapsulated scope so we can store the
-    // exact bytes GASea signed. This runs inside Fastify's normal parsing
-    // pipeline — no fragile stream re-creation needed.
-    fastify.removeContentTypeParser('application/json')
-    fastify.addContentTypeParser(
-        'application/json',
-        { parseAs: 'buffer' },
-        (req, body, done) => {
-            const raw = (body as Buffer).toString('utf8')
-            ;(req as any).rawBody = raw
-            try {
-                done(null, JSON.parse(raw))
-            } catch (err) {
-                done(err as Error, undefined)
-            }
-        },
-    )
+    // preParsing runs before ANY content-type parser (including the parent
+    // scope's built-in JSON parser), so rawBody is always set regardless of
+    // how Fastify resolves the parser for this scope.
+    fastify.addHook('preParsing', async (request, _reply, payload) => {
+        const chunks: Buffer[] = []
+        for await (const chunk of payload) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any))
+        }
+        const rawBuffer = Buffer.concat(chunks)
+        ;(request as any).rawBody = rawBuffer.toString('utf8')
+        // Return a new stream so the content-type parser can still read the body
+        return Readable.from(rawBuffer)
+    })
 
     // ── Balance ────────────────────────────────────────────────────────────────
     fastify.post('/balance', {

@@ -638,11 +638,29 @@ export class ThirdPartyWalletService {
                 throw { code: 'SC_INSUFFICIENT_FUNDS' }
             }
 
-            const balanceAfter = totalBefore.plus(rollbackDelta)
+            // Compute explicit new balances (avoid increment which can go negative)
+            let newReal: Decimal
+            let newBonus: Decimal
+            if (rollbackDelta.greaterThanOrEqualTo(0)) {
+                // Credit back: add to realBalance
+                newReal = realBefore.plus(rollbackDelta)
+                newBonus = bonusBefore
+            } else {
+                // Debit back (undoing a win credit): remove from realBalance first, then bonus
+                const debit = rollbackDelta.abs()
+                if (realBefore.greaterThanOrEqualTo(debit)) {
+                    newReal = realBefore.minus(debit)
+                    newBonus = bonusBefore
+                } else {
+                    newReal = new Decimal(0)
+                    newBonus = bonusBefore.minus(debit.minus(realBefore))
+                }
+            }
+            const balanceAfter = newReal.plus(newBonus)
 
             await tx.wallet.update({
                 where: { userId: user.id },
-                data: { realBalance: { increment: rollbackDelta } },
+                data: { realBalance: newReal, bonusBalance: newBonus },
             })
 
             // Mark original as rolled back
@@ -690,7 +708,8 @@ export class ThirdPartyWalletService {
         return ok(params.traceId, params.username, result)
         } catch (e: any) {
             if (e?.code) return err(params.traceId, e.code)
-            throw e
+            console.error('[GASea] Unexpected error in processRollback:', e)
+            return err(params.traceId, 'SC_INTERNAL_ERROR')
         }
     }
 
@@ -787,7 +806,8 @@ export class ThirdPartyWalletService {
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
             if (e?.code) return err(params.traceId, e.code)
-            throw e
+            console.error('[GASea] Unexpected error in processAdjustment:', e)
+            return err(params.traceId, 'SC_INTERNAL_ERROR')
         }
     }
 
@@ -806,6 +826,9 @@ export class ThirdPartyWalletService {
 
         const existing = await findExisting(params.transactionId)
         if (existing) {
+            if (existing.status === ThirdPartyTxStatus.FAILED) {
+                return err(params.traceId, 'SC_INSUFFICIENT_FUNDS')
+            }
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
 
@@ -876,8 +899,38 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
+            if (e?.code === 'SC_INSUFFICIENT_FUNDS') {
+                // Persist FAILED record for idempotency — retries return SC_INSUFFICIENT_FUNDS
+                // instead of re-executing (mirrors processBet behaviour)
+                try {
+                    const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+                    const currentBalance = wallet
+                        ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+                        : new Decimal(0)
+                    await prisma.thirdPartyTransaction.create({
+                        data: {
+                            providerId: await getProviderId(),
+                            userId: user.id,
+                            transactionId: params.transactionId,
+                            roundId: params.roundId,
+                            gameCode: params.gameCode,
+                            type: ThirdPartyTxType.BET_DEBIT,
+                            status: ThirdPartyTxStatus.FAILED,
+                            betAmount: new Decimal(params.amount),
+                            amount: new Decimal(0),
+                            balanceBefore: currentBalance,
+                            balanceAfter: currentBalance,
+                            rawRequest: params as any,
+                        },
+                    })
+                } catch {
+                    // ignore duplicate key on retry — idempotency
+                }
+                return err(params.traceId, e.code)
+            }
             if (e?.code) return err(params.traceId, e.code)
-            throw e
+            console.error('[GASea] Unexpected error in processBetDebit:', e)
+            return err(params.traceId, 'SC_INTERNAL_ERROR')
         }
     }
 
@@ -919,16 +972,18 @@ export class ThirdPartyWalletService {
         // Credit amount = remaining balance from game room + any winnings
         const creditAmount = new Decimal(params.amount).plus(new Decimal(params.jackpotAmount))
 
+        try {
         const result = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
-            const balanceAfter = realBefore.plus(creditAmount).plus(bonusBefore)
+            const newReal = realBefore.plus(creditAmount)
+            const balanceAfter = newReal.plus(bonusBefore)
 
             await tx.wallet.update({
                 where: { userId: user.id },
-                data: { realBalance: { increment: creditAmount } },
+                data: { realBalance: newReal },
             })
 
             await tx.thirdPartyTransaction.create({
@@ -969,5 +1024,10 @@ export class ThirdPartyWalletService {
         })
 
         return ok(params.traceId, params.username, result)
+        } catch (e: any) {
+            if (e?.code) return err(params.traceId, e.code)
+            console.error('[GASea] Unexpected error in processBetCredit:', e)
+            return err(params.traceId, 'SC_INTERNAL_ERROR')
+        }
     }
 }
