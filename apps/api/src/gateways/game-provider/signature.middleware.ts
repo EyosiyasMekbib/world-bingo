@@ -1,6 +1,17 @@
 import crypto from 'node:crypto'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 
+function safeSigEqualHex(receivedHex: string, expectedHex: string): boolean {
+  const a = Buffer.from(receivedHex, 'utf8')
+  const b = Buffer.from(expectedHex, 'utf8')
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex')
+}
+
 /**
  * Resolve API_SECRET lazily so dotenv.config() has a chance to run first
  * (ESM evaluates imports before the importing module body).
@@ -60,12 +71,10 @@ export async function verifyGaseaSignature(
 
   const secret = getSecret()
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+  const debugEnabled = process.env.GASEA_SIGNATURE_DEBUG === 'true'
 
   // Constant-time comparison to prevent timing attacks
-  const sigBuf = Buffer.from(signature)
-  const expBuf = Buffer.from(expected)
-
-  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+  if (!safeSigEqualHex(signature, expected)) {
     request.log.warn(
       '[GASea] Signature mismatch on %s | received=%s expected=%s bodyLen=%d',
       request.url,
@@ -79,6 +88,8 @@ export async function verifyGaseaSignature(
 
     let alternateBody = rawBody
     try {
+      const candidates: Array<{ name: string; body: string }> = [{ name: 'raw', body: rawBody }]
+
       // GASea testing servers inconsistently format numeric fields before signing (sometimes stripping trailing zeros or quotes).
       // This regex targets all the decimal properties we know GASea uses: amount, betAmount, winAmount, winLoss, jackpotAmount, effectiveTurnover
       const decimalFieldsRegex =
@@ -101,33 +112,60 @@ export async function verifyGaseaSignature(
 
       // Try formatting as integer / float instead of string
       const numBody = rawBody.replace(stringToNumRegex, '"$1":$2')
-      const exp2 = crypto.createHmac('sha256', secret).update(numBody).digest('hex')
-      if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp2))) {
-        return // Valid!
-      }
+      candidates.push({ name: 'stringAmountToNumber', body: numBody })
 
       // Try formatting with string zeros truncated
-      const exp3 = crypto.createHmac('sha256', secret).update(alternateBody).digest('hex')
-      if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp3))) {
-        return // Valid!
-      }
+      candidates.push({ name: 'truncateTrailingZeros', body: alternateBody })
 
       // Try number format but with truncated 0s
       const numBodyTrunc = alternateBody.replace(stringToNumRegex, '"$1":$2')
-      const exp4 = crypto.createHmac('sha256', secret).update(numBodyTrunc).digest('hex')
-      if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp4))) {
-        return // Valid!
-      }
+      candidates.push({ name: 'truncateZerosThenToNumber', body: numBodyTrunc })
 
       // Try fallback where GASea may have signed a cleanly parsed and re-stringified JSON
       // (Javascript JSON.stringify inherently formats numbers as short as possible, matching many engines)
       const parsedBody = JSON.parse(rawBody)
-      const exp5 = crypto
-        .createHmac('sha256', secret)
-        .update(JSON.stringify(parsedBody))
-        .digest('hex')
-      if (crypto.timingSafeEqual(sigBuf, Buffer.from(exp5))) {
-        return // Valid!
+      candidates.push({ name: 'jsonParseStringify', body: JSON.stringify(parsedBody) })
+
+      for (const candidate of candidates) {
+        const expectedCandidate = crypto
+          .createHmac('sha256', secret)
+          .update(candidate.body)
+          .digest('hex')
+
+        if (safeSigEqualHex(signature, expectedCandidate)) {
+          if (candidate.name !== 'raw') {
+            request.log.info(
+              '[GASea] Signature accepted via fallback=%s on %s',
+              candidate.name,
+              request.url,
+            )
+          }
+          return // Valid
+        }
+      }
+
+      if (debugEnabled) {
+        const variantHashes = candidates.map((candidate) => ({
+          strategy: candidate.name,
+          bodySha256: sha256Hex(candidate.body),
+          expectedSigPrefix: crypto
+            .createHmac('sha256', secret)
+            .update(candidate.body)
+            .digest('hex')
+            .slice(0, 16),
+        }))
+
+        request.log.warn(
+          {
+            url: request.url,
+            traceId: (request.body as any)?.traceId ?? '',
+            bodyLen: rawBody.length,
+            receivedSigPrefix: signature.slice(0, 16),
+            rawBodySha256: sha256Hex(rawBody),
+            variants: variantHashes,
+          },
+          '[GASea] Signature debug diagnostics',
+        )
       }
     } catch (e) {}
 
