@@ -205,6 +205,71 @@ export async function verifyGaseaSignature(
         // Ignored
       }
 
+      // ★ ULTIMATE FALLBACK: Dynamic Brute Forcer
+      // GASea fluctuates its serialization drastically based on whether 
+      // the float ends in zeros, has no decimals, mix-and-matched with ints, etc.
+      // We will extract all numeric values for AMOUNT_FIELDS and permute 
+      // every serialized form (raw, quoted, stripped, quoted-stripped).
+      // Max 6 fields * 4 states = 4096 iterations. Node computes this in < 0.5ms.
+      const bfRegex = new RegExp(`("(${AMOUNT_FIELDS})"\\s*:\\s*)(-?\\d+(?:\\.\\d+)?)`, 'g');
+      
+      const chunks: Array<{ type: 'str', val: string } | { type: 'num', prefix: string, opts: string[] }> = [];
+      let lastIndex = 0;
+      let match;
+      
+      while ((match = bfRegex.exec(rawBody)) !== null) {
+        chunks.push({ type: 'str', val: rawBody.slice(lastIndex, match.index) });
+        
+        const prefix = match[1]; // e.g. '"betAmount":'
+        const numStr = match[3]; // e.g. '26502.500'
+        
+        const stripped = numStr.includes('.') ? numStr.replace(/0+$/, '').replace(/\.$/, '') : numStr;
+        
+        const optsSet = new Set([
+          numStr,           // Raw 
+          `"${numStr}"`,    // Quoted
+        ]);
+        if (stripped !== numStr) {
+          optsSet.add(stripped);        // Stripped
+          optsSet.add(`"${stripped}"`); // Quoted Stripped
+        }
+        
+        chunks.push({ type: 'num', prefix, opts: Array.from(optsSet) });
+        lastIndex = match.index + match[0].length;
+      }
+      chunks.push({ type: 'str', val: rawBody.slice(lastIndex) });
+
+      let foundBruteForceBody: string | null = null;
+      let winningCombo: string[] = [];
+
+      function recurseBF(chunkIdx: number, currentBody: string, currentCombo: string[]) {
+        if (foundBruteForceBody) return;
+        if (chunkIdx === chunks.length) {
+          // Leaf node: we built a full variant body
+          if (safeSigEqualHex(signature, crypto.createHmac('sha256', secret).update(currentBody).digest('hex'))) {
+            foundBruteForceBody = currentBody;
+            winningCombo = currentCombo;
+            candidates.push({ name: `bruteForce:[${winningCombo.join(',')}]`, body: currentBody });
+          }
+          return;
+        }
+        
+        const chunk = chunks[chunkIdx];
+        if (chunk.type === 'str') {
+          recurseBF(chunkIdx + 1, currentBody + chunk.val, currentCombo);
+        } else {
+          for (const opt of chunk.opts) {
+            recurseBF(chunkIdx + 1, currentBody + chunk.prefix + opt, [...currentCombo, opt]);
+            if (foundBruteForceBody) return; // early exit
+          }
+        }
+      }
+      
+      // Only run BF if there are actually fields to brute force
+      if (chunks.some(c => c.type === 'num')) {
+        recurseBF(0, "", []);
+      }
+
       for (const candidate of candidates) {
         const expectedCandidate = crypto
           .createHmac('sha256', secret)
