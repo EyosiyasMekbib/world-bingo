@@ -21,7 +21,7 @@
           <h2 v-if="isWinner" class="you-won">You Won!</h2>
           <template v-else>
             <h2 class="you-lost">You Lost</h2>
-            <p class="other-won-sub">{{ gameStore.winner?.username }} is the winner!</p>
+            <p class="other-won-sub">Better luck next time!</p>
           </template>
           <p class="prize-amount">
             <span class="prize-label">{{ isWinner ? 'You Won' : 'Prize' }}</span>
