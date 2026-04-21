@@ -381,9 +381,25 @@ export class ThirdPartyWalletService {
             }
         }
 
-        // WIN/LOSE/END require a prior bet to exist
-        if (params.resultType === 'WIN' || params.resultType === 'LOSE' || params.resultType === 'END') {
+        // WIN/LOSE: require a prior BET/BET_DEBIT to exist
+        if (params.resultType === 'WIN' || params.resultType === 'LOSE') {
             if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
+        }
+
+        // END: GASea sends this as a round-close notification after a BET_WIN/BET_LOSE result.
+        // The prior context may be a BET_RESULT (not just BET/BET_DEBIT), so search by roundId too.
+        if (params.resultType === 'END') {
+            const priorRoundActivity = priorBet ?? await prisma.thirdPartyTransaction.findFirst({
+                where: {
+                    providerId: await getProviderId(),
+                    userId: user.id,
+                    roundId: params.roundId,
+                    type: ThirdPartyTxType.BET_RESULT,
+                    status: ThirdPartyTxStatus.COMPLETED,
+                },
+                orderBy: { createdAt: 'asc' },
+            })
+            if (!priorRoundActivity) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
         // END result = no wallet operation needed
