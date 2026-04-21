@@ -129,16 +129,23 @@ export async function verifyGaseaSignature(
         new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+)\\.0+`, 'g')
 
       // ── number→string variants ──
-      // Floats-only: quotes unquoted decimal amount fields (e.g. betAmount:26502.50... → "betAmount":"26502.50...")
+      // Floats-only: quotes ALL unquoted float amount fields
       const numToStringDecimalRegex =
         new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+\\.\\d+)`, 'g')
 
+      // Trailing-zeros-only: quotes ONLY floats that end in one or more trailing zeros.
+      // GASea's signing system selectively quotes floats with trailing zeros
+      // (e.g. 26502.50117267100 → "26502.50117267100") but leaves clean floats
+      // (e.g. -26492.501172671) and integers (e.g. 10, 0) unquoted.
+      // Pattern: decimal with significant digits then trailing 0s, OR pure .000...0 form.
+      const numToStringTrailingZerosOnlyRegex =
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+\\.\\d*[1-9]0+|-?\\d+\\.0+)`, 'g')
+
       // All amounts: quotes both integers AND floats (e.g. winAmount:10 → "winAmount":"10")
-      // Negative lookahead prevents over-matching already-quoted or concatenated values.
       const numToStringAllRegex =
         new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)(?![\\d.])`, 'g')
 
-      // Variant: quote only float amount fields, preserve exact value (handles bet_debit float amounts)
+      // Variant: quote ALL float amount fields (includes clean floats like winLoss)
       const numToStrBody = rawBody.replace(numToStringDecimalRegex, '"$1":"$2"')
       candidates.push({ name: 'numberToString', body: numToStrBody })
 
@@ -148,8 +155,12 @@ export async function verifyGaseaSignature(
         .replace(decimalFieldsIntegerRegex, '"$1":"$2"')
       candidates.push({ name: 'numberToStringStripZeros', body: numToStrBodyStripped })
 
-      // Variant: quote ALL amount fields (int + float) — covers bet_result where GASea signs with
-      // all numeric fields as strings (winAmount:10 → "winAmount":"10", betAmount:26502.5... → "betAmount":"26502.5...")
+      // ★ KEY STRATEGY: quote ONLY trailing-zero floats, leave clean floats + integers unquoted.
+      // This matches GASea's signing behavior in bet_result / multi-field requests.
+      const numToStrTrailingZerosBody = rawBody.replace(numToStringTrailingZerosOnlyRegex, '"$1":"$2"')
+      candidates.push({ name: 'numberToStringTrailingZerosOnly', body: numToStrTrailingZerosBody })
+
+      // Variant: ALL amount fields quoted (int + float)
       const numToStrAllBody = rawBody.replace(numToStringAllRegex, '"$1":"$2"')
       candidates.push({ name: 'numberToStringAll', body: numToStrAllBody })
 
