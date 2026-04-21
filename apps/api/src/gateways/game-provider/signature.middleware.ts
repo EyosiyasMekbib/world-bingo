@@ -2,8 +2,10 @@ import crypto from 'node:crypto'
 import type { FastifyRequest, FastifyReply } from 'fastify'
 
 function safeSigEqualHex(receivedHex: string, expectedHex: string): boolean {
-  const a = Buffer.from(receivedHex, 'utf8')
-  const b = Buffer.from(expectedHex, 'utf8')
+  // Ensure both strings are valid hex of exactly 64 characters (32 bytes)
+  if (receivedHex.length !== 64 || expectedHex.length !== 64) return false
+  const a = Buffer.from(receivedHex, 'hex')
+  const b = Buffer.from(expectedHex, 'hex')
   if (a.length !== b.length) return false
   return crypto.timingSafeEqual(a, b)
 }
@@ -108,8 +110,7 @@ export async function verifyGaseaSignature(
     try {
       const candidates: Array<{ name: string; body: string }> = [{ name: 'raw', body: rawBody }]
 
-      // GASea testing servers inconsistently format numeric fields before signing (sometimes stripping trailing zeros or quotes).
-      // This regex targets all the decimal properties we know GASea uses: amount, betAmount, winAmount, winLoss, jackpotAmount, effectiveTurnover
+      // GASea testing servers inconsistently format numeric fields before signing...
       const decimalFieldsRegex =
         /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?\d+\.\d*?[1-9])0+"/g
       const decimalFieldsIntegerRegex =
@@ -117,32 +118,37 @@ export async function verifyGaseaSignature(
       const stringToNumRegex =
         /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?[\d\.]+)"/g
 
+      // Run replacements on alternateBody
+      alternateBody = alternateBody.replace(decimalFieldsRegex, '"$1":"$2"')
+      alternateBody = alternateBody.replace(decimalFieldsIntegerRegex, '"$1":"$2"')
+      
       // Also handle unquoted variations just in case GASea generated the signature with trailing zeros truncated on unquoted numbers
       const unquotedDecimalRegex =
         /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*(-?\d+\.\d*?[1-9])0+/g
       const unquotedIntegerRegex =
         /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*(-?\d+)\.0+/g
-
-      alternateBody = alternateBody.replace(decimalFieldsRegex, '"$1":"$2"')
-      alternateBody = alternateBody.replace(decimalFieldsIntegerRegex, '"$1":"$2"')
+      
       alternateBody = alternateBody.replace(unquotedDecimalRegex, '"$1":$2')
       alternateBody = alternateBody.replace(unquotedIntegerRegex, '"$1":$2')
 
-      // Try formatting as integer / float instead of string
+      // Add variant: Try formatting as integer / float instead of string
       const numBody = rawBody.replace(stringToNumRegex, '"$1":$2')
       candidates.push({ name: 'stringAmountToNumber', body: numBody })
 
-      // Try formatting with string zeros truncated
+      // Add variant: Try formatting with string zeros truncated
       candidates.push({ name: 'truncateTrailingZeros', body: alternateBody })
 
-      // Try number format but with truncated 0s
+      // Add variant: Try number format but with truncated 0s
       const numBodyTrunc = alternateBody.replace(stringToNumRegex, '"$1":$2')
       candidates.push({ name: 'truncateZerosThenToNumber', body: numBodyTrunc })
 
       // Try fallback where GASea may have signed a cleanly parsed and re-stringified JSON
-      // (Javascript JSON.stringify inherently formats numbers as short as possible, matching many engines)
-      const parsedBody = JSON.parse(rawBody)
-      candidates.push({ name: 'jsonParseStringify', body: JSON.stringify(parsedBody) })
+      try {
+        const parsedBody = JSON.parse(rawBody)
+        candidates.push({ name: 'jsonParseStringify', body: JSON.stringify(parsedBody) })
+      } catch (parseError) {
+        // Ignored, rawBody is not valid JSON
+      }
 
       for (const candidate of candidates) {
         const expectedCandidate = crypto
@@ -173,6 +179,12 @@ export async function verifyGaseaSignature(
             .slice(0, 16),
         }))
 
+        // Capture x-api-key or other auth headers to see if test suite uses a different secret
+        const authHeaders = {
+          'x-api-key': request.headers['x-api-key'],
+          'authorization': request.headers['authorization'],
+        }
+
         request.log.warn(
           {
             url: request.url,
@@ -181,6 +193,7 @@ export async function verifyGaseaSignature(
             receivedSigPrefix: signature.slice(0, 16),
             rawBodySha256: sha256Hex(rawBody),
             variants: variantHashes,
+            authHeaders
           },
           '[GASea] Signature debug diagnostics',
         )
@@ -191,11 +204,22 @@ export async function verifyGaseaSignature(
             expectedSigPrefix: expected.slice(0, 16),
             rawBodySha256: sha256Hex(rawBody),
             bodyLen: rawBody.length,
+            rawBodyExtract: rawBody.length <= 500 ? rawBody : rawBody.slice(0, 250) + '...[truncated]',
             variants: variantHashes,
+            authHeaders
           }),
         )
       }
-    } catch (e) {}
+    } catch (e: any) {
+      if (debugEnabled) {
+        return reply.status(200).send(
+          invalidSignatureResponse(request, 'fallback logic crashed', {
+            error: e?.message,
+            rawBodyExtract: rawBody.length <= 200 ? rawBody : rawBody.slice(0, 200) + '...'
+          })
+        )
+      }
+    }
 
     return reply.status(200).send(
       invalidSignatureResponse(request, 'signature mismatch'),
