@@ -110,44 +110,72 @@ export async function verifyGaseaSignature(
     try {
       const candidates: Array<{ name: string; body: string }> = [{ name: 'raw', body: rawBody }]
 
-      // GASea testing servers inconsistently format numeric fields before signing...
-      const decimalFieldsRegex =
-        /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?\d+\.\d*?[1-9])0+"/g
-      const decimalFieldsIntegerRegex =
-        /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?\d+)\.0+"/g
+      const AMOUNT_FIELDS = 'amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover'
+
+      // Regex families
       const stringToNumRegex =
-        /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*"(-?[\d\.]+)"/g
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*"(-?[\\d\\.]+)"`, 'g')
 
-      // Run replacements on alternateBody
-      alternateBody = alternateBody.replace(decimalFieldsRegex, '"$1":"$2"')
-      alternateBody = alternateBody.replace(decimalFieldsIntegerRegex, '"$1":"$2"')
-      
-      // Also handle unquoted variations just in case GASea generated the signature with trailing zeros truncated on unquoted numbers
+      // Quoted string trailing-zero stripping (string→string, strip zeros)
+      const decimalFieldsRegex =
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*"(-?\\d+\\.\\d*?[1-9])0+"`, 'g')
+      const decimalFieldsIntegerRegex =
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*"(-?\\d+)\\.0+"`, 'g')
+
+      // Unquoted number trailing-zero stripping (number→number, strip zeros)
       const unquotedDecimalRegex =
-        /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*(-?\d+\.\d*?[1-9])0+/g
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+\\.\\d*?[1-9])0+`, 'g')
       const unquotedIntegerRegex =
-        /"(amount|betAmount|winAmount|winLoss|jackpotAmount|effectiveTurnover)"\s*:\s*(-?\d+)\.0+/g
-      
-      alternateBody = alternateBody.replace(unquotedDecimalRegex, '"$1":$2')
-      alternateBody = alternateBody.replace(unquotedIntegerRegex, '"$1":$2')
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+)\\.0+`, 'g')
 
-      // Add variant: Try formatting as integer / float instead of string
+      // ── NEW: number→string (the core GASea bug: signs with quoted floats, sends unquoted) ──
+      // Matches any unquoted decimal/float amount field and wraps the value in quotes
+      const numToStringDecimalRegex =
+        new RegExp(`"(${AMOUNT_FIELDS})"\\s*:\\s*(-?\\d+\\.\\d+)`, 'g')
+
+      // Variant: quote every unquoted float amount (number→string, preserve exact decimal representation)
+      const numToStrBody = rawBody.replace(numToStringDecimalRegex, '"$1":"$2"')
+      candidates.push({ name: 'numberToString', body: numToStrBody })
+
+      // Variant: quote unquoted float, then also strip trailing zeros from the quoted value
+      const numToStrBodyStripped = numToStrBody
+        .replace(decimalFieldsRegex, '"$1":"$2"')
+        .replace(decimalFieldsIntegerRegex, '"$1":"$2"')
+      candidates.push({ name: 'numberToStringStripZeros', body: numToStrBodyStripped })
+
+      // Build trimmed-zeros body for subsequent variants
+      alternateBody = rawBody
+        .replace(decimalFieldsRegex, '"$1":"$2"')
+        .replace(decimalFieldsIntegerRegex, '"$1":"$2"')
+        .replace(unquotedDecimalRegex, '"$1":$2')
+        .replace(unquotedIntegerRegex, '"$1":$2')
+
+      // Variant: string→number
       const numBody = rawBody.replace(stringToNumRegex, '"$1":$2')
       candidates.push({ name: 'stringAmountToNumber', body: numBody })
 
-      // Add variant: Try formatting with string zeros truncated
+      // Variant: strip trailing zeros (mixed: quoted strings stripped, unquoted numbers stripped)
       candidates.push({ name: 'truncateTrailingZeros', body: alternateBody })
 
-      // Add variant: Try number format but with truncated 0s
+      // Variant: strip zeros then also convert remaining strings to numbers
       const numBodyTrunc = alternateBody.replace(stringToNumRegex, '"$1":$2')
       candidates.push({ name: 'truncateZerosThenToNumber', body: numBodyTrunc })
 
-      // Try fallback where GASea may have signed a cleanly parsed and re-stringified JSON
+      // Variant: cleanly JSON.parse then re-stringify (JS normalizes floats)
       try {
         const parsedBody = JSON.parse(rawBody)
         candidates.push({ name: 'jsonParseStringify', body: JSON.stringify(parsedBody) })
       } catch (parseError) {
-        // Ignored, rawBody is not valid JSON
+        // Ignored
+      }
+
+      // Variant: number→string then JSON.parse/stringify (JS will re-serialize quoted strings back to numbers,
+      // but we want the intermediate quoted form — also try the full cycle)
+      try {
+        const parsedFromQuoted = JSON.parse(numToStrBody)
+        candidates.push({ name: 'numberToStringParseStringify', body: JSON.stringify(parsedFromQuoted) })
+      } catch (parseError) {
+        // Ignored
       }
 
       for (const candidate of candidates) {
