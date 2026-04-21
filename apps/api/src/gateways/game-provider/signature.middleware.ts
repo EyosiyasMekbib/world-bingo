@@ -265,9 +265,14 @@ export async function verifyGaseaSignature(
         }
       }
       
-      // Only run BF if there are actually fields to brute force
-      if (chunks.some(c => c.type === 'num')) {
+      // Only run BF if there are actually fields to brute force, and cap at 12 to prevent DoS.
+      // 4^12 = 16.7M iterations (too slow), but practically we cap at 8 arrays of size 4 max (~65k iterations = ~15ms max).
+      // Realistically we see exactly 5 fields * sizing = ~1000 iterations = < 0.5ms.
+      const numFieldsFound = chunks.filter(c => c.type === 'num').length;
+      if (numFieldsFound > 0 && numFieldsFound <= 8) {
         recurseBF(0, "", []);
+      } else if (numFieldsFound > 8) {
+        request.log.warn('[GASea] Payload matched too many AMOUNT fields for brute force (found %d, max 8). Aborting BF fallback.', numFieldsFound);
       }
 
       for (const candidate of candidates) {
