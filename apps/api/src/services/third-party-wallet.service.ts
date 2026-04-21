@@ -980,15 +980,15 @@ export class ThirdPartyWalletService {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
 
-        // Validate betAmount matches the original bet_debit for this round
-        // Credit amount = remaining balance from game room + any winnings
-        const creditAmount = new Decimal(params.amount).plus(new Decimal(params.jackpotAmount))
-
         try {
-        const result = await prisma.$transaction(async (tx) => {
-            const wallet = await lockWallet(tx, user.id)
-            const realBefore = new Decimal(wallet.realBalance)
-            const bonusBefore = new Decimal(wallet.bonusBalance)
+            // Validate betAmount matches the original bet_debit for this round
+            // Credit amount = remaining balance from game room + any winnings
+            const creditAmount = new Decimal(params.amount ?? 0).plus(new Decimal(params.jackpotAmount ?? 0))
+
+            const result = await prisma.$transaction(async (tx) => {
+                const wallet = await lockWallet(tx, user.id)
+                const realBefore = new Decimal(wallet.realBalance)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
             const newReal = realBefore.plus(creditAmount)
             const balanceAfter = newReal.plus(bonusBefore)
