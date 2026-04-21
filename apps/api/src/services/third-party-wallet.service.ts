@@ -381,9 +381,10 @@ export class ThirdPartyWalletService {
             }
         }
 
-        // WIN/LOSE: require a prior BET/BET_DEBIT to exist
+        // WIN/LOSE: require a prior BET/BET_DEBIT to exist, UNLESS betAmount is 0
+        // (betAmount 0 occurs on out-of-band promotional wins, jackpots, or zero-cost features)
         if (params.resultType === 'WIN' || params.resultType === 'LOSE') {
-            if (!priorBet) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
+            if (!priorBet && params.betAmount > 0) return err(params.traceId, 'SC_TRANSACTION_NOT_EXISTS')
         }
 
         // END: GASea sends this as a round-close notification after a BET_WIN/BET_LOSE result.
