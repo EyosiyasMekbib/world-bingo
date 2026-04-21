@@ -193,7 +193,8 @@ export async function verifyGaseaSignature(
             receivedSigPrefix: signature.slice(0, 16),
             rawBodySha256: sha256Hex(rawBody),
             variants: variantHashes,
-            authHeaders
+            authHeaders,
+            rawBodyExtract: rawBody.length <= 1000 ? rawBody : rawBody.slice(0, 1000) + '...[truncated]',
           },
           '[GASea] Signature debug diagnostics',
         )
