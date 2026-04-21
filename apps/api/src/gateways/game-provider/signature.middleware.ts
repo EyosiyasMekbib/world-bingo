@@ -12,6 +12,26 @@ function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex')
 }
 
+function invalidSignatureResponse(
+  request: FastifyRequest,
+  problem: string,
+  debug?: Record<string, unknown>,
+) {
+  const response: Record<string, unknown> = {
+    traceId: (request.body as any)?.traceId ?? '',
+    status: 'SC_INVALID_SIGNATURE',
+  }
+
+  if (debug && process.env.GASEA_SIGNATURE_DEBUG === 'true') {
+    response.debug = {
+      problem,
+      ...debug,
+    }
+  }
+
+  return response
+}
+
 /**
  * Resolve API_SECRET lazily so dotenv.config() has a chance to run first
  * (ESM evaluates imports before the importing module body).
@@ -48,10 +68,9 @@ export async function verifyGaseaSignature(
 
   if (!signature || typeof signature !== 'string') {
     request.log.warn('[GASea] Missing X-Signature header on %s', request.url)
-    return reply.status(200).send({
-      traceId: (request.body as any)?.traceId ?? '',
-      status: 'SC_INVALID_SIGNATURE',
-    })
+    return reply.status(200).send(
+      invalidSignatureResponse(request, 'missing x-signature header'),
+    )
   }
 
   // Normalize signature format (some gateways might append spaces or uppercase it)
@@ -63,10 +82,9 @@ export async function verifyGaseaSignature(
       '[GASea] rawBody not set on %s — content type parser did not fire',
       request.url,
     )
-    return reply.status(200).send({
-      traceId: (request.body as any)?.traceId ?? '',
-      status: 'SC_INVALID_SIGNATURE',
-    })
+    return reply.status(200).send(
+      invalidSignatureResponse(request, 'raw body not captured'),
+    )
   }
 
   const secret = getSecret()
@@ -166,12 +184,21 @@ export async function verifyGaseaSignature(
           },
           '[GASea] Signature debug diagnostics',
         )
+
+        return reply.status(200).send(
+          invalidSignatureResponse(request, 'signature mismatch', {
+            receivedSigPrefix: signature.slice(0, 16),
+            expectedSigPrefix: expected.slice(0, 16),
+            rawBodySha256: sha256Hex(rawBody),
+            bodyLen: rawBody.length,
+            variants: variantHashes,
+          }),
+        )
       }
     } catch (e) {}
 
-    return reply.status(200).send({
-      traceId: (request.body as any)?.traceId ?? '',
-      status: 'SC_INVALID_SIGNATURE',
-    })
+    return reply.status(200).send(
+      invalidSignatureResponse(request, 'signature mismatch'),
+    )
   }
 }
