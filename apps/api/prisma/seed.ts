@@ -146,7 +146,7 @@ async function main() {
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')
     const defaultMethods = [
-        { code: 'telebirr', name: 'TeleBirr', type: 'DEPOSIT' as const, merchantAccount: '0901977670', instructions: 'Send via TeleBirr to the merchant number. Complete within 15 minutes.', icon: '📱', enabled: true, sortOrder: 0 },
+        { code: 'telebirr', name: 'TeleBirr', type: 'DEPOSIT' as const, merchantAccount: '', instructions: 'Send via TeleBirr to the merchant number. Complete within 15 minutes.', icon: '📱', enabled: true, sortOrder: 0 },
         { code: 'telebirr_withdrawal', name: 'TeleBirr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '📱', enabled: true, sortOrder: 0 },
         { code: 'cbe', name: 'CBE Birr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 1 },
         { code: 'awash', name: 'Awash Bank', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 2 },

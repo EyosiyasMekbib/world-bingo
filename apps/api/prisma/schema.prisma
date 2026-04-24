@@ -407,7 +407,6 @@ model SiteSetting {
 enum PaymentMethodType {
   DEPOSIT
   WITHDRAWAL
-  BOTH
 }
 
 model PaymentMethod {

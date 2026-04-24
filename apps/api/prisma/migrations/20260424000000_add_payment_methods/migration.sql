@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "PaymentMethodType" AS ENUM ('DEPOSIT', 'WITHDRAWAL', 'BOTH');
+CREATE TYPE "PaymentMethodType" AS ENUM ('DEPOSIT', 'WITHDRAWAL');
 
 -- CreateTable
 CREATE TABLE "payment_methods" (
