@@ -34,6 +34,7 @@ const navGroups = [
       { label: 'Users',         icon: 'i-heroicons:users',                  to: '/users'             },
       { label: 'Providers',     icon: 'i-heroicons:globe-alt',              to: '/providers'         },
       { label: 'Cashback',      icon: 'i-heroicons:gift',                   to: '/cashback'          },
+      { label: 'Payment Methods', icon: 'i-heroicons:credit-card', to: '/settings/payment-methods' },
       { label: 'Feature Flags', icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features' },
       { label: 'Profile',       icon: 'i-heroicons:user-circle',            to: '/settings/profile'  },
     ],

@@ -8,118 +8,145 @@
         </div>
 
         <div class="modal-body">
-          <!-- TeleBirr Instructions Banner -->
-          <div class="telebirr-banner">
-            <div class="banner-icon">📱</div>
-            <div class="banner-content">
-              <div class="banner-title">⚡ Complete within 15 minutes</div>
-              <div class="banner-detail">Send via <strong>TeleBirr</strong> to merchant number:</div>
-              <div class="merchant-number">0901977670</div>
-            </div>
+          <!-- Loading methods -->
+          <div v-if="loadingMethods" class="methods-loading">
+            <span class="spin">⏳</span> Loading payment methods…
           </div>
 
-          <!-- Amount -->
-          <div class="field">
-            <label>Amount (ETB)</label>
-            <input v-model.number="form.amount" type="number" min="10" placeholder="Enter amount" class="input" />
-            <div class="chips">
-              <button v-for="chip in [50, 100, 200, 500]" :key="chip" class="chip" @click="form.amount = chip">
-                +{{ chip }}
+          <!-- No methods available -->
+          <div v-else-if="depositMethods.length === 0" class="no-methods">
+            No deposit methods are currently available. Please try again later.
+          </div>
+
+          <template v-else>
+            <!-- Method selector (only if > 1 method) -->
+            <div v-if="depositMethods.length > 1" class="method-tabs">
+              <button
+                v-for="m in depositMethods"
+                :key="m.code"
+                class="method-tab"
+                :class="{ 'method-tab--active': selectedMethod?.code === m.code }"
+                @click="selectedMethod = m"
+              >
+                <span>{{ m.icon || '💳' }}</span>
+                <span>{{ m.name }}</span>
               </button>
             </div>
-          </div>
 
-          <!-- Payment Method — static TeleBirr label -->
-          <div class="field">
-            <label>Payment Method</label>
-            <div class="input static-method">
-              <span class="method-icon">📱</span> TeleBirr
-            </div>
-          </div>
-
-          <!-- TeleBirr Transaction ID -->
-          <div class="field">
-            <label>TeleBirr Transaction ID <span class="required">*</span></label>
-            <input
-              v-model="form.transactionId"
-              type="text"
-              placeholder="e.g. TLB202601011234"
-              class="input"
-              :class="{ 'input--error': fieldError === 'transactionId' }"
-              @input="if (fieldError === 'transactionId') { fieldError = ''; error = '' }"
-            />
-            <span v-if="fieldError === 'transactionId'" class="field-error-msg">
-              Already used — check your pending deposits below.
-            </span>
-          </div>
-
-          <!-- Sender Name -->
-          <div class="field">
-            <label>Your Name (as shown on TeleBirr receipt) <span class="required">*</span></label>
-            <input v-model="form.senderName" type="text" placeholder="Full name" class="input" />
-          </div>
-
-          <!-- Sender TeleBirr Account -->
-          <div class="field">
-            <label>Your TeleBirr Phone Number <span class="required">*</span></label>
-            <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="input" />
-          </div>
-
-          <!-- Receipt Upload -->
-          <div class="field">
-            <label>Transfer Receipt Screenshot <span class="required">*</span></label>
-            <div
-              class="file-drop"
-              :class="{ 'has-preview': previewUrl }"
-              @click="fileInputRef?.click()"
-              @dragover.prevent
-              @drop.prevent="onFileDrop"
-            >
-              <img v-if="previewUrl" :src="previewUrl" alt="Receipt preview" class="preview-img" />
-              <div v-else class="drop-hint">
-                <span class="icon">📎</span>
-                <span>Click or drag & drop receipt (JPG/PNG, max 5MB)</span>
+            <!-- Selected method instruction banner -->
+            <div v-if="selectedMethod" class="method-banner">
+              <div class="banner-icon">{{ selectedMethod.icon || '💳' }}</div>
+              <div class="banner-content">
+                <div class="banner-title">{{ selectedMethod.name }}</div>
+                <template v-if="selectedMethod.merchantAccount">
+                  <div class="banner-detail">Send to:</div>
+                  <div class="merchant-number">{{ selectedMethod.merchantAccount }}</div>
+                </template>
+                <div v-if="selectedMethod.instructions" class="banner-instructions">
+                  {{ selectedMethod.instructions }}
+                </div>
               </div>
             </div>
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept="image/jpeg,image/png"
-              class="hidden-input"
-              @change="onFileChange"
-            />
-          </div>
 
-          <!-- Error / Success -->
-          <div v-if="error" class="error-banner" :class="{ 'error-banner--field': fieldError === 'transactionId' }">
-            <div class="error-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
+            <!-- Amount -->
+            <div class="field">
+              <label>Amount (ETB)</label>
+              <input v-model.number="form.amount" type="number" min="10" placeholder="Enter amount" class="input" />
+              <div class="chips">
+                <button v-for="chip in [50, 100, 200, 500]" :key="chip" class="chip" @click="form.amount = chip">
+                  +{{ chip }}
+                </button>
+              </div>
             </div>
-            <div class="error-body">
-              <span class="error-title">{{ errorTitle }}</span>
-              <span v-if="errorHint" class="error-hint">{{ errorHint }}</span>
+
+            <!-- Transaction ID -->
+            <div class="field">
+              <label>Transaction ID <span class="required">*</span></label>
+              <input
+                v-model="form.transactionId"
+                type="text"
+                placeholder="e.g. TLB202601011234"
+                class="input"
+                :class="{ 'input--error': fieldError === 'transactionId' }"
+                @input="if (fieldError === 'transactionId') { fieldError = ''; error = '' }"
+              />
+              <span v-if="fieldError === 'transactionId'" class="field-error-msg">
+                Already used — check your pending deposits below.
+              </span>
             </div>
-          </div>
-          <div v-if="success" class="success-banner">
-            <div class="success-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+
+            <!-- Sender Name -->
+            <div class="field">
+              <label>Your Full Name <span class="required">*</span></label>
+              <input v-model="form.senderName" type="text" placeholder="Full name" class="input" />
             </div>
-            <div class="success-body">
-              <span class="success-title">Deposit submitted</span>
-              <span class="success-hint">Pending admin verification — usually within 15 minutes.</span>
+
+            <!-- Sender Account -->
+            <div class="field">
+              <label>Your {{ selectedMethod?.name ?? 'Payment' }} Phone/Account Number <span class="required">*</span></label>
+              <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="input" />
             </div>
-          </div>
+
+            <!-- Receipt Upload -->
+            <div class="field">
+              <label>Transfer Receipt Screenshot <span class="required">*</span></label>
+              <div
+                class="file-drop"
+                :class="{ 'has-preview': previewUrl }"
+                @click="fileInputRef?.click()"
+                @dragover.prevent
+                @drop.prevent="onFileDrop"
+              >
+                <img v-if="previewUrl" :src="previewUrl" alt="Receipt preview" class="preview-img" />
+                <div v-else class="drop-hint">
+                  <span class="icon">📎</span>
+                  <span>Click or drag & drop receipt (JPG/PNG, max 5MB)</span>
+                </div>
+              </div>
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/jpeg,image/png"
+                class="hidden-input"
+                @change="onFileChange"
+              />
+            </div>
+
+            <!-- Error / Success -->
+            <div v-if="error" class="error-banner" :class="{ 'error-banner--field': fieldError === 'transactionId' }">
+              <div class="error-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <div class="error-body">
+                <span class="error-title">{{ errorTitle }}</span>
+                <span v-if="errorHint" class="error-hint">{{ errorHint }}</span>
+              </div>
+            </div>
+            <div v-if="success" class="success-banner">
+              <div class="success-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div class="success-body">
+                <span class="success-title">Deposit submitted</span>
+                <span class="success-hint">Pending admin verification — usually within 15 minutes.</span>
+              </div>
+            </div>
+          </template>
         </div>
 
         <div class="modal-footer">
           <button class="btn-secondary" @click="$emit('update:modelValue', false)">Cancel</button>
-          <button class="btn-primary" :disabled="loading || !canSubmit" @click="submit">
+          <button
+            class="btn-primary"
+            :disabled="loading || !canSubmit || depositMethods.length === 0"
+            @click="submit"
+          >
             <span v-if="loading">Uploading… {{ uploadProgress }}%</span>
             <span v-else>Submit Deposit</span>
           </button>
@@ -139,7 +166,19 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
-const config = useRuntimeConfig()
+
+type DepositMethod = {
+  id: string
+  code: string
+  name: string
+  icon: string | null
+  merchantAccount: string | null
+  instructions: string | null
+}
+
+const loadingMethods = ref(false)
+const depositMethods = ref<DepositMethod[]>([])
+const selectedMethod = ref<DepositMethod | null>(null)
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const previewUrl = ref<string | null>(null)
@@ -169,12 +208,32 @@ const errorHint = computed(() => {
 })
 
 const canSubmit = computed(() =>
+  !!selectedMethod.value &&
   form.amount >= 10 &&
   form.transactionId.trim().length >= 5 &&
   form.senderName.trim().length >= 1 &&
   form.senderAccount.trim().length >= 10 &&
   selectedFile.value !== null,
 )
+
+const fetchMethods = async () => {
+  loadingMethods.value = true
+  try {
+    const data = await auth.apiFetch<DepositMethod[]>('/payment-methods?type=DEPOSIT')
+    depositMethods.value = Array.isArray(data) ? data : []
+    if (depositMethods.value.length > 0) {
+      selectedMethod.value = depositMethods.value[0]
+    }
+  } catch {
+    depositMethods.value = []
+  } finally {
+    loadingMethods.value = false
+  }
+}
+
+watch(() => props.modelValue, (open) => {
+  if (open) fetchMethods()
+})
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -215,6 +274,9 @@ async function submit() {
     formData.append('senderName', form.senderName)
     formData.append('senderAccount', form.senderAccount)
     formData.append('receipt', selectedFile.value)
+    if (selectedMethod.value) {
+      formData.append('methodCode', selectedMethod.value.code)
+    }
 
     await auth.apiFetch('/wallet/deposit', {
       method: 'POST',
@@ -254,6 +316,7 @@ function resetForm() {
   success.value = false
   error.value = ''
   fieldError.value = ''
+  selectedMethod.value = depositMethods.value[0] ?? null
 }
 </script>
 
@@ -309,6 +372,97 @@ function resetForm() {
   gap: 1.25rem;
 }
 
+/* ── Methods loading / empty ──────────────────────────────────── */
+.methods-loading,
+.no-methods {
+  text-align: center;
+  color: #888;
+  font-size: 0.9rem;
+  padding: 1rem 0;
+}
+.spin { display: inline-block; }
+
+/* ── Method tabs ──────────────────────────────────────────────── */
+.method-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.method-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: #aaa;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.method-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ddd;
+}
+
+.method-tab--active {
+  border-color: var(--color-primary, #c9a96e);
+  background: rgba(201, 169, 110, 0.12);
+  color: var(--color-primary, #c9a96e);
+  font-weight: 600;
+}
+
+/* ── Method banner ────────────────────────────────────────────── */
+.method-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: rgba(201, 169, 110, 0.1);
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.banner-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.banner-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-primary, #c9a96e);
+}
+
+.banner-detail {
+  font-size: 0.8rem;
+  color: #bbb;
+}
+
+.merchant-number {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+
+.banner-instructions {
+  font-size: 0.8rem;
+  color: #bbb;
+  margin-top: 0.1rem;
+}
+
+/* ── Fields ───────────────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
@@ -542,58 +696,6 @@ label {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.95rem;
-}
-
-.telebirr-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  background: rgba(201, 169, 110, 0.1);
-  border: 1px solid rgba(201, 169, 110, 0.35);
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
-}
-
-.banner-icon {
-  font-size: 1.8rem;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-.banner-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.banner-title {
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: var(--color-primary, #c9a96e);
-}
-
-.banner-detail {
-  font-size: 0.8rem;
-  color: #bbb;
-}
-
-.merchant-number {
-  font-size: 1.25rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #fff;
-}
-
-.static-method {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #ddd;
-  cursor: default;
-}
-
-.method-icon {
-  font-size: 1.1rem;
 }
 
 .required {
