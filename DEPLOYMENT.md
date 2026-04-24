@@ -57,6 +57,15 @@ CORS_ORIGIN=https://bingo.example.com,https://admin.bingo.example.com
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/world_bingo
 REDIS_URL=redis://redis:6379
 
+# API startup controls (recommended for Dokploy)
+RUN_MIGRATIONS=true
+DB_MAX_RETRIES=30
+DB_RETRY_DELAY_SECS=2
+RUN_SEED=false
+SEED_STRICT=false
+# Optional: only set when you intentionally need to re-run a migration
+MIGRATION_ROLLBACK_ID=
+
 # Web specific overrides
 NUXT_PUBLIC_API_BASE=/api
 NUXT_PUBLIC_WS_URL=/
@@ -64,6 +73,13 @@ NUXT_PUBLIC_WS_URL=/
 # Admin specific overrides
 NUXT_JWT_SECRET=your_super_secret_jwt_string_matching_api
 ```
+
+#### Migration and seed behavior in production
+- The API container runs `prisma migrate deploy` on startup when `RUN_MIGRATIONS=true`.
+- Migrations are retried (`DB_MAX_RETRIES`, `DB_RETRY_DELAY_SECS`) to handle delayed DB readiness.
+- Seed is disabled by default (`RUN_SEED=false`) to avoid accidental data resets on every restart.
+- If you need bootstrap data once, set `RUN_SEED=true` for a single deploy, then set it back to `false`.
+- `MIGRATION_ROLLBACK_ID` should be left empty unless you are intentionally reapplying a previously resolved migration.
 
 ### 6. Troubleshooting
 - **WebSocket Connection Issues**: If games are failing to connect to WebSockets, ensure Traefik (Dokploy's router) allows WebSocket upgrades. Usually, Dokploy handles this automatically when proxying Nuxt 3. If issues persist, verify that the browser is attempting to connect to `/socket.io/` on the main domain (e.g., `https://bingo.example.com/socket.io/...`), which Nuxt will then forward to the internal API.
