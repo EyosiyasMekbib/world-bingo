@@ -486,6 +486,94 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         return CashbackService.togglePromotion(req.params.id, body.isActive)
     })
 
+    // ── Payment Methods ──────────────────────────────────────────────────────
+
+    const paymentMethodCreateSchema = z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        type: z.enum(['DEPOSIT', 'WITHDRAWAL']),
+        merchantAccount: z.string().optional(),
+        instructions: z.string().optional(),
+        icon: z.string().optional(),
+        enabled: z.boolean().default(true),
+        sortOrder: z.number().int().default(0),
+    })
+
+    const paymentMethodUpdateSchema = z.object({
+        code: z.string().min(1).optional(),
+        name: z.string().min(1).optional(),
+        type: z.enum(['DEPOSIT', 'WITHDRAWAL']).optional(),
+        merchantAccount: z.string().optional(),
+        instructions: z.string().optional(),
+        icon: z.string().optional(),
+        enabled: z.boolean().optional(),
+        sortOrder: z.number().int().optional(),
+    })
+
+    // GET /admin/payment-methods — all methods including disabled
+    fastify.get('/payment-methods', async (_req, _reply) => {
+        return prisma.paymentMethod.findMany({
+            orderBy: { sortOrder: 'asc' },
+        })
+    })
+
+    // POST /admin/payment-methods — create a new method
+    fastify.post('/payment-methods', async (req: any, reply) => {
+        const parsed = paymentMethodCreateSchema.safeParse(req.body)
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
+        }
+        try {
+            const method = await prisma.paymentMethod.create({
+                data: parsed.data as any,
+            })
+            return reply.status(201).send(method)
+        } catch (err: any) {
+            if (err?.code === 'P2002') {
+                return reply.status(409).send({ error: 'A payment method with that code already exists' })
+            }
+            throw err
+        }
+    })
+
+    // PUT /admin/payment-methods/:id — partial update
+    fastify.put('/payment-methods/:id', async (req: any, reply) => {
+        const { id } = req.params
+        const parsed = paymentMethodUpdateSchema.safeParse(req.body)
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
+        }
+        try {
+            const method = await prisma.paymentMethod.update({
+                where: { id },
+                data: parsed.data as any,
+            })
+            return method
+        } catch (err: any) {
+            if (err?.code === 'P2025') {
+                return reply.status(404).send({ error: 'Payment method not found' })
+            }
+            if (err?.code === 'P2002') {
+                return reply.status(409).send({ error: 'A payment method with that code already exists' })
+            }
+            throw err
+        }
+    })
+
+    // DELETE /admin/payment-methods/:id — hard delete
+    fastify.delete('/payment-methods/:id', async (req: any, reply) => {
+        const { id } = req.params
+        try {
+            await prisma.paymentMethod.delete({ where: { id } })
+            return { success: true }
+        } catch (err: any) {
+            if (err?.code === 'P2025') {
+                return reply.status(404).send({ error: 'Payment method not found' })
+            }
+            throw err
+        }
+    })
+
 }
 
 export default adminRoutes
