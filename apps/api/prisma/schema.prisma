@@ -401,6 +401,31 @@ model SiteSetting {
   @@map("site_settings")
 }
 
+// ─── Payment Methods ─────────────────────────────────────────────────────────
+// Configurable deposit/withdrawal payment methods managed via the admin panel.
+
+enum PaymentMethodType {
+  DEPOSIT
+  WITHDRAWAL
+  BOTH
+}
+
+model PaymentMethod {
+  id              String            @id @default(uuid())
+  code            String            @unique              // e.g. "telebirr", "cbe", "awash"
+  name            String                                 // display name, e.g. "TeleBirr"
+  type            PaymentMethodType
+  merchantAccount String?                                // account/phone number for deposit methods
+  instructions    String?                                // shown to users during deposit flow
+  icon            String?                                // emoji or icon identifier, e.g. "📱"
+  enabled         Boolean           @default(true)
+  sortOrder       Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("payment_methods")
+}
+
 // ─── House Wallet & Transactions ─────────────────────────────────────────────
 // Singleton house wallet tracking all platform income/expenses.
 model HouseWallet {
