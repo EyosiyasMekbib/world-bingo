@@ -524,8 +524,18 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
         }
         try {
+            const d = parsed.data
             const method = await prisma.paymentMethod.create({
-                data: parsed.data as any,
+                data: {
+                    code: d.code,
+                    name: d.name,
+                    type: d.type as import('@prisma/client').PaymentMethodType,
+                    merchantAccount: d.merchantAccount,
+                    instructions: d.instructions,
+                    icon: d.icon,
+                    enabled: d.enabled,
+                    sortOrder: d.sortOrder,
+                },
             })
             return reply.status(201).send(method)
         } catch (err: any) {
@@ -538,15 +548,19 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // PUT /admin/payment-methods/:id — partial update
     fastify.put('/payment-methods/:id', async (req: any, reply) => {
-        const { id } = req.params
+        const { id } = (req.params as { id: string })
         const parsed = paymentMethodUpdateSchema.safeParse(req.body)
         if (!parsed.success) {
             return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
         }
         try {
+            const { type, ...rest } = parsed.data
             const method = await prisma.paymentMethod.update({
                 where: { id },
-                data: parsed.data as any,
+                data: {
+                    ...rest,
+                    ...(type ? { type: type as import('@prisma/client').PaymentMethodType } : {}),
+                },
             })
             return method
         } catch (err: any) {
@@ -562,7 +576,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /admin/payment-methods/:id — hard delete
     fastify.delete('/payment-methods/:id', async (req: any, reply) => {
-        const { id } = req.params
+        const { id } = (req.params as { id: string })
         try {
             await prisma.paymentMethod.delete({ where: { id } })
             return { success: true }
