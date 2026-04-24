@@ -1,0 +1,126 @@
+# ============================================================
+# Production Docker Compose — External DB + Redis (Dokploy)
+# ============================================================
+# Use this for production deployments where database and redis
+# are managed externally (e.g., on Dokploy infrastructure).
+#
+# Set DATABASE_URL and REDIS_URL in Dokploy environment vars.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: world-bingo-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64:-}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PORT: 8080
+      HOST: 0.0.0.0
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
+      GASEA_API_KEY: ${GASEA_API_KEY:-}
+      GASEA_API_SECRET: ${GASEA_API_SECRET:-}
+      GASEA_SIGNATURE_DEBUG: ${GASEA_SIGNATURE_DEBUG:-false}
+      GASEA_DEFAULT_CURRENCY: ${GASEA_DEFAULT_CURRENCY:-ETB}
+      WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+    volumes:
+      - uploads_data:/app/apps/api/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - dokploy-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: world-bingo-web
+    restart: unless-stopped
+    ports:
+      - "3000"
+    environment:
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
+      NUXT_PUBLIC_WS_URL: /
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
+      NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
+      NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    image: world-bingo-admin
+    restart: unless-stopped
+    ports:
+      - "3001"
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
+      NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - api
+    networks:
+      - dokploy-network
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./infrastructure/grafana/dashboard-provider.yml:/etc/grafana/provisioning/dashboards/provider.yml:ro
+      - ./infrastructure/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - dokploy-network
+
+volumes:
+  uploads_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  dokploy-network:
+    external: true
