@@ -143,7 +143,26 @@ async function main() {
     })
     console.log('GASea provider seeded')
 
-    // 7. Create one WAITING game per active template so the lobby isn't empty
+    // 7. Seed default payment methods
+    console.log('Seeding Payment Methods...')
+    const defaultMethods = [
+        { code: 'telebirr', name: 'TeleBirr', type: 'DEPOSIT' as const, merchantAccount: '', instructions: 'Send via TeleBirr to the merchant number. Complete within 15 minutes.', icon: '📱', enabled: true, sortOrder: 0 },
+        { code: 'telebirr_withdrawal', name: 'TeleBirr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '📱', enabled: true, sortOrder: 0 },
+        { code: 'cbe', name: 'CBE Birr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 1 },
+        { code: 'awash', name: 'Awash Bank', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 2 },
+        { code: 'dashen', name: 'Dashen Bank', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 3 },
+        { code: 'amhara', name: 'Amhara Bank', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 4 },
+    ]
+    for (const method of defaultMethods) {
+        await prisma.paymentMethod.upsert({
+            where: { code: method.code },
+            update: {},  // don't overwrite existing values
+            create: method,
+        })
+    }
+    console.log(`Payment methods seeded (${defaultMethods.length} methods)`)
+
+    // 8. Create one WAITING game per active template so the lobby isn't empty
     console.log('Creating initial games from templates...')
     const templates = await prisma.gameTemplate.findMany({ where: { active: true } })
     for (const t of templates) {

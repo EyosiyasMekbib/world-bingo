@@ -12,50 +12,64 @@
             Available Balance: <strong>{{ balance.toFixed(2) }} ETB</strong>
           </p>
 
-          <!-- Amount -->
-          <div class="field">
-            <label>Amount (ETB)</label>
-            <input
-              v-model.number="form.amount"
-              type="number"
-              :min="100"
-              :max="balance"
-              placeholder="Min 100 ETB"
-              class="input"
-            />
-            <span class="hint">Minimum: 100 ETB</span>
+          <!-- Loading methods -->
+          <div v-if="loadingMethods" class="methods-loading">
+            Loading payment methods…
           </div>
 
-          <!-- Bank -->
-          <div class="field">
-            <label>Bank / Payment Method</label>
-            <select v-model="form.paymentMethod" class="input">
-              <option value="telebirr">Telebirr</option>
-              <option value="cbe">CBE Birr</option>
-              <option value="awash">Awash Bank</option>
-              <option value="dashen">Dashen Bank</option>
-              <option value="amhara">Amhara Bank</option>
-            </select>
+          <!-- No methods -->
+          <div v-else-if="withdrawalMethods.length === 0" class="no-methods">
+            No withdrawal methods are currently available. Please try again later.
           </div>
 
-          <!-- Account Number -->
-          <div class="field">
-            <label>Account / Phone Number</label>
-            <input
-              v-model="form.accountNumber"
-              type="text"
-              placeholder="e.g. 0912345678"
-              class="input"
-            />
-          </div>
+          <template v-else>
+            <!-- Amount -->
+            <div class="field">
+              <label>Amount (ETB)</label>
+              <input
+                v-model.number="form.amount"
+                type="number"
+                :min="100"
+                :max="balance"
+                placeholder="Min 100 ETB"
+                class="input"
+              />
+              <span class="hint">Minimum: 100 ETB</span>
+            </div>
 
-          <p v-if="error" class="msg error">{{ error }}</p>
-          <p v-if="success" class="msg success">✅ Withdrawal request submitted! We'll process it within 24h.</p>
+            <!-- Bank / Payment Method (dynamic) -->
+            <div class="field">
+              <label>Bank / Payment Method</label>
+              <select v-model="form.paymentMethod" class="input">
+                <option v-for="m in withdrawalMethods" :key="m.code" :value="m.code">
+                  {{ m.icon ? m.icon + ' ' : '' }}{{ m.name }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Account Number -->
+            <div class="field">
+              <label>Account / Phone Number</label>
+              <input
+                v-model="form.accountNumber"
+                type="text"
+                placeholder="e.g. 0912345678"
+                class="input"
+              />
+            </div>
+
+            <p v-if="error" class="msg error">{{ error }}</p>
+            <p v-if="success" class="msg success">✅ Withdrawal request submitted! We'll process it within 24h.</p>
+          </template>
         </div>
 
         <div class="modal-footer">
           <button class="btn-secondary" @click="$emit('update:modelValue', false)">Cancel</button>
-          <button class="btn-primary" :disabled="loading || !canSubmit" @click="submit">
+          <button
+            class="btn-primary"
+            :disabled="loading || !canSubmit || withdrawalMethods.length === 0"
+            @click="submit"
+          >
             <span v-if="loading">Submitting…</span>
             <span v-else>Request Withdrawal</span>
           </button>
@@ -76,15 +90,39 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 
+type WithdrawalMethod = { code: string; name: string; icon: string | null }
+
+const loadingMethods = ref(false)
+const withdrawalMethods = ref<WithdrawalMethod[]>([])
+
 const form = reactive({
   amount: 0,
-  paymentMethod: 'telebirr',
+  paymentMethod: '',
   accountNumber: '',
 })
 
 const error = ref('')
 const success = ref(false)
 const loading = ref(false)
+
+const fetchMethods = async () => {
+  loadingMethods.value = true
+  try {
+    const data = await auth.apiFetch<WithdrawalMethod[]>('/payment-methods?type=WITHDRAWAL')
+    withdrawalMethods.value = Array.isArray(data) ? data : []
+    if (withdrawalMethods.value.length > 0 && !form.paymentMethod) {
+      form.paymentMethod = withdrawalMethods.value[0].code
+    }
+  } catch {
+    withdrawalMethods.value = []
+  } finally {
+    loadingMethods.value = false
+  }
+}
+
+watch(() => props.modelValue, (open) => {
+  if (open) fetchMethods()
+})
 
 const canSubmit = computed(
   () =>
@@ -124,7 +162,7 @@ async function submit() {
 
 function resetForm() {
   form.amount = 0
-  form.paymentMethod = 'telebirr'
+  form.paymentMethod = withdrawalMethods.value[0]?.code ?? ''
   form.accountNumber = ''
   error.value = ''
   success.value = false
@@ -193,6 +231,14 @@ function resetForm() {
   color: var(--color-primary, #c9a96e);
 }
 
+.methods-loading,
+.no-methods {
+  text-align: center;
+  color: #888;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -223,6 +269,11 @@ label {
 
 .input:focus {
   border-color: var(--color-primary, #c9a96e);
+}
+
+select.input option {
+  background: #1a1a2e;
+  color: #fff;
 }
 
 .msg {

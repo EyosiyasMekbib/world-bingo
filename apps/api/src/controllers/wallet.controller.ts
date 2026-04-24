@@ -29,6 +29,7 @@ export class WalletController {
             let transactionId: string | undefined
             let senderName: string | undefined
             let senderAccount: string | undefined
+            let methodCode: string | undefined
 
             for await (const part of parts) {
                 if (part.type === 'field') {
@@ -40,6 +41,8 @@ export class WalletController {
                         senderName = String(part.value)
                     } else if (part.fieldname === 'senderAccount') {
                         senderAccount = String(part.value)
+                    } else if (part.fieldname === 'methodCode') {
+                        methodCode = String(part.value)
                     }
                 } else if (part.type === 'file' && part.fieldname === 'receipt') {
                     // Validate file type and size
@@ -61,6 +64,7 @@ export class WalletController {
                     transactionId,
                     senderName,
                     senderAccount,
+                    methodCode,
                 })
                 return reply.status(201).send(transaction)
             } catch (err: any) {

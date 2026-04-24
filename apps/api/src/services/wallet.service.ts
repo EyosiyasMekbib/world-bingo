@@ -35,6 +35,7 @@ export class WalletService {
                 paymentTransactionId: data.transactionId,
                 senderName: data.senderName,
                 senderAccount: data.senderAccount,
+                ...(data.methodCode ? { metadata: { methodCode: data.methodCode } } : {}),
             },
         })
         return transaction

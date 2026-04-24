@@ -220,6 +220,12 @@ export const useAdminApi = () => {
             return apiFetch<any>(`/admin/providers/${code}/transactions${query ? `?${query}` : ''}`)
         },
 
+        // ── Payment Methods ───────────────────────────────────────────────
+        getPaymentMethods: () => apiFetch<any[]>('/admin/payment-methods'),
+        createPaymentMethod: (data: any) => apiFetch<any>('/admin/payment-methods', { method: 'POST', body: data }),
+        updatePaymentMethod: (id: string, data: any) => apiFetch<any>(`/admin/payment-methods/${id}`, { method: 'PUT', body: data }),
+        deletePaymentMethod: (id: string) => apiFetch<void>(`/admin/payment-methods/${id}`, { method: 'DELETE' }),
+
         // ── Cashback Promotions ───────────────────────────────────────────
         getCashbackPromotions: () => apiFetch<any[]>('/admin/cashback'),
         createCashbackPromotion: (data: {

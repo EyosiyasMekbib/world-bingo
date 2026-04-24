@@ -41,6 +41,7 @@ export const DepositSchema = z.object({
     transactionId: z.string().min(5).optional(),
     senderName: z.string().min(1).optional(),
     senderAccount: z.string().min(10).optional(),
+    methodCode: z.string().optional(),
 })
 
 export const WithdrawalSchema = z.object({
