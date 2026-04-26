@@ -5,7 +5,7 @@
     "type": "module",
     "main": "./src/index.ts",
     "prisma": {
-        "seed": "tsx prisma/seed.ts"
+        "seed": "tsx --env-file ../../.env prisma/seed.ts"
     },
     "scripts": {
         "dev": "tsx watch src/index.ts",
@@ -13,11 +13,11 @@
         "start": "node dist/index.js",
         "typecheck": "tsc --noEmit",
         "lint": "eslint src",
-        "test": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/world_bingo_test?schema=public' vitest run",
-        "test:coverage": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/world_bingo_test?schema=public' vitest run --coverage",
-        "db:migrate": "prisma migrate dev",
-        "db:seed": "tsx prisma/seed.ts",
-        "db:studio": "prisma studio"
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "db:migrate": "prisma migrate dev --env-file ../../.env",
+        "db:seed": "tsx --env-file ../../.env prisma/seed.ts",
+        "db:studio": "prisma studio --env-file ../../.env"
     },
     "dependencies": {
         "@bull-board/api": "^6.19.0",

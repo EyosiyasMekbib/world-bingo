@@ -38,7 +38,8 @@ import './workers/game-engine.worker.js'
 import './workers/game-catalog-sync.worker.js'
 import './workers/cashback-checker.worker.js'
 
-dotenv.config()
+// Load from monorepo root — single source of truth for all env vars
+dotenv.config({ path: new URL('../../../.env', import.meta.url).pathname })
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')

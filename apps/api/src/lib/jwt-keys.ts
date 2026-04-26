@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv'
-dotenv.config()
+// Load from monorepo root — single source of truth for all env vars
+dotenv.config({ path: new URL('../../../../.env', import.meta.url).pathname })
 
 // Resolve JWT keys: prefer base64-encoded (safe for .env files), fall back to raw
 function resolveJwtKey(base64EnvVar: string, rawEnvVar: string): string {
