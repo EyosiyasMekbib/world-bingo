@@ -43,14 +43,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Admin: GET /settings/game ─────────────────────────────────────────────
     // Returns configurable game settings (admin only).
     fastify.get('/game', {
-        preValidation: [
-            fastify.authenticate,
-            async (request: any, reply) => {
-                if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
-                    reply.status(403).send({ error: 'Forbidden: Admin access only' })
-                }
-            },
-        ],
+        preValidation: [fastify.requireAdmin],
     }, async (_req, _reply) => {
         await ensureDefaults()
         const rows = await prisma.siteSetting.findMany({
@@ -68,14 +61,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Admin: PUT /settings/game ─────────────────────────────────────────────
     // Body: { ball_interval_secs: 5 }
     fastify.put('/game', {
-        preValidation: [
-            fastify.authenticate,
-            async (request: any, reply) => {
-                if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
-                    reply.status(403).send({ error: 'Forbidden: Admin access only' })
-                }
-            },
-        ],
+        preValidation: [fastify.requireAdmin],
     }, async (req: any, _reply) => {
         const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string }
         const updates: Record<string, string> = {}
@@ -113,14 +99,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Admin: PUT /settings/features ───────────────────────────────────────
     // Body: { feature_referrals: true, feature_tournaments: false, ... }
     fastify.put('/features', {
-        preValidation: [
-            fastify.authenticate,
-            async (request: any, reply) => {
-                if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
-                    reply.status(403).send({ error: 'Forbidden: Admin access only' })
-                }
-            },
-        ],
+        preValidation: [fastify.requireAdmin],
     }, async (req: any, reply) => {
         const body = req.body as Record<string, boolean>
         const results: Record<string, boolean> = {}

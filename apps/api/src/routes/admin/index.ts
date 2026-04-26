@@ -42,13 +42,7 @@ const templateUpdateSchema = z.object({
 })
 
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
-    // Both hooks will run sequentially
-    fastify.addHook('preValidation', fastify.authenticate)
-    fastify.addHook('preValidation', async (request: any, reply) => {
-        if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
-            reply.status(403).send({ error: 'Forbidden: Admin access only' })
-        }
-    })
+    fastify.addHook('preValidation', fastify.requireAdmin)
 
     fastify.get('/stats', AdminController.getStats)
     fastify.get('/transactions/pending', AdminController.getPendingDeposits)

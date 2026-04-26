@@ -56,20 +56,16 @@ const gameRoutes: FastifyPluginAsync = async (fastify) => {
     })
     
     fastify.post('/:id/start', {
-        preValidation: [fastify.authenticate],
+        preValidation: [fastify.requireAdmin],
         handler: async (req, reply) => {
-             // @ts-ignore
-             if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') return reply.status(403).send('Forbidden')
-             // @ts-ignore
-             return await GameService.startGame(req.params.id)
+            // @ts-ignore
+            return await GameService.startGame(req.params.id)
         }
     })
 
     fastify.post('/:id/cancel', {
-        preValidation: [fastify.authenticate],
+        preValidation: [fastify.requireAdmin],
         handler: async (req, reply) => {
-            // @ts-ignore
-            if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') return reply.status(403).send('Forbidden')
             // @ts-ignore
             await GameService.cancelGame(req.params.id)
             return { success: true }

@@ -80,12 +80,8 @@ export default async function tournamentRoutes(server: FastifyInstance) {
     // ── POST /tournaments (admin only) ────────────────────────────────────────
     server.post(
         '/',
-        { preHandler: [server.authenticate] },
+        { preHandler: [server.requireAdmin] },
         async (request, reply) => {
-            const user = request.user as any
-            if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-                return reply.status(403).send({ error: 'Forbidden' })
-            }
             try {
                 const body = request.body as Record<string, any>
                 const parsed = CreateTournamentSchema.safeParse(body)
@@ -103,12 +99,8 @@ export default async function tournamentRoutes(server: FastifyInstance) {
     // ── POST /tournaments/:id/start (admin) ───────────────────────────────────
     server.post(
         '/:id/start',
-        { preHandler: [server.authenticate] },
+        { preHandler: [server.requireAdmin] },
         async (request, reply) => {
-            const user = request.user as any
-            if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-                return reply.status(403).send({ error: 'Forbidden' })
-            }
             const { id } = request.params as { id: string }
             try {
                 const tournament = await TournamentService.start(id)
@@ -122,12 +114,8 @@ export default async function tournamentRoutes(server: FastifyInstance) {
     // ── POST /tournaments/:id/cancel (admin) ──────────────────────────────────
     server.post(
         '/:id/cancel',
-        { preHandler: [server.authenticate] },
+        { preHandler: [server.requireAdmin] },
         async (request, reply) => {
-            const user = request.user as any
-            if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-                return reply.status(403).send({ error: 'Forbidden' })
-            }
             const { id } = request.params as { id: string }
             try {
                 await TournamentService.cancel(id)
@@ -142,12 +130,8 @@ export default async function tournamentRoutes(server: FastifyInstance) {
     // Manual round advancement (useful for testing / stuck states)
     server.post(
         '/:id/advance',
-        { preHandler: [server.authenticate] },
+        { preHandler: [server.requireAdmin] },
         async (request, reply) => {
-            const user = request.user as any
-            if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-                return reply.status(403).send({ error: 'Forbidden' })
-            }
             const { id } = request.params as { id: string }
             const { winnerId } = request.body as { winnerId: string }
             if (!winnerId) return reply.status(400).send({ error: 'winnerId is required' })

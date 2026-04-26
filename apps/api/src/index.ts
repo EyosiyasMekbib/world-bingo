@@ -183,6 +183,17 @@ server.decorate('authenticate', async function (request: any, reply: any) {
     }
 })
 
+server.decorate('requireAdmin', async function (request: any, reply: any) {
+    try {
+        await request.jwtVerify()
+    } catch (err) {
+        return reply.send(err)
+    }
+    if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden: Admin access only' })
+    }
+})
+
 // Register route prefixes
 await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
