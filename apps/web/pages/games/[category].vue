@@ -213,8 +213,12 @@ onUnmounted(() => {
 
     <!-- ── PROVIDER GAMES ─────────────────────────────────────────── -->
     <div v-else class="max-container">
-      <div v-if="initialLoading" class="state-msg">
-        <span class="spinner" aria-hidden="true"></span> Loading games...
+      <!-- Skeleton grid while loading first page -->
+      <div v-if="initialLoading" class="pg-grid" aria-busy="true" aria-label="Loading games">
+        <div v-for="n in 24" :key="n" class="pg-skel">
+          <div class="pg-skel-thumb"></div>
+          <div class="pg-skel-name"></div>
+        </div>
       </div>
       <div v-else-if="!providerGames.length" class="state-msg">
         No games available.
@@ -249,8 +253,12 @@ onUnmounted(() => {
         <!-- Infinite scroll sentinel -->
         <div ref="sentinel" class="sentinel" aria-hidden="true"></div>
 
-        <div v-if="loadingMore" class="load-more-msg">
-          <span class="spinner" aria-hidden="true"></span>
+        <!-- Skeleton row while loading next page -->
+        <div v-if="loadingMore" class="pg-grid pg-grid--more" aria-busy="true">
+          <div v-for="n in 8" :key="n" class="pg-skel">
+            <div class="pg-skel-thumb"></div>
+            <div class="pg-skel-name"></div>
+          </div>
         </div>
         <div v-else-if="!hasMore && providerGames.length > 0" class="end-msg">
           All {{ categoryLabel }} games loaded
@@ -511,14 +519,53 @@ onUnmounted(() => {
   font-size: 11px;
 }
 
+/* ── Skeleton cards ──────────────────────────────────────────────── */
+.pg-skel {
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 22, 55, 0.7);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.pg-skel-thumb {
+  aspect-ratio: 3/4;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.09) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.pg-skel-name {
+  height: 10px;
+  margin: 9px 9px 10px;
+  border-radius: 3px;
+  width: 70%;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.09) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  animation-delay: 0.07s;
+}
+
+.pg-grid--more {
+  margin-top: 10px;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ── Infinite scroll ─────────────────────────────────────────────── */
 .sentinel { height: 1px; }
-
-.load-more-msg {
-  display: flex;
-  justify-content: center;
-  padding: 24px 0;
-}
 
 .end-msg {
   text-align: center;
