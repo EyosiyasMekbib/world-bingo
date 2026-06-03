@@ -155,6 +155,12 @@ const heroSlides = [
   },
 ]
 
+const activeHeroSlide = computed(() => heroSlides[currentSlide.value])
+const heroFallbackStyle = computed<Record<string, string>>(() => ({
+  '--hero-desktop-fallback': `url("${activeHeroSlide.value.desktopJpg}")`,
+  '--hero-mobile-fallback': `url("${activeHeroSlide.value.mobileJpg}")`,
+}))
+
 useHead({
   link: [
     {
@@ -188,6 +194,11 @@ function prevSlide() {
 
 function nextSlide() {
   goToSlide((currentSlide.value + 1) % heroSlides.length)
+}
+
+function onHeroImageError(event: Event) {
+  const image = event.currentTarget as HTMLImageElement
+  image.style.opacity = '0'
 }
 
 function startSlideTimer() {
@@ -274,7 +285,7 @@ onUnmounted(() => {
   <div class="lobby-page">
 
     <!-- ── HERO ─────────────────────────────────────────────────── -->
-    <section class="hero" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
+    <section class="hero" :style="heroFallbackStyle" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
       <div class="hero-bg"></div>
 
       <!-- Arrow navigation (desktop only) -->
@@ -291,22 +302,23 @@ onUnmounted(() => {
 
       <Transition name="hero-fade" mode="out-in">
         <picture
-          :key="heroSlides[currentSlide].id"
+          :key="activeHeroSlide.id"
           class="hero-ad"
           @click="scrollToRooms"
         >
-          <source media="(max-width: 640px)" type="image/avif" :srcset="heroSlides[currentSlide].mobileAvif">
-          <source media="(max-width: 640px)" type="image/webp" :srcset="heroSlides[currentSlide].mobileWebp">
-          <source media="(max-width: 640px)" :srcset="heroSlides[currentSlide].mobileJpg">
-          <source type="image/avif" :srcset="heroSlides[currentSlide].desktopAvif">
-          <source type="image/webp" :srcset="heroSlides[currentSlide].desktopWebp">
+          <source media="(max-width: 640px)" type="image/avif" :srcset="activeHeroSlide.mobileAvif">
+          <source media="(max-width: 640px)" type="image/webp" :srcset="activeHeroSlide.mobileWebp">
+          <source media="(max-width: 640px)" :srcset="activeHeroSlide.mobileJpg">
+          <source type="image/avif" :srcset="activeHeroSlide.desktopAvif">
+          <source type="image/webp" :srcset="activeHeroSlide.desktopWebp">
           <img
-            :src="heroSlides[currentSlide].desktopJpg"
-            :alt="heroSlides[currentSlide].title"
+            :src="activeHeroSlide.desktopJpg"
+            :alt="activeHeroSlide.title"
             class="hero-ad__image"
             loading="eager"
             decoding="async"
             fetchpriority="high"
+            @error="onHeroImageError"
           >
         </picture>
       </Transition>
@@ -674,14 +686,24 @@ onUnmounted(() => {
 .hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  background-image:
+    var(--hero-desktop-fallback),
+    linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
   height: clamp(320px, 37.5vw, 540px);
   display: flex;
   flex-direction: column;
 }
 
 @media (max-width: 620px) {
-  .hero { height: clamp(360px, 106vw, 460px); }
+  .hero {
+    background-image:
+      var(--hero-mobile-fallback),
+      linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+    height: clamp(360px, 106vw, 460px);
+  }
 }
 
 .hero-bg {
@@ -707,6 +729,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: opacity 0.15s ease;
 }
 
 .hero-inner {
