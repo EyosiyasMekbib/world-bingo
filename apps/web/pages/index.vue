@@ -5,7 +5,6 @@ import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import type { Game } from '@world-bingo/shared-types'
-import { filterProviderGames, normalizeLobbySearchQuery } from '~/utils/lobby-search'
 
 const auth = useAuthStore()
 const gameStore = useGameStore()
@@ -20,7 +19,6 @@ const { tournamentsEnabled } = useFeatureFlags()
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
 const selectedCategory = ref('ALL')
-const normalizedSearchQuery = computed(() => normalizeLobbySearchQuery(searchQuery.value))
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
@@ -42,6 +40,12 @@ const allCategories = computed(() => {
 function selectCategory(cat: string) {
   selectedCategory.value = cat
   searchQuery.value = ''
+}
+
+function goToSearch() {
+  const q = searchQuery.value.trim()
+  if (!q) return
+  navigateTo({ path: '/search', query: { q } })
 }
 
 const showBingoSection = computed(() =>
@@ -78,72 +82,18 @@ const BINGO_HOME_LIMIT = 12
 const PROVIDER_HOME_LIMIT = 12
 
 const activeBingoGames = computed(() => {
-  const games = selectedCategory.value === 'TRENDING'
-    ? trendingBingoGames.value
-    : selectedCategory.value === 'POPULAR'
-      ? popularBingoGames.value
-      : gameStore.availableGames
-
-  return filterBingoGames(games)
+  if (selectedCategory.value === 'TRENDING') return trendingBingoGames.value
+  if (selectedCategory.value === 'POPULAR') return popularBingoGames.value
+  return gameStore.availableGames
 })
-
-const featuredProviderGames = computed(() => filterProviderGames(providerStore.games, searchQuery.value))
-
-const filteredCategoryGamesMap = computed<Record<string, ProviderGame[]>>(() => {
-  return Object.fromEntries(
-    Object.entries(categoryGamesMap.value).map(([cat, games]) => [
-      cat,
-      filterProviderGames(games, searchQuery.value),
-    ]),
-  )
-})
-
-const hasProviderSearchMatches = computed(() =>
-  Object.values(filteredCategoryGamesMap.value).some((games) => games.length > 0),
-)
-
-function filterBingoGames(games: Game[]) {
-  const q = normalizedSearchQuery.value
-  if (!q) return games
-
-  return games.filter((g: Game) => {
-    const label = patternLabel(g.pattern).toLowerCase()
-    return (
-      String(g.ticketPrice).includes(q) ||
-      g.status.toLowerCase().includes(q) ||
-      label.includes(q) ||
-      (g as any).title?.toLowerCase().includes(q)
-    )
-  })
-}
-
-const showBingoSearchEmpty = computed(() =>
-  Boolean(normalizedSearchQuery.value) &&
-  showBingoSection.value &&
-  !activeBingoGames.value.length &&
-  !hasProviderSearchMatches.value
-)
-
-function getCategorySearchMessage(cat: string) {
-  return normalizedSearchQuery.value
-    ? `No ${CATEGORY_LABELS[cat] ?? cat} games match your search.`
-    : 'No games available.'
-}
-
-function shouldShowProviderCategory(cat: string) {
-  if (!showProviderCategory(cat)) return false
-  if (!normalizedSearchQuery.value) return true
-  return selectedCategory.value === cat || (filteredCategoryGamesMap.value[cat]?.length ?? 0) > 0
-}
 
 const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
-const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT && !normalizedSearchQuery.value)
+const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT)
 
 function getCategoryDisplayGames(cat: string) {
-  return (filteredCategoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
+  return (categoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
 }
 function categoryHasMore(cat: string) {
-  if (normalizedSearchQuery.value) return false
   return (categoryGamesMap.value[cat]?.length ?? 0) > PROVIDER_HOME_LIMIT
 }
 
@@ -507,10 +457,12 @@ onUnmounted(() => {
           </NuxtLink>
         </nav>
 
-        <label class="search-wrap">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
+        <form class="search-wrap" role="search" @submit.prevent="goToSearch">
+          <button type="submit" class="search-submit" aria-label="Search games">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
           <input
             v-model="searchQuery"
             type="text"
@@ -518,12 +470,12 @@ onUnmounted(() => {
             class="search-input"
             aria-label="Search games"
           />
-          <button v-if="searchQuery" class="search-clear" aria-label="Clear search" @click="searchQuery = ''">
+          <button v-if="searchQuery" type="button" class="search-clear" aria-label="Clear search" @click="searchQuery = ''">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-        </label>
+        </form>
       </div>
     </div>
 
@@ -551,9 +503,9 @@ onUnmounted(() => {
           </NuxtLink>
 
           <!-- Third-party games OR Coming Soon tiles -->
-          <template v-if="featuredProviderGames.length">
+          <template v-if="providerStore.games.length">
             <NuxtLink
-              v-for="g in featuredProviderGames.slice(0, 6)"
+              v-for="g in providerStore.games.slice(0, 6)"
               :key="g.gameCode"
               :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
               class="type-tile"
@@ -578,7 +530,7 @@ onUnmounted(() => {
             </NuxtLink>
           </template>
 
-          <template v-else-if="!normalizedSearchQuery && !providerStore.games.length">
+          <template v-else-if="!providerStore.games.length">
             <div class="type-tile type-tile--soon">
               <div class="tt-thumb">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -629,7 +581,7 @@ onUnmounted(() => {
       <div
         v-for="cat in providerCategories"
         :key="cat"
-        v-show="shouldShowProviderCategory(cat)"
+        v-show="showProviderCategory(cat)"
         class="content-section"
       >
         <div class="max-container section-with-label">
@@ -640,8 +592,8 @@ onUnmounted(() => {
           <div v-if="categoryGamesLoading[cat]" class="state-msg">
             <span class="spinner" aria-hidden="true"></span> Loading...
           </div>
-          <div v-else-if="!filteredCategoryGamesMap[cat]?.length" class="state-msg">
-            {{ getCategorySearchMessage(cat) }}
+          <div v-else-if="!categoryGamesMap[cat]?.length" class="state-msg">
+            No games available.
           </div>
           <template v-else>
             <div class="pg-grid">
@@ -699,7 +651,7 @@ onUnmounted(() => {
           <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
         </div>
         <div v-else-if="!activeBingoGames.length" class="state-msg">
-          {{ showBingoSearchEmpty ? 'No games match your search.' : 'No bingo rooms available right now. Check back soon.' }}
+          No bingo rooms available right now. Check back soon.
         </div>
 
         <template v-else>
@@ -1188,6 +1140,18 @@ onUnmounted(() => {
   transition: border-color 0.15s ease;
 }
 .search-wrap:focus-within { border-color: rgba(245,158,11,0.35); }
+.search-submit {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+.search-submit:hover { color: rgba(255,255,255,0.7); }
 .search-input {
   background: none;
   border: none;

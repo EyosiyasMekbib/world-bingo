@@ -39,7 +39,7 @@ interface ProviderGamesState {
   pageSize: number
   total: number
   loading: boolean
-  launching: string | null   // gameCode being launched
+  launching: string | null // gameCode being launched
   error: string | null
 }
 
@@ -65,8 +65,11 @@ export const useProviderGamesStore = defineStore('provider-games', {
 
     hasMore: (state): boolean => state.page * state.pageSize < state.total,
 
-    displayCategories: (state): string[] =>
-      [CATEGORY_ALL, CATEGORY_BINGO, ...state.categories.filter((c) => c !== CATEGORY_BINGO)],
+    displayCategories: (state): string[] => [
+      CATEGORY_ALL,
+      CATEGORY_BINGO,
+      ...state.categories.filter((c) => c !== CATEGORY_BINGO),
+    ],
   },
 
   actions: {
@@ -95,21 +98,31 @@ export const useProviderGamesStore = defineStore('provider-games', {
       }
     },
 
-    async fetchGames(opts: { reset?: boolean; category?: string; page?: number; search?: string } = {}) {
+    async fetchGames(
+      opts: {
+        reset?: boolean
+        category?: string
+        page?: number
+        pageSize?: number
+        search?: string
+      } = {},
+    ) {
       const code = this.activeProviderCode
       if (!code) return
 
       if (opts.category !== undefined) this.activeCategory = opts.category
       if (opts.page !== undefined) this.page = opts.page
+      if (opts.pageSize !== undefined) this.pageSize = opts.pageSize
       if (opts.search !== undefined) this.searchQuery = opts.search
       if (opts.reset) {
         this.games = []
         this.page = 1
       }
 
-      const category = this.activeCategory === CATEGORY_ALL || this.activeCategory === CATEGORY_BINGO
-        ? undefined
-        : this.activeCategory
+      const category =
+        this.activeCategory === CATEGORY_ALL || this.activeCategory === CATEGORY_BINGO
+          ? undefined
+          : this.activeCategory
 
       this.loading = true
       this.error = null
@@ -123,7 +136,9 @@ export const useProviderGamesStore = defineStore('provider-games', {
         if (category) params.set('category', category)
         if (this.searchQuery) params.set('search', this.searchQuery)
 
-        const result = await $fetch<GamesPage>(`${config.public.apiBase}/providers/${code}/games?${params}`)
+        const result = await $fetch<GamesPage>(
+          `${config.public.apiBase}/providers/${code}/games?${params}`,
+        )
         if (opts.reset) {
           this.games = result.games
         } else {
