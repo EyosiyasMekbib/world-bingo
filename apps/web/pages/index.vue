@@ -126,28 +126,55 @@ const heroSlides = [
   {
     id: 'aviatrix',
     title: 'Aviatrix promotion',
+    desktopAvif: '/ads/hero/aviatrix-desktop.avif',
     desktopWebp: '/ads/hero/aviatrix-desktop.webp',
     desktopJpg: '/ads/hero/aviatrix-desktop.jpg',
+    mobileAvif: '/ads/hero/aviatrix-mobile.avif',
     mobileWebp: '/ads/hero/aviatrix-mobile.webp',
     mobileJpg: '/ads/hero/aviatrix-mobile.jpg',
   },
   {
     id: 'aradabet',
     title: 'Aradabet promotion',
+    desktopAvif: '/ads/hero/aradabet-desktop.avif',
     desktopWebp: '/ads/hero/aradabet-desktop.webp',
     desktopJpg: '/ads/hero/aradabet-desktop.jpg',
+    mobileAvif: '/ads/hero/aradabet-mobile.avif',
     mobileWebp: '/ads/hero/aradabet-mobile.webp',
     mobileJpg: '/ads/hero/aradabet-mobile.jpg',
   },
   {
     id: 'arada-games',
     title: 'Arada Games promotion',
+    desktopAvif: '/ads/hero/arada-games-desktop.avif',
     desktopWebp: '/ads/hero/arada-games-desktop.webp',
     desktopJpg: '/ads/hero/arada-games-desktop.jpg',
+    mobileAvif: '/ads/hero/arada-games-mobile.avif',
     mobileWebp: '/ads/hero/arada-games-mobile.webp',
     mobileJpg: '/ads/hero/arada-games-mobile.jpg',
   },
 ]
+
+useHead({
+  link: [
+    {
+      rel: 'preload',
+      as: 'image',
+      href: heroSlides[0].desktopAvif,
+      type: 'image/avif',
+      media: '(min-width: 641px)',
+      fetchpriority: 'high',
+    },
+    {
+      rel: 'preload',
+      as: 'image',
+      href: heroSlides[0].mobileAvif,
+      type: 'image/avif',
+      media: '(max-width: 640px)',
+      fetchpriority: 'high',
+    },
+  ],
+})
 
 function goToSlide(idx: number) {
   currentSlide.value = idx
@@ -268,13 +295,17 @@ onUnmounted(() => {
           class="hero-ad"
           @click="scrollToRooms"
         >
+          <source media="(max-width: 640px)" type="image/avif" :srcset="heroSlides[currentSlide].mobileAvif">
           <source media="(max-width: 640px)" type="image/webp" :srcset="heroSlides[currentSlide].mobileWebp">
           <source media="(max-width: 640px)" :srcset="heroSlides[currentSlide].mobileJpg">
+          <source type="image/avif" :srcset="heroSlides[currentSlide].desktopAvif">
           <source type="image/webp" :srcset="heroSlides[currentSlide].desktopWebp">
           <img
             :src="heroSlides[currentSlide].desktopJpg"
             :alt="heroSlides[currentSlide].title"
             class="hero-ad__image"
+            loading="eager"
+            decoding="async"
             fetchpriority="high"
           >
         </picture>
