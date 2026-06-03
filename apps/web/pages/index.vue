@@ -458,11 +458,6 @@ onUnmounted(() => {
         </nav>
 
         <form class="search-wrap" role="search" @submit.prevent="goToSearch">
-          <button type="submit" class="search-submit" aria-label="Search games">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </button>
           <input
             v-model="searchQuery"
             type="text"
@@ -470,6 +465,11 @@ onUnmounted(() => {
             class="search-input"
             aria-label="Search games"
           />
+          <button type="submit" class="search-submit" aria-label="Search games">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
           <button v-if="searchQuery" type="button" class="search-clear" aria-label="Clear search" @click="searchQuery = ''">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>

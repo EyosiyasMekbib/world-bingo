@@ -16,6 +16,7 @@ const games: ProviderGame[] = [
     imageSquare: null,
     imageLandscape: null,
     vendorCode: 'SPRIBE',
+    providerName: 'Galaxy Play',
   },
   {
     gameCode: 'book-of-ra',
@@ -24,6 +25,7 @@ const games: ProviderGame[] = [
     imageSquare: null,
     imageLandscape: null,
     vendorCode: 'NOVOMATIC',
+    providerName: 'Galaxy Play',
   },
 ]
 
@@ -49,6 +51,7 @@ describe('lobby search', () => {
     expect(matchesProviderGameSearch(games[0], 'aviator')).toBe(true)
     expect(matchesProviderGameSearch(games[0], 'crash')).toBe(true)
     expect(matchesProviderGameSearch(games[0], 'spribe')).toBe(true)
+    expect(matchesProviderGameSearch(games[0], 'galaxy')).toBe(true)
     expect(matchesProviderGameSearch(games[0], 'missing')).toBe(false)
   })
 

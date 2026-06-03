@@ -1,35 +1,63 @@
 <script setup lang="ts">
-import { useAuthStore } from '~/store/auth'
-import { useGameStore } from '~/store/game'
-import { useProviderGamesStore, type ProviderGame } from '~/store/provider-games'
-import {
-  filterBingoGames,
-  filterProviderGames,
-  normalizeLobbySearchQuery,
-} from '~/utils/lobby-search'
+import { useProviderGamesStore, type GamesPage, type ProviderGame } from '~/store/provider-games'
+import { matchesProviderGameSearch, normalizeLobbySearchQuery } from '~/utils/lobby-search'
+
+type SearchGameResult = ProviderGame & {
+  providerCode: string
+  providerName: string
+}
+
+type SearchBingoResult = {
+  kind: 'bingo'
+  id: string
+  gameCode: string
+  gameName: string
+  categoryCode: string
+  imageSquare: string | null
+  imageLandscape: string | null
+  providerCode: string
+  providerName: string
+  vendorCode: string | null
+}
+
+type SearchResult = (SearchGameResult & { kind: 'provider'; id: string }) | SearchBingoResult
 
 const route = useRoute()
-const config = useRuntimeConfig()
-const auth = useAuthStore()
-const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()
-const { patternLabel } = usePatternLabel()
 
 const searchQuery = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
-const providerResults = ref<ProviderGame[]>([])
-const showAuthPrompt = ref(false)
+const providerCatalog = ref<SearchGameResult[]>([])
+const catalogLoaded = ref(false)
 
 const query = computed(() => normalizeLobbySearchQuery(String(route.query.q ?? '')))
-const bingoResults = computed(() =>
-  filterBingoGames(gameStore.availableGames, query.value, (game) => patternLabel(game.pattern)),
+const bingoResult = computed<SearchBingoResult | null>(() => {
+  if (!query.value) return null
+
+  const bingo: SearchBingoResult = {
+    kind: 'bingo',
+    id: 'bingo',
+    gameCode: 'bingo',
+    gameName: 'Bingo',
+    categoryCode: 'BINGO',
+    imageSquare: null,
+    imageLandscape: null,
+    providerCode: 'world-bingo',
+    providerName: 'World Bingo',
+    vendorCode: null,
+  }
+
+  return matchesProviderGameSearch(bingo, query.value) ? bingo : null
+})
+const providerResults = computed<SearchGameResult[]>(() =>
+  providerCatalog.value.filter((game) => matchesProviderGameSearch(game, query.value)),
 )
-const providerMatches = computed(() => filterProviderGames(providerResults.value, query.value))
-const totalResults = computed(() => bingoResults.value.length + providerMatches.value.length)
+const results = computed<SearchResult[]>(() => [bingoResult.value, ...providerResults.value].filter(Boolean) as SearchResult[])
+const totalResults = computed(() => results.value.length)
 
 function goToSearch() {
-  const q = normalizeLobbySearchQuery(searchQuery.value)
+  const q = searchQuery.value.trim()
   if (!q) return
   navigateTo({ path: '/search', query: { q } })
 }
@@ -39,32 +67,60 @@ function clearSearch() {
   navigateTo('/search')
 }
 
-function handleJoinGame(gameId: string) {
-  if (!auth.isAuthenticated) {
-    showAuthPrompt.value = true
-    return
-  }
-  navigateTo(`/quick/${gameId}`)
+function resultToHref(result: SearchResult) {
+  return result.kind === 'bingo'
+    ? '/games/bingo'
+    : `/play/${result.providerCode}/${result.gameCode}`
 }
 
-async function loadSearchResults(q: string) {
+async function fetchAllProviderGames(providerCode: string, providerName: string) {
+  const collected: SearchGameResult[] = []
+  let page = 1
+  let totalPages = 1
+
+  do {
+    const response = await $fetch<GamesPage>(`${useRuntimeConfig().public.apiBase}/providers/${providerCode}/games`, {
+      query: {
+        page: String(page),
+        pageSize: '200',
+      },
+    })
+
+    collected.push(
+      ...response.games.map((game) => ({
+        ...game,
+        providerCode,
+        providerName,
+      })),
+    )
+
+    totalPages = response.totalPages
+    page += 1
+  } while (page <= totalPages)
+
+  return collected
+}
+
+async function ensureCatalogLoaded() {
+  if (catalogLoaded.value) return
+
   loading.value = true
   error.value = null
-  try {
-    await Promise.all([gameStore.fetchAvailableGames(), providerStore.fetchProviders()])
 
-    if (!providerStore.activeProviderCode) {
-      providerResults.value = []
+  try {
+    await providerStore.fetchProviders()
+
+    if (!providerStore.providers.length) {
+      providerCatalog.value = []
+      catalogLoaded.value = true
       return
     }
 
-    await providerStore.fetchGames({
-      reset: true,
-      category: 'ALL',
-      page: 1,
-      pageSize: 200,
-    })
-    providerResults.value = [...providerStore.games]
+    const allResults = await Promise.all(
+      providerStore.providers.map((provider) => fetchAllProviderGames(provider.code, provider.name)),
+    )
+    providerCatalog.value = allResults.flat()
+    catalogLoaded.value = true
   } catch (e: any) {
     error.value = e?.message ?? 'Failed to load search results'
   } finally {
@@ -76,15 +132,9 @@ watch(
   query,
   (q) => {
     searchQuery.value = q
-    providerResults.value = []
-
-    if (!q) {
-      loading.value = false
-      error.value = null
-      return
+    if (q && !catalogLoaded.value) {
+      void ensureCatalogLoaded()
     }
-
-    loadSearchResults(q)
   },
   { immediate: true },
 )
@@ -121,10 +171,19 @@ useHead({
           <h1 class="search-title">
             {{ query ? `Results for "${query}"` : 'Search games' }}
           </h1>
-          <p class="search-sub">Find bingo rooms and provider games from one place.</p>
+          <p class="search-sub">
+            Search across every provider in the catalog. Bingo shows up once, as a single game.
+          </p>
         </div>
 
         <form class="search-wrap" role="search" @submit.prevent="goToSearch">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search by title, price, category, provider, or vendor..."
+            class="search-input"
+            aria-label="Search games"
+          />
           <button type="submit" class="search-submit" aria-label="Search games">
             <svg
               width="15"
@@ -141,13 +200,6 @@ useHead({
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </button>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search by title, price, category, or vendor..."
-            class="search-input"
-            aria-label="Search games"
-          />
           <button
             v-if="searchQuery"
             type="button"
@@ -175,12 +227,12 @@ useHead({
 
     <div class="max-container search-content">
       <div v-if="!query" class="state-msg">
-        Type a game name, vendor, category, or price to see matches.
+        Type a game name, provider, category, or vendor to see matches.
       </div>
 
       <template v-else>
         <div v-if="loading" class="state-msg">
-          <span class="spinner" aria-hidden="true"></span> Searching...
+          <span class="spinner" aria-hidden="true"></span> Loading catalog...
         </div>
         <div v-else-if="error" class="state-msg state-msg--error">
           Could not load search results.
@@ -191,125 +243,74 @@ useHead({
             <span>{{ totalResults }} result{{ totalResults === 1 ? '' : 's' }}</span>
           </div>
 
-          <section class="result-section">
-            <div class="section-head">
-              <h2>Bingo Rooms</h2>
-              <span>{{ bingoResults.length }}</span>
-            </div>
+          <div v-if="!results.length" class="state-msg">
+            No games match your search.
+          </div>
 
-            <div v-if="!bingoResults.length" class="state-msg">
-              No bingo rooms match your search.
-            </div>
-            <div v-else class="rooms-grid">
-              <div
-                v-for="(game, idx) in bingoResults"
-                :key="game.id"
-                class="room-tile"
-                :style="{ '--delay': `${idx * 40}ms` }"
-              >
-                <div class="rt-thumb">
-                  <div v-if="game.status !== 'WAITING'" class="rt-badge rt-badge--live">
-                    <span class="live-dot-sm"></span> Live
-                  </div>
-                  <div v-else-if="gameStore.countdowns[game.id]" class="rt-badge rt-badge--timer">
-                    <GameCountdown :starts-at="gameStore.countdowns[game.id]" compact />
-                  </div>
-                  <div v-else class="rt-badge rt-badge--timer">1:00</div>
-
-                  <div class="rt-pattern">{{ patternLabel(game.pattern) }}</div>
-                  <div class="rt-price-wrap">
-                    <span class="rt-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
-                    <span class="rt-currency">ETB</span>
-                  </div>
-                </div>
-
-                <div class="rt-footer">
-                  <div class="rt-players">
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                    </svg>
-                    {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0
-                    }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
-                  </div>
-                  <button
-                    v-if="game.status === 'WAITING'"
-                    class="rt-join"
-                    @click="handleJoinGame(game.id)"
+          <div v-else class="pg-grid">
+            <NuxtLink
+              v-for="result in results"
+              :key="result.kind === 'bingo' ? result.id : `${result.providerCode}:${result.gameCode}`"
+              :to="resultToHref(result)"
+              class="pg-card"
+            >
+              <div class="pg-thumb">
+                <img
+                  v-if="result.imageSquare || result.imageLandscape"
+                  :src="result.imageSquare ?? result.imageLandscape ?? ''"
+                  :alt="result.gameName"
+                  class="pg-img"
+                  loading="lazy"
+                />
+                <div v-else class="pg-placeholder">
+                  <svg
+                    v-if="result.kind === 'bingo'"
+                    width="34"
+                    height="34"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.25)"
+                    stroke-width="1.3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
                   >
-                    Join
-                  </button>
-                  <div v-else class="rt-join rt-join--live">
-                    {{ game.status === 'STARTING' ? 'Starting' : 'Live' }}
-                  </div>
+                    <rect x="2" y="2" width="20" height="20" rx="2" />
+                    <line x1="8" y1="2" x2="8" y2="22" />
+                    <line x1="16" y1="2" x2="16" y2="22" />
+                    <line x1="2" y1="8" x2="22" y2="8" />
+                    <line x1="2" y1="16" x2="22" y2="16" />
+                  </svg>
+                  <svg
+                    v-else
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.2)"
+                    stroke-width="1.3"
+                    aria-hidden="true"
+                  >
+                    <rect x="2" y="3" width="20" height="18" rx="2" />
+                    <rect x="5" y="7" width="4" height="8" rx="1" />
+                    <rect x="10" y="7" width="4" height="8" rx="1" />
+                    <rect x="15" y="7" width="4" height="8" rx="1" />
+                  </svg>
+                </div>
+                <div class="pg-hover">
+                  <span class="pg-play">{{ result.kind === 'bingo' ? 'Open' : 'Play' }}</span>
                 </div>
               </div>
-            </div>
-          </section>
-
-          <section class="result-section">
-            <div class="section-head">
-              <h2>Provider Games</h2>
-              <span>{{ providerMatches.length }}</span>
-            </div>
-
-            <div v-if="!providerMatches.length" class="state-msg">
-              No provider games match your search.
-            </div>
-            <div v-else class="pg-grid">
-              <NuxtLink
-                v-for="g in providerMatches"
-                :key="g.gameCode"
-                :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-                class="pg-card"
-              >
-                <div class="pg-thumb">
-                  <img
-                    v-if="g.imageSquare || g.imageLandscape"
-                    :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                    :alt="g.gameName"
-                    class="pg-img"
-                    loading="lazy"
-                  />
-                  <div v-else class="pg-placeholder">
-                    <svg
-                      width="28"
-                      height="28"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.2)"
-                      stroke-width="1.3"
-                      aria-hidden="true"
-                    >
-                      <rect x="2" y="3" width="20" height="18" rx="2" />
-                      <rect x="5" y="7" width="4" height="8" rx="1" />
-                      <rect x="10" y="7" width="4" height="8" rx="1" />
-                      <rect x="15" y="7" width="4" height="8" rx="1" />
-                    </svg>
-                  </div>
-                  <div class="pg-hover"><span class="pg-play">Play</span></div>
-                </div>
-                <div class="pg-name">{{ g.gameName }}</div>
-                <div class="pg-meta">{{ g.categoryCode }}</div>
-              </NuxtLink>
-            </div>
-          </section>
+              <div class="pg-name">{{ result.gameName }}</div>
+              <div class="pg-meta">
+                {{ result.kind === 'bingo' ? 'World Bingo' : `${result.providerName} · ${result.categoryCode}` }}
+              </div>
+            </NuxtLink>
+          </div>
         </template>
       </template>
     </div>
 
-    <AuthPromptModal v-model="showAuthPrompt" />
   </div>
 </template>
 
@@ -377,7 +378,7 @@ useHead({
 .search-sub {
   margin: 8px 0 0;
   color: rgba(180, 205, 240, 0.65);
-  max-width: 520px;
+  max-width: 640px;
 }
 
 .search-wrap {
@@ -389,7 +390,7 @@ useHead({
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.3);
-  max-width: 640px;
+  max-width: 720px;
   width: 100%;
   grid-column: 1 / -1;
 }
@@ -440,175 +441,6 @@ useHead({
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-
-.result-section {
-  margin-bottom: 28px;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.section-head h2 {
-  margin: 0;
-  color: #f0f4ff;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.section-head span {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.rooms-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-@media (min-width: 560px) {
-  .rooms-grid {
-    gap: 10px;
-  }
-}
-
-@media (min-width: 800px) {
-  .rooms-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-@media (min-width: 1100px) {
-  .rooms-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
-}
-
-.room-tile {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(10, 22, 55, 0.75);
-  transition:
-    transform 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.room-tile:hover {
-  transform: translateY(-2px);
-  border-color: rgba(245, 158, 11, 0.22);
-}
-
-.rt-thumb {
-  height: 120px;
-  background: linear-gradient(145deg, #091840, #142e62);
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  min-height: 120px;
-}
-
-.rt-badge,
-.rt-pattern {
-  position: absolute;
-  top: 6px;
-  font-size: 9px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.rt-badge {
-  left: 6px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.rt-badge--timer {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.rt-badge--live {
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.rt-pattern {
-  right: 6px;
-  background: rgba(124, 58, 237, 0.18);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #c4b5fd;
-}
-
-.rt-price-wrap {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-}
-
-.rt-price {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 24px;
-  font-weight: 700;
-  color: #f0f4ff;
-}
-
-.rt-currency {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.rt-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px;
-}
-
-.rt-players {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 600;
-}
-
-.rt-slash {
-  color: rgba(255, 255, 255, 0.2);
-}
-
-.rt-join {
-  background: var(--brand-primary);
-  color: #0a0f1a;
-  border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.rt-join--live {
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #6ee7b7;
 }
 
 .pg-grid {
@@ -753,7 +585,7 @@ useHead({
     max-width: none;
   }
 
-  .rooms-grid {
+  .pg-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

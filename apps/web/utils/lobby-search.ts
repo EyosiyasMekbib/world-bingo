@@ -9,8 +9,8 @@ export function matchesProviderGameSearch(game: ProviderGame, query: string) {
   const q = normalizeLobbySearchQuery(query)
   if (!q) return true
 
-  return [game.gameName, game.gameCode, game.categoryCode, game.vendorCode].some((value) =>
-    value?.toLowerCase().includes(q),
+  return [game.gameName, game.gameCode, game.categoryCode, game.vendorCode, game.providerName].some(
+    (value) => value?.toLowerCase().includes(q),
   )
 }
 
