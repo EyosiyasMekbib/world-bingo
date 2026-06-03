@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import { useProviderGamesStore, type GamesPage, type ProviderGame } from '~/store/provider-games'
-import { matchesProviderGameSearch, normalizeLobbySearchQuery } from '~/utils/lobby-search'
-
-type SearchGameResult = ProviderGame & {
-  providerCode: string
-  providerName: string
-}
+import { normalizeLobbySearchQuery } from '~/utils/lobby-search'
 
 type SearchBingoResult = {
   kind: 'bingo'
@@ -20,40 +14,35 @@ type SearchBingoResult = {
   vendorCode: string | null
 }
 
-type SearchResult = (SearchGameResult & { kind: 'provider'; id: string }) | SearchBingoResult
+type SearchProviderResult = {
+  kind: 'provider'
+  id: string
+  providerCode: string
+  providerName: string
+  vendorCode: string | null
+  gameCode: string
+  gameName: string
+  categoryCode: string
+  imageSquare: string | null
+  imageLandscape: string | null
+}
+
+type SearchResult = SearchProviderResult | SearchBingoResult
+
+type SearchResponse = {
+  query: string
+  results: SearchResult[]
+}
 
 const route = useRoute()
-const providerStore = useProviderGamesStore()
 
 const searchQuery = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
-const providerCatalog = ref<SearchGameResult[]>([])
-const catalogLoaded = ref(false)
+const results = ref<SearchResult[]>([])
+let requestId = 0
 
 const query = computed(() => normalizeLobbySearchQuery(String(route.query.q ?? '')))
-const bingoResult = computed<SearchBingoResult | null>(() => {
-  if (!query.value) return null
-
-  const bingo: SearchBingoResult = {
-    kind: 'bingo',
-    id: 'bingo',
-    gameCode: 'bingo',
-    gameName: 'Bingo',
-    categoryCode: 'BINGO',
-    imageSquare: null,
-    imageLandscape: null,
-    providerCode: 'world-bingo',
-    providerName: 'World Bingo',
-    vendorCode: null,
-  }
-
-  return matchesProviderGameSearch(bingo, query.value) ? bingo : null
-})
-const providerResults = computed<SearchGameResult[]>(() =>
-  providerCatalog.value.filter((game) => matchesProviderGameSearch(game, query.value)),
-)
-const results = computed<SearchResult[]>(() => [bingoResult.value, ...providerResults.value].filter(Boolean) as SearchResult[])
 const totalResults = computed(() => results.value.length)
 
 function goToSearch() {
@@ -73,58 +62,32 @@ function resultToHref(result: SearchResult) {
     : `/play/${result.providerCode}/${result.gameCode}`
 }
 
-async function fetchAllProviderGames(providerCode: string, providerName: string) {
-  const collected: SearchGameResult[] = []
-  let page = 1
-  let totalPages = 1
+async function loadSearchResults(nextQuery: string) {
+  const normalized = normalizeLobbySearchQuery(nextQuery)
+  const currentRequest = ++requestId
 
-  do {
-    const response = await $fetch<GamesPage>(`${useRuntimeConfig().public.apiBase}/providers/${providerCode}/games`, {
-      query: {
-        page: String(page),
-        pageSize: '200',
-      },
-    })
-
-    collected.push(
-      ...response.games.map((game) => ({
-        ...game,
-        providerCode,
-        providerName,
-      })),
-    )
-
-    totalPages = response.totalPages
-    page += 1
-  } while (page <= totalPages)
-
-  return collected
-}
-
-async function ensureCatalogLoaded() {
-  if (catalogLoaded.value) return
+  if (!normalized) {
+    results.value = []
+    error.value = null
+    loading.value = false
+    return
+  }
 
   loading.value = true
   error.value = null
 
   try {
-    await providerStore.fetchProviders()
-
-    if (!providerStore.providers.length) {
-      providerCatalog.value = []
-      catalogLoaded.value = true
-      return
-    }
-
-    const allResults = await Promise.all(
-      providerStore.providers.map((provider) => fetchAllProviderGames(provider.code, provider.name)),
-    )
-    providerCatalog.value = allResults.flat()
-    catalogLoaded.value = true
+    const response = await $fetch<SearchResponse>(`${useRuntimeConfig().public.apiBase}/providers/search`, {
+      query: { q: normalized },
+    })
+    if (currentRequest !== requestId) return
+    results.value = response.results
   } catch (e: any) {
+    if (currentRequest !== requestId) return
     error.value = e?.message ?? 'Failed to load search results'
+    results.value = []
   } finally {
-    loading.value = false
+    if (currentRequest === requestId) loading.value = false
   }
 }
 
@@ -132,9 +95,7 @@ watch(
   query,
   (q) => {
     searchQuery.value = q
-    if (q && !catalogLoaded.value) {
-      void ensureCatalogLoaded()
-    }
+    void loadSearchResults(q)
   },
   { immediate: true },
 )

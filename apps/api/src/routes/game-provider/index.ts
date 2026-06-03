@@ -24,6 +24,14 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         },
     })
 
+    // ── Search the full catalog across all providers ─────────────────────────
+    fastify.get('/search', {
+        handler: async (req) => {
+            const { q = '' } = req.query as { q?: string }
+            return GameCatalogService.searchCatalog(q)
+        },
+    })
+
     // ── List vendors for a provider ────────────────────────────────────────────
     fastify.get('/:providerCode/vendors', {
         preValidation: [fastify.authenticate],

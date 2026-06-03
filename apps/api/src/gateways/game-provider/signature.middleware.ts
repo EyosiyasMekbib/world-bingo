@@ -76,7 +76,7 @@ export async function verifyGaseaSignature(
   }
 
   // Normalize signature format (some gateways might append spaces or uppercase it)
-  signature = signature.trim().toLowerCase()
+  const signatureValue = signature.trim().toLowerCase()
 
   const rawBody: string | undefined = (request as any).rawBody
   if (!rawBody) {
@@ -94,11 +94,11 @@ export async function verifyGaseaSignature(
   const debugEnabled = process.env.GASEA_SIGNATURE_DEBUG === 'true'
 
   // Constant-time comparison to prevent timing attacks
-  if (!safeSigEqualHex(signature, expected)) {
+  if (!safeSigEqualHex(signatureValue, expected)) {
     request.log.warn(
       '[GASea] Signature mismatch on %s | received=%s expected=%s bodyLen=%d',
       request.url,
-      signature,
+      signatureValue,
       expected,
       rawBody.length,
     )
@@ -246,7 +246,7 @@ export async function verifyGaseaSignature(
         if (foundBruteForceBody) return;
         if (chunkIdx === chunks.length) {
           // Leaf node: we built a full variant body
-          if (safeSigEqualHex(signature, crypto.createHmac('sha256', secret).update(currentBody).digest('hex'))) {
+          if (safeSigEqualHex(signatureValue, crypto.createHmac('sha256', secret).update(currentBody).digest('hex'))) {
             foundBruteForceBody = currentBody;
             winningCombo = currentCombo;
             candidates.push({ name: `bruteForce:[${winningCombo.join(',')}]`, body: currentBody });
@@ -281,7 +281,7 @@ export async function verifyGaseaSignature(
           .update(candidate.body)
           .digest('hex')
 
-        if (safeSigEqualHex(signature, expectedCandidate)) {
+        if (safeSigEqualHex(signatureValue, expectedCandidate)) {
           if (candidate.name !== 'raw') {
             request.log.info(
               '[GASea] Signature accepted via fallback=%s on %s',
@@ -315,7 +315,7 @@ export async function verifyGaseaSignature(
             url: request.url,
             traceId: (request.body as any)?.traceId ?? '',
             bodyLen: rawBody.length,
-            receivedSigPrefix: signature.slice(0, 16),
+            receivedSigPrefix: signatureValue.slice(0, 16),
             rawBodySha256: sha256Hex(rawBody),
             variants: variantHashes,
             authHeaders,
@@ -326,7 +326,7 @@ export async function verifyGaseaSignature(
 
         return reply.status(200).send(
           invalidSignatureResponse(request, 'signature mismatch', {
-            receivedSigPrefix: signature.slice(0, 16),
+          receivedSigPrefix: signatureValue.slice(0, 16),
             expectedSigPrefix: expected.slice(0, 16),
             rawBodySha256: sha256Hex(rawBody),
             bodyLen: rawBody.length,

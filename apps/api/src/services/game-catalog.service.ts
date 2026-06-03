@@ -1,12 +1,57 @@
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getGameProviderGateway } from '../gateways/game-provider/index.js'
+import { PatternType } from '@world-bingo/shared-types'
 
 const CURRENCY = process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB'
 const GAME_CACHE_TTL = 600 // 10 minutes
 
+const PATTERN_LABELS: Record<PatternType, string> = {
+    ANY_LINE: 'Any Line',
+    DIAGONAL: 'Diagonal',
+    FULL_CARD: 'Full Card',
+    X_PATTERN: 'X Pattern',
+    CORNERS: 'Four Corners',
+}
+
 function gameCacheKey(providerCode: string, category: string, page: number): string {
     return `tp:games:${providerCode}:${category}:${page}`
+}
+
+type SearchResult = {
+    kind: 'provider' | 'bingo'
+    id: string
+    providerCode: string
+    providerName: string
+    vendorCode: string | null
+    gameCode: string
+    gameName: string
+    categoryCode: string
+    imageSquare: string | null
+    imageLandscape: string | null
+}
+
+function normalizeQuery(query: string) {
+    return query.trim().toLowerCase()
+}
+
+function matchesBingoSearch(game: {
+    title: string
+    ticketPrice: unknown
+    status: string
+    pattern: string
+}, query: string) {
+    const q = normalizeQuery(query)
+    if (!q) return false
+
+    const patternLabel = PATTERN_LABELS[game.pattern as PatternType]
+    return [
+        game.title,
+        String(game.ticketPrice),
+        game.status,
+        game.pattern,
+        patternLabel,
+    ].some((value) => String(value).toLowerCase().includes(q))
 }
 
 export class GameCatalogService {
@@ -200,5 +245,94 @@ export class GameCatalogService {
             distinct: ['categoryCode'],
         })
         return rows.map((r) => r.categoryCode).sort()
+    }
+
+    static async searchCatalog(query: string) {
+        const normalized = normalizeQuery(query)
+        if (!normalized) {
+            return { query: normalized, results: [] as SearchResult[] }
+        }
+
+        const providerGames = await prisma.providerGame.findMany({
+            where: {
+                isActive: true,
+                provider: { is: { status: 'ACTIVE' } },
+                vendor: { is: { isActive: true } },
+                OR: [
+                    { gameName: { contains: normalized, mode: 'insensitive' } },
+                    { gameCode: { contains: normalized, mode: 'insensitive' } },
+                    { categoryCode: { contains: normalized, mode: 'insensitive' } },
+                    { provider: { is: { code: { contains: normalized, mode: 'insensitive' } } } },
+                    { provider: { is: { name: { contains: normalized, mode: 'insensitive' } } } },
+                    { vendor: { is: { code: { contains: normalized, mode: 'insensitive' } } } },
+                    { vendor: { is: { name: { contains: normalized, mode: 'insensitive' } } } },
+                ],
+            },
+            orderBy: [
+                { provider: { name: 'asc' } },
+                { sortOrder: 'asc' },
+                { gameName: 'asc' },
+            ],
+            select: {
+                id: true,
+                gameCode: true,
+                gameName: true,
+                categoryCode: true,
+                imageSquare: true,
+                imageLandscape: true,
+                provider: { select: { code: true, name: true } },
+                vendor: { select: { code: true } },
+            },
+        })
+
+        const bingoGames = await prisma.game.findMany({
+            where: {
+                status: {
+                    in: ['WAITING', 'STARTING', 'LOCKING', 'IN_PROGRESS'],
+                },
+            },
+            select: {
+                id: true,
+                title: true,
+                ticketPrice: true,
+                status: true,
+                pattern: true,
+            },
+            orderBy: { createdAt: 'desc' },
+        })
+
+        const results: SearchResult[] = providerGames.map((game) => ({
+            kind: 'provider',
+            id: game.id,
+            providerCode: game.provider.code,
+            providerName: game.provider.name,
+            vendorCode: game.vendor?.code ?? null,
+            gameCode: game.gameCode,
+            gameName: game.gameName,
+            categoryCode: game.categoryCode,
+            imageSquare: game.imageSquare,
+            imageLandscape: game.imageLandscape,
+        }))
+
+        const bingoMatch = bingoGames.find((game) => matchesBingoSearch(game, normalized))
+        if (bingoMatch) {
+            results.unshift({
+                kind: 'bingo',
+                id: bingoMatch.id,
+                providerCode: 'world-bingo',
+                providerName: 'World Bingo',
+                vendorCode: null,
+                gameCode: 'bingo',
+                gameName: 'Bingo',
+                categoryCode: 'BINGO',
+                imageSquare: null,
+                imageLandscape: null,
+            })
+        }
+
+        return {
+            query: normalized,
+            results,
+        }
     }
 }
