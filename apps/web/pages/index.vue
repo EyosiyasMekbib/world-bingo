@@ -5,6 +5,7 @@ import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import type { Game } from '@world-bingo/shared-types'
+import { filterProviderGames, normalizeLobbySearchQuery } from '~/utils/lobby-search'
 
 const auth = useAuthStore()
 const gameStore = useGameStore()
@@ -19,6 +20,7 @@ const { tournamentsEnabled } = useFeatureFlags()
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
 const selectedCategory = ref('ALL')
+const normalizedSearchQuery = computed(() => normalizeLobbySearchQuery(searchQuery.value))
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
@@ -76,18 +78,72 @@ const BINGO_HOME_LIMIT = 12
 const PROVIDER_HOME_LIMIT = 12
 
 const activeBingoGames = computed(() => {
-  if (selectedCategory.value === 'TRENDING') return trendingBingoGames.value
-  if (selectedCategory.value === 'POPULAR') return popularBingoGames.value
-  return filteredGames.value
+  const games = selectedCategory.value === 'TRENDING'
+    ? trendingBingoGames.value
+    : selectedCategory.value === 'POPULAR'
+      ? popularBingoGames.value
+      : gameStore.availableGames
+
+  return filterBingoGames(games)
 })
 
+const featuredProviderGames = computed(() => filterProviderGames(providerStore.games, searchQuery.value))
+
+const filteredCategoryGamesMap = computed<Record<string, ProviderGame[]>>(() => {
+  return Object.fromEntries(
+    Object.entries(categoryGamesMap.value).map(([cat, games]) => [
+      cat,
+      filterProviderGames(games, searchQuery.value),
+    ]),
+  )
+})
+
+const hasProviderSearchMatches = computed(() =>
+  Object.values(filteredCategoryGamesMap.value).some((games) => games.length > 0),
+)
+
+function filterBingoGames(games: Game[]) {
+  const q = normalizedSearchQuery.value
+  if (!q) return games
+
+  return games.filter((g: Game) => {
+    const label = patternLabel(g.pattern).toLowerCase()
+    return (
+      String(g.ticketPrice).includes(q) ||
+      g.status.toLowerCase().includes(q) ||
+      label.includes(q) ||
+      (g as any).title?.toLowerCase().includes(q)
+    )
+  })
+}
+
+const showBingoSearchEmpty = computed(() =>
+  Boolean(normalizedSearchQuery.value) &&
+  showBingoSection.value &&
+  !activeBingoGames.value.length &&
+  !hasProviderSearchMatches.value
+)
+
+function getCategorySearchMessage(cat: string) {
+  return normalizedSearchQuery.value
+    ? `No ${CATEGORY_LABELS[cat] ?? cat} games match your search.`
+    : 'No games available.'
+}
+
+function shouldShowProviderCategory(cat: string) {
+  if (!showProviderCategory(cat)) return false
+  if (!normalizedSearchQuery.value) return true
+  return selectedCategory.value === cat || (filteredCategoryGamesMap.value[cat]?.length ?? 0) > 0
+}
+
 const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
-const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT && !searchQuery.value.trim())
+const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT && !normalizedSearchQuery.value)
 
 function getCategoryDisplayGames(cat: string) {
-  return (categoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
+  return (filteredCategoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
 }
 function categoryHasMore(cat: string) {
+  if (normalizedSearchQuery.value) return false
   return (categoryGamesMap.value[cat]?.length ?? 0) > PROVIDER_HOME_LIMIT
 }
 
@@ -162,22 +218,6 @@ function handleJoinGame(gameId: string) {
   }
   navigateTo(`/quick/${gameId}`)
 }
-
-const filteredGames = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  return gameStore.availableGames.filter((g: Game) => {
-    if (q) {
-      const label = patternLabel(g.pattern).toLowerCase()
-      if (
-        !String(g.ticketPrice).includes(q) &&
-        !g.status.toLowerCase().includes(q) &&
-        !label.includes(q) &&
-        !(g as any).title?.toLowerCase().includes(q)
-      ) return false
-    }
-    return true
-  })
-})
 
 const featuredGame = computed(() =>
   featuredTemplateId.value
@@ -511,9 +551,9 @@ onUnmounted(() => {
           </NuxtLink>
 
           <!-- Third-party games OR Coming Soon tiles -->
-          <template v-if="providerStore.games.length">
+          <template v-if="featuredProviderGames.length">
             <NuxtLink
-              v-for="g in providerStore.games.slice(0, 6)"
+              v-for="g in featuredProviderGames.slice(0, 6)"
               :key="g.gameCode"
               :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
               class="type-tile"
@@ -538,7 +578,7 @@ onUnmounted(() => {
             </NuxtLink>
           </template>
 
-          <template v-else-if="!providerStore.games.length">
+          <template v-else-if="!normalizedSearchQuery && !providerStore.games.length">
             <div class="type-tile type-tile--soon">
               <div class="tt-thumb">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -589,7 +629,7 @@ onUnmounted(() => {
       <div
         v-for="cat in providerCategories"
         :key="cat"
-        v-show="showProviderCategory(cat)"
+        v-show="shouldShowProviderCategory(cat)"
         class="content-section"
       >
         <div class="max-container section-with-label">
@@ -600,8 +640,8 @@ onUnmounted(() => {
           <div v-if="categoryGamesLoading[cat]" class="state-msg">
             <span class="spinner" aria-hidden="true"></span> Loading...
           </div>
-          <div v-else-if="!categoryGamesMap[cat]?.length" class="state-msg">
-            No games available.
+          <div v-else-if="!filteredCategoryGamesMap[cat]?.length" class="state-msg">
+            {{ getCategorySearchMessage(cat) }}
           </div>
           <template v-else>
             <div class="pg-grid">
@@ -658,8 +698,8 @@ onUnmounted(() => {
           Could not load games.
           <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
         </div>
-        <div v-else-if="!filteredGames.length" class="state-msg">
-          {{ searchQuery ? 'No games match your search.' : 'No games available right now. Check back soon.' }}
+        <div v-else-if="!activeBingoGames.length" class="state-msg">
+          {{ showBingoSearchEmpty ? 'No games match your search.' : 'No bingo rooms available right now. Check back soon.' }}
         </div>
 
         <template v-else>
