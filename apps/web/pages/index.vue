@@ -11,7 +11,6 @@ const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()
 const promotionsStore = usePromotionsStore()
 const { connect } = useSocket()
-const featuredTemplateId = ref<string | null>(null)
 const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
 const { tournamentsEnabled } = useFeatureFlags()
@@ -124,9 +123,30 @@ const currentSlide = ref(0)
 let slideTimer: ReturnType<typeof setInterval> | null = null
 
 const heroSlides = [
-  { id: 'bingo', type: 'bingo' as const },
-  { id: 'chicken-road', type: 'ad' as const, title: 'Chicken Road', tag: 'CRASH GAME', tagline: 'Cross the road. Dodge the fryer. Multiply your bet with every step.', color: '#f97316' },
-  { id: 'aviator', type: 'ad' as const, title: 'Aviator', tag: 'MULTIPLIER GAME', tagline: "Watch the plane climb. Cash out before it crashes.", color: '#3b82f6' },
+  {
+    id: 'aviatrix',
+    title: 'Aviatrix promotion',
+    desktopWebp: '/ads/hero/aviatrix-desktop.webp',
+    desktopJpg: '/ads/hero/aviatrix-desktop.jpg',
+    mobileWebp: '/ads/hero/aviatrix-mobile.webp',
+    mobileJpg: '/ads/hero/aviatrix-mobile.jpg',
+  },
+  {
+    id: 'aradabet',
+    title: 'Aradabet promotion',
+    desktopWebp: '/ads/hero/aradabet-desktop.webp',
+    desktopJpg: '/ads/hero/aradabet-desktop.jpg',
+    mobileWebp: '/ads/hero/aradabet-mobile.webp',
+    mobileJpg: '/ads/hero/aradabet-mobile.jpg',
+  },
+  {
+    id: 'arada-games',
+    title: 'Arada Games promotion',
+    desktopWebp: '/ads/hero/arada-games-desktop.webp',
+    desktopJpg: '/ads/hero/arada-games-desktop.jpg',
+    mobileWebp: '/ads/hero/arada-games-mobile.webp',
+    mobileJpg: '/ads/hero/arada-games-mobile.jpg',
+  },
 ]
 
 function goToSlide(idx: number) {
@@ -169,12 +189,6 @@ function handleJoinGame(gameId: string) {
   navigateTo(`/quick/${gameId}`)
 }
 
-const featuredGame = computed(() =>
-  featuredTemplateId.value
-    ? gameStore.availableGames.find((g) => g.templateId === featuredTemplateId.value) ?? null
-    : null,
-)
-
 function scrollToRooms() {
   document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })
 }
@@ -185,10 +199,6 @@ onMounted(async () => {
   } catch { /* errors stored in gameStore.error */ }
 
   promotionsStore.fetch()
-
-  $fetch<{ templateId: string | null }>(`${config.public.apiBase}/settings/featured-game`)
-    .then((r) => { featuredTemplateId.value = r.templateId })
-    .catch(() => {})
 
   await providerStore.fetchProviders()
   if (providerStore.activeProviderCode) {
@@ -253,131 +263,21 @@ onUnmounted(() => {
       </button>
 
       <Transition name="hero-fade" mode="out-in">
-        <!-- Slide 0: Bingo -->
-        <div v-if="currentSlide === 0" key="bingo" class="hero-inner max-container">
-          <div class="hero-text">
-            <p class="hero-eyebrow">
-              <span class="eyebrow-dot"></span>
-              Ethiopia's #1 Bingo Platform
-            </p>
-            <h1 class="hero-title">Play <span class="hero-accent">Bingo</span>,<br>Win Real ETB</h1>
-            <p class="hero-sub">Join thousands of players. Pick your cartela, call BINGO, get paid instantly.</p>
-            <button class="hero-cta" @click="scrollToRooms">
-              Play Now
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </button>
-          </div>
-
-          <div class="hero-art">
-            <template v-if="featuredGame">
-              <div class="featured-card">
-                <div class="fc-eyebrow">Featured Game</div>
-                <div class="fc-title">{{ featuredGame.title }}</div>
-                <div class="fc-price">
-                  {{ Number(featuredGame.ticketPrice).toLocaleString() }}
-                  <span class="fc-currency">ETB</span>
-                </div>
-                <div class="fc-meta">
-                  {{ patternLabel(featuredGame.pattern) }}
-                  &nbsp;·&nbsp;
-                  {{ gameStore.livePlayers[featuredGame.id] ?? (featuredGame as any).currentPlayers ?? 0 }}/{{ (featuredGame as any).maxPlayers ?? 10 }} players
-                </div>
-                <NuxtLink v-if="featuredGame.status === 'WAITING'" :to="`/quick/${featuredGame.id}`" class="fc-join">
-                  Join Now
-                </NuxtLink>
-                <div v-else class="fc-live">
-                  <span class="live-dot"></span>
-                  {{ featuredGame.status === 'STARTING' ? 'Starting Soon' : 'Live Now' }}
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="bingo-card bingo-card--front">
-                <div class="bc-cell">3</div><div class="bc-cell">17</div><div class="bc-cell">32</div><div class="bc-cell bc-cell--gold">46</div><div class="bc-cell">61</div>
-                <div class="bc-cell bc-cell--blue">5</div><div class="bc-cell">20</div><div class="bc-cell">35</div><div class="bc-cell">51</div><div class="bc-cell bc-cell--gold">69</div>
-                <div class="bc-cell">9</div><div class="bc-cell">28</div><div class="bc-cell bc-cell--free">FR</div><div class="bc-cell">53</div><div class="bc-cell">74</div>
-                <div class="bc-cell">14</div><div class="bc-cell bc-cell--blue">24</div><div class="bc-cell">39</div><div class="bc-cell">48</div><div class="bc-cell">63</div>
-                <div class="bc-cell bc-cell--blue">1</div><div class="bc-cell">16</div><div class="bc-cell">44</div><div class="bc-cell">60</div><div class="bc-cell bc-cell--blue">75</div>
-              </div>
-              <div class="bingo-card bingo-card--back">
-                <div class="bc-cell">7</div><div class="bc-cell">19</div><div class="bc-cell bc-cell--blue">33</div><div class="bc-cell">49</div><div class="bc-cell">62</div>
-                <div class="bc-cell">2</div><div class="bc-cell bc-cell--blue">21</div><div class="bc-cell">36</div><div class="bc-cell bc-cell--blue">52</div><div class="bc-cell">70</div>
-                <div class="bc-cell">11</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--free">FR</div><div class="bc-cell">55</div><div class="bc-cell bc-cell--blue">71</div>
-                <div class="bc-cell">4</div><div class="bc-cell bc-cell--blue">18</div><div class="bc-cell">43</div><div class="bc-cell bc-cell--blue">59</div><div class="bc-cell">72</div>
-                <div class="bc-cell">13</div><div class="bc-cell">29</div><div class="bc-cell bc-cell--blue">40</div><div class="bc-cell">47</div><div class="bc-cell">64</div>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- Slide 1: Chicken Road -->
-        <div v-else-if="currentSlide === 1" key="chicken-road" class="hero-inner max-container">
-          <div class="hero-text">
-            <p class="hero-eyebrow" style="--dot-color:#f97316">
-              <span class="eyebrow-dot" style="background:#f97316"></span>
-              Crash Game · Coming Soon
-            </p>
-            <h1 class="hero-title">Chicken<br><span style="color:#f97316">Road</span></h1>
-            <p class="hero-sub">Cross the road. Dodge the fryer. Multiply your bet with every step.</p>
-            <button class="hero-cta hero-cta--muted" disabled>Coming Soon</button>
-          </div>
-          <div class="hero-art hero-art--centered">
-            <div class="ad-card" style="--ad-accent:#f97316">
-              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-                <rect x="8" y="38" width="48" height="18" rx="3" fill="rgba(255,255,255,0.06)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
-                <rect x="20" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
-                <rect x="36" y="44" width="8" height="3" rx="1" fill="rgba(249,115,22,0.5)"/>
-                <ellipse cx="32" cy="28" rx="9" ry="10" fill="rgba(249,115,22,0.9)"/>
-                <circle cx="32" cy="16" r="6" fill="rgba(249,115,22,0.9)"/>
-                <polygon points="35,15 39,17 35,19" fill="#fbbf24"/>
-                <circle cx="30" cy="15" r="2" fill="#fff"/>
-                <circle cx="30" cy="15" r="1" fill="#000"/>
-                <ellipse cx="22" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(-15 22 28)"/>
-                <ellipse cx="42" cy="28" rx="5" ry="6" fill="rgba(249,115,22,0.7)" transform="rotate(15 42 28)"/>
-                <path d="M29 10 Q31 6 33 10 Q31 8 29 10" fill="#ef4444"/>
-              </svg>
-              <div class="ad-mult">
-                <span class="ad-mult-num" style="color:#f97316">9×</span>
-                <span class="ad-mult-label">Max Multiplier</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Slide 2: Aviator -->
-        <div v-else key="aviator" class="hero-inner max-container">
-          <div class="hero-text">
-            <p class="hero-eyebrow" style="--dot-color:#3b82f6">
-              <span class="eyebrow-dot" style="background:#3b82f6"></span>
-              Multiplier Game · Coming Soon
-            </p>
-            <h1 class="hero-title"><span style="color:#60a5fa">Aviator</span></h1>
-            <p class="hero-sub">Watch the plane climb. The multiplier rises. Cash out before it crashes.</p>
-            <button class="hero-cta hero-cta--muted" disabled>Coming Soon</button>
-          </div>
-          <div class="hero-art hero-art--centered">
-            <div class="ad-card" style="--ad-accent:#3b82f6">
-              <svg width="72" height="64" viewBox="0 0 80 72" fill="none" aria-hidden="true">
-                <path d="M10 55 Q30 40 62 18" stroke="rgba(59,130,246,0.35)" stroke-width="2" stroke-dasharray="4 3"/>
-                <g transform="translate(58,16) rotate(-30)">
-                  <path d="M0 0 L-16 6 L-8 0 L-16 -6 Z" fill="#3b82f6"/>
-                  <path d="M-8 0 L-14 -12 L-4 -8 Z" fill="#60a5fa"/>
-                  <path d="M-8 0 L-14 12 L-4 8 Z" fill="#60a5fa"/>
-                </g>
-                <rect x="20" y="10" width="42" height="20" rx="6" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
-                <text x="41" y="24" font-size="11" fill="#60a5fa" font-weight="bold" font-family="monospace" text-anchor="middle">×24.58</text>
-                <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18" stroke="rgba(59,130,246,0.6)" stroke-width="2" fill="none"/>
-                <path d="M8 62 L20 58 L30 52 L40 42 L50 30 L58 18 L58 62 Z" fill="rgba(59,130,246,0.08)"/>
-              </svg>
-              <div class="ad-mult">
-                <span class="ad-mult-num" style="color:#60a5fa">∞×</span>
-                <span class="ad-mult-label">Unlimited Multiplier</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <picture
+          :key="heroSlides[currentSlide].id"
+          class="hero-ad"
+          @click="scrollToRooms"
+        >
+          <source media="(max-width: 640px)" type="image/webp" :srcset="heroSlides[currentSlide].mobileWebp">
+          <source media="(max-width: 640px)" :srcset="heroSlides[currentSlide].mobileJpg">
+          <source type="image/webp" :srcset="heroSlides[currentSlide].desktopWebp">
+          <img
+            :src="heroSlides[currentSlide].desktopJpg"
+            :alt="heroSlides[currentSlide].title"
+            class="hero-ad__image"
+            fetchpriority="high"
+          >
+        </picture>
       </Transition>
 
       <div class="hero-dots" role="tablist" aria-label="Slide navigation">
@@ -744,14 +644,13 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
-  /* Fixed height so all slides are identical — no layout shift on transition */
-  height: 320px;
+  height: clamp(320px, 37.5vw, 540px);
   display: flex;
   flex-direction: column;
 }
 
 @media (max-width: 620px) {
-  .hero { height: 240px; }
+  .hero { height: clamp(360px, 106vw, 460px); }
 }
 
 .hero-bg {
@@ -761,6 +660,22 @@ onUnmounted(() => {
     radial-gradient(ellipse 50% 80% at 72% 50%, rgba(245, 158, 11, 0.07) 0%, transparent 65%),
     radial-gradient(ellipse 35% 55% at 15% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
   pointer-events: none;
+}
+
+.hero-ad {
+  position: relative;
+  z-index: 1;
+  display: block;
+  flex: 1;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.hero-ad__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .hero-inner {
@@ -1053,7 +968,7 @@ onUnmounted(() => {
 /* The Transition wrapper becomes a block child — make it fill flex space */
 .hero > .hero-fade-enter-active,
 .hero > .hero-fade-leave-active,
-.hero-inner { flex: 1; }
+.hero-ad { flex: 1; }
 
 .hero-fade-enter-active,
 .hero-fade-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; display: flex; flex: 1; }
