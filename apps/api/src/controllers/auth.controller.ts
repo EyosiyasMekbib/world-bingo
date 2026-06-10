@@ -23,8 +23,8 @@ export class AuthController {
 
     static async adminLogin(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {
         const { user, refreshToken } = await AuthService.login(request.body)
-        if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-            reply.status(403).send({ error: 'Not an admin' })
+        if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'CLERK') {
+            reply.status(403).send({ error: 'Access denied' })
             return
         }
         const accessToken = await reply.jwtSign(

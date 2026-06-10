@@ -55,6 +55,7 @@ export enum PaymentStatus {
 
 export enum UserRole {
     PLAYER = 'PLAYER',
+    CLERK = 'CLERK',
     ADMIN = 'ADMIN',
     SUPER_ADMIN = 'SUPER_ADMIN',
 }

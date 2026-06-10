@@ -136,6 +136,8 @@ export const useAdminAuth = () => {
         checkAuth,
         apiFetch,
         isAdmin: computed(() => user.value?.role === 'ADMIN' || user.value?.role === 'SUPER_ADMIN'),
+        isClerk: computed(() => user.value?.role === 'CLERK'),
+        isAdminOrClerk: computed(() => ['ADMIN', 'SUPER_ADMIN', 'CLERK'].includes(user.value?.role)),
     }
 }
 

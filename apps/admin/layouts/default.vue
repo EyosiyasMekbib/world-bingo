@@ -1,45 +1,57 @@
 <script setup lang="ts">
-const { user, logout } = useAdminAuth()
+const { user, logout, isClerk } = useAdminAuth()
 const { locale, setLocale } = useI18n()
 const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
 
-const navGroups = [
+const allNavGroups = [
   {
     label: null,
+    adminOnly: true,
     items: [
       { label: 'Dashboard', icon: 'i-heroicons:squares-2x2', to: '/' },
     ],
   },
   {
     label: 'Finance',
+    adminOnly: false,
     items: [
-      { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',   to: '/deposits'    },
-      { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',     to: '/withdrawals' },
-      { label: 'House Wallet', icon: 'i-heroicons:building-library',  to: '/house'       },
-      { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left', to: '/money-flow'  },
+      { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',   to: '/deposits',    adminOnly: false },
+      { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',     to: '/withdrawals', adminOnly: false },
+      { label: 'House Wallet', icon: 'i-heroicons:building-library',  to: '/house',       adminOnly: true  },
+      { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left', to: '/money-flow',  adminOnly: true  },
     ],
   },
   {
     label: 'Games',
+    adminOnly: true,
     items: [
-      { label: 'Active Games',   icon: 'i-heroicons:puzzle-piece',  to: '/games'                   },
-      { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',   to: '/settings/game-templates' },
-      { label: 'Tournaments',    icon: 'i-heroicons:trophy',        to: '/tournaments'             },
+      { label: 'Active Games',   icon: 'i-heroicons:puzzle-piece',  to: '/games',                    adminOnly: true },
+      { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',   to: '/settings/game-templates',  adminOnly: true },
+      { label: 'Tournaments',    icon: 'i-heroicons:trophy',        to: '/tournaments',              adminOnly: true },
     ],
   },
   {
     label: 'Management',
+    adminOnly: true,
     items: [
-      { label: 'Players',       icon: 'i-heroicons:user-group',             to: '/players'           },
-      { label: 'Users',         icon: 'i-heroicons:users',                  to: '/users'             },
-      { label: 'Providers',     icon: 'i-heroicons:globe-alt',              to: '/providers'         },
-      { label: 'Cashback',      icon: 'i-heroicons:gift',                   to: '/cashback'          },
-      { label: 'Payment Methods', icon: 'i-heroicons:credit-card', to: '/settings/payment-methods' },
-      { label: 'Feature Flags', icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features' },
-      { label: 'Profile',       icon: 'i-heroicons:user-circle',            to: '/settings/profile'  },
+      { label: 'Players',         icon: 'i-heroicons:user-group',             to: '/players',                  adminOnly: true },
+      { label: 'Users',           icon: 'i-heroicons:users',                  to: '/users',                    adminOnly: true },
+      { label: 'Clerks',          icon: 'i-heroicons:identification',         to: '/clerks',                   adminOnly: true },
+      { label: 'Providers',       icon: 'i-heroicons:globe-alt',              to: '/providers',                adminOnly: true },
+      { label: 'Cashback',        icon: 'i-heroicons:gift',                   to: '/cashback',                 adminOnly: true },
+      { label: 'Payment Methods', icon: 'i-heroicons:credit-card',            to: '/settings/payment-methods', adminOnly: true },
+      { label: 'Feature Flags',   icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features',        adminOnly: true },
+      { label: 'Profile',         icon: 'i-heroicons:user-circle',            to: '/settings/profile',         adminOnly: false },
     ],
   },
 ]
+
+const navGroups = computed(() => {
+  if (!isClerk.value) return allNavGroups.map(g => ({ ...g, items: g.items }))
+  return allNavGroups
+    .map(g => ({ ...g, items: g.items.filter((item: any) => !item.adminOnly) }))
+    .filter(g => g.items.length > 0)
+})
 
 const mobileOpen = ref(false)
 const menuButtonRef = ref<HTMLButtonElement | null>(null)

@@ -157,6 +157,7 @@ model Transaction {
 
 enum UserRole {
   PLAYER
+  CLERK
   ADMIN
   SUPER_ADMIN
 }

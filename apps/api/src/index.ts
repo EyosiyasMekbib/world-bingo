@@ -194,6 +194,18 @@ server.decorate('requireAdmin', async function (request: any, reply: any) {
     }
 })
 
+server.decorate('requireAdminOrClerk', async function (request: any, reply: any) {
+    try {
+        await request.jwtVerify()
+    } catch (err) {
+        return reply.send(err)
+    }
+    const { role } = request.user
+    if (role !== 'ADMIN' && role !== 'SUPER_ADMIN' && role !== 'CLERK') {
+        return reply.status(403).send({ error: 'Forbidden: Insufficient permissions' })
+    }
+})
+
 // Register route prefixes
 await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })

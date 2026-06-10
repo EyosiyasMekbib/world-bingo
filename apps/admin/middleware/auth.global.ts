@@ -5,7 +5,7 @@
 export default defineNuxtRouteMiddleware(async (to) => {
     if (to.path === '/login') return
 
-    const { checkAuth, isAdmin, accessToken, refreshToken } = useAdminAuth()
+    const { checkAuth, isAdminOrClerk, accessToken, refreshToken } = useAdminAuth()
 
     // If no tokens at all, redirect immediately
     if (!accessToken.value && !refreshToken.value) {
@@ -19,7 +19,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
         return navigateTo('/login')
     }
 
-    if (!isAdmin.value) {
+    if (!isAdminOrClerk.value) {
         return navigateTo('/login')
     }
 })
