@@ -56,6 +56,9 @@ export class WalletController {
             if (!amount || amount <= 0) {
                 return reply.status(400).send({ error: 'Amount is required and must be positive' })
             }
+            if (amount < 200) {
+                return reply.status(400).send({ error: 'Minimum deposit amount is 200 ETB' })
+            }
 
             try {
                 const transaction = await WalletService.initiateDeposit(userId, {

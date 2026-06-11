@@ -51,9 +51,9 @@
             <!-- Amount -->
             <div class="field">
               <label>Amount (ETB)</label>
-              <input v-model.number="form.amount" type="number" min="10" placeholder="Enter amount" class="input" />
+              <input v-model.number="form.amount" type="number" min="200" placeholder="Min 200 ETB" class="input" />
               <div class="chips">
-                <button v-for="chip in [50, 100, 200, 500]" :key="chip" class="chip" @click="form.amount = chip">
+                <button v-for="chip in [200, 500, 1000, 2000]" :key="chip" class="chip" @click="form.amount = chip">
                   +{{ chip }}
                 </button>
               </div>
@@ -209,7 +209,7 @@ const errorHint = computed(() => {
 
 const canSubmit = computed(() =>
   !!selectedMethod.value &&
-  form.amount >= 10 &&
+  form.amount >= 200 &&
   form.transactionId.trim().length >= 5 &&
   form.senderName.trim().length >= 1 &&
   form.senderAccount.trim().length >= 10 &&
