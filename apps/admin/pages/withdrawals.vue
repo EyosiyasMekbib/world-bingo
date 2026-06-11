@@ -39,7 +39,8 @@ const LIMIT = 20
 const showConfirmModal = ref(false)
 const pendingAction = ref<{ id: string; type: 'approve' | 'reject' } | null>(null)
 const declineNote = ref('')
-const viewMode = ref<'table' | 'card'>('table')
+const viewMode = ref<'table' | 'card'>('card')
+const filtersOpen = ref(false)
 
 // ── Filters ─────────────────────────────────────────────────────────────────
 const filterSearch = ref('')
@@ -57,6 +58,38 @@ const statusOptions = [
   { label: 'Rejected', value: 'REJECTED' },
   { label: 'All', value: '__ALL__' },
 ]
+
+const statusLabel = (v: string) => statusOptions.find(o => o.value === v)?.label ?? v
+
+const activeChips = computed(() => {
+  const chips: { label: string; clear: () => void }[] = []
+  if (filterStatus.value && filterStatus.value !== '__ALL__')
+    chips.push({ label: `Status: ${statusLabel(filterStatus.value)}`, clear: () => { filterStatus.value = '__ALL__'; page.value = 1; refreshWithdrawals() } })
+  if (filterSearch.value)
+    chips.push({ label: `Search: ${filterSearch.value}`, clear: () => { filterSearch.value = ''; page.value = 1; refreshWithdrawals() } })
+  if (filterUserSerial.value)
+    chips.push({ label: `User ID: ${filterUserSerial.value}`, clear: () => { filterUserSerial.value = ''; page.value = 1; refreshWithdrawals() } })
+  if (filterFrom.value)
+    chips.push({ label: `From: ${filterFrom.value}`, clear: () => { filterFrom.value = ''; page.value = 1; refreshWithdrawals() } })
+  if (filterTo.value)
+    chips.push({ label: `To: ${filterTo.value}`, clear: () => { filterTo.value = ''; page.value = 1; refreshWithdrawals() } })
+  if (filterMinAmount.value)
+    chips.push({ label: `Min: ${filterMinAmount.value} ETB`, clear: () => { filterMinAmount.value = ''; page.value = 1; refreshWithdrawals() } })
+  if (filterMaxAmount.value)
+    chips.push({ label: `Max: ${filterMaxAmount.value} ETB`, clear: () => { filterMaxAmount.value = ''; page.value = 1; refreshWithdrawals() } })
+  return chips
+})
+
+function exportCSV() {
+  const rows = withdrawals.value
+  if (!rows.length) return
+  const headers = ['ID', 'User', 'Amount', 'Status', 'Date']
+  const lines = rows.map((w: any) => [w.id, w.user?.username ?? '', w.amount, w.status, w.createdAt].join(','))
+  const blob = new Blob([[headers.join(','), ...lines].join('\n')], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = 'withdrawals.csv'; a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── Stats ───────────────────────────────────────────────────────────────────
 const approvedSum = ref(0)
@@ -191,44 +224,51 @@ const copyToClipboard = (text: string) => {
       </div>
     </div>
 
-    <!-- Filter Toolbar -->
-    <div class="flex flex-wrap gap-3 bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
-      <UInput
-        v-model="filterSearch"
-        icon="i-heroicons:magnifying-glass"
-        placeholder="Search username or phone…"
-        class="flex-1 min-w-48"
-        @input="onSearch"
-      />
-      <UInput
-        v-model="filterUserSerial"
-        placeholder="User ID"
-        class="w-28"
-        @input="onSearch"
-      />
-      <UInput v-model="filterFrom" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
-      <UInput v-model="filterTo" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
-      <UInput
-        v-model="filterMinAmount"
-        type="number"
-        placeholder="Min ETB"
-        class="w-28"
-        @input="onSearch"
-      />
-      <UInput
-        v-model="filterMaxAmount"
-        type="number"
-        placeholder="Max ETB"
-        class="w-28"
-        @input="onSearch"
-      />
-      <USelect
-        v-model="filterStatus"
-        :items="statusOptions"
-        value-key="value"
-        class="w-44"
-      />
-      <UButton color="neutral" variant="ghost" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
+    <!-- Filter Bar -->
+    <div class="space-y-3">
+      <!-- Active filters row -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs font-semibold text-white/40 uppercase tracking-widest shrink-0">Active Filters:</span>
+        <div class="flex items-center gap-2 flex-wrap flex-1">
+          <span
+            v-for="chip in activeChips"
+            :key="chip.label"
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs font-medium text-white/80"
+          >
+            {{ chip.label }}
+            <button class="hover:text-white transition-colors ml-0.5 opacity-60 hover:opacity-100" @click="chip.clear">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </span>
+          <span v-if="!activeChips.length" class="text-xs text-white/25 italic">None</span>
+        </div>
+        <UButton
+          icon="i-heroicons:funnel"
+          label="Filter"
+          color="primary"
+          size="sm"
+          :variant="filtersOpen ? 'solid' : 'outline'"
+          class="shrink-0"
+          @click="filtersOpen = !filtersOpen"
+        />
+      </div>
+
+      <!-- Export -->
+      <div>
+        <UButton icon="i-heroicons:arrow-down-tray" label="Export" color="neutral" variant="ghost" size="sm" @click="exportCSV" />
+      </div>
+
+      <!-- Collapsible filter panel -->
+      <div v-show="filtersOpen" class="flex flex-wrap gap-3 bg-white/5 p-3 rounded-2xl border border-white/10 shadow-inner">
+        <UInput v-model="filterSearch" icon="i-heroicons:magnifying-glass" placeholder="Search username or phone…" class="flex-1 min-w-48" @input="onSearch" />
+        <UInput v-model="filterUserSerial" placeholder="User ID" class="w-28" @input="onSearch" />
+        <UInput v-model="filterFrom" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
+        <UInput v-model="filterTo" type="date" class="w-40" @change="page = 1; refreshWithdrawals()" />
+        <UInput v-model="filterMinAmount" type="number" placeholder="Min ETB" class="w-28" @input="onSearch" />
+        <UInput v-model="filterMaxAmount" type="number" placeholder="Max ETB" class="w-28" @input="onSearch" />
+        <USelect v-model="filterStatus" :items="statusOptions" value-key="value" class="w-44" />
+        <UButton color="neutral" variant="ghost" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
+      </div>
     </div>
 
     <div v-if="filterStatus === 'PENDING_REVIEW'" class="mt-2">

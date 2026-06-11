@@ -106,10 +106,6 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 
         <NuxtLink to="/" class="brand-link">
           <img src="/logo.png" alt="World Bingo" class="brand-logo" />
-          <div class="brand-text">
-            <span class="brand-name">World Bingo</span>
-            <span class="brand-sub">Admin Console</span>
-          </div>
         </NuxtLink>
       </div>
 
