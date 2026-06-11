@@ -363,7 +363,21 @@ const copyToClipboard = (text: string) => {
         v-for="d in pendingDeposits" :key="d.id"
         class="relative p-5 rounded-3xl border border-white/5 bg-(--surface-raised) shadow-lg"
       >
-        <div class="flex justify-between items-start mb-4">
+        <!-- Transaction ID — top of card -->
+        <div class="txid-row">
+          <span class="txid-text">{{ d.paymentTransactionId ?? '—' }}</span>
+          <button
+            class="txid-copy"
+            :title="'Copy ' + d.paymentTransactionId"
+            @click.stop="copyToClipboard(d.paymentTransactionId)"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex justify-between items-start mb-4 mt-3">
           <div>
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20">
@@ -371,7 +385,6 @@ const copyToClipboard = (text: string) => {
               </span>
               <h3 class="font-bold text-zinc-100">{{ d.user.username }}</h3>
             </div>
-            <p class="text-[10px] text-white/30 font-mono mt-1">{{ d.id.split('-')[0] }}</p>
           </div>
           <UBadge
             :color="d.status === 'PENDING_REVIEW' ? 'warning' : d.status === 'APPROVED' ? 'success' : 'error'"
@@ -385,10 +398,6 @@ const copyToClipboard = (text: string) => {
           <div class="flex justify-between items-center">
             <span class="text-xs text-white/30">Amount</span>
             <span class="text-lg font-black text-yellow-500">{{ Number(d.amount).toFixed(2) }} <span class="text-[10px] font-normal opacity-50">ETB</span></span>
-          </div>
-          <div class="flex justify-between items-center text-xs">
-            <span class="text-white/30">Reference</span>
-            <span class="font-bold text-zinc-300 font-mono text-[10px] truncate max-w-30">{{ d.paymentTransactionId }}</span>
           </div>
           <div v-if="d.receiptUrl" class="mt-2">
             <UButton variant="soft" color="neutral" size="xs" block icon="i-heroicons:eye" @click="openReceipt(d.receiptUrl)">View Receipt</UButton>
@@ -481,6 +490,48 @@ const copyToClipboard = (text: string) => {
 </template>
 
 <style scoped>
+/* Transaction ID header */
+.txid-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.txid-text {
+  flex: 1;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.txid-copy {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.txid-copy:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
 .action-btns {
   display: flex;
   flex-direction: column;
