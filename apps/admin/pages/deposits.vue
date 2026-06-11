@@ -232,66 +232,51 @@ const copyToClipboard = (text: string) => {
       </div>
     </div>
 
-    <!-- Summary stats -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="group relative overflow-hidden rounded-3xl border border-white/5 p-5 bg-(--surface-raised) shadow-xl transition-all hover:bg-white/5">
-        <div class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Pending</div>
-        <div class="text-2xl font-black text-yellow-500">{{ pendingCount }}</div>
-      </div>
-      <div class="group relative overflow-hidden rounded-3xl border border-white/5 p-5 bg-(--surface-raised) shadow-xl transition-all hover:bg-white/5">
-        <div class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Approved Sum</div>
-        <div class="text-2xl font-black text-emerald-400">{{ approvedSum.toFixed(2) }} <span class="text-[10px] font-normal opacity-50">ETB</span></div>
-      </div>
-      <div class="group relative overflow-hidden rounded-3xl border border-white/5 p-5 bg-(--surface-raised) shadow-xl transition-all hover:bg-white/5">
-        <div class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Declined Sum</div>
-        <div class="text-2xl font-black text-red-500">{{ declinedSum.toFixed(2) }} <span class="text-[10px] font-normal opacity-50">ETB</span></div>
-      </div>
-    </div>
-
-    <!-- Filter Bar -->
-    <div class="space-y-3">
-      <!-- Active filters row -->
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-semibold text-white/40 uppercase tracking-widest shrink-0">Active Filters:</span>
-        <div class="flex items-center gap-2 flex-wrap flex-1">
+    <!-- Filter bar -->
+    <div class="space-y-2">
+      <div class="flex items-center gap-2 flex-wrap min-h-8">
+        <span class="text-[11px] font-semibold text-white/35 uppercase tracking-widest shrink-0">Active Filters:</span>
+        <div class="flex items-center gap-1.5 flex-wrap flex-1">
           <span
             v-for="chip in activeChips"
             :key="chip.label"
-            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs font-medium text-white/80"
+            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-[11px] font-medium text-amber-300"
           >
             {{ chip.label }}
-            <button class="hover:text-white transition-colors ml-0.5 opacity-60 hover:opacity-100" @click="chip.clear">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <button class="opacity-60 hover:opacity-100 transition-opacity" @click="chip.clear">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </span>
-          <span v-if="!activeChips.length" class="text-xs text-white/25 italic">None</span>
+          <span v-if="!activeChips.length" class="text-[11px] text-white/20">None</span>
         </div>
-        <UButton
-          icon="i-heroicons:funnel"
-          label="Filter"
-          color="primary"
-          size="sm"
-          :variant="filtersOpen ? 'solid' : 'outline'"
-          class="shrink-0"
-          @click="filtersOpen = !filtersOpen"
-        />
-      </div>
-
-      <!-- Export -->
-      <div>
-        <UButton icon="i-heroicons:arrow-down-tray" label="Export" color="neutral" variant="ghost" size="sm" @click="exportCSV" />
+        <div class="flex items-center gap-2 shrink-0">
+          <button class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-medium text-white/50 hover:text-white border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all" @click="exportCSV">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+          <button
+            class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-semibold transition-all"
+            :class="filtersOpen
+              ? 'bg-amber-500 text-black border border-amber-500'
+              : 'text-white/70 hover:text-white border border-white/15 hover:border-amber-500/50 bg-white/5 hover:bg-amber-500/10'"
+            @click="filtersOpen = !filtersOpen"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filter
+          </button>
+        </div>
       </div>
 
       <!-- Collapsible filter panel -->
-      <div v-show="filtersOpen" class="flex flex-wrap gap-3 bg-white/5 p-3 rounded-2xl border border-white/10 shadow-inner">
-        <UInput v-model="filterSearch" icon="i-heroicons:magnifying-glass" placeholder="Search username or phone…" class="flex-1 min-w-48" @input="onSearch" />
-        <UInput v-model="filterUserSerial" placeholder="User ID" class="w-28" @input="onSearch" />
-        <UInput v-model="filterFrom" type="date" class="w-40" @change="page = 1; fetchDeposits()" />
-        <UInput v-model="filterTo" type="date" class="w-40" @change="page = 1; fetchDeposits()" />
-        <UInput v-model="filterMinAmount" type="number" placeholder="Min ETB" class="w-28" @input="onSearch" />
-        <UInput v-model="filterMaxAmount" type="number" placeholder="Max ETB" class="w-28" @input="onSearch" />
-        <USelect v-model="filterStatus" :items="statusOptions" value-key="value" class="w-40" @change="page = 1; fetchDeposits()" />
-        <UButton color="neutral" variant="ghost" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
+      <div v-show="filtersOpen" class="flex flex-wrap gap-2.5 bg-white/4 p-3 rounded-xl border border-white/8">
+        <UInput v-model="filterSearch" icon="i-heroicons:magnifying-glass" placeholder="Search username or phone…" size="sm" class="flex-1 min-w-44" @input="onSearch" />
+        <UInput v-model="filterUserSerial" placeholder="User ID" size="sm" class="w-24" @input="onSearch" />
+        <UInput v-model="filterFrom" type="date" size="sm" class="w-36" @change="page = 1; fetchDeposits()" />
+        <UInput v-model="filterTo" type="date" size="sm" class="w-36" @change="page = 1; fetchDeposits()" />
+        <UInput v-model="filterMinAmount" type="number" placeholder="Min ETB" size="sm" class="w-24" @input="onSearch" />
+        <UInput v-model="filterMaxAmount" type="number" placeholder="Max ETB" size="sm" class="w-24" @input="onSearch" />
+        <USelect v-model="filterStatus" :items="statusOptions" value-key="value" size="sm" class="w-36" @change="page = 1; fetchDeposits()" />
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
       </div>
     </div>
 
