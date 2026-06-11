@@ -26,18 +26,45 @@ const stats = ref<{
 } | null>(null)
 
 // ── Date filter ───────────────────────────────────────────────────────────────
-type Preset = 'today' | 'week' | 'month' | 'year' | 'custom'
-const preset = ref<Preset>('month')
-const customFrom = ref('')
-const customTo = ref('')
+type Preset = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | 'custom'
 
 const presetOptions: { label: string; value: Preset }[] = [
   { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
   { label: 'This Week', value: 'week' },
+  { label: 'Last Week', value: 'lastWeek' },
   { label: 'This Month', value: 'month' },
-  { label: 'This Year', value: 'year' },
-  { label: 'Custom', value: 'custom' },
+  { label: 'Last Month', value: 'lastMonth' },
 ]
+
+// Applied (active) state
+const preset = ref<Preset>('today')
+const customFrom = ref('')
+const customTo = ref('')
+
+// Pending (inside modal before Apply)
+const pendingPreset = ref<Preset>('today')
+const pendingCustomFrom = ref('')
+const pendingCustomTo = ref('')
+const pendingCustomEnabled = ref(false)
+
+const filterOpen = ref(false)
+
+function openFilter() {
+  pendingPreset.value = preset.value
+  pendingCustomFrom.value = customFrom.value
+  pendingCustomTo.value = customTo.value
+  pendingCustomEnabled.value = preset.value === 'custom'
+  filterOpen.value = true
+}
+
+function applyFilter() {
+  preset.value = pendingCustomEnabled.value ? 'custom' : pendingPreset.value
+  customFrom.value = pendingCustomFrom.value
+  customTo.value = pendingCustomTo.value
+  filterOpen.value = false
+  refresh()
+}
 
 function getDateRange(): { from: string; to: string } {
   const now = new Date()
@@ -46,18 +73,41 @@ function getDateRange(): { from: string; to: string } {
   const today = fmt(now)
 
   if (preset.value === 'today') return { from: today, to: today }
+  if (preset.value === 'yesterday') {
+    const y = new Date(now); y.setDate(now.getDate() - 1)
+    return { from: fmt(y), to: fmt(y) }
+  }
   if (preset.value === 'week') {
-    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1)
+    const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7))
     return { from: fmt(mon), to: today }
+  }
+  if (preset.value === 'lastWeek') {
+    const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7) - 7)
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    return { from: fmt(mon), to: fmt(sun) }
   }
   if (preset.value === 'month') {
     return { from: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, to: today }
   }
-  if (preset.value === 'year') {
-    return { from: `${now.getFullYear()}-01-01`, to: today }
+  if (preset.value === 'lastMonth') {
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const last = new Date(now.getFullYear(), now.getMonth(), 0)
+    return { from: fmt(first), to: fmt(last) }
   }
   return { from: customFrom.value, to: customTo.value }
 }
+
+const activeLabel = computed(() => {
+  if (preset.value === 'custom') {
+    const fmtD = (s: string) => {
+      const d = new Date(s)
+      return `${String(d.getDate()).padStart(2,'0')}/${d.toLocaleString('en',{month:'short'})}`
+    }
+    if (customFrom.value && customTo.value) return `${fmtD(customFrom.value)}–${fmtD(customTo.value)}`
+    return 'Custom'
+  }
+  return presetOptions.find(o => o.value === preset.value)?.label ?? 'Today'
+})
 
 const dateLabel = computed(() => {
   const { from, to } = getDateRange()
@@ -65,8 +115,11 @@ const dateLabel = computed(() => {
   const fmtDisplay = (s: string) => {
     const d = new Date(s); return `${String(d.getDate()).padStart(2,'0')}/${d.toLocaleString('en',{month:'short'})}`
   }
-  return `${fmtDisplay(from)}–${fmtDisplay(to)}`
+  return from === to ? fmtDisplay(from) : `${fmtDisplay(from)}–${fmtDisplay(to)}`
 })
+
+// ── Real-time polling ─────────────────────────────────────────────────────────
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const refresh = async () => {
   loading.value = true
@@ -82,10 +135,14 @@ const refresh = async () => {
   }
 }
 
-watch(preset, () => { if (preset.value !== 'custom') refresh() })
-watch([customFrom, customTo], () => { if (customFrom.value && customTo.value) refresh() })
+onMounted(() => {
+  refresh()
+  pollTimer = setInterval(refresh, 30_000)
+})
 
-onMounted(refresh)
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 const fmt = (n: number) => {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
@@ -146,31 +203,72 @@ const ggrPct = computed(() => {
       </button>
     </div>
 
-    <!-- Date filter bar -->
-    <div class="db-filter-bar">
-      <div class="db-filter-row">
-        <div class="db-preset-group">
-          <button
-            v-for="opt in presetOptions.filter(o => o.value !== 'custom')"
-            :key="opt.value"
-            class="db-preset-btn"
-            :class="{ 'db-preset-btn--active': preset === opt.value }"
-            @click="preset = opt.value"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <div class="db-date-badge">
-          <UIcon name="i-heroicons:calendar-days" class="w-3.5 h-3.5 opacity-60" />
-          {{ dateLabel }}
-        </div>
-      </div>
-      <div v-if="preset === 'custom'" class="db-custom-row">
-        <input v-model="customFrom" type="date" class="db-date-input" />
-        <span class="db-date-sep">–</span>
-        <input v-model="customTo" type="date" class="db-date-input" />
-      </div>
+    <!-- Filter trigger row -->
+    <div class="db-filter-trigger-row">
+      <button class="db-filter-btn" @click="openFilter">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        {{ activeLabel }}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <div class="db-date-range-pill">{{ dateLabel }}</div>
     </div>
+
+    <!-- Interval bottom-sheet modal -->
+    <Teleport to="body">
+      <Transition name="sheet-backdrop">
+        <div v-if="filterOpen" class="sheet-backdrop" @click.self="filterOpen = false" />
+      </Transition>
+      <Transition name="sheet">
+        <div v-if="filterOpen" class="interval-sheet">
+          <div class="sheet-header">
+            <span class="sheet-title">Interval</span>
+            <button class="sheet-close" @click="filterOpen = false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="sheet-options">
+            <label
+              v-for="opt in presetOptions"
+              :key="opt.value"
+              class="sheet-option"
+              :class="{ 'sheet-option--active': !pendingCustomEnabled && pendingPreset === opt.value }"
+              @click="pendingPreset = opt.value; pendingCustomEnabled = false"
+            >
+              <span class="sheet-option-label">{{ opt.label }}</span>
+              <span class="sheet-radio" :class="{ 'sheet-radio--checked': !pendingCustomEnabled && pendingPreset === opt.value }" />
+            </label>
+          </div>
+
+          <div class="sheet-divider" />
+
+          <div class="sheet-custom-row">
+            <span class="sheet-option-label">Custom Date</span>
+            <button
+              class="sheet-toggle"
+              :class="{ 'sheet-toggle--on': pendingCustomEnabled }"
+              @click="pendingCustomEnabled = !pendingCustomEnabled"
+            >
+              <span class="sheet-toggle-knob" />
+            </button>
+          </div>
+
+          <div v-if="pendingCustomEnabled" class="sheet-date-inputs">
+            <input v-model="pendingCustomFrom" type="date" class="sheet-date-input" placeholder="From" />
+            <span class="sheet-date-sep">–</span>
+            <input v-model="pendingCustomTo" type="date" class="sheet-date-input" placeholder="To" />
+          </div>
+
+          <button class="sheet-apply" @click="applyFilter">Apply</button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Players card -->
     <div class="db-card">
@@ -417,84 +515,192 @@ const ggrPct = computed(() => {
 .db-refresh:hover { background: var(--surface-overlay); }
 .db-refresh:disabled { opacity: 0.4; cursor: default; }
 
-/* Date filter bar */
-.db-filter-bar {
-  background: var(--surface-raised);
-  border: 1px solid var(--surface-border);
-  border-radius: 14px;
-  padding: 12px 14px;
+/* Filter trigger row */
+.db-filter-trigger-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 10px;
 }
-.db-filter-row {
+.db-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.db-filter-btn:hover { background: var(--surface-overlay); }
+.db-date-range-pill {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom sheet */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9998;
+}
+.interval-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #1a2235;
+  border-radius: 20px 20px 0 0;
+  padding: 0 0 env(safe-area-inset-bottom, 16px);
+  display: flex;
+  flex-direction: column;
+}
+.sheet-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  padding: 18px 20px 14px;
 }
-.db-preset-group {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+.sheet-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
 }
-.db-preset-btn {
+.sheet-close {
+  width: 30px;
   height: 30px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--surface-overlay);
-  border: 1px solid var(--surface-border);
-  color: var(--text-secondary);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-  font-family: inherit;
-}
-.db-preset-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
-.db-preset-btn--active {
-  background: var(--brand-primary);
-  border-color: var(--brand-primary);
-  color: #000;
-  font-weight: 600;
-}
-.db-date-badge {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  padding: 5px 10px;
-  white-space: nowrap;
+  justify-content: center;
+  transition: background 0.12s;
 }
-.db-custom-row {
+.sheet-close:hover { background: rgba(255,255,255,0.18); }
+.sheet-options {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.sheet-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.1s;
+}
+.sheet-option:hover, .sheet-option--active { background: rgba(255,255,255,0.04); }
+.sheet-option-label {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.9);
+}
+.sheet-radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.sheet-radio--checked {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  box-shadow: inset 0 0 0 4px #1a2235;
+}
+.sheet-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 4px 0;
+}
+.sheet-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+.sheet-toggle {
+  width: 50px;
+  height: 28px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.sheet-toggle--on { background: #3b82f6; }
+.sheet-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  display: block;
+}
+.sheet-toggle--on .sheet-toggle-knob { transform: translateX(22px); }
+.sheet-date-inputs {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 0 20px 12px;
 }
-.db-date-input {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--surface-overlay);
-  border: 1px solid var(--surface-border);
-  color: var(--text-primary);
-  font-size: 12px;
+.sheet-date-input {
+  flex: 1;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 0 12px;
+}
+.sheet-date-input:focus { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.sheet-date-sep { color: rgba(255,255,255,0.4); font-size: 14px; }
+.sheet-apply {
+  margin: 12px 16px 16px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  flex: 1;
-  min-width: 0;
+  transition: background 0.15s;
 }
-.db-date-input:focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
-.db-date-sep {
-  color: var(--text-muted);
-  font-size: 13px;
-}
+.sheet-apply:hover { background: rgba(255,255,255,0.18); }
+
+/* Sheet transitions */
+.sheet-backdrop-enter-active, .sheet-backdrop-leave-active { transition: opacity 0.25s; }
+.sheet-backdrop-enter-from, .sheet-backdrop-leave-to { opacity: 0; }
+.sheet-enter-active, .sheet-leave-active { transition: transform 0.3s cubic-bezier(0.32,0.72,0,1); }
+.sheet-enter-from, .sheet-leave-to { transform: translateY(100%); }
 
 /* Card */
 .db-card {
