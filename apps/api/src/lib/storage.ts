@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 
 export interface UploadResult {
@@ -120,6 +120,8 @@ function mimeToExt(mimetype: string): string {
         'image/jpg': '.jpg',
         'image/png': '.png',
         'image/webp': '.webp',
+        'image/heic': '.heic',
+        'image/heif': '.heif',
     }
     return map[mimetype] ?? ''
 }

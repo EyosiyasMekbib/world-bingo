@@ -100,13 +100,13 @@
                 <img v-if="previewUrl" :src="previewUrl" alt="Receipt preview" class="preview-img" />
                 <div v-else class="drop-hint">
                   <span class="icon">📎</span>
-                  <span>Click or drag & drop receipt (JPG/PNG, max 5MB)</span>
+                  <span>Click or drag & drop receipt (JPG/PNG/HEIC, max 5MB)</span>
                 </div>
               </div>
               <input
                 ref="fileInputRef"
                 type="file"
-                accept="image/jpeg,image/png"
+                accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
                 class="hidden-input"
                 @change="onFileChange"
               />
@@ -247,8 +247,9 @@ function onFileDrop(e: DragEvent) {
 }
 
 function setFile(file: File) {
-  if (!['image/jpeg', 'image/png'].includes(file.type)) {
-    error.value = 'Only JPG/PNG images are allowed.'
+  if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(file.type)
+    && !file.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/)) {
+    error.value = 'Only JPG, PNG, or HEIC images are allowed.'
     return
   }
   if (file.size > 5 * 1024 * 1024) {
