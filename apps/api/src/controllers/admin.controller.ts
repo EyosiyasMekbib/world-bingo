@@ -4,7 +4,11 @@ import { PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-ty
 
 export class AdminController {
     static async getStats(request: FastifyRequest, reply: FastifyReply) {
-        const stats = await AdminService.getStats()
+        const q = (request.query as any) ?? {}
+        const stats = await AdminService.getStats({
+            from: q.from ? new Date(q.from) : undefined,
+            to: q.to ? new Date(q.to) : undefined,
+        })
         return stats
     }
 

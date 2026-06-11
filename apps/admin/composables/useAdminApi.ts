@@ -3,32 +3,35 @@ export const useAdminApi = () => {
 
     return {
         fetch: apiFetch,
-        getStats: () => apiFetch<{
-            approvedDepositSum: number
-            approvedWithdrawalSum: number
-            depositCount: number
-            withdrawalCount: number
-            avgDeposit: number
-            avgWithdrawal: number
-            netValuePct: number
-            withdrawalRatePct: number
-            totalPrizesSum: number
-            gamesCompleted: number
-            gamesCancelled: number
-            totalPrizePools: number
-            activePlayers: number
-            registeredPlayers: number
-            inactivePlayers: number
-            houseBalance: number
-            houseCommissionEarned: number
-            totalProviderProfit: number
-            providerStats: Array<{ name: string; gained: number; lost: number; net: number }>
-            declinedDepositSum: number
-            usersCount: number
-            gamesCount: number
-            totalProfit: number
-            commission: number
-        }>('/admin/stats'),
+        getStats: (params?: { from?: string; to?: string }) => {
+            const qs = params ? new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v))).toString() : ''
+            return apiFetch<{
+                approvedDepositSum: number
+                approvedWithdrawalSum: number
+                depositCount: number
+                withdrawalCount: number
+                avgDeposit: number
+                avgWithdrawal: number
+                netValuePct: number
+                withdrawalRatePct: number
+                totalPrizesSum: number
+                gamesCompleted: number
+                gamesCancelled: number
+                totalPrizePools: number
+                activePlayers: number
+                registeredPlayers: number
+                inactivePlayers: number
+                houseBalance: number
+                houseCommissionEarned: number
+                totalProviderProfit: number
+                providerStats: Array<{ name: string; gained: number; lost: number; net: number }>
+                declinedDepositSum: number
+                usersCount: number
+                gamesCount: number
+                totalProfit: number
+                commission: number
+            }>(qs ? `/admin/stats?${qs}` : '/admin/stats')
+        },
         getPendingDeposits: (params?: {
             status?: string
             search?: string

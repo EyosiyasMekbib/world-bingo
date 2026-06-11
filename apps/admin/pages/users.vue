@@ -13,7 +13,8 @@ const totalPages = ref(1)
 const totalUsers = ref(0)
 const searchQuery = ref('')
 const selectedRole = ref('__ALL__')
-const viewMode = ref<'table' | 'card'>('table')
+const viewMode = ref<'table' | 'card'>('card')
+const filtersOpen = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Role modal ─────────────────────────────────────────────────────────────
@@ -148,7 +149,12 @@ const copyToClipboard = (text: string) => {
     </div>
 
     <!-- Toolbar Filters -->
-    <div class="flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
+    <div class="space-y-2">
+      <button class="sm:hidden flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors" @click="filtersOpen = !filtersOpen">
+        <svg class="w-4 h-4 transition-transform" :class="filtersOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        Filters
+      </button>
+      <div class="hidden sm:flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner" :class="{ '!flex': filtersOpen }">
       <UInput
         v-model="searchQuery"
         icon="i-heroicons:magnifying-glass"
@@ -164,6 +170,7 @@ const copyToClipboard = (text: string) => {
         class="w-full md:w-48"
         value-key="value"
       />
+    </div>
     </div>
 
     <!-- Table View -->

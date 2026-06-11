@@ -25,16 +25,65 @@ const stats = ref<{
   providerStats: Array<{ name: string; gained: number; lost: number; net: number }>
 } | null>(null)
 
+// ── Date filter ───────────────────────────────────────────────────────────────
+type Preset = 'today' | 'week' | 'month' | 'year' | 'custom'
+const preset = ref<Preset>('month')
+const customFrom = ref('')
+const customTo = ref('')
+
+const presetOptions: { label: string; value: Preset }[] = [
+  { label: 'Today', value: 'today' },
+  { label: 'This Week', value: 'week' },
+  { label: 'This Month', value: 'month' },
+  { label: 'This Year', value: 'year' },
+  { label: 'Custom', value: 'custom' },
+]
+
+function getDateRange(): { from: string; to: string } {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const today = fmt(now)
+
+  if (preset.value === 'today') return { from: today, to: today }
+  if (preset.value === 'week') {
+    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1)
+    return { from: fmt(mon), to: today }
+  }
+  if (preset.value === 'month') {
+    return { from: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, to: today }
+  }
+  if (preset.value === 'year') {
+    return { from: `${now.getFullYear()}-01-01`, to: today }
+  }
+  return { from: customFrom.value, to: customTo.value }
+}
+
+const dateLabel = computed(() => {
+  const { from, to } = getDateRange()
+  if (!from) return '—'
+  const fmtDisplay = (s: string) => {
+    const d = new Date(s); return `${String(d.getDate()).padStart(2,'0')}/${d.toLocaleString('en',{month:'short'})}`
+  }
+  return `${fmtDisplay(from)}–${fmtDisplay(to)}`
+})
+
 const refresh = async () => {
   loading.value = true
   try {
-    stats.value = await getStats() as any
+    const { from, to } = getDateRange()
+    const toEndOfDay = to ? `${to}T23:59:59.999Z` : undefined
+    const fromStartOfDay = from ? `${from}T00:00:00.000Z` : undefined
+    stats.value = await getStats({ from: fromStartOfDay, to: toEndOfDay }) as any
   } catch (e) {
     console.error('Failed to fetch stats', e)
   } finally {
     loading.value = false
   }
 }
+
+watch(preset, () => { if (preset.value !== 'custom') refresh() })
+watch([customFrom, customTo], () => { if (customFrom.value && customTo.value) refresh() })
 
 onMounted(refresh)
 
@@ -95,6 +144,32 @@ const ggrPct = computed(() => {
       <button class="db-refresh" :disabled="loading" @click="refresh">
         <UIcon name="i-heroicons:arrow-path" class="w-4 h-4" :class="{ 'animate-spin': loading }" />
       </button>
+    </div>
+
+    <!-- Date filter bar -->
+    <div class="db-filter-bar">
+      <div class="db-filter-row">
+        <div class="db-preset-group">
+          <button
+            v-for="opt in presetOptions.filter(o => o.value !== 'custom')"
+            :key="opt.value"
+            class="db-preset-btn"
+            :class="{ 'db-preset-btn--active': preset === opt.value }"
+            @click="preset = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <div class="db-date-badge">
+          <UIcon name="i-heroicons:calendar-days" class="w-3.5 h-3.5 opacity-60" />
+          {{ dateLabel }}
+        </div>
+      </div>
+      <div v-if="preset === 'custom'" class="db-custom-row">
+        <input v-model="customFrom" type="date" class="db-date-input" />
+        <span class="db-date-sep">–</span>
+        <input v-model="customTo" type="date" class="db-date-input" />
+      </div>
     </div>
 
     <!-- Players card -->
@@ -341,6 +416,85 @@ const ggrPct = computed(() => {
 }
 .db-refresh:hover { background: var(--surface-overlay); }
 .db-refresh:disabled { opacity: 0.4; cursor: default; }
+
+/* Date filter bar */
+.db-filter-bar {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.db-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.db-preset-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.db-preset-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.db-preset-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+.db-preset-btn--active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #000;
+  font-weight: 600;
+}
+.db-date-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.db-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.db-date-input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.db-date-input:focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.db-date-sep {
+  color: var(--text-muted);
+  font-size: 13px;
+}
 
 /* Card */
 .db-card {

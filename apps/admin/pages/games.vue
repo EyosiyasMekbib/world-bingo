@@ -152,7 +152,8 @@ const copyToClipboard = (text: string) => {
   toast.add({ title: 'Copied', color: 'success' })
 }
 
-const viewMode = ref<'table' | 'card'>('table')
+const viewMode = ref<'table' | 'card'>('card')
+const filtersOpen = ref(false)
 
 watch([selectedStatus, page], refreshGames)
 onMounted(refreshGames)
@@ -187,7 +188,12 @@ onMounted(refreshGames)
     </div>
 
     <!-- Toolbar Filters -->
-    <div class="flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner">
+    <div class="space-y-2">
+      <button class="sm:hidden flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors" @click="filtersOpen = !filtersOpen">
+        <svg class="w-4 h-4 transition-transform" :class="filtersOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        Filters
+      </button>
+      <div class="hidden sm:flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner" :class="{ '!flex': filtersOpen }">
       <USelect
         v-model="selectedStatus"
         :items="statusOptions"
@@ -196,6 +202,7 @@ onMounted(refreshGames)
         class="w-full sm:w-60"
         value-key="value"
       />
+    </div>
     </div>
 
     <!-- Table View -->
