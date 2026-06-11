@@ -49,6 +49,9 @@ const declineNote = ref('')
 const customReason = ref('')
 const showDeclineModal = ref(false)
 const selectedDeclineId = ref<string | null>(null)
+const showApproveModal = ref(false)
+const selectedApproveId = ref<string | null>(null)
+const approveLoading = ref(false)
 const viewMode = ref<'table' | 'card'>('card')
 const filtersOpen = ref(false)
 
@@ -155,13 +158,23 @@ watch([page, filterStatus], fetchDeposits)
 onMounted(fetchDeposits)
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-const handleApprove = async (id: string) => {
+const openApproveModal = (id: string) => {
+  selectedApproveId.value = id
+  showApproveModal.value = true
+}
+
+const confirmApprove = async () => {
+  if (!selectedApproveId.value) return
+  approveLoading.value = true
   try {
-    await approveTransaction(id)
+    await approveTransaction(selectedApproveId.value)
     toast.add({ title: 'Approved ✅', description: 'Deposit credited to player wallet', color: 'success' })
+    showApproveModal.value = false
     fetchDeposits()
   } catch (e: any) {
     toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to approve', color: 'error' })
+  } finally {
+    approveLoading.value = false
   }
 }
 
@@ -330,7 +343,7 @@ const copyToClipboard = (text: string) => {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="handleApprove((row.original as unknown as DepositTransaction).id)">Approve</UButton>
+            <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="openApproveModal((row.original as unknown as DepositTransaction).id)">Approve</UButton>
             <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
           </div>
         </template>
@@ -387,9 +400,9 @@ const copyToClipboard = (text: string) => {
             <span class="text-[10px] text-white/20 font-medium">Age: {{ ageMinutes(d.createdAt) }}m</span>
             <span class="text-[10px] text-white/20">{{ new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
           </div>
-          <div v-if="d.status === 'PENDING_REVIEW'" class="flex gap-2">
-            <UButton size="xs" color="success" block icon="i-heroicons:check" @click="handleApprove(d.id)">Approve</UButton>
-            <UButton size="xs" color="error" variant="ghost" icon="i-heroicons:x-mark" @click="openDeclineModal(d.id)" />
+          <div v-if="d.status === 'PENDING_REVIEW'" class="flex flex-col gap-2">
+            <UButton size="xs" color="success" block icon="i-heroicons:check" @click="openApproveModal(d.id)">Approve</UButton>
+            <UButton size="xs" color="error" block icon="i-heroicons:x-mark" @click="openDeclineModal(d.id)">Decline</UButton>
           </div>
         </div>
       </div>
@@ -410,6 +423,25 @@ const copyToClipboard = (text: string) => {
         <div class="flex justify-center rounded-xl p-2" style="background:var(--surface-overlay);">
           <img :src="selectedReceipt" alt="Receipt" class="max-w-full max-h-[70vh] object-contain shadow-2xl rounded-lg" />
         </div>
+      </template>
+    </UModal>
+
+    <!-- Approve Confirmation Modal -->
+    <UModal v-model:open="showApproveModal" title="Confirm Approval" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div class="flex flex-col items-center gap-4 py-2">
+          <div class="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center">
+            <UIcon name="i-heroicons:check-circle" class="w-8 h-8 text-green-400" />
+          </div>
+          <div class="text-center">
+            <p class="text-base font-semibold text-white">Approve this deposit?</p>
+            <p class="text-sm text-white/50 mt-1">The amount will be credited to the player's wallet immediately.</p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" :disabled="approveLoading" @click="showApproveModal = false">Cancel</UButton>
+        <UButton color="success" :loading="approveLoading" icon="i-heroicons:check" @click="confirmApprove">Confirm Approve</UButton>
       </template>
     </UModal>
 
