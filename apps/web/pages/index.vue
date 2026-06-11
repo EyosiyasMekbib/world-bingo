@@ -686,24 +686,9 @@ onUnmounted(() => {
 .hero {
   position: relative;
   overflow: hidden;
-  background-image:
-    var(--hero-desktop-fallback),
-    linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  aspect-ratio: 1440 / 300;
+  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
   display: flex;
   flex-direction: column;
-}
-
-@media (max-width: 620px) {
-  .hero {
-    background-image:
-      var(--hero-mobile-fallback),
-      linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
-    aspect-ratio: 390 / 226;
-  }
 }
 
 .hero-bg {
@@ -719,16 +704,13 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
   display: block;
-  flex: 1;
-  min-height: 0;
   cursor: pointer;
 }
 
 .hero-ad__image {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: fill;
+  height: auto;
   transition: opacity 0.15s ease;
 }
 
