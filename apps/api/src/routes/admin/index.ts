@@ -242,6 +242,19 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         f.get('/house/bots', async (_req, _reply) => HouseWalletService.getBotActivity())
 
+        f.patch('/house/bots/:id/rename', async (req: any, reply) => {
+            const { id } = req.params
+            const { firstName, lastName } = req.body ?? {}
+            const bot = await prisma.user.findFirst({ where: { id, username: { startsWith: 'bot_t' } }, select: { id: true } })
+            if (!bot) return reply.status(404).send({ error: 'Bot not found' })
+            const updated = await prisma.user.update({
+                where: { id },
+                data: { firstName: firstName ?? null, lastName: lastName ?? null },
+                select: { id: true, username: true, firstName: true, lastName: true },
+            })
+            return updated
+        })
+
         f.get('/money-flow', async (req: any, _reply) => {
             const q = req.query as Record<string, any>
             const types = q['type[]'] ? (Array.isArray(q['type[]']) ? q['type[]'] : [q['type[]']]) : undefined

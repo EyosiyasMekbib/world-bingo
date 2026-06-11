@@ -38,12 +38,12 @@ const presetOptions: { label: string; value: Preset }[] = [
 ]
 
 // Applied (active) state
-const preset = ref<Preset>('today')
+const preset = ref<Preset>('month')
 const customFrom = ref('')
 const customTo = ref('')
 
 // Pending (inside modal before Apply)
-const pendingPreset = ref<Preset>('today')
+const pendingPreset = ref<Preset>('month')
 const pendingCustomFrom = ref('')
 const pendingCustomTo = ref('')
 const pendingCustomEnabled = ref(false)

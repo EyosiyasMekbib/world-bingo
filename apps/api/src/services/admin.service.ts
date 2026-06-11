@@ -50,13 +50,16 @@ export class AdminService {
                 where: { status: 'COMPLETED', ...gameDateRange },
                 include: { _count: { select: { entries: true } } },
             }),
-            prisma.user.count(),
-            prisma.user.count({ where: { isActive: false } }),
+            prisma.user.count({ where: { OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }] } }),
+            prisma.user.count({ where: { isActive: false, OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }] } }),
             prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange } }),
             prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange } }),
         ])
 
-        const activePlayers = activePlayersGroups.length
+        const botIds = new Set(
+            (await prisma.user.findMany({ where: { passwordHash: 'BOT_ACCOUNT' }, select: { id: true } })).map(b => b.id)
+        )
+        const activePlayers = activePlayersGroups.filter(g => !botIds.has(g.userId)).length
         const totalPrizePools = completedGames.reduce((acc, g) => {
             return acc + Number(g.ticketPrice) * g._count.entries
         }, 0)
