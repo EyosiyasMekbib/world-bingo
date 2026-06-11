@@ -210,37 +210,27 @@ const copyToClipboard = (text: string) => {
 
 <template>
   <div class="space-y-6 pb-20 md:pb-0">
-    <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-4">
-      <h1 class="text-2xl font-bold text-white tracking-tight">Deposits Confirmation</h1>
-      <div class="flex items-center gap-2">
+    <!-- Header + Filter bar combined -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <h1 class="text-2xl font-bold text-white tracking-tight flex-1">Deposits Confirmation</h1>
+      <div class="flex items-center gap-2 shrink-0">
         <UButtonGroup size="sm">
-          <UButton
-            :variant="viewMode === 'table' ? 'solid' : 'ghost'"
-            color="neutral"
-            icon="i-heroicons:table-cells"
-            @click="viewMode = 'table'"
-          />
-          <UButton
-            :variant="viewMode === 'card' ? 'solid' : 'ghost'"
-            color="neutral"
-            icon="i-heroicons:squares-2x2"
-            @click="viewMode = 'card'"
-          />
+          <UButton :variant="viewMode === 'table' ? 'solid' : 'ghost'" color="neutral" icon="i-heroicons:table-cells" @click="viewMode = 'table'" />
+          <UButton :variant="viewMode === 'card' ? 'solid' : 'ghost'" color="neutral" icon="i-heroicons:squares-2x2" @click="viewMode = 'card'" />
         </UButtonGroup>
-        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" label="Refresh" @click="fetchDeposits" />
+        <UButton icon="i-heroicons:arrow-path" color="neutral" variant="ghost" size="sm" @click="fetchDeposits" />
       </div>
     </div>
 
     <!-- Filter bar -->
     <div class="space-y-2">
-      <div class="flex items-center gap-2 flex-wrap min-h-8">
+      <div class="flex items-center gap-2 flex-wrap">
         <span class="text-[11px] font-semibold text-white/35 uppercase tracking-widest shrink-0">Active Filters:</span>
-        <div class="flex items-center gap-1.5 flex-wrap flex-1">
+        <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
           <span
             v-for="chip in activeChips"
             :key="chip.label"
-            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-[11px] font-medium text-amber-300"
+            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-[11px] font-medium text-amber-300 whitespace-nowrap"
           >
             {{ chip.label }}
             <button class="opacity-60 hover:opacity-100 transition-opacity" @click="chip.clear">
