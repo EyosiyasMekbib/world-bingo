@@ -51,7 +51,16 @@
             <!-- Amount -->
             <div class="field">
               <label>Amount (ETB)</label>
-              <input v-model.number="form.amount" type="number" min="200" placeholder="Min 200 ETB" class="input" />
+              <input
+                v-model.number="form.amount"
+                type="number"
+                min="200"
+                placeholder="Min 200 ETB"
+                :class="['input', form.amount > 0 && form.amount < 200 ? 'input--error' : '']"
+              />
+              <p v-if="form.amount > 0 && form.amount < 200" class="amount-error">
+                Minimum deposit is 200 ETB
+              </p>
               <div class="chips">
                 <button v-for="chip in [200, 500, 1000, 2000]" :key="chip" class="chip" @click="form.amount = chip">
                   +{{ chip }}
@@ -559,6 +568,13 @@ label {
 .input--error {
   border-color: #f87171 !important;
   background: rgba(239, 68, 68, 0.06) !important;
+}
+
+.amount-error {
+  font-size: 12px;
+  color: #f87171;
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 .field-error-msg {
