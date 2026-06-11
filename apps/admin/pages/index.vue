@@ -5,11 +5,19 @@ const loading = ref(false)
 const stats = ref<{
   approvedDepositSum: number
   approvedWithdrawalSum: number
+  depositCount: number
+  withdrawalCount: number
+  avgDeposit: number
+  avgWithdrawal: number
+  netValuePct: number
+  withdrawalRatePct: number
   totalPrizesSum: number
   gamesCompleted: number
   gamesCancelled: number
   totalPrizePools: number
   activePlayers: number
+  registeredPlayers: number
+  inactivePlayers: number
   houseBalance: number
   houseCommissionEarned: number
   totalProviderProfit: number
@@ -30,243 +38,271 @@ const refresh = async () => {
 
 onMounted(refresh)
 
-const fmt = (n: number) =>
+const fmt = (n: number) => {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
+  if (n >= 1_000) return n.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return n.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const fmtFull = (n: number) =>
   n.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const fmtInt = (n: number) => n.toLocaleString('en-ET')
+
+const fmtK = (n: number) => {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M ETB'
+  if (n >= 1_000) return (n / 1_000).toFixed(2) + 'K ETB'
+  return n.toFixed(2) + ' ETB'
+}
 
 const netFlow = computed(() =>
   (stats.value?.approvedDepositSum ?? 0) - (stats.value?.approvedWithdrawalSum ?? 0)
 )
 
-const houseIsDeficit = computed(() => (stats.value?.houseBalance ?? 0) < 0)
+// Players bar: registered vs active proportion
+const playerBarRegisteredPct = computed(() => {
+  const reg = stats.value?.registeredPlayers ?? 0
+  const active = stats.value?.activePlayers ?? 0
+  if (reg === 0) return 50
+  return Math.round((reg / (reg + active)) * 100)
+})
+
+// Deposit/withdrawal ring: withdrawal rate vs deposit
+const depositRatePct = computed(() => Math.min(100, Math.max(0, 100 - (stats.value?.withdrawalRatePct ?? 0))))
+
+// Financial bar: prize pools vs prizes paid
+const betPct = computed(() => {
+  const bet = stats.value?.totalPrizePools ?? 0
+  const win = stats.value?.totalPrizesSum ?? 0
+  if (bet + win === 0) return 50
+  return Math.round((bet / (bet + win)) * 100)
+})
+
+const ggrPct = computed(() => {
+  const pools = stats.value?.totalPrizePools ?? 0
+  if (pools === 0) return 0
+  const ggr = pools - (stats.value?.totalPrizesSum ?? 0)
+  return ((ggr / pools) * 100)
+})
 </script>
 
 <template>
   <div class="dashboard">
 
-    <!-- ── Page header ──────────────────────────────────────────────── -->
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-sub">Platform overview — financial and operational summary</p>
-      </div>
-      <button class="refresh-btn" :disabled="loading" @click="refresh">
+    <!-- Header -->
+    <div class="db-header">
+      <h1 class="db-title">Dashboard</h1>
+      <button class="db-refresh" :disabled="loading" @click="refresh">
         <UIcon name="i-heroicons:arrow-path" class="w-4 h-4" :class="{ 'animate-spin': loading }" />
-        Refresh
       </button>
     </div>
 
-    <!-- ── KPI strip ────────────────────────────────────────────────── -->
-    <div class="kpi-strip">
-      <div class="kpi-item">
-        <span class="kpi-value kpi-value--positive">{{ fmt(stats?.approvedDepositSum ?? 0) }}</span>
-        <span class="kpi-label">Deposits Approved <span class="kpi-unit">ETB</span></span>
+    <!-- Players card -->
+    <div class="db-card">
+      <div class="db-card-head">
+        <div class="db-card-label">
+          <UIcon name="i-heroicons:users" class="w-4 h-4" />
+          Players
+        </div>
+        <NuxtLink to="/players" class="db-see-link">
+          See Players
+          <UIcon name="i-heroicons:arrow-top-right-on-square" class="w-3.5 h-3.5" />
+        </NuxtLink>
       </div>
-      <div class="kpi-divider"></div>
 
-      <div class="kpi-item">
-        <span class="kpi-value kpi-value--negative">{{ fmt(stats?.approvedWithdrawalSum ?? 0) }}</span>
-        <span class="kpi-label">Withdrawals Approved <span class="kpi-unit">ETB</span></span>
+      <!-- Stacked bar -->
+      <div class="db-bar-track">
+        <div class="db-bar-seg db-bar-seg--blue" :style="{ width: playerBarRegisteredPct + '%' }" />
+        <div class="db-bar-seg db-bar-seg--green" :style="{ width: (100 - playerBarRegisteredPct) + '%' }" />
       </div>
-      <div class="kpi-divider"></div>
 
-      <div class="kpi-item">
-        <span class="kpi-value" :class="netFlow >= 0 ? 'kpi-value--positive' : 'kpi-value--negative'">
-          {{ fmt(netFlow) }}
-        </span>
-        <span class="kpi-label">Net Flow <span class="kpi-unit">ETB</span></span>
+      <div class="db-stat-row">
+        <span class="db-dot db-dot--blue"></span>
+        <span class="db-stat-label">Registered Players</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
       </div>
-      <div class="kpi-divider"></div>
+      <div class="db-stat-value">{{ fmtInt(stats?.registeredPlayers ?? 0) }}</div>
 
-      <div class="kpi-item">
-        <span class="kpi-value" :class="houseIsDeficit ? 'kpi-value--negative' : 'kpi-value--brand'">
-          {{ fmt(stats?.houseBalance ?? 0) }}
-        </span>
-        <span class="kpi-label">
-          House Balance <span class="kpi-unit">ETB</span>
-          <span v-if="houseIsDeficit" class="status-tag status-tag--negative kpi-badge">Deficit</span>
-        </span>
+      <div class="db-stat-row mt-3">
+        <span class="db-dot db-dot--green"></span>
+        <span class="db-stat-label">Total Active Players</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
       </div>
-      <div class="kpi-divider"></div>
+      <div class="db-stat-value">{{ fmtInt(stats?.activePlayers ?? 0) }}</div>
 
-      <div class="kpi-item">
-        <span class="kpi-value">{{ fmtInt(stats?.activePlayers ?? 0) }}</span>
-        <span class="kpi-label">Active Players</span>
+      <div class="db-stat-row mt-3">
+        <span class="db-dot db-dot--orange"></span>
+        <span class="db-stat-label">Inactive Players</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
       </div>
-      <div class="kpi-divider"></div>
+      <div class="db-stat-value">{{ fmtInt(stats?.inactivePlayers ?? 0) }}</div>
+    </div>
 
-      <div class="kpi-item kpi-item--highlight">
-        <span class="kpi-value kpi-value--brand">{{ fmt(stats?.totalProfit ?? 0) }}</span>
-        <span class="kpi-label">Total Profit <span class="kpi-unit">ETB</span></span>
-        <div class="kpi-breakdown">
-          <span>Bingo {{ fmt(stats?.houseCommissionEarned ?? 0) }}</span>
-          <span class="kpi-sep">·</span>
-          <span>Providers {{ fmt(stats?.totalProviderProfit ?? 0) }}</span>
+    <!-- Deposits / Withdrawals card -->
+    <div class="db-card">
+      <!-- Ring + averages -->
+      <div class="db-ring-row">
+        <div class="db-ring-wrap">
+          <svg viewBox="0 0 100 100" class="db-ring-svg">
+            <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" />
+            <!-- green arc: deposit portion -->
+            <circle
+              cx="50" cy="50" r="38"
+              fill="none"
+              stroke="#22c55e"
+              stroke-width="10"
+              stroke-dasharray="238.76"
+              :stroke-dashoffset="238.76 * (1 - depositRatePct / 100)"
+              stroke-linecap="round"
+              transform="rotate(-90 50 50)"
+            />
+            <!-- red arc: withdrawal portion -->
+            <circle
+              cx="50" cy="50" r="38"
+              fill="none"
+              stroke="#ef4444"
+              stroke-width="10"
+              stroke-dasharray="238.76"
+              :stroke-dashoffset="238.76 * depositRatePct / 100"
+              stroke-linecap="round"
+              transform="rotate(-90 50 50) scale(-1,1) translate(-100,0)"
+            />
+            <text x="50" y="44" text-anchor="middle" class="db-ring-label-sm" fill="rgba(255,255,255,0.6)" font-size="8">Rate</text>
+            <text x="50" y="58" text-anchor="middle" class="db-ring-label-lg" fill="white" font-size="11" font-weight="700">{{ (stats?.withdrawalRatePct ?? 0).toFixed(2) }}%</text>
+          </svg>
+        </div>
+        <div class="db-avg-col">
+          <div class="db-avg-label">Average deposit</div>
+          <div class="db-avg-value">{{ fmtK(stats?.avgDeposit ?? 0) }}</div>
+          <div class="db-avg-label mt-3">Average withdraw</div>
+          <div class="db-avg-value">{{ fmtK(stats?.avgWithdrawal ?? 0) }}</div>
+        </div>
+      </div>
+
+      <div class="db-stat-row mt-4">
+        <span class="db-dot db-dot--green"></span>
+        <span class="db-stat-label">Total Deposit Amount / Count</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+      </div>
+      <div class="db-stat-value">{{ fmtFull(stats?.approvedDepositSum ?? 0) }} ETB / {{ fmtInt(stats?.depositCount ?? 0) }}</div>
+
+      <div class="db-stat-row mt-3">
+        <span class="db-dot db-dot--red"></span>
+        <span class="db-stat-label">Total Withdrawal Amount / Count</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+      </div>
+      <div class="db-stat-value">{{ fmtFull(stats?.approvedWithdrawalSum ?? 0) }} ETB / {{ fmtInt(stats?.withdrawalCount ?? 0) }}</div>
+
+      <div class="db-highlight-box mt-4">
+        <div class="db-highlight-title">
+          Net Value
+          <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+          <span class="db-highlight-pct">{{ (stats?.netValuePct ?? 0).toFixed(2) }} %</span>
+        </div>
+        <div class="db-highlight-amount">{{ fmtFull(netFlow) }} ETB</div>
+      </div>
+    </div>
+
+    <!-- Financial Summary card -->
+    <div class="db-card">
+      <div class="db-card-head">
+        <div class="db-card-label">
+          <UIcon name="i-heroicons:arrow-trending-up" class="w-4 h-4" />
+          Financial Summary
+        </div>
+      </div>
+
+      <!-- Comparative bars -->
+      <div class="db-compare-bars">
+        <div class="db-compare-bar-track">
+          <div
+            class="db-compare-bar db-compare-bar--green"
+            :style="{ width: betPct + '%' }"
+          />
+        </div>
+        <div class="db-compare-bar-track">
+          <div
+            class="db-compare-bar db-compare-bar--red"
+            :style="{ width: (100 - betPct) + '%' }"
+          />
+        </div>
+      </div>
+
+      <div class="db-stat-row mt-3">
+        <span class="db-dot db-dot--green"></span>
+        <span class="db-stat-label">Bet Amount</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+      </div>
+      <div class="db-stat-value">{{ fmtFull(stats?.totalPrizePools ?? 0) }} ETB</div>
+
+      <div class="db-stat-row mt-3">
+        <span class="db-dot db-dot--red"></span>
+        <span class="db-stat-label">Win Amount</span>
+        <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+      </div>
+      <div class="db-stat-value">{{ fmtFull(stats?.totalPrizesSum ?? 0) }} ETB</div>
+
+      <div class="db-highlight-box mt-4">
+        <div class="db-highlight-title">
+          GGR
+          <UIcon name="i-heroicons:information-circle" class="db-info-icon" />
+          <span class="db-highlight-pct">{{ ggrPct.toFixed(2) }} %</span>
+        </div>
+        <div class="db-highlight-amount">{{ fmtFull((stats?.totalPrizePools ?? 0) - (stats?.totalPrizesSum ?? 0)) }} ETB</div>
+      </div>
+    </div>
+
+    <!-- House & Games card -->
+    <div class="db-card">
+      <div class="db-card-head">
+        <div class="db-card-label">
+          <UIcon name="i-heroicons:building-library" class="w-4 h-4" />
+          House & Games
+        </div>
+      </div>
+
+      <div class="db-grid-2">
+        <div>
+          <div class="db-stat-label">House Balance</div>
+          <div class="db-stat-value" :class="(stats?.houseBalance ?? 0) < 0 ? 'db-stat-value--red' : 'db-stat-value--brand'">
+            {{ fmtFull(stats?.houseBalance ?? 0) }} ETB
+          </div>
+        </div>
+        <div>
+          <div class="db-stat-label">Total Profit</div>
+          <div class="db-stat-value db-stat-value--brand">{{ fmtFull(stats?.totalProfit ?? 0) }} ETB</div>
+        </div>
+        <div>
+          <div class="db-stat-label">Games Completed</div>
+          <div class="db-stat-value">{{ fmtInt(stats?.gamesCompleted ?? 0) }}</div>
+        </div>
+        <div>
+          <div class="db-stat-label">Games Cancelled</div>
+          <div class="db-stat-value db-stat-value--red">{{ fmtInt(stats?.gamesCancelled ?? 0) }}</div>
         </div>
       </div>
     </div>
 
-    <!-- ── Main content grid ─────────────────────────────────────────── -->
-    <div class="content-grid">
-
-      <!-- Left column: Financial breakdown ─────────────────────────── -->
-      <div class="col-main">
-
-        <!-- Financial summary table -->
-        <div class="admin-card section-card">
-          <div class="card-header">
-            <h2 class="card-title">Financial Summary</h2>
-          </div>
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th class="num">Amount (ETB)</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Total Deposits Approved</td>
-                <td class="num" style="color: var(--positive)">{{ fmt(stats?.approvedDepositSum ?? 0) }}</td>
-                <td><span class="status-tag status-tag--positive">Inflow</span></td>
-              </tr>
-              <tr>
-                <td>Total Withdrawals Approved</td>
-                <td class="num" style="color: var(--negative)">{{ fmt(stats?.approvedWithdrawalSum ?? 0) }}</td>
-                <td><span class="status-tag status-tag--negative">Outflow</span></td>
-              </tr>
-              <tr class="row-highlight">
-                <td><strong>Net Flow</strong></td>
-                <td class="num">
-                  <strong :class="netFlow >= 0 ? 'text-positive' : 'text-negative'">{{ fmt(netFlow) }}</strong>
-                </td>
-                <td>
-                  <span class="status-tag" :class="netFlow >= 0 ? 'status-tag--positive' : 'status-tag--negative'">
-                    {{ netFlow >= 0 ? 'Surplus' : 'Deficit' }}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <td>Total Prizes Paid Out</td>
-                <td class="num" style="color: var(--negative)">{{ fmt(stats?.totalPrizesSum ?? 0) }}</td>
-                <td><span class="status-tag status-tag--negative">Outflow</span></td>
-              </tr>
-              <tr>
-                <td>Total Prize Pools Generated</td>
-                <td class="num" style="color: var(--brand-primary)">{{ fmt(stats?.totalPrizePools ?? 0) }}</td>
-                <td><span class="status-tag status-tag--warning">Pools</span></td>
-              </tr>
-              <tr>
-                <td>Bingo Commission Earned</td>
-                <td class="num" style="color: var(--positive)">{{ fmt(stats?.houseCommissionEarned ?? 0) }}</td>
-                <td><span class="status-tag status-tag--positive">Revenue</span></td>
-              </tr>
-              <tr>
-                <td>Provider Games Profit</td>
-                <td class="num" :style="{ color: (stats?.totalProviderProfit ?? 0) >= 0 ? 'var(--positive)' : 'var(--negative)' }">
-                  {{ (stats?.totalProviderProfit ?? 0) >= 0 ? '+' : '' }}{{ fmt(stats?.totalProviderProfit ?? 0) }}
-                </td>
-                <td>
-                  <span class="status-tag" :class="(stats?.totalProviderProfit ?? 0) >= 0 ? 'status-tag--positive' : 'status-tag--negative'">
-                    {{ (stats?.totalProviderProfit ?? 0) >= 0 ? 'Revenue' : 'Loss' }}
-                  </span>
-                </td>
-              </tr>
-              <tr class="row-highlight">
-                <td><strong>Total Profit</strong></td>
-                <td class="num" style="font-weight:700" :style="{ color: (stats?.totalProfit ?? 0) >= 0 ? 'var(--brand-primary)' : 'var(--negative)' }">
-                  {{ fmt(stats?.totalProfit ?? 0) }}
-                </td>
-                <td>
-                  <span class="status-tag" :class="(stats?.totalProfit ?? 0) >= 0 ? 'status-tag--warning' : 'status-tag--negative'">
-                    {{ (stats?.totalProfit ?? 0) >= 0 ? 'Profit' : 'Loss' }}
-                  </span>
-                </td>
-              </tr>
-              <tr :class="houseIsDeficit ? 'row-alert' : ''">
-                <td>House Wallet Balance</td>
-                <td class="num" :class="houseIsDeficit ? 'text-negative' : ''" style="font-weight:700">
-                  {{ fmt(stats?.houseBalance ?? 0) }}
-                </td>
-                <td>
-                  <span class="status-tag" :class="houseIsDeficit ? 'status-tag--negative' : 'status-tag--positive'">
-                    {{ houseIsDeficit ? 'Deficit' : 'Healthy' }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Game performance table -->
-        <div class="admin-card section-card">
-          <div class="card-header">
-            <h2 class="card-title">Game Performance</h2>
-          </div>
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th class="num">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Games Completed</td>
-                <td class="num">{{ fmtInt(stats?.gamesCompleted ?? 0) }}</td>
-              </tr>
-              <tr>
-                <td>Games Cancelled</td>
-                <td class="num" style="color: var(--negative)">{{ fmtInt(stats?.gamesCancelled ?? 0) }}</td>
-              </tr>
-              <tr>
-                <td>Active Players</td>
-                <td class="num">{{ fmtInt(stats?.activePlayers ?? 0) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-
-      <!-- Right column: Provider stats ────────────────────────────── -->
-      <div class="col-side">
-        <div class="admin-card section-card" style="height: fit-content;">
-          <div class="card-header">
-            <h2 class="card-title">Provider Performance</h2>
-            <span class="card-meta">House perspective</span>
-          </div>
-
-          <div v-if="!stats?.providerStats?.length" class="empty-state">
-            No provider data available.
-          </div>
-
-          <table v-else class="admin-table">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th class="num">Gained</th>
-                <th class="num">Lost</th>
-                <th class="num">Net</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in stats.providerStats" :key="p.name">
-                <td class="muted">{{ p.name }}</td>
-                <td class="num" style="color: var(--positive)">+{{ fmt(p.gained) }}</td>
-                <td class="num" style="color: var(--negative)">-{{ fmt(p.lost) }}</td>
-                <td class="num" :style="{ color: p.net >= 0 ? 'var(--positive)' : 'var(--negative)' }">
-                  {{ p.net >= 0 ? '+' : '' }}{{ fmt(p.net) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+    <!-- Provider Performance card -->
+    <div v-if="stats?.providerStats?.length" class="db-card">
+      <div class="db-card-head">
+        <div class="db-card-label">
+          <UIcon name="i-heroicons:server-stack" class="w-4 h-4" />
+          Provider Performance
         </div>
       </div>
-
+      <div v-for="p in stats.providerStats" :key="p.name" class="db-provider-row">
+        <span class="db-provider-name">{{ p.name }}</span>
+        <div class="db-provider-nums">
+          <span class="db-provider-num db-provider-num--green">+{{ fmtFull(p.gained) }}</span>
+          <span class="db-provider-num db-provider-num--red">-{{ fmtFull(p.lost) }}</span>
+          <span class="db-provider-num" :class="p.net >= 0 ? 'db-provider-num--green' : 'db-provider-num--red'">
+            {{ p.net >= 0 ? '+' : '' }}{{ fmtFull(p.net) }}
+          </span>
+        </div>
+      </div>
     </div>
+
   </div>
 </template>
 
@@ -274,195 +310,238 @@ const houseIsDeficit = computed(() => (stats.value?.houseBalance ?? 0) < 0)
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-
-/* ── Page header ─────────────────────────────────────────────────────── */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: 16px;
+  padding-bottom: 80px;
 }
 
-.page-title {
-  font-size: 22px;
+/* Header */
+.db-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.db-title {
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
   margin: 0;
-  line-height: 1.2;
+}
+.db-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.db-refresh:hover { background: var(--surface-overlay); }
+.db-refresh:disabled { opacity: 0.4; cursor: default; }
+
+/* Card */
+.db-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 18px 16px;
 }
 
-.page-sub {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 4px 0 0;
+.db-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
 }
-
-.refresh-btn {
-  display: inline-flex;
+.db-card-label {
+  display: flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 6px;
-  background: var(--surface-raised);
-  border: 1px solid var(--surface-border);
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-secondary);
+}
+.db-see-link {
+  display: flex;
+  align-items: center;
+  gap-4px;
   font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  transition: background 0.12s ease, color 0.12s ease;
+  color: #60a5fa;
+  text-decoration: none;
+  gap: 3px;
+}
+.db-see-link:hover { text-decoration: underline; }
+
+/* Stacked bar */
+.db-bar-track {
+  display: flex;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  gap: 2px;
+}
+.db-bar-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.db-bar-seg--blue  { background: #3b82f6; }
+.db-bar-seg--green { background: #22c55e; }
+
+/* Stat rows */
+.db-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.db-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
-.refresh-btn:hover { background: var(--surface-overlay); color: var(--text-primary); }
-.refresh-btn:disabled { opacity: 0.5; cursor: default; }
-.refresh-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
-
-/* ── KPI strip ───────────────────────────────────────────────────────── */
-.kpi-strip {
-  display: flex;
-  align-items: stretch;
-  background: var(--surface-raised);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.kpi-strip::-webkit-scrollbar { display: none; }
-
-.kpi-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 18px 24px;
+.db-dot--blue   { background: #3b82f6; }
+.db-dot--green  { background: #22c55e; }
+.db-dot--red    { background: #ef4444; }
+.db-dot--orange { background: #f97316; }
+.db-stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
   flex: 1;
-  min-width: 160px;
 }
-
-.kpi-value {
+.db-info-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.db-stat-value {
   font-size: 22px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-  line-height: 1.1;
   letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin-bottom: 2px;
 }
-.kpi-value--positive { color: var(--positive); }
-.kpi-value--negative { color: var(--negative); }
-.kpi-value--brand    { color: var(--brand-primary); }
+.db-stat-value--brand { color: var(--brand-primary); }
+.db-stat-value--red   { color: #ef4444; }
 
-.kpi-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
+/* Highlight box */
+.db-highlight-box {
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.db-highlight-title {
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-wrap: wrap;
-}
-
-.kpi-unit {
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.kpi-badge {
-  font-size: 9px !important;
-}
-
-.kpi-divider {
-  width: 1px;
-  background: var(--surface-border);
-  flex-shrink: 0;
-  margin: 14px 0;
-}
-
-.kpi-item--highlight {
-  background: rgba(245, 158, 11, 0.04);
-  border-left: 2px solid rgba(245, 158, 11, 0.3);
-}
-
-.kpi-breakdown {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  flex-wrap: wrap;
-}
-
-.kpi-sep { color: var(--surface-border); }
-
-/* ── Content grid ────────────────────────────────────────────────────── */
-.content-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-@media (min-width: 1024px) {
-  .content-grid {
-    grid-template-columns: 1fr 360px;
-  }
-}
-
-.col-main {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.col-side {
-  min-width: 0;
-}
-
-/* ── Section card ────────────────────────────────────────────────────── */
-.section-card {
-  overflow: hidden;
-}
-
-.card-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 16px 0;
-  margin-bottom: 12px;
-}
-
-.card-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.01em;
-  margin: 0;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+.db-highlight-pct {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.db-highlight-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+/* Ring chart */
+.db-ring-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.db-ring-wrap {
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+.db-ring-svg {
+  width: 100%;
+  height: 100%;
+}
+.db-avg-col {
+  flex: 1;
+}
+.db-avg-label {
+  font-size: 12px;
   color: var(--text-secondary);
+  margin-bottom: 1px;
+}
+.db-avg-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
-.card-meta {
-  font-size: 11px;
-  color: var(--text-muted);
+/* Compare bars */
+.db-compare-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.db-compare-bar-track {
+  height: 20px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.db-compare-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.db-compare-bar--green { background: #22c55e; }
+.db-compare-bar--red   { background: #ef4444; }
+
+/* Grid 2 col */
+.db-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
-/* ── Table helpers ───────────────────────────────────────────────────── */
-.text-positive { color: var(--positive); }
-.text-negative { color: var(--negative); }
-
-.row-highlight { background: rgba(255,255,255,0.02); }
-.row-alert { background: rgba(248,113,113,0.04); }
-
-.empty-state {
-  padding: 32px 16px;
-  text-align: center;
+/* Provider rows */
+.db-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid var(--surface-border);
+  gap: 8px;
+}
+.db-provider-name {
   font-size: 13px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+.db-provider-nums {
+  display: flex;
+  gap: 12px;
+}
+.db-provider-num {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
+.db-provider-num--green { color: #22c55e; }
+.db-provider-num--red   { color: #ef4444; }
+
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
 </style>

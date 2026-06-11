@@ -17,6 +17,10 @@ export class AdminService {
             houseBalance,
             activePlayersGroups,
             completedGames,
+            registeredPlayers,
+            inactivePlayers,
+            depositCount,
+            withdrawalCount,
         ] = await Promise.all([
             prisma.transaction.aggregate({
                 where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
@@ -39,6 +43,10 @@ export class AdminService {
                 where: { status: 'COMPLETED' },
                 include: { _count: { select: { entries: true } } },
             }),
+            prisma.user.count(),
+            prisma.user.count({ where: { isActive: false } }),
+            prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED } }),
+            prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED } }),
         ])
 
         const activePlayers = activePlayersGroups.length
@@ -82,14 +90,29 @@ export class AdminService {
         const bingoProfit = houseSummary.COMMISSION
         const totalProfit = bingoProfit + totalProviderProfit
 
+        const approvedDepositSum = Number(approvedDeposits._sum.amount ?? 0)
+        const approvedWithdrawalSum = Number(approvedWithdrawals._sum.amount ?? 0)
+        const avgDeposit = depositCount > 0 ? approvedDepositSum / depositCount : 0
+        const avgWithdrawal = withdrawalCount > 0 ? approvedWithdrawalSum / withdrawalCount : 0
+        const netValuePct = approvedDepositSum > 0 ? ((approvedDepositSum - approvedWithdrawalSum) / approvedDepositSum) * 100 : 0
+        const withdrawalRatePct = approvedDepositSum > 0 ? (approvedWithdrawalSum / approvedDepositSum) * 100 : 0
+
         return {
-            approvedDepositSum: Number(approvedDeposits._sum.amount ?? 0),
-            approvedWithdrawalSum: Number(approvedWithdrawals._sum.amount ?? 0),
+            approvedDepositSum,
+            approvedWithdrawalSum,
+            depositCount,
+            withdrawalCount,
+            avgDeposit,
+            avgWithdrawal,
+            netValuePct,
+            withdrawalRatePct,
             totalPrizesSum: Number(totalPrizes._sum.amount ?? 0),
             gamesCompleted,
             gamesCancelled,
             totalPrizePools,
             activePlayers,
+            registeredPlayers,
+            inactivePlayers,
             houseBalance: Number(houseBalance),
             houseCommissionEarned: bingoProfit,
             totalProviderProfit,
