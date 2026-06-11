@@ -400,9 +400,15 @@ const copyToClipboard = (text: string) => {
             <span class="text-[10px] text-white/20 font-medium">Age: {{ ageMinutes(d.createdAt) }}m</span>
             <span class="text-[10px] text-white/20">{{ new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
           </div>
-          <div v-if="d.status === 'PENDING_REVIEW'" class="flex flex-col gap-2">
-            <UButton size="xs" color="success" block icon="i-heroicons:check" @click="openApproveModal(d.id)">Approve</UButton>
-            <UButton size="xs" color="error" block icon="i-heroicons:x-mark" @click="openDeclineModal(d.id)">Decline</UButton>
+          <div v-if="d.status === 'PENDING_REVIEW'" class="action-btns">
+            <button class="action-btn action-btn--approve" @click="openApproveModal(d.id)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Approve
+            </button>
+            <button class="action-btn action-btn--decline" @click="openDeclineModal(d.id)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Decline
+            </button>
           </div>
         </div>
       </div>
@@ -473,3 +479,42 @@ const copyToClipboard = (text: string) => {
     </UModal>
   </div>
 </template>
+
+<style scoped>
+.action-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  letter-spacing: 0.01em;
+}
+
+.action-btn:active { transform: scale(0.97); }
+
+.action-btn--approve {
+  background: #22c55e;
+  color: #000;
+}
+.action-btn--approve:hover { opacity: 0.88; }
+
+.action-btn--decline {
+  background: #ef4444;
+  color: #fff;
+}
+.action-btn--decline:hover { opacity: 0.88; }
+</style>
