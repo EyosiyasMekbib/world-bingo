@@ -367,11 +367,10 @@ const ggrPct = computed(() => {
 .db-see-link {
   display: flex;
   align-items: center;
-  gap-4px;
+  gap: 4px;
   font-size: 13px;
   color: #60a5fa;
   text-decoration: none;
-  gap: 3px;
 }
 .db-see-link:hover { text-decoration: underline; }
 
