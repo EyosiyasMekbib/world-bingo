@@ -692,7 +692,7 @@ onUnmounted(() => {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  height: clamp(180px, 21vw, 300px);
+  aspect-ratio: 1440 / 300;
   display: flex;
   flex-direction: column;
 }
@@ -702,7 +702,7 @@ onUnmounted(() => {
     background-image:
       var(--hero-mobile-fallback),
       linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
-    height: clamp(200px, 58vw, 255px);
+    aspect-ratio: 390 / 226;
   }
 }
 
@@ -728,7 +728,7 @@ onUnmounted(() => {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: fill;
   transition: opacity 0.15s ease;
 }
 
