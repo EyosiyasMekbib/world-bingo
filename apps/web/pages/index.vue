@@ -710,7 +710,8 @@ onUnmounted(() => {
 .hero-ad__image {
   display: block;
   width: 100%;
-  height: auto;
+  height: 18vh;
+  object-fit: cover;
   transition: opacity 0.15s ease;
 }
 
