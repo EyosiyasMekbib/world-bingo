@@ -6,7 +6,14 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { HouseWalletService } from './house-wallet.service'
 
 export class AdminService {
-    static async getStats() {
+    static async getStats(params?: { from?: Date; to?: Date }) {
+        const dateRange = params?.from || params?.to
+            ? { createdAt: { ...(params.from && { gte: params.from }), ...(params.to && { lte: params.to }) } }
+            : {}
+        const gameDateRange = params?.from || params?.to
+            ? { createdAt: { ...(params.from && { gte: params.from }), ...(params.to && { lte: params.to }) } }
+            : {}
+
         const [
             approvedDeposits,
             approvedWithdrawals,
@@ -23,30 +30,30 @@ export class AdminService {
             withdrawalCount,
         ] = await Promise.all([
             prisma.transaction.aggregate({
-                where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
+                where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange },
                 _sum: { amount: true },
             }),
             prisma.transaction.aggregate({
-                where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED },
+                where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange },
                 _sum: { amount: true },
             }),
             prisma.transaction.aggregate({
-                where: { type: TransactionType.PRIZE_WIN, status: PaymentStatus.APPROVED },
+                where: { type: TransactionType.PRIZE_WIN, status: PaymentStatus.APPROVED, ...dateRange },
                 _sum: { amount: true },
             }),
-            prisma.game.count({ where: { status: 'COMPLETED' } }),
-            prisma.game.count({ where: { status: 'CANCELLED' } }),
+            prisma.game.count({ where: { status: 'COMPLETED', ...gameDateRange } }),
+            prisma.game.count({ where: { status: 'CANCELLED', ...gameDateRange } }),
             HouseWalletService.getSummary(),
             HouseWalletService.getBalance(),
             prisma.gameEntry.groupBy({ by: ['userId'] }),
             prisma.game.findMany({
-                where: { status: 'COMPLETED' },
+                where: { status: 'COMPLETED', ...gameDateRange },
                 include: { _count: { select: { entries: true } } },
             }),
             prisma.user.count(),
             prisma.user.count({ where: { isActive: false } }),
-            prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED } }),
-            prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED } }),
+            prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange } }),
+            prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange } }),
         ])
 
         const activePlayers = activePlayersGroups.length

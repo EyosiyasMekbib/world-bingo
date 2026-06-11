@@ -127,10 +127,6 @@ const fetchDeposits = async () => {
     })
     pendingDeposits.value = result?.data ?? result ?? []
     totalPages.value = result?.pagination?.totalPages ?? 1
-    // fetch summary stats separately
-    const stats = await useAdminApi().getStats()
-    approvedSum.value = stats.approvedDepositSum ?? 0
-    declinedSum.value = stats.declinedDepositSum ?? 0
   } catch {
     toast.add({ title: 'Error', description: 'Failed to fetch deposits', color: 'error' })
   } finally {
