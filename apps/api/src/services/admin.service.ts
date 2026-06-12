@@ -28,6 +28,8 @@ export class AdminService {
             inactivePlayers,
             depositCount,
             withdrawalCount,
+            thirdPartyBets,
+            thirdPartyWins,
         ] = await Promise.all([
             prisma.transaction.aggregate({
                 where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange },
@@ -54,15 +56,27 @@ export class AdminService {
             prisma.user.count({ where: { isActive: false, OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }] } }),
             prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange } }),
             prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange } }),
+            // Third-party game totals: amount < 0 = bet debit, amount > 0 = win credit
+            prisma.thirdPartyTransaction.aggregate({
+                where: { amount: { lt: 0 }, ...dateRange },
+                _sum: { amount: true },
+            }),
+            prisma.thirdPartyTransaction.aggregate({
+                where: { amount: { gt: 0 }, ...dateRange },
+                _sum: { amount: true },
+            }),
         ])
 
         const botIds = new Set(
             (await prisma.user.findMany({ where: { passwordHash: 'BOT_ACCOUNT' }, select: { id: true } })).map(b => b.id)
         )
         const activePlayers = activePlayersGroups.filter(g => !botIds.has(g.userId)).length
-        const totalPrizePools = completedGames.reduce((acc, g) => {
+        const bingoPrizePools = completedGames.reduce((acc, g) => {
             return acc + Number(g.ticketPrice) * g._count.entries
         }, 0)
+        const thirdPartyBetTotal = Math.abs(Number(thirdPartyBets._sum.amount ?? 0))
+        const thirdPartyWinTotal = Number(thirdPartyWins._sum.amount ?? 0)
+        const totalPrizePools = bingoPrizePools + thirdPartyBetTotal
 
         // Provider stats: gained = bets placed (amount < 0), lost = winnings paid (amount > 0)
         const [providerGained, providerLost] = await Promise.all([
@@ -116,7 +130,7 @@ export class AdminService {
             avgWithdrawal,
             netValuePct,
             withdrawalRatePct,
-            totalPrizesSum: Number(totalPrizes._sum.amount ?? 0),
+            totalPrizesSum: Number(totalPrizes._sum.amount ?? 0) + thirdPartyWinTotal,
             gamesCompleted,
             gamesCancelled,
             totalPrizePools,
