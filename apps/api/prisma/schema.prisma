@@ -96,6 +96,7 @@ model GameTemplate {
   botCount       Int         @default(0)             // max number of bot players to inject per game
   botFillToMin   Boolean     @default(true)          // if true, bots fill to minPlayers (botCount is the ceiling)
   botMaxSpend    Decimal?    @db.Decimal(10, 2)      // per-template override for max ETB a single bot can spend
+  botWinRate     Int         @default(100)           // % chance a bot claims bingo when its cartela wins (0–100)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   games          Game[]
