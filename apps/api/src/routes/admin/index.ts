@@ -100,6 +100,38 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.post('/transactions/:id/approve', AdminController.approveTransaction)
         f.post('/transactions/:id/decline', AdminController.declineTransaction)
         f.get('/stats', AdminController.getStats)
+
+        f.post('/players/:id/adjust-balance', async (req: any, reply) => {
+            const parsed = adjustBalanceSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            const { type, amount, note } = parsed.data
+            const userId = req.params.id
+            const result = await prisma.$transaction(async (tx) => {
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                `
+                const wallet = wallets[0]
+                if (!wallet) throw new Error('Wallet not found')
+                const realBefore = new Decimal(wallet.realBalance)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
+                const adjustAmount = new Decimal(amount)
+                if (type === 'real') {
+                    const realAfter = realBefore.plus(adjustAmount)
+                    if (realAfter.lessThan(0)) throw new Error('Adjustment would make real balance negative')
+                    await tx.wallet.update({ where: { userId }, data: { realBalance: { increment: adjustAmount } } })
+                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realAfter, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore } })
+                    return { realBalance: Number(realAfter), bonusBalance: Number(bonusBefore) }
+                } else {
+                    const bonusAfter = bonusBefore.plus(adjustAmount)
+                    if (bonusAfter.lessThan(0)) throw new Error('Adjustment would make bonus balance negative')
+                    await tx.wallet.update({ where: { userId }, data: { bonusBalance: { increment: adjustAmount } } })
+                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_BONUS_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realBefore, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter } })
+                    return { realBalance: Number(realBefore), bonusBalance: Number(bonusAfter) }
+                }
+            })
+            NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
+            return result
+        })
     })
 
     // ── Admin-only routes ─────────────────────────────────────────────────────
@@ -291,38 +323,6 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     gamesWon: stats[1]._count, totalWon: Number(stats[1]._sum.amount ?? 0),
                 },
             }
-        })
-
-        f.post('/players/:id/adjust-balance', async (req: any, reply) => {
-            const parsed = adjustBalanceSchema.safeParse(req.body)
-            if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
-            const { type, amount, note } = parsed.data
-            const userId = req.params.id
-            const result = await prisma.$transaction(async (tx) => {
-                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
-                `
-                const wallet = wallets[0]
-                if (!wallet) throw new Error('Wallet not found')
-                const realBefore = new Decimal(wallet.realBalance)
-                const bonusBefore = new Decimal(wallet.bonusBalance)
-                const adjustAmount = new Decimal(amount)
-                if (type === 'real') {
-                    const realAfter = realBefore.plus(adjustAmount)
-                    if (realAfter.lessThan(0)) throw new Error('Adjustment would make real balance negative')
-                    await tx.wallet.update({ where: { userId }, data: { realBalance: { increment: adjustAmount } } })
-                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realAfter, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore } })
-                    return { realBalance: Number(realAfter), bonusBalance: Number(bonusBefore) }
-                } else {
-                    const bonusAfter = bonusBefore.plus(adjustAmount)
-                    if (bonusAfter.lessThan(0)) throw new Error('Adjustment would make bonus balance negative')
-                    await tx.wallet.update({ where: { userId }, data: { bonusBalance: { increment: adjustAmount } } })
-                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_BONUS_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realBefore, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter } })
-                    return { realBalance: Number(realBefore), bonusBalance: Number(bonusAfter) }
-                }
-            })
-            NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
-            return result
         })
 
         // ── Game Providers ────────────────────────────────────────────────────

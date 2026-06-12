@@ -17,7 +17,7 @@ const allNavGroups = [
     items: [
       { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',   to: '/deposits',     adminOnly: false },
       { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',     to: '/withdrawals',  adminOnly: false },
-      { label: 'Corrections',  icon: 'i-heroicons:wrench-screwdriver', to: '/corrections', adminOnly: true  },
+      { label: 'Corrections',  icon: 'i-heroicons:wrench-screwdriver', to: '/corrections', adminOnly: false },
       { label: 'House Wallet', icon: 'i-heroicons:building-library',  to: '/house',        adminOnly: true  },
       { label: 'Money Flow',   icon: 'i-heroicons:arrows-right-left', to: '/money-flow',  adminOnly: true  },
     ],
