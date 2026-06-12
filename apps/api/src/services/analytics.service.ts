@@ -195,8 +195,8 @@ export class AnalyticsService {
                   WHERE ge."userId" = u.id AND ge."joinedAt" >= now() - interval '7 days'
               )
         `)
-        const d = dist[0]
-        const w = winExp[0]
+        const d = dist[0] ?? { one_game: 0, g2_5: 0, g6_20: 0, g20_plus: 0, active_7d: 0, total_players: 0 }
+        const w = winExp[0] ?? { winners_total: 0, winners_active_7d: 0, losers_total: 0, losers_active_7d: 0 }
         return {
             totalPlayers: d.total_players,
             active7d: d.active_7d,
@@ -207,8 +207,8 @@ export class AnalyticsService {
                 neverWon: { total: w.losers_total, active7dPct: this.pct(w.losers_active_7d, w.losers_total) },
             },
             idleMoney: {
-                wallets: idle[0].idle_wallets,
-                balance: Number(idle[0].idle_balance ?? 0),
+                wallets: idle[0]?.idle_wallets ?? 0,
+                balance: Number(idle[0]?.idle_balance ?? 0),
             },
         }
     }
