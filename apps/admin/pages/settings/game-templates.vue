@@ -13,6 +13,7 @@ interface GameTemplate {
   botCount: number
   botFillToMin: boolean
   botMaxSpend: number | null
+  botWinRate: number
   createdAt: string
   _count?: { games: number }
 }
@@ -45,6 +46,7 @@ const newTemplate = reactive({
   botCount: 0,
   botFillToMin: true,
   botMaxSpend: null as number | null,
+  botWinRate: 100,
 })
 
 const editTemplate = reactive({
@@ -60,6 +62,7 @@ const editTemplate = reactive({
   botCount: 0,
   botFillToMin: true,
   botMaxSpend: null as number | null,
+  botWinRate: 100,
 })
 
 const refreshTemplates = async () => {
@@ -92,6 +95,7 @@ const handleCreate = async () => {
     newTemplate.botCount = 0
     newTemplate.botFillToMin = true
     newTemplate.botMaxSpend = null
+    newTemplate.botWinRate = 100
     refreshTemplates()
   } catch (e: any) {
     createError.value = e?.data?.message ?? e?.message ?? 'Failed to create template'
@@ -113,6 +117,7 @@ const openEdit = (template: GameTemplate) => {
   editTemplate.botCount = template.botCount
   editTemplate.botFillToMin = template.botFillToMin
   editTemplate.botMaxSpend = template.botMaxSpend
+  editTemplate.botWinRate = template.botWinRate ?? 100
   editError.value = ''
   showEditModal.value = true
 }
@@ -341,6 +346,11 @@ onMounted(refreshTemplates)
                 <UInput v-model.number="newTemplate.botMaxSpend" type="number" min="0" placeholder="Leave blank to use global default" />
                 <p class="text-xs text-white/30 mt-1">Max ETB this bot can spend on this template's games before being skipped</p>
               </div>
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Win Rate (%)</label>
+                <UInput v-model.number="newTemplate.botWinRate" type="number" min="0" max="100" />
+                <p class="text-xs text-white/30 mt-1">Chance a bot claims bingo when its card wins. 100 = always claim, 0 = bots never win</p>
+              </div>
             </template>
           </div>
           <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
@@ -408,6 +418,11 @@ onMounted(refreshTemplates)
                 <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Spend Limit (ETB)</label>
                 <UInput v-model.number="editTemplate.botMaxSpend" type="number" min="0" placeholder="Leave blank to use global default" />
                 <p class="text-xs text-white/30 mt-1">Max ETB this bot can spend on this template's games before being skipped</p>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">Bot Win Rate (%)</label>
+                <UInput v-model.number="editTemplate.botWinRate" type="number" min="0" max="100" />
+                <p class="text-xs text-white/30 mt-1">Chance a bot claims bingo when its card wins. 100 = always claim, 0 = bots never win</p>
               </div>
             </template>
           </div>
