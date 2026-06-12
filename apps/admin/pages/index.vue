@@ -122,6 +122,7 @@ const dateLabel = computed(() => {
 let pollTimer: ReturnType<typeof setInterval> | null = null
 const manualLoading = ref(false)
 const lastUpdated = ref<Date | null>(null)
+const fetchError = ref<string | null>(null)
 
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdated.value) return ''
@@ -139,8 +140,10 @@ const silentRefresh = async () => {
     const fromStartOfDay = from ? `${from}T00:00:00.000Z` : undefined
     stats.value = await getStats({ from: fromStartOfDay, to: toEndOfDay }) as any
     lastUpdated.value = new Date()
-  } catch (e) {
+    fetchError.value = null
+  } catch (e: any) {
     console.error('Failed to fetch stats', e)
+    fetchError.value = e?.data?.error ?? e?.message ?? 'Failed to load stats'
   }
 }
 
@@ -296,6 +299,13 @@ const ggrPct = computed(() => {
         </div>
       </Transition>
     </Teleport></ClientOnly>
+
+    <!-- Error banner -->
+    <div v-if="fetchError" class="db-error-banner">
+      <UIcon name="i-heroicons:exclamation-triangle" class="w-4 h-4" />
+      {{ fetchError }}
+      <button class="db-error-retry" @click="refresh">Retry</button>
+    </div>
 
     <!-- Players card -->
     <div class="db-card">
@@ -956,4 +966,30 @@ const ggrPct = computed(() => {
 
 .mt-3 { margin-top: 12px; }
 .mt-4 { margin-top: 16px; }
+
+/* Error banner */
+.db-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 13px;
+}
+.db-error-retry {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.db-error-retry:hover { background: rgba(239, 68, 68, 0.3); }
 </style>
