@@ -100,6 +100,7 @@ export interface GameTemplate {
     botCount?: number
     botFillToMin?: boolean
     botMaxSpend?: number | null
+    botWinRate?: number
     createdAt: Date
     updatedAt: Date
 }

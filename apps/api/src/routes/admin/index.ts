@@ -25,6 +25,7 @@ const templateCreateSchema = z.object({
     botCount: z.coerce.number().int().min(0).max(20).default(0),
     botFillToMin: z.boolean().default(true),
     botMaxSpend: z.coerce.number().positive().nullable().optional(),
+    botWinRate: z.coerce.number().int().min(0).max(100).default(100),
 })
 
 const templateUpdateSchema = z.object({
@@ -40,6 +41,7 @@ const templateUpdateSchema = z.object({
     botCount: z.coerce.number().int().min(0).max(20).optional(),
     botFillToMin: z.boolean().optional(),
     botMaxSpend: z.coerce.number().positive().nullable().optional(),
+    botWinRate: z.coerce.number().int().min(0).max(100).optional(),
 })
 
 const clerkCreateSchema = z.object({
@@ -212,13 +214,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.post('/game-templates', async (req: any, reply) => {
             const parsed = templateCreateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
-            const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, botEnabled, botCount, botFillToMin, botMaxSpend } = parsed.data
+            const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, botEnabled, botCount, botFillToMin, botMaxSpend, botWinRate } = parsed.data
             const template = await prisma.gameTemplate.create({
                 data: {
                     title, ticketPrice, maxPlayers, minPlayers, houseEdgePct,
                     pattern: pattern as any, countdownSecs, active: true,
                     botEnabled, botCount, botFillToMin,
                     ...(botMaxSpend != null && { botMaxSpend }),
+                    botWinRate,
                 },
             })
             await GameSchedulerService.replenishTemplate(template.id)
@@ -229,7 +232,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             const { id } = req.params
             const parsed = templateUpdateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
-            const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, active, botEnabled, botCount, botFillToMin, botMaxSpend } = parsed.data
+            const { title, ticketPrice, maxPlayers, minPlayers, houseEdgePct, pattern, countdownSecs, active, botEnabled, botCount, botFillToMin, botMaxSpend, botWinRate } = parsed.data
             const template = await prisma.gameTemplate.update({
                 where: { id },
                 data: {
@@ -245,6 +248,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     ...(botCount !== undefined && { botCount }),
                     ...(botFillToMin !== undefined && { botFillToMin }),
                     ...(botMaxSpend !== undefined && { botMaxSpend }),
+                    ...(botWinRate !== undefined && { botWinRate }),
                 },
             })
             if (active === true) await GameSchedulerService.replenishTemplate(template.id)
