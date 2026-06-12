@@ -17,7 +17,7 @@ const { tournamentsEnabled } = useFeatureFlags()
 
 const searchQuery = ref('')
 const showAuthPrompt = ref(false)
-const selectedCategory = ref('ALL')
+const selectedCategory = ref('POPULAR')
 
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
@@ -90,10 +90,28 @@ const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO
 const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT)
 
 function getCategoryDisplayGames(cat: string) {
-  return (categoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
+  return sortedCategoryGames(cat, categoryGamesMap.value[cat] ?? []).slice(0, PROVIDER_HOME_LIMIT)
 }
 function categoryHasMore(cat: string) {
   return (categoryGamesMap.value[cat]?.length ?? 0) > PROVIDER_HOME_LIMIT
+}
+
+const CRASH_PRIORITY = [
+  'helicrash', 'aviator', 'tiny roulette', 'magic aladdin',
+  'chicken road', 'chicken road 2', 'jetx', 'aviatrix', 'plinko',
+  'goal', 'dice', 'miner', 'hotline', 'rocketman', 'rocket stars',
+  'bomb runner', 'crashkick', 'shaktimaan', 'just jump',
+  "chick 'n' road 2", "chick 'n' road",
+]
+
+function sortedCategoryGames(cat: string, games: ProviderGame[]): ProviderGame[] {
+  if (cat !== 'CRASH') return games
+  const rank = (g: ProviderGame) => {
+    const name = g.gameName.toLowerCase()
+    const idx = CRASH_PRIORITY.findIndex((p) => name.includes(p) || p.includes(name))
+    return idx === -1 ? CRASH_PRIORITY.length : idx
+  }
+  return [...games].sort((a, b) => rank(a) - rank(b))
 }
 
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
