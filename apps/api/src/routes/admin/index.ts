@@ -99,13 +99,12 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.get('/withdrawals', AdminController.getWithdrawals)
         f.post('/transactions/:id/approve', AdminController.approveTransaction)
         f.post('/transactions/:id/decline', AdminController.declineTransaction)
+        f.get('/stats', AdminController.getStats)
     })
 
     // ── Admin-only routes ─────────────────────────────────────────────────────
     await fastify.register(async (f) => {
         f.addHook('preValidation', f.requireAdmin)
-
-        f.get('/stats', AdminController.getStats)
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {

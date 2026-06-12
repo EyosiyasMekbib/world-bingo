@@ -269,7 +269,7 @@ const ggrPct = computed(() => {
               :key="opt.value"
               class="sheet-option"
               :class="{ 'sheet-option--active': !pendingCustomEnabled && pendingPreset === opt.value }"
-              @click="pendingPreset = opt.value; pendingCustomEnabled = false"
+              @click="pendingPreset = opt.value; pendingCustomEnabled = false; applyFilter()"
             >
               <span class="sheet-option-label">{{ opt.label }}</span>
               <span class="sheet-radio" :class="{ 'sheet-radio--checked': !pendingCustomEnabled && pendingPreset === opt.value }" />
