@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
+import analyticsRoutes from './analytics'
 import { AdminService } from '../../services/admin.service'
 import { GameService } from '../../services/game.service'
 import { BotService } from '../../services/bot.service'
@@ -139,6 +140,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Admin-only routes ─────────────────────────────────────────────────────
     await fastify.register(async (f) => {
         f.addHook('preValidation', f.requireAdmin)
+
+        // ── Analytics ─────────────────────────────────────────────────────────
+        await f.register(analyticsRoutes, { prefix: '/analytics' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {
