@@ -195,13 +195,19 @@ export class BotService {
             const row = await prisma.siteSetting.findUnique({ where: { key: 'ball_interval_secs' } })
             const ballIntervalMs = (Number(row?.value ?? 3)) * 1000 + 500
 
-            // Load game pattern (stable for the lifetime of the game)
+            // Load game pattern and bot win rate (stable for the lifetime of the game)
             const initialGame = await prisma.game.findUnique({
                 where: { id: gameId },
-                select: { pattern: true },
+                select: { pattern: true, template: { select: { botWinRate: true } } },
             })
             if (!initialGame) return
             const pattern = initialGame.pattern as PatternName
+            const botWinRate = initialGame.template?.botWinRate
+
+            // Bots that matched the pattern but lost the win-rate roll stay
+            // silent for the rest of the game — rolling again on every new
+            // ball would inflate the effective claim probability.
+            const silencedBotIds = new Set<string>()
 
             let processedBallCount = 0
 
@@ -229,8 +235,18 @@ export class BotService {
 
                         // 3. Check each bot's cartela for a winning pattern
                         for (const entry of botEntries) {
+                            if (silencedBotIds.has(entry.userId)) continue
+
                             const grid = entry.cartela.grid as number[][]
                             const won = checkPattern(pattern, grid, calledSet)
+
+                            if (won && !BotService.shouldBotClaim(botWinRate)) {
+                                console.log(
+                                    `[BotService] Bot ${entry.userId} matched pattern in game ${gameId} but lost win-rate roll (${botWinRate}%) — staying silent`,
+                                )
+                                silencedBotIds.add(entry.userId)
+                                continue
+                            }
 
                             if (won) {
                                 console.log(
