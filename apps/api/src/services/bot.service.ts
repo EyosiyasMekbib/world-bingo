@@ -151,6 +151,24 @@ export class BotService {
     }
 
     /**
+     * Determine whether a bot should claim bingo based on the configured win rate.
+     *
+     * @param winRate - Bot win rate as percentage (0–100), or null/undefined (defaults to 100)
+     * @param rng - Random number generator returning [0, 1), defaults to Math.random
+     * @returns true if bot should claim, false otherwise
+     *
+     * Decision logic:
+     * - Clamps rate to [0, 100]
+     * - Claims iff rng() * 100 < rate (e.g., 40% rate → claims iff roll < 0.40)
+     */
+    static shouldBotClaim(winRate: number | null | undefined, rng: () => number = Math.random): boolean {
+        const rate = Math.min(100, Math.max(0, winRate ?? 100))
+        if (rate >= 100) return true
+        if (rate <= 0) return false
+        return rng() * 100 < rate
+    }
+
+    /**
      * Watch a game's ball calls and claim bingo immediately when any bot's cartela matches the pattern.
      *
      * Uses Redis for live ball data (Postgres calledBalls is only persisted at game end).
