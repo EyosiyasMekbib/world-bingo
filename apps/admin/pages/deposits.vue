@@ -387,7 +387,7 @@ const copyToClipboard = (text: string) => {
             </div>
           </div>
           <UBadge
-            :color="d.status === 'PENDING_REVIEW' ? 'warning' : d.status === 'APPROVED' ? 'success' : 'error'"
+            :color="d.status === 'APPROVED' ? 'success' : d.status === 'DECLINED' ? 'error' : 'neutral'"
             variant="soft" size="xs"
           >
             {{ d.status }}

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { Client as MinioClient } from 'minio'
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -43,6 +44,10 @@ export async function uploadFile(
         return uploadToGcs(buffer, originalFilename, mimetype)
     }
 
+    if (provider === 'minio') {
+        return uploadToMinio(buffer, originalFilename, mimetype)
+    }
+
     return uploadToLocal(buffer, originalFilename, mimetype)
 }
 
@@ -69,6 +74,40 @@ async function uploadToLocal(
     const url = `${baseUrl}/uploads/${uniqueName}`
 
     return { url, filename: uniqueName, size: buffer.byteLength, mimetype }
+}
+
+// ─── MinIO ───────────────────────────────────────────────────────────────────
+
+async function uploadToMinio(
+    buffer: Buffer,
+    originalFilename: string,
+    mimetype: string,
+): Promise<UploadResult> {
+    const endpoint = process.env.MINIO_ENDPOINT
+    const accessKey = process.env.MINIO_ACCESS_KEY
+    const secretKey = process.env.MINIO_SECRET_KEY
+    const bucket = process.env.MINIO_BUCKET ?? 'receipts'
+
+    if (!endpoint || !accessKey || !secretKey) {
+        throw new Error('MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY must be set when STORAGE_PROVIDER=minio')
+    }
+
+    const url = new URL(endpoint)
+    const client = new MinioClient({
+        endPoint: url.hostname,
+        port: url.port ? Number(url.port) : (url.protocol === 'https:' ? 443 : 80),
+        useSSL: url.protocol === 'https:',
+        accessKey,
+        secretKey,
+    })
+
+    const ext = path.extname(originalFilename) || mimeToExt(mimetype)
+    const objectName = `receipts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`
+
+    await client.putObject(bucket, objectName, buffer, buffer.byteLength, { 'Content-Type': mimetype })
+
+    const publicUrl = `${endpoint}/${bucket}/${objectName}`
+    return { url: publicUrl, filename: objectName, size: buffer.byteLength, mimetype }
 }
 
 // ─── Google Cloud Storage (Prod) ─────────────────────────────────────────────

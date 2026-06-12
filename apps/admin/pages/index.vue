@@ -63,7 +63,7 @@ function applyFilter() {
   customFrom.value = pendingCustomFrom.value
   customTo.value = pendingCustomTo.value
   filterOpen.value = false
-  refresh()
+  nextTick(() => refresh())
 }
 
 function getDateRange(): { from: string; to: string } {
@@ -120,24 +120,42 @@ const dateLabel = computed(() => {
 
 // ── Real-time polling ─────────────────────────────────────────────────────────
 let pollTimer: ReturnType<typeof setInterval> | null = null
+const manualLoading = ref(false)
+const lastUpdated = ref<Date | null>(null)
 
-const refresh = async () => {
-  loading.value = true
+const lastUpdatedLabel = computed(() => {
+  if (!lastUpdated.value) return ''
+  const diff = Math.round((Date.now() - lastUpdated.value.getTime()) / 1000)
+  if (diff < 5) return 'just now'
+  if (diff < 60) return `${diff}s ago`
+  return `${Math.round(diff / 60)}m ago`
+})
+
+// Background silent refresh (polling)
+const silentRefresh = async () => {
   try {
     const { from, to } = getDateRange()
     const toEndOfDay = to ? `${to}T23:59:59.999Z` : undefined
     const fromStartOfDay = from ? `${from}T00:00:00.000Z` : undefined
     stats.value = await getStats({ from: fromStartOfDay, to: toEndOfDay }) as any
+    lastUpdated.value = new Date()
   } catch (e) {
     console.error('Failed to fetch stats', e)
-  } finally {
-    loading.value = false
   }
+}
+
+// Manual refresh (shows spinner on button)
+const refresh = async () => {
+  manualLoading.value = true
+  loading.value = true
+  await silentRefresh()
+  loading.value = false
+  manualLoading.value = false
 }
 
 onMounted(() => {
   refresh()
-  pollTimer = setInterval(refresh, 30_000)
+  pollTimer = setInterval(silentRefresh, 30_000)
 })
 
 onUnmounted(() => {
@@ -197,9 +215,18 @@ const ggrPct = computed(() => {
 
     <!-- Header -->
     <div class="db-header">
-      <h1 class="db-title">Dashboard</h1>
-      <button class="db-refresh" :disabled="loading" @click="refresh">
-        <UIcon name="i-heroicons:arrow-path" class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+      <div>
+        <h1 class="db-title">Dashboard</h1>
+        <span v-if="lastUpdated" class="db-live-label">
+          <span class="db-live-dot" />
+          Live · {{ lastUpdatedLabel }}
+        </span>
+      </div>
+      <button class="db-refresh" :class="{ 'db-refresh--spinning': manualLoading }" @click="refresh">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" :class="{ 'spin-anim': manualLoading }">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+        </svg>
       </button>
     </div>
 
@@ -218,7 +245,7 @@ const ggrPct = computed(() => {
     </div>
 
     <!-- Interval bottom-sheet modal -->
-    <Teleport to="body">
+    <ClientOnly><Teleport to="body">
       <Transition name="sheet-backdrop">
         <div v-if="filterOpen" class="sheet-backdrop" @click.self="filterOpen = false" />
       </Transition>
@@ -268,7 +295,7 @@ const ggrPct = computed(() => {
           <button class="sheet-apply" @click="applyFilter">Apply</button>
         </div>
       </Transition>
-    </Teleport>
+    </Teleport></ClientOnly>
 
     <!-- Players card -->
     <div class="db-card">
@@ -490,14 +517,40 @@ const ggrPct = computed(() => {
 /* Header */
 .db-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
 }
 .db-title {
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0;
+  margin: 0 0 2px;
+}
+.db-live-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+.db-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+.spin-anim {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .db-refresh {
   display: flex;
@@ -513,7 +566,7 @@ const ggrPct = computed(() => {
   transition: background 0.12s;
 }
 .db-refresh:hover { background: var(--surface-overlay); }
-.db-refresh:disabled { opacity: 0.4; cursor: default; }
+.db-refresh--spinning { color: var(--brand-primary); }
 
 /* Filter trigger row */
 .db-filter-trigger-row {

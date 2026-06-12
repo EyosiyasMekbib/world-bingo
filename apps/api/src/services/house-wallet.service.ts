@@ -150,6 +150,8 @@ export class HouseWalletService {
             select: {
                 id: true,
                 username: true,
+                firstName: true,
+                lastName: true,
                 isActive: true,
                 botTotalSpent: true,
                 entries: {
@@ -183,6 +185,7 @@ export class HouseWalletService {
                 return {
                     userId: bot.id,
                     username: bot.username ?? '',
+                    displayName: [bot.firstName, bot.lastName].filter(Boolean).join(' ') || null,
                     totalSpent: Number(bot.botTotalSpent),
                     gamesPlayed,
                     gamesWon,

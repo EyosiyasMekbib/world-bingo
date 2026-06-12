@@ -156,6 +156,8 @@ export const useAdminApi = () => {
             return apiFetch<any>(`/admin/house/transactions${query ? `?${query}` : ''}`)
         },
         getBotActivity: () => apiFetch<any[]>('/admin/house/bots'),
+        renameBot: (id: string, data: { firstName: string; lastName?: string }) =>
+            apiFetch(`/admin/house/bots/${id}/rename`, { method: 'PATCH', body: data }),
         getMoneyFlow: (params?: {
             page?: number
             limit?: number

@@ -282,7 +282,7 @@ const copyToClipboard = (text: string) => {
         </template>
         <template #status-cell="{ row }">
           <UBadge
-            :color="(row.original as unknown as WithdrawalTransaction).status === 'PENDING_REVIEW' ? 'warning' : (row.original as unknown as WithdrawalTransaction).status === 'APPROVED' ? 'success' : 'error'"
+            :color="(row.original as unknown as WithdrawalTransaction).status === 'APPROVED' ? 'success' : (row.original as unknown as WithdrawalTransaction).status === 'REJECTED' ? 'error' : 'neutral'"
             variant="soft"
           >
             {{ (row.original as unknown as WithdrawalTransaction).status }}
@@ -329,7 +329,7 @@ const copyToClipboard = (text: string) => {
             <p class="text-[10px] text-white/30 font-mono mt-1">{{ w.id.split('-')[0] }}</p>
           </div>
           <UBadge
-            :color="w.status === 'PENDING_REVIEW' ? 'warning' : w.status === 'APPROVED' ? 'success' : 'error'"
+            :color="w.status === 'APPROVED' ? 'success' : w.status === 'REJECTED' ? 'error' : 'neutral'"
             variant="soft" size="xs"
           >
             {{ w.status }}
