@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { Client as MinioClient } from 'minio'
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -91,6 +90,10 @@ async function uploadToMinio(
     if (!endpoint || !accessKey || !secretKey) {
         throw new Error('MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY must be set when STORAGE_PROVIDER=minio')
     }
+
+    const { Client: MinioClient } = await import('minio').catch(() => {
+        throw new Error('minio is not installed. Run: pnpm add minio')
+    })
 
     const url = new URL(endpoint)
     const client = new MinioClient({
