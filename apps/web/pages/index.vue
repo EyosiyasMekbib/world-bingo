@@ -90,8 +90,7 @@ const CRASH_PRIORITY = [
   "chick 'n' road 2", "chick 'n' road",
 ]
 
-function sortedCategoryGames(cat: string, games: ProviderGame[]): ProviderGame[] {
-  if (cat !== 'CRASH') return games
+function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
   const rank = (g: ProviderGame) => {
     const name = g.gameName.toLowerCase()
     const idx = CRASH_PRIORITY.findIndex((p) => name.includes(p) || p.includes(name))
@@ -106,8 +105,10 @@ const categoryGamesLoading = ref<Record<string, boolean>>({})
 const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
-  if (['ALL', 'TRENDING', 'POPULAR'].includes(cat)) return providerStore.games
-  return sortedCategoryGames(cat, categoryGamesMap.value[cat] ?? [])
+  const raw = ['ALL', 'TRENDING', 'POPULAR'].includes(cat)
+    ? providerStore.games
+    : (categoryGamesMap.value[cat] ?? [])
+  return sortedByPriority(raw)
 })
 
 const feedLoading = computed(() => {
