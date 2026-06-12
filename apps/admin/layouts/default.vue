@@ -9,6 +9,7 @@ const allNavGroups = [
     adminOnly: true,
     items: [
       { label: 'Dashboard', icon: 'i-heroicons:squares-2x2', to: '/' },
+      { label: 'Analytics', icon: 'i-heroicons:chart-bar', to: '/analytics' },
     ],
   },
   {
