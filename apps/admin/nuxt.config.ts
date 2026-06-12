@@ -48,7 +48,8 @@ export default defineNuxtConfig({
 
     routeRules: {
         '/api/**': { proxy: 'http://api:8080/**' },
-        '/socket.io/**': { proxy: 'http://api:8080/socket.io/**' }
+        '/socket.io/**': { proxy: 'http://api:8080/socket.io/**' },
+        '/uploads/**': { proxy: 'http://api:8080/uploads/**' },
     },
 
     vite: {

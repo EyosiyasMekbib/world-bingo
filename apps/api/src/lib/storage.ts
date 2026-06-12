@@ -69,8 +69,7 @@ async function uploadToLocal(
 
     await fs.promises.writeFile(filePath, buffer)
 
-    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:8080'
-    const url = `${baseUrl}/uploads/${uniqueName}`
+    const url = `/uploads/${uniqueName}`
 
     return { url, filename: uniqueName, size: buffer.byteLength, mimetype }
 }
@@ -88,7 +87,8 @@ async function uploadToMinio(
     const bucket = process.env.MINIO_BUCKET ?? 'receipts'
 
     if (!endpoint || !accessKey || !secretKey) {
-        throw new Error('MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY must be set when STORAGE_PROVIDER=minio')
+        console.warn('[storage] MinIO credentials not set, falling back to local storage')
+        return uploadToLocal(buffer, originalFilename, mimetype)
     }
 
     const { Client: MinioClient } = await import('minio').catch(() => {

@@ -202,8 +202,13 @@ const handleDecline = async () => {
 const isReceiptOpen = ref(false)
 const selectedReceipt = ref('')
 
+const proxyReceiptUrl = (url: string) => {
+  // Strip protocol+host so the URL routes through Nuxt's /uploads/** proxy
+  try { return new URL(url).pathname } catch { return url }
+}
+
 const openReceipt = (url: string) => {
-  selectedReceipt.value = url
+  selectedReceipt.value = proxyReceiptUrl(url)
   isReceiptOpen.value = true
 }
 
