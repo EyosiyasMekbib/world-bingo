@@ -152,6 +152,7 @@ export class AdminService {
 
     static async getTransactions(params: {
         type?: TransactionType
+        types?: TransactionType[]
         status?: PaymentStatus
         page?: number
         limit?: number
@@ -167,7 +168,7 @@ export class AdminService {
         const skip = (page - 1) * limit
 
         const where: any = {
-            ...(params.type && { type: params.type }),
+            ...(params.types?.length ? { type: { in: params.types } } : params.type ? { type: params.type } : {}),
             ...(params.status && { status: params.status }),
             ...((params.from || params.to) && {
                 createdAt: {

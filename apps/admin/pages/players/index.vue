@@ -45,6 +45,11 @@ onMounted(fetchPlayers)
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-ET', { year: 'numeric', month: 'short', day: 'numeric' })
 }
+
+function copySerial(val: string | number) {
+  navigator.clipboard.writeText(String(val))
+  toast.add({ title: 'Copied', color: 'success' })
+}
 </script>
 
 <template>
@@ -91,11 +96,34 @@ function formatDate(d: string) {
               <td colspan="7" class="px-4 py-12 text-center text-white/30">No players found</td>
             </tr>
             <tr v-for="p in players" :key="p.id" class="hover:bg-white/3 transition-colors">
-              <td class="px-4 py-3 text-white/30 font-mono text-xs">{{ String(p.serial).padStart(5, '0') }}</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1.5 group">
+                  <span class="text-yellow-500 font-mono text-xs font-bold">#{{ String(p.serial).padStart(5, '0') }}</span>
+                  <button
+                    class="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5 rounded"
+                    title="Copy Player ID"
+                    @click="copySerial(p.serial)"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  </button>
+                </div>
+              </td>
               <td class="px-4 py-3 font-semibold text-zinc-200">
                 <NuxtLink :to="`/players/${p.id}`" class="hover:text-yellow-500 transition-colors">{{ p.username }}</NuxtLink>
               </td>
-              <td class="px-4 py-3 text-white/40 font-mono text-xs">{{ p.phone ?? '—' }}</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1.5 group">
+                  <span class="text-white/40 font-mono text-xs">{{ p.phone ?? '—' }}</span>
+                  <button
+                    v-if="p.phone"
+                    class="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity p-0.5 rounded"
+                    title="Copy phone"
+                    @click="copySerial(p.phone)"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  </button>
+                </div>
+              </td>
               <td class="px-4 py-3 text-right font-mono text-yellow-500 font-bold">
                 {{ Number(p.wallet?.realBalance ?? 0).toFixed(2) }}
               </td>

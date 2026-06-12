@@ -31,8 +31,16 @@ export class AdminController {
 
     static async getOrdersHistory(request: FastifyRequest, reply: FastifyReply) {
         const q = (request.query as any) ?? {}
+        const typeParam: string | undefined = q.type && q.type !== 'ALL' ? q.type : undefined
+        const types = typeParam?.includes(',')
+            ? (typeParam.split(',').map((t: string) => t.trim()) as TransactionType[])
+            : undefined
         const transactions = await AdminService.getTransactions({
-            ...(q.type && q.type !== 'ALL' ? { type: q.type as TransactionType } : {}),
+            ...(types ? { types } : typeParam ? { type: typeParam as TransactionType } : {}),
+            search: q.search || undefined,
+            userSerial: q.userSerial ? Number(q.userSerial) : undefined,
+            from: q.from ? new Date(q.from) : undefined,
+            to: q.to ? new Date(q.to) : undefined,
             page: q.page ? parseInt(q.page, 10) : 1,
             limit: q.limit ? parseInt(q.limit, 10) : 20,
         })

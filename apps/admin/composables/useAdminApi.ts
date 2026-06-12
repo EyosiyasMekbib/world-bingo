@@ -56,13 +56,17 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any>(`/admin/transactions/pending${query ? `?${query}` : ''}`)
         },
-        getTransactionsHistory: (params?: { type?: string; page?: number; limit?: number }) => {
+        getTransactionsHistory: (params?: { type?: string; search?: string; userSerial?: number; from?: string; to?: string; page?: number; limit?: number }) => {
             const qs = new URLSearchParams()
             if (params?.type) qs.set('type', params.type)
+            if (params?.search) qs.set('search', params.search)
+            if (params?.userSerial) qs.set('userSerial', String(params.userSerial))
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
             const query = qs.toString()
-            return apiFetch<any[]>(`/admin/transactions/history${query ? `?${query}` : ''}`)
+            return apiFetch<any>(`/admin/transactions/history${query ? `?${query}` : ''}`)
         },
         getWithdrawals: (params?: {
             status?: string
