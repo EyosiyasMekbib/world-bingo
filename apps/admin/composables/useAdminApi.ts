@@ -32,6 +32,48 @@ export const useAdminApi = () => {
                 commission: number
             }>(qs ? `/admin/stats?${qs}` : '/admin/stats')
         },
+
+        // ── Analytics ─────────────────────────────────────────────────────
+        getAnalyticsFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                signups: number
+                depositors: number
+                players: number
+                repeatPlayers: number
+                rates: { signupToDeposit: number; depositToPlay: number; playToRepeat: number }
+            }>(`/admin/analytics/funnel${query ? `?${query}` : ''}`)
+        },
+        getAnalyticsRetention: (weeks?: number) =>
+            apiFetch<{ cohorts: Array<{ week: string; size: number; offsets: number[] }> }>(
+                `/admin/analytics/retention${weeks ? `?weeks=${weeks}` : ''}`,
+            ),
+        getAnalyticsGamesHealth: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                daily: Array<{ day: string; created: number; completed: number; cancelled: number; cancellationPct: number; avgSecsToStart: number | null }>
+                fill: { avgHumanFillPct: number; botSharePct: number }
+            }>(`/admin/analytics/games-health${query ? `?${query}` : ''}`)
+        },
+        getAnalyticsEngagement: () =>
+            apiFetch<{
+                totalPlayers: number
+                active7d: number
+                oneAndDonePct: number
+                distribution: Record<string, number>
+                winExperience: {
+                    winners: { total: number; active7dPct: number }
+                    neverWon: { total: number; active7dPct: number }
+                }
+                idleMoney: { wallets: number; balance: number }
+            }>('/admin/analytics/engagement'),
+
         getPendingDeposits: (params?: {
             status?: string
             search?: string
