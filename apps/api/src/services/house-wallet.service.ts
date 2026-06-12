@@ -200,9 +200,13 @@ export class HouseWalletService {
     /**
      * Aggregate totals by type for summary chips on the admin page.
      */
-    static async getSummary() {
+    static async getSummary(params?: { from?: Date; to?: Date }) {
+        const dateRange = params?.from || params?.to
+            ? { createdAt: { ...(params.from && { gte: params.from }), ...(params.to && { lte: params.to }) } }
+            : {}
         const rows = await prisma.houseTransaction.groupBy({
             by: ['type'],
+            where: Object.keys(dateRange).length ? dateRange : undefined,
             _sum: { amount: true },
         })
         const summary: Record<string, number> = {

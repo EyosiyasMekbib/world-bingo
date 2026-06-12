@@ -45,7 +45,7 @@ export class AdminService {
             }),
             prisma.game.count({ where: { status: 'COMPLETED', ...gameDateRange } }),
             prisma.game.count({ where: { status: 'CANCELLED', ...gameDateRange } }),
-            HouseWalletService.getSummary(),
+            HouseWalletService.getSummary(params),
             HouseWalletService.getBalance(),
             prisma.gameEntry.groupBy({ by: ['userId'] }),
             prisma.game.findMany({
@@ -82,12 +82,12 @@ export class AdminService {
         const [providerGained, providerLost] = await Promise.all([
             prisma.thirdPartyTransaction.groupBy({
                 by: ['providerId'],
-                where: { amount: { lt: 0 } },
+                where: { amount: { lt: 0 }, ...dateRange },
                 _sum: { amount: true },
             }),
             prisma.thirdPartyTransaction.groupBy({
                 by: ['providerId'],
-                where: { amount: { gt: 0 } },
+                where: { amount: { gt: 0 }, ...dateRange },
                 _sum: { amount: true },
             }),
         ])
