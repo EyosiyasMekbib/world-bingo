@@ -537,8 +537,53 @@ onUnmounted(() => {
     <div class="feed-section">
       <div class="max-container">
 
-        <!-- Provider games (all non-Bingo tabs) -->
-        <template v-if="selectedCategory !== 'BINGO'">
+        <!-- ALL tab: original design — spinner + plain images + Load More -->
+        <template v-if="selectedCategory === 'ALL'">
+          <div v-if="feedLoading && !feedGames.length" class="state-msg">
+            <span class="spinner" aria-hidden="true"></span> Loading...
+          </div>
+          <div v-else-if="!feedGames.length && !feedLoading" class="state-msg">
+            No games available.
+          </div>
+          <div v-else class="feed-grid">
+            <NuxtLink
+              v-for="g in feedGames"
+              :key="g.gameCode"
+              :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+              class="feed-card"
+            >
+              <div class="fc-thumb">
+                <img
+                  v-if="g.imageSquare || g.imageLandscape"
+                  :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                  :alt="g.gameName"
+                  class="fc-img fc-img--loaded"
+                  loading="lazy"
+                />
+                <div v-else class="fc-placeholder">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.3" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="fc-name">{{ g.gameName }}</div>
+            </NuxtLink>
+          </div>
+          <div v-if="canLoadMore" class="more-row">
+            <button class="more-btn" :disabled="feedLoadingMore" @click="loadMoreFeed">
+              <span v-if="feedLoadingMore" class="spinner" aria-hidden="true"></span>
+              <template v-else>
+                Load More
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </template>
+            </button>
+          </div>
+        </template>
+
+        <!-- POPULAR / TRENDING / other category tabs: skeleton + infinite scroll -->
+        <template v-else-if="selectedCategory !== 'BINGO'">
           <!-- Initial skeleton grid while first page loads -->
           <div v-if="feedLoading && !feedGames.length" class="feed-grid" aria-busy="true" aria-label="Loading games">
             <div v-for="n in 18" :key="n" class="fc-skel">
