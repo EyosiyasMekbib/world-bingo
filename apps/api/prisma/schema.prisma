@@ -570,3 +570,19 @@ model ThirdPartyTransaction {
   @@index([createdAt])
   @@map("third_party_transactions")
 }
+
+// ─── Behavioral Analytics Events ─────────────────────────────────────────────
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String?
+  anonId    String?
+  sessionId String?
+  props     Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([anonId])
+  @@index([userId])
+  @@map("analytics_events")
+}
