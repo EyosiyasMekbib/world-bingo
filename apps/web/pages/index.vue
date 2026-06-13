@@ -113,10 +113,14 @@ const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
   if (cat === 'POPULAR') return popularFeed.value
-  const raw = ['ALL', 'TRENDING'].includes(cat)
-    ? providerStore.games
-    : (categoryGamesMap.value[cat] ?? [])
-  return sortedByPriority(raw)
+  if (['ALL', 'TRENDING'].includes(cat)) {
+    // Crash/MINI games lead; remaining ALL games follow deduped
+    const miniGames = categoryGamesMap.value[POPULAR_CATEGORY] ?? []
+    const miniCodes = new Set(miniGames.map((g) => g.gameCode))
+    const rest = providerStore.games.filter((g) => !miniCodes.has(g.gameCode))
+    return [...sortedByPriority(miniGames), ...rest]
+  }
+  return sortedByPriority(categoryGamesMap.value[cat] ?? [])
 })
 
 const feedLoading = computed(() => {
