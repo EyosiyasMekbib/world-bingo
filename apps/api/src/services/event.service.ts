@@ -31,8 +31,8 @@ export class EventService {
                 name: e.name,
                 anonId: e.anonId ?? null,
                 sessionId: e.sessionId ?? null,
-                props: e.props ?? null,
-                userId: ctx.userId,
+                props: (e.props ?? null) as any,
+                userId: ctx.userId ?? null,
             })),
             skipDuplicates: true,
         })

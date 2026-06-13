@@ -27,6 +27,7 @@ import paymentMethodRoutes from './routes/payment-methods/index.js'
 import { registerBullBoard } from './routes/bull-board.js'
 import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
+import eventsRoutes from './routes/events/index.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
@@ -219,6 +220,7 @@ await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
 await server.register(gameProviderRoutes, { prefix: '/providers' })
+await server.register(eventsRoutes)
 
 // T49 — BullMQ Dashboard at /admin/queues
 await registerBullBoard(server)
