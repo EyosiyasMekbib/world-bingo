@@ -122,13 +122,13 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     const realAfter = realBefore.plus(adjustAmount)
                     if (realAfter.lessThan(0)) throw new Error('Adjustment would make real balance negative')
                     await tx.wallet.update({ where: { userId }, data: { realBalance: { increment: adjustAmount } } })
-                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realAfter, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore } })
+                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: adjustAmount, status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realAfter, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore } })
                     return { realBalance: Number(realAfter), bonusBalance: Number(bonusBefore) }
                 } else {
                     const bonusAfter = bonusBefore.plus(adjustAmount)
                     if (bonusAfter.lessThan(0)) throw new Error('Adjustment would make bonus balance negative')
                     await tx.wallet.update({ where: { userId }, data: { bonusBalance: { increment: adjustAmount } } })
-                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_BONUS_ADJUSTMENT, amount: adjustAmount.abs(), status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realBefore, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter } })
+                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_BONUS_ADJUSTMENT, amount: adjustAmount, status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realBefore, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter } })
                     return { realBalance: Number(realBefore), bonusBalance: Number(bonusAfter) }
                 }
             })

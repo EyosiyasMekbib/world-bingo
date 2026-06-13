@@ -344,7 +344,9 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
                   {{ Number(row.amount) >= 0 ? '+' : '' }}{{ Number(row.amount).toFixed(2) }}
                 </span>
               </td>
-              <td class="text-right corr-muted font-mono text-xs">{{ Number(row.balanceBefore ?? 0).toFixed(2) }}</td>
+              <td class="text-right corr-muted font-mono text-xs">
+                {{ Number(row.type === 'ADMIN_BONUS_ADJUSTMENT' ? (row.bonusBalanceBefore ?? 0) : (row.balanceBefore ?? 0)).toFixed(2) }}
+              </td>
               <td class="corr-note-cell">{{ row.note ?? '—' }}</td>
               <td class="corr-muted text-xs">{{ formatDate(row.createdAt) }}</td>
               <td>
