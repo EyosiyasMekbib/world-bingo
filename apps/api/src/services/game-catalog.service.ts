@@ -14,8 +14,8 @@ const PATTERN_LABELS: Record<PatternType, string> = {
     CORNERS: 'Four Corners',
 }
 
-function gameCacheKey(providerCode: string, category: string, page: number): string {
-    return `tp:games:${providerCode}:${category}:${page}`
+function gameCacheKey(providerCode: string, category: string, page: number, pageSize: number): string {
+    return `tp:games:${providerCode}:${category}:${page}:${pageSize}`
 }
 
 type SearchResult = {
@@ -180,7 +180,7 @@ export class GameCatalogService {
         vendorCode?: string
     }) {
         const { providerCode, category, page = 1, pageSize = 50, search, vendorCode } = params
-        const cacheKey = (search || vendorCode) ? null : gameCacheKey(providerCode, category ?? 'ALL', page)
+        const cacheKey = (search || vendorCode) ? null : gameCacheKey(providerCode, category ?? 'ALL', page, pageSize)
 
         if (cacheKey) {
             const cached = await redis.get(cacheKey)

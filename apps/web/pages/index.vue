@@ -83,12 +83,10 @@ const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_L
 
 
 const CRASH_PRIORITY = [
-  'aviator', 'helicrash', 'rocketman', 'rocket stars',
-  'bomb runner', 'crashkick', 'shaktimaan',
-  'just jump', "chick 'n' road 2", "chick 'n' road",
-  'hotline', 'tiny roulette', 'magic aladdin',
-  'chicken road', 'chicken road 2', 'jetx', 'aviatrix', 'plinko',
-  'goal', 'dice', 'miner',
+  'aviator', 'jetx', 'spaceman', 'helicopterx',
+  'hotline', 'aviatrix', 'plinko', 'crash x',
+  'goal', 'dice', 'mines', 'limbo',
+  'crash game', 'balloon', 'wheel', 'keno',
 ]
 
 function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
@@ -103,10 +101,22 @@ function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
 const categoryGamesLoading = ref<Record<string, boolean>>({})
 
+// "Popular" surfaces the crash / instant-win games (the aggregator files these
+// under the MINI category — Aviator, Plinko, Dice, Goal, etc.), priority-sorted
+// so the headline crash titles lead. Fetched in bulk below so the priority
+// names are present in the array before sorting.
+const POPULAR_CATEGORY = 'MINI'
+const popularLimit = ref(24)
+
+const popularFeed = computed(() =>
+  sortedByPriority(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
+)
+
 const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
-  const raw = ['ALL', 'TRENDING', 'POPULAR'].includes(cat)
+  if (cat === 'POPULAR') return popularFeed.value.slice(0, popularLimit.value)
+  const raw = ['ALL', 'TRENDING'].includes(cat)
     ? providerStore.games
     : (categoryGamesMap.value[cat] ?? [])
   return sortedByPriority(raw)
@@ -114,27 +124,33 @@ const feedGames = computed(() => {
 
 const feedLoading = computed(() => {
   const cat = selectedCategory.value
-  if (['ALL', 'TRENDING', 'POPULAR'].includes(cat)) return providerStore.loading
+  if (cat === 'POPULAR') return !popularFeed.value.length && !!categoryGamesLoading.value[POPULAR_CATEGORY]
+  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading
   return !!categoryGamesLoading.value[cat]
 })
 
 const canLoadMore = computed(() => {
   const cat = selectedCategory.value
-  if (['ALL', 'TRENDING', 'POPULAR'].includes(cat)) return providerStore.hasMore
+  if (cat === 'POPULAR') return popularLimit.value < popularFeed.value.length
+  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.hasMore
   return false
 })
 
 async function loadMoreFeed() {
+  if (selectedCategory.value === 'POPULAR') {
+    popularLimit.value += 24
+    return
+  }
   await providerStore.loadMore()
 }
 
-async function fetchCategoryGames(category: string) {
+async function fetchCategoryGames(category: string, pageSize = 20) {
   const code = providerStore.activeProviderCode
   if (!code) return
   categoryGamesLoading.value[category] = true
   try {
     const result = await $fetch<{ games: ProviderGame[] }>(
-      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=20&category=${category}`
+      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`
     )
     categoryGamesMap.value[category] = result.games
   } catch {
@@ -269,7 +285,9 @@ onMounted(async () => {
     await providerStore.fetchCategories()
     await providerStore.fetchGames({ reset: true })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
-    await Promise.all(cats.map((c) => fetchCategoryGames(c)))
+    await Promise.all(
+      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 200 : 20)),
+    )
   }
 
   startSlideTimer()
