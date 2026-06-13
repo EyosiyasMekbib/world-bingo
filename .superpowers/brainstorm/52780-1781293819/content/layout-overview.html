@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Lobby Layout Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0f1a; color: #e0e8f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px 16px 60px; }
+
+  h2 { font-size: 18px; font-weight: 700; color: #f0f4ff; margin-bottom: 6px; }
+  .subtitle { font-size: 13px; color: rgba(255,255,255,0.45); margin-bottom: 28px; }
+
+  .comparison { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+
+  /* Phone frame */
+  .phone { width: 220px; flex-shrink: 0; }
+  .phone-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.35); text-align: center; margin-bottom: 10px; }
+  .phone-frame {
+    border-radius: 28px;
+    overflow: hidden;
+    border: 2px solid rgba(255,255,255,0.12);
+    background: #060d1e;
+    position: relative;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .phone-frame:hover { border-color: rgba(245,158,11,0.4); transform: translateY(-2px); }
+  .phone-frame.selected { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.25); }
+  .phone-screen { height: 460px; overflow: hidden; position: relative; }
+
+  .select-badge {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: #f59e0b;
+    color: #0a0f1a;
+    font-size: 10px;
+    font-weight: 900;
+    padding: 3px 8px;
+    border-radius: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .phone-frame.selected .select-badge { opacity: 1; }
+
+  /* ── CURRENT LAYOUT ─── */
+  .current-hero {
+    height: 100px;
+    background: linear-gradient(150deg, #020b20, #061535, #0c2248);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .current-hero-text { font-size: 18px; font-weight: 800; color: #f0f4ff; letter-spacing: 0.02em; z-index: 1; }
+  .current-hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 60% 80% at 70% 50%, rgba(245,158,11,0.12) 0%, transparent 70%);
+  }
+  .current-filter { display: flex; gap: 4px; padding: 8px 8px; background: rgba(6,14,36,0.95); border-bottom: 1px solid rgba(255,255,255,0.06); overflow: hidden; }
+  .pill { font-size: 8px; font-weight: 600; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4); white-space: nowrap; flex-shrink: 0; }
+  .pill.active { background: rgba(245,158,11,0.1); color: #f59e0b; }
+
+  /* Top row scroll */
+  .top-row { display: flex; gap: 6px; padding: 8px 8px; overflow: hidden; }
+  .type-tile { width: 62px; flex-shrink: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.07); background: rgba(10,22,55,0.75); }
+  .tt-thumb { height: 44px; background: linear-gradient(145deg, #0d2050, #1a3870); }
+  .tt-label { font-size: 6.5px; font-weight: 700; color: #e8eef8; padding: 4px 5px 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tt-meta { font-size: 5.5px; color: rgba(255,255,255,0.35); padding: 0 5px 5px; }
+
+  /* Section */
+  .section-block { padding: 10px 8px 0; }
+  .section-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .section-tag { font-size: 7px; font-weight: 800; color: rgba(245,158,11,0.5); letter-spacing: 0.1em; text-transform: uppercase; }
+  .section-line { flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
+
+  /* Old 3-col grid */
+  .old-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .old-card { border-radius: 5px; overflow: hidden; background: rgba(10,22,55,0.7); border: 1px solid rgba(255,255,255,0.06); }
+  .old-thumb { aspect-ratio: 3/4; background: linear-gradient(145deg, #0d2050, #1a3870); position: relative; }
+  .old-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+  .cat-badge { position: absolute; top: 3px; left: 3px; background: rgba(0,0,0,0.55); font-size: 5px; font-weight: 700; color: rgba(255,255,255,0.7); padding: 1px 3px; border-radius: 2px; }
+  .hover-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; }
+  .play-btn { background: #f59e0b; color: #0a0f1a; font-size: 5.5px; font-weight: 800; padding: 3px 7px; border-radius: 3px; }
+  .old-name { font-size: 6px; font-weight: 700; color: #c8d4e8; padding: 4px 5px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── NEW LAYOUT (Option C) ─── */
+  .new-hero {
+    height: 60px;
+    background: linear-gradient(150deg, #020b20, #061535);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .new-hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 70% 50%, rgba(245,158,11,0.1) 0%, transparent 70%);
+  }
+  .new-hero-inner { display: flex; align-items: center; gap: 8px; z-index: 1; }
+  .new-hero-text { font-size: 12px; font-weight: 800; color: #f0f4ff; }
+  .hero-dot { width: 5px; height: 5px; background: #f59e0b; border-radius: 50%; }
+
+  .new-filter { display: flex; gap: 3px; padding: 6px 8px; background: rgba(6,14,36,0.97); border-bottom: 1px solid rgba(255,255,255,0.06); overflow: hidden; position: sticky; top: 0; z-index: 10; }
+
+  /* Unified feed grid */
+  .feed-section { padding: 8px 8px 0; }
+  .feed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .feed-card { border-radius: 7px; overflow: hidden; background: rgba(10,22,55,0.7); border: 1px solid rgba(255,255,255,0.06); }
+  .feed-thumb { aspect-ratio: 3/4; background: linear-gradient(145deg, #0d2050, #1a3870); position: relative; overflow: hidden; }
+  .feed-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .feed-thumb-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .feed-name { font-size: 7px; font-weight: 600; color: rgba(255,255,255,0.7); padding: 5px 6px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Game thumbnails — colored backgrounds to simulate real game art */
+  .g1 { background: linear-gradient(135deg, #0a2e0a, #1a5c1a); }
+  .g2 { background: linear-gradient(135deg, #1a0505, #4a0000); }
+  .g3 { background: linear-gradient(135deg, #1a0e00, #4a2800); }
+  .g4 { background: linear-gradient(135deg, #1a1a00, #3a3000); }
+  .g5 { background: linear-gradient(135deg, #0a1a3a, #1a3a7a); }
+  .g6 { background: linear-gradient(135deg, #1a0a2a, #3a1a5a); }
+  .g7 { background: linear-gradient(135deg, #001a1a, #003a4a); }
+  .g8 { background: linear-gradient(135deg, #0d1a3a, #1a2e6a); }
+  .g9 { background: linear-gradient(135deg, #2a0a0a, #5a1a1a); }
+
+  /* Game name labels inside thumbs for realism */
+  .game-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+    padding: 12px 4px 4px;
+    font-size: 7px; font-weight: 800; color: #fff;
+    text-align: center; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* Provider badge */
+  .prov-badge {
+    position: absolute; bottom: 3px; right: 3px;
+    background: rgba(0,0,0,0.5);
+    font-size: 4.5px; font-weight: 700;
+    color: rgba(255,255,255,0.5);
+    padding: 1px 3px; border-radius: 2px;
+  }
+
+  /* Selection indicator */
+  .selection-hint { text-align: center; margin-top: 24px; font-size: 12px; color: rgba(255,255,255,0.35); }
+  .selection-hint strong { color: rgba(255,255,255,0.6); }
+
+  .tag-new { display: inline-block; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #34d399; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h2>Feed-Style Layout Redesign <span class="tag-new">Option C</span></h2>
+<p class="subtitle">Click a layout to select it — or tell me what you'd change in the terminal</p>
+
+<div class="comparison">
+
+  <!-- CURRENT -->
+  <div class="phone">
+    <div class="phone-label">Current</div>
+    <div class="phone-frame" data-choice="current" onclick="pick(this)">
+      <div class="select-badge">CURRENT</div>
+      <div class="phone-screen">
+        <!-- Hero -->
+        <div class="current-hero">
+          <div class="current-hero-text">World Bingo</div>
+        </div>
+        <!-- Filter -->
+        <div class="current-filter">
+          <div class="pill active">★ All</div>
+          <div class="pill">↑ Trend</div>
+          <div class="pill">★ Popular</div>
+          <div class="pill">Bingo</div>
+        </div>
+        <!-- Top row type tiles -->
+        <div class="top-row">
+          <div class="type-tile"><div class="tt-thumb g1"></div><div class="tt-label">Bingo</div><div class="tt-meta">From 10 ETB</div></div>
+          <div class="type-tile"><div class="tt-thumb g2"></div><div class="tt-label">Aviator</div><div class="tt-meta">CRASH</div></div>
+          <div class="type-tile"><div class="tt-thumb g5"></div><div class="tt-label">JetX</div><div class="tt-meta">CRASH</div></div>
+        </div>
+        <!-- Section header -->
+        <div class="section-block">
+          <div class="section-row"><span class="section-tag">Crash Games</span><div class="section-line"></div></div>
+          <div class="old-grid">
+            <div class="old-card"><div class="old-thumb g2"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">Aviator</div></div>
+            <div class="old-card"><div class="old-thumb g1"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">HeliCrash</div></div>
+            <div class="old-card"><div class="old-thumb g6"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">JetX</div></div>
+            <div class="old-card"><div class="old-thumb g3"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">Chicken Road</div></div>
+            <div class="old-card"><div class="old-thumb g7"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">Plinko</div></div>
+            <div class="old-card"><div class="old-thumb g9"><div class="cat-badge">CRASH</div><div class="hover-overlay"><div class="play-btn">Play</div></div></div><div class="old-name">Aviatrix</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTION C -->
+  <div class="phone">
+    <div class="phone-label">New — Feed Style</div>
+    <div class="phone-frame" data-choice="new" onclick="pick(this)">
+      <div class="select-badge">SELECTED ✓</div>
+      <div class="phone-screen">
+        <!-- Slim hero -->
+        <div class="new-hero">
+          <div class="new-hero-inner">
+            <div class="hero-dot"></div>
+            <div class="new-hero-text">World Bingo</div>
+            <div class="hero-dot"></div>
+          </div>
+        </div>
+        <!-- Sticky filter -->
+        <div class="new-filter">
+          <div class="pill">All</div>
+          <div class="pill">Trend</div>
+          <div class="pill active">★ Popular</div>
+          <div class="pill">Crash</div>
+          <div class="pill">Bingo</div>
+        </div>
+        <!-- Unified feed -->
+        <div class="feed-section">
+          <div class="feed-grid">
+            <div class="feed-card">
+              <div class="feed-thumb g2"><div class="game-label">Helicrash</div><div class="prov-badge">Vimplay</div></div>
+              <div class="feed-name">Helicrash</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g9"><div class="game-label">Aviator</div><div class="prov-badge">Spribe</div></div>
+              <div class="feed-name">Aviator</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g3"><div class="game-label">Tiny Roulette</div><div class="prov-badge">Vimplay</div></div>
+              <div class="feed-name">Tiny Roulette</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g4"><div class="game-label">Magic Aladdin</div><div class="prov-badge">Vimplay</div></div>
+              <div class="feed-name">Magic Aladdin</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g7"><div class="game-label">Chicken Road</div><div class="prov-badge">Inout</div></div>
+              <div class="feed-name">Chicken Road</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g6"><div class="game-label">Chicken Road 2</div><div class="prov-badge">Inout</div></div>
+              <div class="feed-name">Chicken Road 2</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g5"><div class="game-label">JetX</div><div class="prov-badge">Smartsoft</div></div>
+              <div class="feed-name">JetX</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g8"><div class="game-label">Aviatrix</div><div class="prov-badge">Aviatrix</div></div>
+              <div class="feed-name">Aviatrix</div>
+            </div>
+            <div class="feed-card">
+              <div class="feed-thumb g1"><div class="game-label">Plinko</div><div class="prov-badge">Spribe</div></div>
+              <div class="feed-name">Plinko</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="selection-hint">
+  <strong>Key differences:</strong> No horizontal scroll row · No section labels · One unified grid · Slimmer hero · "Popular" is default tab
+</div>
+
+<script>
+function pick(el) {
+  document.querySelectorAll('.phone-frame').forEach(f => f.classList.remove('selected'));
+  el.classList.add('selected');
+  if (window.sendChoice) sendChoice(el.dataset.choice, el.querySelector('.phone-label') ? el.closest('.phone').querySelector('.phone-label').textContent : el.dataset.choice);
+}
+</script>
+</body>
+</html>
