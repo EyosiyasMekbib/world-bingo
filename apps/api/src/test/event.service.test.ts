@@ -22,8 +22,8 @@ describe('EventService.record', () => {
         )
         expect(createMany).toHaveBeenCalledWith({
             data: [
-                { name: 'lobby_view', anonId: 'anon-1', sessionId: 'sess-1', props: null, userId: undefined },
-                { name: 'game_view', anonId: 'anon-1', sessionId: 'sess-1', props: { gameId: 'g1' }, userId: undefined },
+                { name: 'lobby_view', anonId: 'anon-1', sessionId: 'sess-1', props: null, userId: null },
+                { name: 'game_view', anonId: 'anon-1', sessionId: 'sess-1', props: { gameId: 'g1' }, userId: null },
             ],
             skipDuplicates: true,
         })
