@@ -22,22 +22,31 @@ const funnel = ref<Awaited<ReturnType<typeof api.getAnalyticsFunnel>> | null>(nu
 const retention = ref<Awaited<ReturnType<typeof api.getAnalyticsRetention>> | null>(null)
 const gamesHealth = ref<Awaited<ReturnType<typeof api.getAnalyticsGamesHealth>> | null>(null)
 const engagement = ref<Awaited<ReturnType<typeof api.getAnalyticsEngagement>> | null>(null)
+const browseFunnel = ref<Awaited<ReturnType<typeof api.getAnalyticsBrowseFunnel>> | null>(null)
+const depositFunnel = ref<Awaited<ReturnType<typeof api.getAnalyticsDepositFunnel>> | null>(null)
+const conversionKpis = ref<Awaited<ReturnType<typeof api.getAnalyticsConversionKpis>> | null>(null)
 
 async function load() {
   loading.value = true
   error.value = null
   const from = new Date(Date.now() - rangeDays.value * 24 * 3600 * 1000).toISOString()
   try {
-    const [f, r, g, e] = await Promise.all([
+    const [f, r, g, e, bf, df, ck] = await Promise.all([
       api.getAnalyticsFunnel({ from }),
       api.getAnalyticsRetention(8),
       api.getAnalyticsGamesHealth({ from }),
       api.getAnalyticsEngagement(),
+      api.getAnalyticsBrowseFunnel({ from }),
+      api.getAnalyticsDepositFunnel({ from }),
+      api.getAnalyticsConversionKpis({ from }),
     ])
     funnel.value = f
     retention.value = r
     gamesHealth.value = g
     engagement.value = e
+    browseFunnel.value = bf
+    depositFunnel.value = df
+    conversionKpis.value = ck
   } catch (err: any) {
     error.value = err?.data?.error ?? err?.message ?? 'Failed to load analytics'
   } finally {
@@ -188,6 +197,78 @@ function retentionCellStyle(pct: number) {
         </div>
       </section>
 
+      <!-- ── Conversion KPIs (Layer 2) ─────────────────────────── -->
+      <div class="kpi-grid" v-if="conversionKpis">
+        <div class="card kpi">
+          <span class="kpi-value">{{ conversionKpis.totalVisitors.toLocaleString() }}</span>
+          <span class="kpi-label">Visitors ({{ conversionKpis.anonVisitors.toLocaleString() }} anon)</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-value">{{ conversionKpis.visitorToRegPct }}%</span>
+          <span class="kpi-label">Visitor → Registration</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-value">{{ conversionKpis.regToDepositPct }}%</span>
+          <span class="kpi-label">Registration → 1st deposit</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-value">{{ conversionKpis.browseToJoinPct }}%</span>
+          <span class="kpi-label">Browse → Join click</span>
+        </div>
+      </div>
+
+      <!-- ── Browse funnel (Layer 2) ────────────────────────────── -->
+      <section class="card" v-if="browseFunnel">
+        <h2 class="card-title">Visitor conversion funnel <span class="card-hint">incl. anonymous visitors</span></h2>
+        <div class="funnel">
+          <div v-for="stage in browseFunnel.stages" :key="stage.name" class="funnel-row">
+            <span class="funnel-label">{{ { visited: 'Visited lobby', viewed_game: 'Viewed a game', join_click: 'Tapped join', registered: 'Registered', deposited: 'Deposited', played: 'Played a game' }[stage.name] ?? stage.name }}</span>
+            <div class="funnel-track">
+              <div
+                class="funnel-bar"
+                :style="{ width: (browseFunnel.stages[0]?.count ? (stage.count / browseFunnel.stages[0].count) * 100 : 0) + '%' }"
+              />
+            </div>
+            <span class="funnel-count">{{ stage.count.toLocaleString() }}</span>
+            <span class="funnel-pct" :class="stage.dropOffPct > 50 ? 'funnel-pct--warn' : ''">
+              {{ stage.dropOffPct > 0 ? `-${stage.dropOffPct}%` : '—' }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Deposit funnel (Layer 2) ───────────────────────────── -->
+      <section class="card" v-if="depositFunnel">
+        <h2 class="card-title">Deposit funnel
+          <span class="card-hint" v-if="depositFunnel.avgApprovalSecs">
+            avg approval {{ Math.round(depositFunnel.avgApprovalSecs / 60) }}m
+          </span>
+        </h2>
+        <div class="funnel">
+          <div v-for="stage in depositFunnel.stages" :key="stage.name" class="funnel-row">
+            <span class="funnel-label">{{ { modal_opened: 'Opened modal', method_selected: 'Selected method', amount_entered: 'Entered amount', submitted: 'Submitted', approved: 'Approved' }[stage.name] ?? stage.name }}</span>
+            <div class="funnel-track">
+              <div
+                class="funnel-bar funnel-bar--blue"
+                :style="{ width: (depositFunnel.stages[0]?.count ? (stage.count / depositFunnel.stages[0].count) * 100 : 0) + '%' }"
+              />
+            </div>
+            <span class="funnel-count">{{ stage.count.toLocaleString() }}</span>
+            <span class="funnel-pct" :class="stage.dropOffPct > 30 ? 'funnel-pct--warn' : ''">
+              {{ stage.dropOffPct > 0 ? `-${stage.dropOffPct}%` : '—' }}
+            </span>
+          </div>
+        </div>
+        <div v-if="depositFunnel.byMethod.length" class="method-breakdown">
+          <div class="method-breakdown-title">By payment method</div>
+          <div v-for="m in depositFunnel.byMethod" :key="m.method" class="method-row">
+            <span class="method-name">{{ m.method }}</span>
+            <span class="method-conv">{{ m.conversionPct }}%</span>
+            <span class="method-detail">{{ m.approved }}/{{ m.submitted }} approved</span>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Retention matrix ────────────────────────────────────── -->
       <section class="card" v-if="retention">
         <h2 class="card-title">Weekly retention cohorts <span class="card-hint">% of signup cohort playing in week N</span></h2>
@@ -272,4 +353,14 @@ function retentionCellStyle(pct: number) {
 .retention-week { color: var(--text-secondary); white-space: nowrap; }
 .retention-size { color: var(--text-muted); }
 .retention-cell { text-align: center; border-radius: 3px; color: var(--text-primary); min-width: 48px; }
+
+/* Layer 2 funnel additions */
+.funnel-pct--warn { color: #f87171; }
+.funnel-bar--blue { background: #3b82f6; }
+.method-breakdown { margin-top: 16px; border-top: 1px solid var(--surface-border); padding-top: 12px; }
+.method-breakdown-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.method-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.method-name { font-size: 13px; color: var(--text-primary); flex: 1; }
+.method-conv { font-size: 14px; font-weight: 700; color: #34d399; width: 44px; text-align: right; }
+.method-detail { font-size: 11px; color: var(--text-muted); }
 </style>
