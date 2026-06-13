@@ -239,6 +239,11 @@ function onImgError(e: Event) {
   if (card) card.style.display = 'none'
 }
 
+function onPgImgError(e: Event) {
+  const card = (e.currentTarget as HTMLElement).closest('.pg-card') as HTMLElement | null
+  if (card) card.style.display = 'none'
+}
+
 
 const currentSlide = ref(0)
 let slideTimer: ReturnType<typeof setInterval> | null = null
@@ -555,6 +560,223 @@ onUnmounted(() => {
 
         <!-- ALL tab: sectioned design — top row + per-category + bingo -->
         <template v-if="selectedCategory === 'ALL'">
+
+          <!-- Top scrollable tiles row -->
+          <div class="top-row">
+            <div class="top-row-scroll">
+
+              <!-- Bingo tile -->
+              <NuxtLink to="/games/bingo" class="type-tile type-tile--bingo">
+                <div class="tt-thumb">
+                  <div class="mini-grid" aria-hidden="true">
+                    <div class="mg-cell">7</div><div class="mg-cell mg-cell--m">23</div><div class="mg-cell">41</div><div class="mg-cell">54</div><div class="mg-cell mg-cell--m">68</div>
+                    <div class="mg-cell mg-cell--m">12</div><div class="mg-cell">29</div><div class="mg-cell mg-cell--m">43</div><div class="mg-cell">58</div><div class="mg-cell">71</div>
+                    <div class="mg-cell">3</div><div class="mg-cell mg-cell--m">30</div><div class="mg-cell mg-cell--f">FR</div><div class="mg-cell">60</div><div class="mg-cell mg-cell--m">75</div>
+                    <div class="mg-cell">14</div><div class="mg-cell">27</div><div class="mg-cell">44</div><div class="mg-cell mg-cell--m">57</div><div class="mg-cell">72</div>
+                    <div class="mg-cell mg-cell--m">9</div><div class="mg-cell">32</div><div class="mg-cell">46</div><div class="mg-cell">62</div><div class="mg-cell mg-cell--m">74</div>
+                  </div>
+                  <div class="tt-live-badge"><span class="live-dot"></span>Live</div>
+                </div>
+                <div class="tt-label">Bingo</div>
+                <div class="tt-meta">
+                  From {{ gameStore.availableGames.length > 0 ? Math.min(...gameStore.availableGames.map((g: Game) => Number(g.ticketPrice))).toLocaleString() : 10 }} ETB
+                </div>
+              </NuxtLink>
+
+              <!-- Provider game tiles -->
+              <template v-if="providerStore.games.length">
+                <NuxtLink
+                  v-for="g in providerStore.games.filter(hasImage).slice(0, 6)"
+                  :key="g.gameCode"
+                  :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+                  class="type-tile"
+                >
+                  <div class="tt-thumb tt-thumb--provider">
+                    <img
+                      :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                      :alt="g.gameName"
+                      class="tt-img"
+                      loading="lazy"
+                    />
+                    <div class="tt-cat-badge">{{ g.categoryCode }}</div>
+                  </div>
+                  <div class="tt-label">{{ g.gameName }}</div>
+                  <div class="tt-meta">{{ g.categoryCode }}</div>
+                </NuxtLink>
+              </template>
+
+              <!-- Coming Soon tiles when no provider games yet -->
+              <template v-else>
+                <div class="type-tile type-tile--soon">
+                  <div class="tt-thumb">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                    </svg>
+                    <div class="tt-soon-badge">Soon</div>
+                  </div>
+                  <div class="tt-label">Aviator</div>
+                  <div class="tt-meta">Coming Soon</div>
+                </div>
+                <div class="type-tile type-tile--soon">
+                  <div class="tt-thumb">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/><line x1="2" y1="16" x2="22" y2="16"/>
+                    </svg>
+                    <div class="tt-soon-badge">Soon</div>
+                  </div>
+                  <div class="tt-label">Slots</div>
+                  <div class="tt-meta">Coming Soon</div>
+                </div>
+                <div class="type-tile type-tile--soon">
+                  <div class="tt-thumb">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/>
+                    </svg>
+                    <div class="tt-soon-badge">Soon</div>
+                  </div>
+                  <div class="tt-label">Crash</div>
+                  <div class="tt-meta">Coming Soon</div>
+                </div>
+                <div class="type-tile type-tile--soon">
+                  <div class="tt-thumb">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+                    </svg>
+                    <div class="tt-soon-badge">Soon</div>
+                  </div>
+                  <div class="tt-label">Table</div>
+                  <div class="tt-meta">Coming Soon</div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Per-category provider game sections -->
+          <template v-if="providerCategories.length">
+            <div
+              v-for="cat in providerCategories"
+              :key="cat"
+              class="content-section"
+            >
+              <div class="section-with-label">
+                <div class="section-side-label" aria-hidden="true">{{ CATEGORY_LABELS[cat] ?? cat }}</div>
+                <div class="section-body">
+                  <h2 class="section-heading">{{ CATEGORY_LABELS[cat] ?? cat }}</h2>
+                  <div v-if="categoryGamesLoading[cat]" class="state-msg">
+                    <span class="spinner" aria-hidden="true"></span> Loading...
+                  </div>
+                  <div v-else-if="!getCategoryDisplayGames(cat).length" class="state-msg">
+                    No games available.
+                  </div>
+                  <template v-else>
+                    <div class="pg-grid">
+                      <NuxtLink
+                        v-for="g in getCategoryDisplayGames(cat)"
+                        :key="g.gameCode"
+                        :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+                        class="pg-card"
+                      >
+                        <div class="pg-thumb">
+                          <img
+                            :src="g.imageSquare ?? g.imageLandscape ?? ''"
+                            :alt="g.gameName"
+                            class="pg-img"
+                            loading="lazy"
+                            @error="onPgImgError"
+                          />
+                          <div class="pg-hover">
+                            <span class="pg-play">Play</span>
+                          </div>
+                        </div>
+                        <div class="pg-name">{{ g.gameName }}</div>
+                      </NuxtLink>
+                    </div>
+                    <div v-if="categoryHasMore(cat)" class="more-row">
+                      <NuxtLink :to="`/games/${cat.toLowerCase()}`" class="more-btn">
+                        See All {{ CATEGORY_LABELS[cat] ?? cat }} Games
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                      </NuxtLink>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Bingo rooms section -->
+          <div id="rooms" class="content-section">
+            <div class="section-with-label">
+              <div class="section-side-label" aria-hidden="true">Bingo</div>
+              <div class="section-body">
+                <h2 class="section-heading">Bingo Rooms</h2>
+                <div v-if="gameStore.loadingGames" class="state-msg">
+                  <span class="spinner" aria-hidden="true"></span> Loading games...
+                </div>
+                <div v-else-if="gameStore.error" class="state-msg state-msg--error">
+                  Could not load games.
+                  <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
+                </div>
+                <div v-else-if="!activeBingoGames.length" class="state-msg">
+                  No bingo rooms available right now. Check back soon.
+                </div>
+                <template v-else>
+                  <div class="rooms-grid">
+                    <div
+                      v-for="(game, idx) in displayedBingoGames"
+                      :key="game.id"
+                      class="room-tile"
+                      :style="{ '--delay': `${idx * 50}ms` }"
+                    >
+                      <div class="rt-thumb">
+                        <div v-if="game.status !== 'WAITING'" class="rt-badge rt-badge--live">
+                          <span class="live-dot-sm"></span> Live
+                        </div>
+                        <div v-else-if="gameStore.countdowns[game.id]" class="rt-badge rt-badge--timer">
+                          <GameCountdown :starts-at="gameStore.countdowns[game.id]" compact />
+                        </div>
+                        <div v-else class="rt-badge rt-badge--timer">1:00</div>
+                        <div class="rt-pattern">{{ patternLabel(game.pattern) }}</div>
+                        <div class="rt-price-wrap">
+                          <span class="rt-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
+                          <span class="rt-currency">ETB</span>
+                        </div>
+                      </div>
+                      <div class="rt-footer">
+                        <div class="rt-players">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                          </svg>
+                          {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
+                        </div>
+                        <button
+                          v-if="game.status === 'WAITING'"
+                          class="rt-join"
+                          @click="handleJoinGame(game.id)"
+                        >
+                          Join
+                        </button>
+                        <div v-else class="rt-join rt-join--live">
+                          {{ game.status === 'STARTING' ? 'Starting' : 'Live' }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="hasMoreBingo" class="more-row">
+                    <NuxtLink to="/games/bingo" class="more-btn">
+                      See All Bingo Rooms
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </NuxtLink>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+        </template>
 
         <!-- POPULAR / TRENDING / other category tabs: skeleton + infinite scroll -->
         <template v-else-if="selectedCategory !== 'BINGO'">
@@ -1210,6 +1432,259 @@ onUnmounted(() => {
 
 @media (max-width: 380px) {
   .fc-name { font-size: 10px; padding: 5px 6px 7px; }
+}
+
+/* ── TOP GAMES ROW ───────────────────────────────────────────────────── */
+.top-row {
+  padding: 16px 0 0;
+}
+
+.top-row-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  margin: 0 -20px;
+  padding: 0 20px 12px;
+}
+.top-row-scroll::-webkit-scrollbar { display: none; }
+
+.type-tile {
+  width: 160px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(10, 22, 55, 0.75);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.type-tile:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.25); }
+.type-tile:active { transform: translateY(0); }
+.type-tile--soon { cursor: default; }
+.type-tile--soon:hover { transform: none; border-color: rgba(255,255,255,0.07); }
+
+.tt-thumb {
+  height: 110px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0d2050, #1a3870);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.tt-thumb--provider {
+  background: #0d2050;
+  overflow: hidden;
+}
+.tt-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tt-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.type-tile--bingo .tt-thumb { background: linear-gradient(145deg, #091840, #142e62); }
+
+.mini-grid {
+  width: 82px;
+  padding: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 7px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+.mg-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.05);
+  font-size: 6.5px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Rajdhani', sans-serif;
+}
+.mg-cell--m { background: var(--accent-dim); color: rgba(255,255,255,0.9); }
+.mg-cell--f { background: var(--brand-primary); color: #0a0f1a; font-size: 5px; font-weight: 900; }
+
+.tt-live-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: #dc2626;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.03em;
+}
+
+.tt-cat-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tt-soon-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid rgba(139,92,246,0.3);
+  color: #c4b5fd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.tt-label {
+  padding: 8px 10px 2px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8eef8;
+}
+.tt-meta {
+  padding: 0 10px 9px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.38);
+}
+
+/* ── CONTENT SECTIONS ────────────────────────────────────────────────── */
+.content-section {
+  padding: 20px 0 0;
+}
+
+.section-with-label {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+
+.section-side-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245,158,11,0.35);
+  flex-shrink: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  border-left: 1px solid rgba(245,158,11,0.15);
+  margin-right: 16px;
+  padding: 8px 0;
+}
+
+.section-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.section-heading {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: #e0e8f8;
+  letter-spacing: 0.01em;
+  margin: 0 0 14px;
+}
+
+/* ── PROVIDER GAME GRID ──────────────────────────────────────────────── */
+.pg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 4px;
+}
+@media (min-width: 480px) { .pg-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 640px) { .pg-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 900px) { .pg-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (min-width: 1200px) { .pg-grid { grid-template-columns: repeat(9, 1fr); } }
+
+.pg-card {
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 22, 55, 0.7);
+  border: 1px solid rgba(255,255,255,0.06);
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+.pg-card:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.2); }
+.pg-card:active { transform: translateY(0); }
+
+.pg-thumb {
+  aspect-ratio: 3/4;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #0d2050, #1a3870);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pg-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+.pg-hover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.pg-card:hover .pg-hover { opacity: 1; }
+
+.pg-play {
+  background: var(--brand-primary);
+  color: #0a0f1a;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 7px 18px;
+  border-radius: 6px;
+}
+
+.pg-name {
+  padding: 7px 9px 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8d4e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── BINGO ROOMS GRID ────────────────────────────────────────────────── */
