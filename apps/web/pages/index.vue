@@ -111,18 +111,22 @@ const popularFeed = computed(() =>
   sortedByPriority(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
 )
 
+function hasImage(g: ProviderGame) {
+  return !!(g.imageSquare || g.imageLandscape)
+}
+
 const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
-  if (cat === 'POPULAR') return popularFeed.value
+  if (cat === 'POPULAR') return popularFeed.value.filter(hasImage)
   if (['ALL', 'TRENDING'].includes(cat)) {
     // Crash/MINI games lead; remaining ALL games follow deduped
     const miniGames = categoryGamesMap.value[POPULAR_CATEGORY] ?? []
     const miniCodes = new Set(miniGames.map((g) => g.gameCode))
     const rest = providerStore.games.filter((g) => !miniCodes.has(g.gameCode))
-    return [...sortedByPriority(miniGames), ...rest]
+    return [...sortedByPriority(miniGames), ...rest].filter(hasImage)
   }
-  return sortedByPriority(categoryGamesMap.value[cat] ?? [])
+  return sortedByPriority(categoryGamesMap.value[cat] ?? []).filter(hasImage)
 })
 
 const feedLoading = computed(() => {
@@ -211,6 +215,11 @@ function setupFeedObserver() {
 
 function onImgLoad(e: Event) {
   ;(e.currentTarget as HTMLImageElement).classList.add('fc-img--loaded')
+}
+
+function onImgError(e: Event) {
+  const card = (e.currentTarget as HTMLElement).closest('.feed-card') as HTMLElement | null
+  if (card) card.style.display = 'none'
 }
 
 
@@ -547,19 +556,13 @@ onUnmounted(() => {
             >
               <div class="fc-thumb">
                 <img
-                  v-if="g.imageSquare || g.imageLandscape"
                   :src="g.imageSquare ?? g.imageLandscape ?? ''"
                   :alt="g.gameName"
                   class="fc-img"
                   loading="lazy"
                   @load="onImgLoad"
-                  @error="onImgLoad"
+                  @error="onImgError"
                 />
-                <div v-else class="fc-placeholder fc-img--loaded">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.3" aria-hidden="true">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
-                  </svg>
-                </div>
               </div>
               <div class="fc-name">{{ g.gameName }}</div>
             </NuxtLink>

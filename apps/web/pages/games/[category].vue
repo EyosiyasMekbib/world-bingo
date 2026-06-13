@@ -52,6 +52,11 @@ function onImgLoad(e: Event) {
   ;(e.currentTarget as HTMLImageElement).classList.add('pg-img--loaded')
 }
 
+function onImgError(e: Event) {
+  const card = (e.currentTarget as HTMLElement).closest('.pg-card') as HTMLElement | null
+  if (card) card.style.display = 'none'
+}
+
 // ── Provider game infinite scroll ────────────────────────────────────
 const providerGames = ref<ProviderGame[]>([])
 const page = ref(1)
@@ -80,7 +85,7 @@ async function loadMore() {
   page.value++
   try {
     const result = await fetchProviderPage(page.value)
-    if (result) providerGames.value = sortedByPriority([...providerGames.value, ...result.games])
+    if (result) providerGames.value = sortedByPriority([...providerGames.value, ...result.games.filter((g) => g.imageSquare || g.imageLandscape)])
   } finally {
     loadingMore.value = false
   }
@@ -150,7 +155,7 @@ onMounted(async () => {
     try {
       const result = await fetchProviderPage(1)
       if (result) {
-        providerGames.value = sortedByPriority(result.games)
+        providerGames.value = sortedByPriority(result.games.filter((g) => g.imageSquare || g.imageLandscape))
         totalPages.value = result.totalPages
       }
     } finally {
@@ -254,19 +259,13 @@ onUnmounted(() => {
           >
             <div class="pg-thumb">
               <img
-                v-if="g.imageSquare || g.imageLandscape"
                 :src="g.imageSquare ?? g.imageLandscape ?? ''"
                 :alt="g.gameName"
                 class="pg-img"
                 loading="lazy"
                 @load="onImgLoad"
-                @error="onImgLoad"
+                @error="onImgError"
               />
-              <div v-else class="pg-placeholder pg-img--loaded">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.3" aria-hidden="true">
-                  <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
-                </svg>
-              </div>
               <div class="pg-hover"><span class="pg-play">Play</span></div>
             </div>
             <div class="pg-name">{{ g.gameName }}</div>
