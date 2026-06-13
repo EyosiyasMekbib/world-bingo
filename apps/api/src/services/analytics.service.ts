@@ -80,7 +80,7 @@ export class AnalyticsService {
             SELECT date_trunc('week', u."createdAt") AS cohort_week, count(*)::int AS size
             FROM users u
             WHERE ${NON_BOT_PLAYER}
-              AND u."createdAt" >= date_trunc('week', now()) - make_interval(weeks => ${weeks})
+              AND u."createdAt" >= date_trunc('week', now()) - (${weeks} * interval '1 week')
             GROUP BY 1 ORDER BY 1
         `)
         const activity = await prisma.$queryRaw<Array<{ cohort_week: Date; week_offset: number; active_users: number }>>(Prisma.sql`
@@ -88,7 +88,7 @@ export class AnalyticsService {
                 SELECT u.id, date_trunc('week', u."createdAt") AS cohort_week
                 FROM users u
                 WHERE ${NON_BOT_PLAYER}
-                  AND u."createdAt" >= date_trunc('week', now()) - make_interval(weeks => ${weeks})
+                  AND u."createdAt" >= date_trunc('week', now()) - (${weeks} * interval '1 week')
             ),
             weekly_activity AS (
                 SELECT ge."userId", date_trunc('week', ge."joinedAt") AS active_week
