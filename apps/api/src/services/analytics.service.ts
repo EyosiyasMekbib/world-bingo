@@ -212,4 +212,158 @@ export class AnalyticsService {
             },
         }
     }
+
+    static buildFunnelStages(
+        labels: string[],
+        values: number[],
+    ): Array<{ name: string; count: number; dropOffPct: number }> {
+        return labels.map((name, i) => ({
+            name,
+            count: values[i] ?? 0,
+            dropOffPct: i === 0 ? 0 : this.pct((values[i - 1] ?? 0) - (values[i] ?? 0), values[i - 1] ?? 0),
+        }))
+    }
+
+    static async getBrowseFunnel(from: Date, to: Date) {
+        const rows = await prisma.$queryRaw<Array<{
+            visited: number; viewed_game: number; join_click: number;
+            registered: number; deposited: number; played: number;
+        }>>(Prisma.sql`
+            WITH visited AS (
+                SELECT DISTINCT coalesce("userId", "anonId") AS actor
+                FROM analytics_events
+                WHERE name = 'lobby_view' AND "createdAt" >= ${from} AND "createdAt" < ${to}
+            ),
+            viewed_game AS (
+                SELECT DISTINCT coalesce("userId", "anonId") AS actor
+                FROM analytics_events
+                WHERE name = 'game_view' AND "createdAt" >= ${from} AND "createdAt" < ${to}
+            ),
+            join_click AS (
+                SELECT DISTINCT coalesce("userId", "anonId") AS actor
+                FROM analytics_events
+                WHERE name = 'join_click' AND "createdAt" >= ${from} AND "createdAt" < ${to}
+            ),
+            registered AS (
+                SELECT DISTINCT u.id AS user_id
+                FROM users u
+                WHERE u."createdAt" >= ${from} AND u."createdAt" < ${to}
+                  AND u."passwordHash" != 'BOT_ACCOUNT'
+            ),
+            deposited AS (
+                SELECT DISTINCT t."userId"
+                FROM transactions t
+                WHERE t.type = 'DEPOSIT' AND t.status = 'APPROVED'
+                  AND t."createdAt" >= ${from} AND t."createdAt" < ${to}
+                  AND t."userId" IN (SELECT user_id FROM registered)
+            ),
+            played AS (
+                SELECT DISTINCT ge."userId"
+                FROM game_entries ge
+                WHERE ge."joinedAt" >= ${from} AND ge."joinedAt" < ${to}
+                  AND ge."userId" IN (SELECT user_id FROM registered)
+            )
+            SELECT
+                (SELECT count(*)::int FROM visited)      AS visited,
+                (SELECT count(*)::int FROM viewed_game)  AS viewed_game,
+                (SELECT count(*)::int FROM join_click)   AS join_click,
+                (SELECT count(*)::int FROM registered)   AS registered,
+                (SELECT count(*)::int FROM deposited)    AS deposited,
+                (SELECT count(*)::int FROM played)       AS played
+        `)
+        const r = rows[0] ?? { visited: 0, viewed_game: 0, join_click: 0, registered: 0, deposited: 0, played: 0 }
+        const labels = ['visited', 'viewed_game', 'join_click', 'registered', 'deposited', 'played']
+        const values = [r.visited, r.viewed_game, r.join_click, r.registered, r.deposited, r.played]
+        return { stages: this.buildFunnelStages(labels, values) }
+    }
+
+    static async getDepositFunnel(from: Date, to: Date) {
+        const stageRows = await prisma.$queryRaw<Array<{
+            modal_opened: number; method_selected: number; amount_entered: number;
+            submitted: number; approved: number; avg_approval_secs: string | null;
+        }>>(Prisma.sql`
+            SELECT
+                count(DISTINCT CASE WHEN name = 'deposit_modal_opened'    THEN coalesce("userId", "anonId") END)::int AS modal_opened,
+                count(DISTINCT CASE WHEN name = 'deposit_method_selected' THEN coalesce("userId", "anonId") END)::int AS method_selected,
+                count(DISTINCT CASE WHEN name = 'deposit_amount_entered'  THEN coalesce("userId", "anonId") END)::int AS amount_entered,
+                count(DISTINCT CASE WHEN name = 'deposit_submitted'       THEN "userId" END)::int AS submitted,
+                (SELECT count(*)::int FROM transactions
+                 WHERE type = 'DEPOSIT' AND status = 'APPROVED'
+                   AND "createdAt" >= ${from} AND "createdAt" < ${to}) AS approved,
+                (SELECT avg(extract(epoch FROM ("updatedAt" - "createdAt")))
+                 FROM transactions
+                 WHERE type = 'DEPOSIT' AND status = 'APPROVED'
+                   AND "createdAt" >= ${from} AND "createdAt" < ${to}) AS avg_approval_secs
+            FROM analytics_events
+            WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
+              AND name IN ('deposit_modal_opened','deposit_method_selected','deposit_amount_entered','deposit_submitted')
+        `)
+        const methodRows = await prisma.$queryRaw<Array<{
+            payment_method: string; submitted: number; approved: number;
+        }>>(Prisma.sql`
+            SELECT
+                (ae.props->>'paymentMethod') AS payment_method,
+                count(*)::int AS submitted,
+                count(t.id)::int AS approved
+            FROM analytics_events ae
+            LEFT JOIN transactions t
+                ON t.id = (ae.props->>'txId')
+               AND t.status = 'APPROVED'
+            WHERE ae.name = 'deposit_submitted'
+              AND ae."createdAt" >= ${from} AND ae."createdAt" < ${to}
+              AND ae.props->>'paymentMethod' IS NOT NULL
+            GROUP BY 1
+            ORDER BY submitted DESC
+        `)
+        const r = stageRows[0] ?? { modal_opened: 0, method_selected: 0, amount_entered: 0, submitted: 0, approved: 0, avg_approval_secs: null }
+        const labels = ['modal_opened', 'method_selected', 'amount_entered', 'submitted', 'approved']
+        const values = [r.modal_opened, r.method_selected, r.amount_entered, r.submitted, r.approved]
+        return {
+            stages: this.buildFunnelStages(labels, values),
+            avgApprovalSecs: r.avg_approval_secs == null ? null : Math.round(Number(r.avg_approval_secs)),
+            byMethod: methodRows.map(m => ({
+                method: m.payment_method,
+                submitted: m.submitted,
+                approved: m.approved,
+                conversionPct: this.pct(m.approved, m.submitted),
+            })),
+        }
+    }
+
+    static async getConversionKpis(from: Date, to: Date) {
+        const rows = await prisma.$queryRaw<Array<{
+            total_visitors: number; anon_visitors: number; registered: number;
+            first_deposited: number; browse_sessions: number; join_clicks: number;
+        }>>(Prisma.sql`
+            SELECT
+                count(DISTINCT coalesce("userId", "anonId"))::int AS total_visitors,
+                count(DISTINCT CASE WHEN "userId" IS NULL THEN "anonId" END)::int AS anon_visitors,
+                (SELECT count(*)::int FROM users u
+                 WHERE u."createdAt" >= ${from} AND u."createdAt" < ${to}
+                   AND u."passwordHash" != 'BOT_ACCOUNT') AS registered,
+                (SELECT count(DISTINCT t."userId")::int FROM transactions t
+                 WHERE t.type = 'DEPOSIT' AND t.status = 'APPROVED'
+                   AND t."createdAt" >= ${from} AND t."createdAt" < ${to}
+                   AND NOT EXISTS (
+                     SELECT 1 FROM transactions t2
+                     WHERE t2."userId" = t."userId" AND t2.type = 'DEPOSIT' AND t2.status = 'APPROVED'
+                       AND t2."createdAt" < ${from}
+                   )) AS first_deposited,
+                count(DISTINCT "sessionId")::int AS browse_sessions,
+                count(DISTINCT CASE WHEN name = 'join_click' THEN coalesce("userId", "anonId") END)::int AS join_clicks
+            FROM analytics_events
+            WHERE name = 'lobby_view'
+              AND "createdAt" >= ${from} AND "createdAt" < ${to}
+        `)
+        const r = rows[0] ?? { total_visitors: 0, anon_visitors: 0, registered: 0, first_deposited: 0, browse_sessions: 0, join_clicks: 0 }
+        return {
+            totalVisitors: r.total_visitors,
+            anonVisitors: r.anon_visitors,
+            registered: r.registered,
+            firstDeposited: r.first_deposited,
+            visitorToRegPct: this.pct(r.registered, r.total_visitors),
+            regToDepositPct: this.pct(r.first_deposited, r.registered),
+            browseToJoinPct: this.pct(r.join_clicks, r.total_visitors),
+        }
+    }
 }
