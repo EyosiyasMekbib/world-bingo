@@ -32,10 +32,11 @@ const categoryLabel = computed(() => CATEGORY_LABELS[category.value] ?? category
 useHead({ title: computed(() => `${categoryLabel.value} — World Bingo`) })
 
 const CRASH_PRIORITY = [
-  'aviator', 'jetx', 'spaceman', 'helicopterx',
-  'hotline', 'aviatrix', 'plinko', 'crash x',
-  'goal', 'dice', 'mines', 'limbo',
-  'crash game', 'balloon', 'wheel', 'keno',
+  'hotline', 'helicopterx', 'aviator',
+  'jetx', 'aviatrix', 'plinko',
+  'spaceman', 'goal', 'mines',
+  'limbo', 'dice', 'keno',
+  'balloon', 'wheel', 'crash game',
 ]
 
 function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
@@ -64,7 +65,7 @@ async function fetchProviderPage(pg: number) {
   if (!providerStore.activeProviderCode) return
   const params = new URLSearchParams({
     page: String(pg),
-    pageSize: '24',
+    pageSize: '50',
     category: category.value,
   })
   const result = await $fetch<{ games: ProviderGame[]; totalPages: number; totalItems: number }>(
@@ -95,7 +96,7 @@ function setupObserver() {
     (entries) => {
       if (entries[0].isIntersecting) loadMore()
     },
-    { rootMargin: '300px' },
+    { rootMargin: '800px' },
   )
   observer.observe(sentinel.value)
 }

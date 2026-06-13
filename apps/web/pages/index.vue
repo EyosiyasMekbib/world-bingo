@@ -80,11 +80,13 @@ const activeBingoGames = computed(() => {
 const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
 const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT)
 
+// Order mirrors the amolebet crash tab sequence for games we carry
 const CRASH_PRIORITY = [
-  'aviator', 'jetx', 'spaceman', 'helicopterx',
-  'hotline', 'aviatrix', 'plinko', 'crash x',
-  'goal', 'dice', 'mines', 'limbo',
-  'crash game', 'balloon', 'wheel', 'keno',
+  'hotline', 'helicopterx', 'aviator',
+  'jetx', 'aviatrix', 'plinko',
+  'spaceman', 'goal', 'mines',
+  'limbo', 'dice', 'keno',
+  'balloon', 'wheel', 'crash game',
 ]
 
 function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
@@ -154,7 +156,7 @@ async function loadMoreFeed() {
     if (code) {
       try {
         const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
-          `${config.public.apiBase}/providers/${code}/games?page=${popularPage.value}&pageSize=50&category=${POPULAR_CATEGORY}`,
+          `${config.public.apiBase}/providers/${code}/games?page=${popularPage.value}&pageSize=100&category=${POPULAR_CATEGORY}`,
         )
         categoryGamesMap.value[POPULAR_CATEGORY] = [
           ...(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
@@ -202,7 +204,7 @@ function setupFeedObserver() {
         loadMoreFeed()
       }
     },
-    { rootMargin: '400px' },
+    { rootMargin: '800px' },
   )
   feedObserver.observe(feedSentinel.value)
 }
@@ -337,7 +339,7 @@ onMounted(async () => {
     await providerStore.fetchGames({ reset: true })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
     await Promise.all(
-      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 50 : 20)),
+      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 100 : 20)),
     )
   }
 
