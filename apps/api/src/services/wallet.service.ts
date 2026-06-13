@@ -14,10 +14,13 @@ export class WalletService {
     }
 
     static async initiateDeposit(userId: string, data: DepositDto) {
+        // Normalize so dedup is case-insensitive (e.g. "ABC123" == "abc123")
+        const paymentTransactionId = data.transactionId?.trim().toUpperCase()
+
         // Reject duplicate payment transaction IDs
-        if (data.transactionId) {
+        if (paymentTransactionId) {
             const existing = await prisma.transaction.findUnique({
-                where: { paymentTransactionId: data.transactionId },
+                where: { paymentTransactionId },
             })
             if (existing) {
                 throw Object.assign(new Error('Transaction ID already used'), { statusCode: 409 })
@@ -32,7 +35,7 @@ export class WalletService {
                 amount: data.amount,
                 status: PaymentStatus.PENDING_REVIEW, // Needs admin approval
                 receiptUrl: data.receiptUrl,
-                paymentTransactionId: data.transactionId,
+                paymentTransactionId,
                 senderName: data.senderName,
                 senderAccount: data.senderAccount,
                 ...(data.methodCode ? { note: data.methodCode } : {}),
