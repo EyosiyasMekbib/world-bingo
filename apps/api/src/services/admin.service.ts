@@ -47,13 +47,18 @@ export class AdminService {
             prisma.game.count({ where: { status: 'CANCELLED', ...gameDateRange } }),
             HouseWalletService.getSummary(params),
             HouseWalletService.getBalance(),
-            prisma.gameEntry.groupBy({ by: ['userId'] }),
+            prisma.gameEntry.groupBy({
+                by: ['userId'],
+                where: params?.from || params?.to ? {
+                    joinedAt: { ...(params.from && { gte: params.from }), ...(params.to && { lte: params.to }) },
+                } : undefined,
+            }),
             prisma.game.findMany({
                 where: { status: 'COMPLETED', ...gameDateRange },
                 include: { _count: { select: { entries: true } } },
             }),
-            prisma.user.count({ where: { OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }] } }),
-            prisma.user.count({ where: { isActive: false, OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }] } }),
+            prisma.user.count({ where: { OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }], ...dateRange } }),
+            prisma.user.count({ where: { isActive: false, OR: [{ passwordHash: null }, { passwordHash: { not: 'BOT_ACCOUNT' } }], ...dateRange } }),
             prisma.transaction.count({ where: { type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED, ...dateRange } }),
             prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange } }),
             // Third-party game totals: amount < 0 = bet debit, amount > 0 = win credit
