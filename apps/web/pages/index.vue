@@ -119,8 +119,10 @@ const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
   if (cat === 'POPULAR') return popularFeed.value.filter(hasImage)
-  if (['ALL', 'TRENDING'].includes(cat)) {
-    // Crash/MINI games lead; remaining ALL games follow deduped
+  if (cat === 'ALL') {
+    return providerStore.games.filter(hasImage)
+  }
+  if (cat === 'TRENDING') {
     const miniGames = categoryGamesMap.value[POPULAR_CATEGORY] ?? []
     const miniCodes = new Set(miniGames.map((g) => g.gameCode))
     const rest = providerStore.games.filter((g) => !miniCodes.has(g.gameCode))
@@ -132,21 +134,21 @@ const feedGames = computed(() => {
 const feedLoading = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'POPULAR') return !popularFeed.value.length && !!categoryGamesLoading.value[POPULAR_CATEGORY]
-  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading && !providerStore.games.length
+  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.loading && !providerStore.games.length
   return !!categoryGamesLoading.value[cat]
 })
 
 const feedLoadingMore = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'POPULAR') return popularLoadingMore.value
-  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading && providerStore.games.length > 0
+  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.loading && providerStore.games.length > 0
   return false
 })
 
 const canLoadMore = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'POPULAR') return popularPage.value < popularTotalPages.value
-  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.hasMore
+  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.hasMore
   return false
 })
 
