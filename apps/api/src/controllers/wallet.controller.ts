@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { WalletService } from '../services'
 import type { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
 import { uploadFile, validateFile } from '../lib/storage'
+import { EventService } from '../services/event.service.js'
 
 export class WalletController {
     static async getBalance(request: FastifyRequest, reply: FastifyReply) {
@@ -69,6 +70,10 @@ export class WalletController {
                     senderAccount,
                     methodCode,
                 })
+                EventService.record(
+                    [{ name: 'deposit_submitted', props: { amount, paymentMethod: methodCode ?? null, txId: transaction.id } }],
+                    { userId },
+                ).catch(() => {})
                 return reply.status(201).send(transaction)
             } catch (err: any) {
                 if (err.statusCode === 409) {
@@ -82,6 +87,10 @@ export class WalletController {
         const body = request.body as DepositDto
         try {
             const transaction = await WalletService.initiateDeposit(userId, body)
+            EventService.record(
+                [{ name: 'deposit_submitted', props: { amount: body.amount, paymentMethod: (body as any).methodCode ?? null, txId: transaction.id } }],
+                { userId },
+            ).catch(() => {})
             return reply.status(201).send(transaction)
         } catch (err: any) {
             if (err.statusCode === 409) {
