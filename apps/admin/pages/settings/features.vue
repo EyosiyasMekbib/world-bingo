@@ -17,6 +17,8 @@ const gameSettings = reactive({
   bot_max_spend_etb: 500,
   first_deposit_bonus_amount: 0,
   featured_template_id: '__NONE__',
+  min_deposit_amount: 10,
+  min_withdrawal_amount: 100,
 })
 
 const templates = ref<{ id: string; title: string; active: boolean }[]>([])
@@ -32,6 +34,8 @@ const fetchAll = async () => {
     gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
     gameSettings.first_deposit_bonus_amount = gs.first_deposit_bonus_amount ?? 0
     gameSettings.featured_template_id = gs.featured_template_id ?? '__NONE__'
+    gameSettings.min_deposit_amount = gs.min_deposit_amount ?? 10
+    gameSettings.min_withdrawal_amount = gs.min_withdrawal_amount ?? 100
     templates.value = Array.isArray(tmpl) ? tmpl.filter((t: any) => t.active) : []
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
@@ -60,11 +64,15 @@ const saveGameSettings = async () => {
       bot_max_spend_etb: gameSettings.bot_max_spend_etb,
       first_deposit_bonus_amount: gameSettings.first_deposit_bonus_amount,
       featured_template_id: gameSettings.featured_template_id === '__NONE__' ? null : gameSettings.featured_template_id,
+      min_deposit_amount: gameSettings.min_deposit_amount,
+      min_withdrawal_amount: gameSettings.min_withdrawal_amount,
     }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
     gameSettings.first_deposit_bonus_amount = result.first_deposit_bonus_amount
     gameSettings.featured_template_id = result.featured_template_id ?? '__NONE__'
+    gameSettings.min_deposit_amount = result.min_deposit_amount ?? 10
+    gameSettings.min_withdrawal_amount = result.min_withdrawal_amount ?? 100
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -164,6 +172,46 @@ onMounted(fetchAll)
                   v-model.number="gameSettings.first_deposit_bonus_amount"
                   type="number"
                   min="0"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Min Deposit Amount -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-emerald-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:arrow-down-tray" class="w-6 h-6 text-emerald-400" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Minimum Deposit (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Minimum amount a player must deposit per transaction. Enforced on submission.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.min_deposit_amount"
+                  type="number"
+                  min="1"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Min Withdrawal Amount -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-blue-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:arrow-up-tray" class="w-6 h-6 text-blue-400" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Minimum Withdrawal (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Minimum amount a player must withdraw per request. Enforced on submission.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.min_withdrawal_amount"
+                  type="number"
+                  min="1"
                   class="w-36"
                 />
                 <span class="text-sm text-white/40 font-medium">ETB</span>

@@ -222,8 +222,8 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string }) =>
+        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string; min_deposit_amount: number; min_withdrawal_amount: number }>('/settings/game'),
+        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
 
         // ── House Wallet ──────────────────────────────────────────────────────

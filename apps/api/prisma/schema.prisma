@@ -417,6 +417,7 @@ model PaymentMethod {
   name            String                                 // display name, e.g. "TeleBirr"
   type            PaymentMethodType
   merchantAccount String?                                // account/phone number for deposit methods
+  merchantName    String?                                // recipient name shown before account number (e.g. "John Doe")
   instructions    String?                                // shown to users during deposit flow
   icon            String?                                // emoji or icon identifier, e.g. "📱"
   enabled         Boolean           @default(true)

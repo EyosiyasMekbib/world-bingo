@@ -73,9 +73,10 @@ const paymentMethodCreateSchema = z.object({
     code: z.string().min(1),
     name: z.string().min(1),
     type: z.enum(['DEPOSIT', 'WITHDRAWAL']),
-    merchantAccount: z.string().optional(),
-    instructions: z.string().optional(),
-    icon: z.string().optional(),
+    merchantName: z.string().nullish(),
+    merchantAccount: z.string().nullish(),
+    instructions: z.string().nullish(),
+    icon: z.string().nullish(),
     enabled: z.boolean().default(true),
     sortOrder: z.number().int().default(0),
 })
@@ -84,9 +85,10 @@ const paymentMethodUpdateSchema = z.object({
     code: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     type: z.enum(['DEPOSIT', 'WITHDRAWAL']).optional(),
-    merchantAccount: z.string().optional(),
-    instructions: z.string().optional(),
-    icon: z.string().optional(),
+    merchantName: z.string().nullish(),
+    merchantAccount: z.string().nullish(),
+    instructions: z.string().nullish(),
+    icon: z.string().nullish(),
     enabled: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
 })
@@ -418,7 +420,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const d = parsed.data
                 const method = await prisma.paymentMethod.create({
-                    data: { code: d.code, name: d.name, type: d.type as import('@prisma/client').PaymentMethodType, merchantAccount: d.merchantAccount, instructions: d.instructions, icon: d.icon, enabled: d.enabled, sortOrder: d.sortOrder },
+                    data: { code: d.code, name: d.name, type: d.type as import('@prisma/client').PaymentMethodType, merchantName: d.merchantName ?? null, merchantAccount: d.merchantAccount ?? null, instructions: d.instructions ?? null, icon: d.icon ?? null, enabled: d.enabled, sortOrder: d.sortOrder },
                 })
                 return reply.status(201).send(method)
             } catch (err: any) {
@@ -432,8 +434,18 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = paymentMethodUpdateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', details: parsed.error.issues })
             try {
-                const { type, ...rest } = parsed.data
-                return await prisma.paymentMethod.update({ where: { id }, data: { ...rest, ...(type ? { type: type as import('@prisma/client').PaymentMethodType } : {}) } })
+                const { type, merchantName, merchantAccount, instructions, icon, ...rest } = parsed.data
+                return await prisma.paymentMethod.update({
+                    where: { id },
+                    data: {
+                        ...rest,
+                        ...(type ? { type: type as import('@prisma/client').PaymentMethodType } : {}),
+                        ...(merchantName !== undefined ? { merchantName: merchantName ?? null } : {}),
+                        ...(merchantAccount !== undefined ? { merchantAccount: merchantAccount ?? null } : {}),
+                        ...(instructions !== undefined ? { instructions: instructions ?? null } : {}),
+                        ...(icon !== undefined ? { icon: icon ?? null } : {}),
+                    },
+                })
             } catch (err: any) {
                 if (err?.code === 'P2025') return reply.status(404).send({ error: 'Payment method not found' })
                 if (err?.code === 'P2002') return reply.status(409).send({ error: 'A payment method with that code already exists' })

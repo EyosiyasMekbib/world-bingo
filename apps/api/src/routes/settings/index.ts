@@ -10,6 +10,8 @@ const DEFAULTS: Record<string, string> = {
     bot_max_spend_etb: '500',
     first_deposit_bonus_amount: '0',
     featured_template_id: '',
+    min_deposit_amount: '10',
+    min_withdrawal_amount: '100',
 }
 
 /**
@@ -47,7 +49,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     }, async (_req, _reply) => {
         await ensureDefaults()
         const rows = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount'] } },
         })
         const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
         return {
@@ -55,6 +57,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             bot_max_spend_etb: Number(map.bot_max_spend_etb ?? 500),
             first_deposit_bonus_amount: Number(map.first_deposit_bonus_amount ?? 0),
             featured_template_id: map.featured_template_id ?? '',
+            min_deposit_amount: Number(map.min_deposit_amount ?? 10),
+            min_withdrawal_amount: Number(map.min_withdrawal_amount ?? 100),
         }
     })
 
@@ -63,7 +67,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put('/game', {
         preValidation: [fastify.requireAdmin],
     }, async (req: any, _reply) => {
-        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string }
+        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }
         const updates: Record<string, string> = {}
         if (body.ball_interval_secs != null) {
             updates.ball_interval_secs = String(Math.max(1, Math.min(30, Number(body.ball_interval_secs))))
@@ -77,6 +81,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (body.featured_template_id !== undefined) {
             updates.featured_template_id = body.featured_template_id
         }
+        if (body.min_deposit_amount != null) {
+            updates.min_deposit_amount = String(Math.max(1, Number(body.min_deposit_amount)))
+        }
+        if (body.min_withdrawal_amount != null) {
+            updates.min_withdrawal_amount = String(Math.max(1, Number(body.min_withdrawal_amount)))
+        }
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({
                 where: { key },
@@ -85,7 +95,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             })
         }
         const saved = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount'] } },
         })
         const savedMap = Object.fromEntries(saved.map((r) => [r.key, r.value]))
         return {
@@ -93,6 +103,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             bot_max_spend_etb: Number(savedMap.bot_max_spend_etb ?? 500),
             first_deposit_bonus_amount: Number(savedMap.first_deposit_bonus_amount ?? 0),
             featured_template_id: savedMap.featured_template_id ?? '',
+            min_deposit_amount: Number(savedMap.min_deposit_amount ?? 10),
+            min_withdrawal_amount: Number(savedMap.min_withdrawal_amount ?? 100),
         }
     })
 

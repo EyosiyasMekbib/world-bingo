@@ -40,7 +40,9 @@
                 <div class="banner-title">{{ selectedMethod.name }}</div>
                 <template v-if="selectedMethod.merchantAccount">
                   <div class="banner-detail">Send to:</div>
-                  <div class="merchant-number">{{ selectedMethod.merchantAccount }}</div>
+                  <div class="merchant-number">
+                    <span v-if="selectedMethod.merchantName">{{ selectedMethod.merchantName }} — </span>{{ selectedMethod.merchantAccount }}
+                  </div>
                 </template>
                 <div v-if="selectedMethod.instructions" class="banner-instructions">
                   {{ selectedMethod.instructions }}
@@ -182,6 +184,7 @@ type DepositMethod = {
   code: string
   name: string
   icon: string | null
+  merchantName: string | null
   merchantAccount: string | null
   instructions: string | null
 }

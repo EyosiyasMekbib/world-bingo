@@ -18,6 +18,7 @@ const paymentMethodRoutes: FastifyPluginAsync = async (fastify) => {
         code: true,
         name: true,
         type: true,
+        merchantName: true,
         merchantAccount: true,
         instructions: true,
         icon: true,

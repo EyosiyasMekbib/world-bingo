@@ -14,6 +14,12 @@ export class WalletService {
     }
 
     static async initiateDeposit(userId: string, data: DepositDto) {
+        const minRow = await prisma.siteSetting.findUnique({ where: { key: 'min_deposit_amount' } })
+        const minDeposit = minRow ? Number(minRow.value) : 10
+        if (data.amount < minDeposit) {
+            throw Object.assign(new Error(`Minimum deposit amount is ${minDeposit} Birr`), { statusCode: 400 })
+        }
+
         // Normalize so dedup is case-insensitive (e.g. "ABC123" == "abc123")
         const paymentTransactionId = data.transactionId?.trim().toUpperCase()
 
@@ -186,8 +192,10 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
-        if (data.amount < 100) {
-            throw new Error('Minimum withdrawal amount is 100 Birr')
+        const minRow = await prisma.siteSetting.findUnique({ where: { key: 'min_withdrawal_amount' } })
+        const minWithdrawal = minRow ? Number(minRow.value) : 100
+        if (data.amount < minWithdrawal) {
+            throw new Error(`Minimum withdrawal amount is ${minWithdrawal} Birr`)
         }
 
         return await prisma.$transaction(async (tx) => {

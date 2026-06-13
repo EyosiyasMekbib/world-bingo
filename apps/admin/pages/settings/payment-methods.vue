@@ -7,6 +7,7 @@ type PaymentMethod = {
   code: string
   name: string
   type: 'DEPOSIT' | 'WITHDRAWAL'
+  merchantName: string | null
   merchantAccount: string | null
   instructions: string | null
   icon: string | null
@@ -25,6 +26,7 @@ const form = reactive({
   code: '',
   name: '',
   type: 'DEPOSIT' as 'DEPOSIT' | 'WITHDRAWAL',
+  merchantName: '',
   merchantAccount: '',
   instructions: '',
   icon: '',
@@ -53,6 +55,7 @@ const openAdd = () => {
   form.code = ''
   form.name = ''
   form.type = 'DEPOSIT'
+  form.merchantName = ''
   form.merchantAccount = ''
   form.instructions = ''
   form.icon = ''
@@ -66,6 +69,7 @@ const openEdit = (m: PaymentMethod) => {
   form.code = m.code
   form.name = m.name
   form.type = m.type
+  form.merchantName = m.merchantName ?? ''
   form.merchantAccount = m.merchantAccount ?? ''
   form.instructions = m.instructions ?? ''
   form.icon = m.icon ?? ''
@@ -85,6 +89,7 @@ const saveMethod = async () => {
       code: form.code,
       name: form.name,
       type: form.type,
+      merchantName: form.merchantName || null,
       merchantAccount: form.merchantAccount || null,
       instructions: form.instructions || null,
       icon: form.icon || null,
@@ -211,7 +216,9 @@ async function fetchAll() {
               </div>
               <p class="text-xs text-white/40 mt-0.5 font-mono">{{ m.code }}</p>
               <p v-if="m.merchantAccount" class="text-xs text-white/50 mt-1">
-                <span class="text-white/30">Account:</span> {{ m.merchantAccount }}
+                <span class="text-white/30">Send to:</span>
+                <span v-if="m.merchantName"> {{ m.merchantName }} —</span>
+                {{ m.merchantAccount }}
               </p>
               <p v-if="m.instructions" class="text-xs text-white/40 mt-1 truncate max-w-xs">{{ m.instructions }}</p>
             </div>
@@ -323,6 +330,12 @@ async function fetchAll() {
               <label class="text-xs font-semibold text-white/60 uppercase tracking-wider">Icon (emoji)</label>
               <UInput v-model="form.icon" placeholder="📱" />
             </div>
+          </div>
+
+          <div v-if="form.type === 'DEPOSIT'" class="space-y-1">
+            <label class="text-xs font-semibold text-white/60 uppercase tracking-wider">Recipient Name</label>
+            <UInput v-model="form.merchantName" placeholder="e.g. Abebe Girma" />
+            <p class="text-[11px] text-white/30">Shown to players as "Send to: [Name] [Account]"</p>
           </div>
 
           <div v-if="form.type === 'DEPOSIT'" class="space-y-1">
