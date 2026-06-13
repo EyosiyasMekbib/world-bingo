@@ -38,6 +38,7 @@ import './workers/game-scheduler.worker.js'
 import './workers/game-engine.worker.js'
 import './workers/game-catalog-sync.worker.js'
 import './workers/cashback-checker.worker.js'
+import './workers/prune-events.worker.js'
 
 // Load from monorepo root — single source of truth for all env vars
 dotenv.config({ path: new URL('../../../.env', import.meta.url).pathname })
