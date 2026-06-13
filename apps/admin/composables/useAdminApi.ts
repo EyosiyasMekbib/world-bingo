@@ -74,6 +74,44 @@ export const useAdminApi = () => {
                 idleMoney: { wallets: number; balance: number }
             }>('/admin/analytics/engagement'),
 
+        getAnalyticsBrowseFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                stages: Array<{ name: string; count: number; dropOffPct: number }>
+            }>(`/admin/analytics/browse-funnel${query ? `?${query}` : ''}`)
+        },
+
+        getAnalyticsDepositFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                stages: Array<{ name: string; count: number; dropOffPct: number }>
+                avgApprovalSecs: number | null
+                byMethod: Array<{ method: string; submitted: number; approved: number; conversionPct: number }>
+            }>(`/admin/analytics/deposit-funnel${query ? `?${query}` : ''}`)
+        },
+
+        getAnalyticsConversionKpis: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                totalVisitors: number
+                anonVisitors: number
+                registered: number
+                firstDeposited: number
+                visitorToRegPct: number
+                regToDepositPct: number
+                browseToJoinPct: number
+            }>(`/admin/analytics/conversion-kpis${query ? `?${query}` : ''}`)
+        },
+
         getPendingDeposits: (params?: {
             status?: string
             search?: string

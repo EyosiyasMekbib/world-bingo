@@ -44,6 +44,39 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/engagement', async (_req, _reply) => {
         return AnalyticsService.getEngagement()
     })
+
+    fastify.get('/browse-funnel', async (req: any, reply) => {
+        const parsed = rangeQuerySchema.safeParse(req.query)
+        if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', details: parsed.error.issues })
+        try {
+            const { from, to } = AnalyticsService.parseRange(parsed.data.from, parsed.data.to)
+            return await AnalyticsService.getBrowseFunnel(from, to)
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message })
+        }
+    })
+
+    fastify.get('/deposit-funnel', async (req: any, reply) => {
+        const parsed = rangeQuerySchema.safeParse(req.query)
+        if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', details: parsed.error.issues })
+        try {
+            const { from, to } = AnalyticsService.parseRange(parsed.data.from, parsed.data.to)
+            return await AnalyticsService.getDepositFunnel(from, to)
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message })
+        }
+    })
+
+    fastify.get('/conversion-kpis', async (req: any, reply) => {
+        const parsed = rangeQuerySchema.safeParse(req.query)
+        if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', details: parsed.error.issues })
+        try {
+            const { from, to } = AnalyticsService.parseRange(parsed.data.from, parsed.data.to)
+            return await AnalyticsService.getConversionKpis(from, to)
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message })
+        }
+    })
 }
 
 export default analyticsRoutes
