@@ -70,7 +70,6 @@ const popularBingoGames = computed(() => {
 })
 
 const BINGO_HOME_LIMIT = 12
-const PROVIDER_HOME_LIMIT = 12
 
 const activeBingoGames = computed(() => {
   if (selectedCategory.value === 'TRENDING') return trendingBingoGames.value
@@ -80,7 +79,6 @@ const activeBingoGames = computed(() => {
 
 const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
 const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT)
-
 
 const CRASH_PRIORITY = [
   'aviator', 'jetx', 'spaceman', 'helicopterx',
@@ -101,12 +99,11 @@ function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
 const categoryGamesLoading = ref<Record<string, boolean>>({})
 
-// "Popular" surfaces the crash / instant-win games (the aggregator files these
-// under the MINI category — Aviator, Plinko, Dice, Goal, etc.), priority-sorted
-// so the headline crash titles lead. Fetched in bulk below so the priority
-// names are present in the array before sorting.
+// Popular tab = MINI category (crash/instant-win games), priority-sorted, paginated
 const POPULAR_CATEGORY = 'MINI'
-const popularLimit = ref(24)
+const popularPage = ref(1)
+const popularTotalPages = ref(1)
+const popularLoadingMore = ref(false)
 
 const popularFeed = computed(() =>
   sortedByPriority(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
@@ -115,7 +112,7 @@ const popularFeed = computed(() =>
 const feedGames = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'BINGO') return []
-  if (cat === 'POPULAR') return popularFeed.value.slice(0, popularLimit.value)
+  if (cat === 'POPULAR') return popularFeed.value
   const raw = ['ALL', 'TRENDING'].includes(cat)
     ? providerStore.games
     : (categoryGamesMap.value[cat] ?? [])
@@ -125,20 +122,45 @@ const feedGames = computed(() => {
 const feedLoading = computed(() => {
   const cat = selectedCategory.value
   if (cat === 'POPULAR') return !popularFeed.value.length && !!categoryGamesLoading.value[POPULAR_CATEGORY]
-  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading
+  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading && !providerStore.games.length
   return !!categoryGamesLoading.value[cat]
+})
+
+const feedLoadingMore = computed(() => {
+  const cat = selectedCategory.value
+  if (cat === 'POPULAR') return popularLoadingMore.value
+  if (['ALL', 'TRENDING'].includes(cat)) return providerStore.loading && providerStore.games.length > 0
+  return false
 })
 
 const canLoadMore = computed(() => {
   const cat = selectedCategory.value
-  if (cat === 'POPULAR') return popularLimit.value < popularFeed.value.length
+  if (cat === 'POPULAR') return popularPage.value < popularTotalPages.value
   if (['ALL', 'TRENDING'].includes(cat)) return providerStore.hasMore
   return false
 })
 
 async function loadMoreFeed() {
-  if (selectedCategory.value === 'POPULAR') {
-    popularLimit.value += 24
+  const cat = selectedCategory.value
+  if (cat === 'POPULAR') {
+    if (popularPage.value >= popularTotalPages.value || popularLoadingMore.value) return
+    popularLoadingMore.value = true
+    popularPage.value++
+    const code = providerStore.activeProviderCode
+    if (code) {
+      try {
+        const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
+          `${config.public.apiBase}/providers/${code}/games?page=${popularPage.value}&pageSize=50&category=${POPULAR_CATEGORY}`,
+        )
+        categoryGamesMap.value[POPULAR_CATEGORY] = [
+          ...(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
+          ...result.games,
+        ]
+        popularTotalPages.value = result.totalPages
+      } finally {
+        popularLoadingMore.value = false
+      }
+    }
     return
   }
   await providerStore.loadMore()
@@ -149,15 +171,40 @@ async function fetchCategoryGames(category: string, pageSize = 20) {
   if (!code) return
   categoryGamesLoading.value[category] = true
   try {
-    const result = await $fetch<{ games: ProviderGame[] }>(
-      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`
+    const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
+      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`,
     )
     categoryGamesMap.value[category] = result.games
+    if (category === POPULAR_CATEGORY) {
+      popularTotalPages.value = result.totalPages
+      popularPage.value = 1
+    }
   } catch {
     categoryGamesMap.value[category] = []
   } finally {
     delete categoryGamesLoading.value[category]
   }
+}
+
+// Infinite scroll
+const feedSentinel = ref<HTMLElement | null>(null)
+let feedObserver: IntersectionObserver | null = null
+
+function setupFeedObserver() {
+  if (!feedSentinel.value) return
+  feedObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && canLoadMore.value && !feedLoadingMore.value) {
+        loadMoreFeed()
+      }
+    },
+    { rootMargin: '400px' },
+  )
+  feedObserver.observe(feedSentinel.value)
+}
+
+function onImgLoad(e: Event) {
+  ;(e.currentTarget as HTMLImageElement).classList.add('fc-img--loaded')
 }
 
 
@@ -286,11 +333,13 @@ onMounted(async () => {
     await providerStore.fetchGames({ reset: true })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
     await Promise.all(
-      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 200 : 20)),
+      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 50 : 20)),
     )
   }
 
   startSlideTimer()
+  await nextTick()
+  setupFeedObserver()
 
   const socket = connect()
   if (!socket) return
@@ -320,6 +369,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (slideTimer) clearInterval(slideTimer)
+  feedObserver?.disconnect()
   const socket = connect()
   socket?.emit('lobby:unsubscribe')
 })
@@ -472,8 +522,12 @@ onUnmounted(() => {
 
         <!-- Provider games (all non-Bingo tabs) -->
         <template v-if="selectedCategory !== 'BINGO'">
-          <div v-if="feedLoading && !feedGames.length" class="state-msg">
-            <span class="spinner" aria-hidden="true"></span> Loading...
+          <!-- Initial skeleton grid while first page loads -->
+          <div v-if="feedLoading && !feedGames.length" class="feed-grid" aria-busy="true" aria-label="Loading games">
+            <div v-for="n in 18" :key="n" class="fc-skel">
+              <div class="fc-skel-thumb"></div>
+              <div class="fc-skel-name"></div>
+            </div>
           </div>
           <div v-else-if="!feedGames.length && !feedLoading" class="state-msg">
             No games available.
@@ -492,8 +546,10 @@ onUnmounted(() => {
                   :alt="g.gameName"
                   class="fc-img"
                   loading="lazy"
+                  @load="onImgLoad"
+                  @error="onImgLoad"
                 />
-                <div v-else class="fc-placeholder">
+                <div v-else class="fc-placeholder fc-img--loaded">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.3" aria-hidden="true">
                     <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
                   </svg>
@@ -502,13 +558,16 @@ onUnmounted(() => {
               <div class="fc-name">{{ g.gameName }}</div>
             </NuxtLink>
           </div>
-          <div v-if="canLoadMore" class="more-row">
-            <button class="more-btn" @click="loadMoreFeed">
-              Load More
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </button>
+
+          <!-- Infinite scroll sentinel -->
+          <div ref="feedSentinel" class="feed-sentinel" aria-hidden="true"></div>
+
+          <!-- Skeleton row while loading next page -->
+          <div v-if="feedLoadingMore" class="feed-grid feed-grid--more" aria-busy="true">
+            <div v-for="n in 6" :key="n" class="fc-skel">
+              <div class="fc-skel-thumb"></div>
+              <div class="fc-skel-name"></div>
+            </div>
           </div>
         </template>
 
@@ -1101,7 +1160,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-.fc-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fc-img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.fc-img--loaded { opacity: 1; }
 .fc-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 
 .fc-name {
@@ -1367,6 +1431,47 @@ onUnmounted(() => {
 .more-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
 .more-btn svg { transition: transform 0.15s ease; }
 .more-btn:hover svg { transform: translateX(2px); }
+
+/* ── FEED SKELETON ───────────────────────────────────────────────────── */
+.fc-skel {
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 22, 55, 0.7);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.fc-skel-thumb {
+  aspect-ratio: 3/4;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.09) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.fc-skel-name {
+  height: 10px;
+  margin: 9px 9px 10px;
+  border-radius: 3px;
+  width: 70%;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.09) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  animation-delay: 0.07s;
+}
+.feed-grid--more { margin-top: 8px; }
+.feed-sentinel { height: 1px; }
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 /* ── KEYFRAMES ───────────────────────────────────────────────────────── */
 @keyframes fadeUp {

@@ -31,6 +31,26 @@ const categoryLabel = computed(() => CATEGORY_LABELS[category.value] ?? category
 
 useHead({ title: computed(() => `${categoryLabel.value} — World Bingo`) })
 
+const CRASH_PRIORITY = [
+  'aviator', 'jetx', 'spaceman', 'helicopterx',
+  'hotline', 'aviatrix', 'plinko', 'crash x',
+  'goal', 'dice', 'mines', 'limbo',
+  'crash game', 'balloon', 'wheel', 'keno',
+]
+
+function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
+  const rank = (g: ProviderGame) => {
+    const name = g.gameName.toLowerCase()
+    const idx = CRASH_PRIORITY.findIndex((p) => name.includes(p) || p.includes(name))
+    return idx === -1 ? CRASH_PRIORITY.length : idx
+  }
+  return [...games].sort((a, b) => rank(a) - rank(b))
+}
+
+function onImgLoad(e: Event) {
+  ;(e.currentTarget as HTMLImageElement).classList.add('pg-img--loaded')
+}
+
 // ── Provider game infinite scroll ────────────────────────────────────
 const providerGames = ref<ProviderGame[]>([])
 const page = ref(1)
@@ -59,7 +79,7 @@ async function loadMore() {
   page.value++
   try {
     const result = await fetchProviderPage(page.value)
-    if (result) providerGames.value = [...providerGames.value, ...result.games]
+    if (result) providerGames.value = sortedByPriority([...providerGames.value, ...result.games])
   } finally {
     loadingMore.value = false
   }
@@ -129,7 +149,7 @@ onMounted(async () => {
     try {
       const result = await fetchProviderPage(1)
       if (result) {
-        providerGames.value = result.games
+        providerGames.value = sortedByPriority(result.games)
         totalPages.value = result.totalPages
       }
     } finally {
@@ -238,8 +258,10 @@ onUnmounted(() => {
                 :alt="g.gameName"
                 class="pg-img"
                 loading="lazy"
+                @load="onImgLoad"
+                @error="onImgLoad"
               />
-              <div v-else class="pg-placeholder">
+              <div v-else class="pg-placeholder pg-img--loaded">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.3" aria-hidden="true">
                   <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/>
                 </svg>
@@ -364,7 +386,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-.pg-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pg-img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.pg-img--loaded { opacity: 1; }
 .pg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 
 .pg-hover {
