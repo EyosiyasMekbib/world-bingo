@@ -280,7 +280,7 @@ export class AnalyticsService {
     static async getDepositFunnel(from: Date, to: Date) {
         const stageRows = await prisma.$queryRaw<Array<{
             modal_opened: number; method_selected: number; amount_entered: number;
-            submitted: number; approved: number; avg_approval_secs: string | null;
+            submitted: number; approved: number;
         }>>(Prisma.sql`
             SELECT
                 count(DISTINCT CASE WHEN name = 'deposit_modal_opened'    THEN coalesce("userId", "anonId") END)::int AS modal_opened,
@@ -289,11 +289,7 @@ export class AnalyticsService {
                 count(DISTINCT CASE WHEN name = 'deposit_submitted'       THEN "userId" END)::int AS submitted,
                 (SELECT count(*)::int FROM transactions
                  WHERE type = 'DEPOSIT' AND status = 'APPROVED'
-                   AND "createdAt" >= ${from} AND "createdAt" < ${to}) AS approved,
-                (SELECT avg(extract(epoch FROM ("updatedAt" - "createdAt")))
-                 FROM transactions
-                 WHERE type = 'DEPOSIT' AND status = 'APPROVED'
-                   AND "createdAt" >= ${from} AND "createdAt" < ${to}) AS avg_approval_secs
+                   AND "createdAt" >= ${from} AND "createdAt" < ${to}) AS approved
             FROM analytics_events
             WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
               AND name IN ('deposit_modal_opened','deposit_method_selected','deposit_amount_entered','deposit_submitted')
@@ -315,12 +311,11 @@ export class AnalyticsService {
             GROUP BY 1
             ORDER BY submitted DESC
         `)
-        const r = stageRows[0] ?? { modal_opened: 0, method_selected: 0, amount_entered: 0, submitted: 0, approved: 0, avg_approval_secs: null }
+        const r = stageRows[0] ?? { modal_opened: 0, method_selected: 0, amount_entered: 0, submitted: 0, approved: 0 }
         const labels = ['modal_opened', 'method_selected', 'amount_entered', 'submitted', 'approved']
         const values = [r.modal_opened, r.method_selected, r.amount_entered, r.submitted, r.approved]
         return {
             stages: this.buildFunnelStages(labels, values),
-            avgApprovalSecs: r.avg_approval_secs == null ? null : Math.round(Number(r.avg_approval_secs)),
             byMethod: methodRows.map(m => ({
                 method: m.payment_method,
                 submitted: m.submitted,

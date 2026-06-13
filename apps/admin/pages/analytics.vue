@@ -239,11 +239,7 @@ function retentionCellStyle(pct: number) {
 
       <!-- ── Deposit funnel (Layer 2) ───────────────────────────── -->
       <section class="card" v-if="depositFunnel">
-        <h2 class="card-title">Deposit funnel
-          <span class="card-hint" v-if="depositFunnel.avgApprovalSecs">
-            avg approval {{ Math.round(depositFunnel.avgApprovalSecs / 60) }}m
-          </span>
-        </h2>
+        <h2 class="card-title">Deposit funnel</h2>
         <div class="funnel">
           <div v-for="stage in depositFunnel.stages" :key="stage.name" class="funnel-row">
             <span class="funnel-label">{{ { modal_opened: 'Opened modal', method_selected: 'Selected method', amount_entered: 'Entered amount', submitted: 'Submitted', approved: 'Approved' }[stage.name] ?? stage.name }}</span>

@@ -49,7 +49,6 @@ describe('AnalyticsService.getDepositFunnel', () => {
                 amount_entered: 380,
                 submitted: 300,
                 approved: 240,
-                avg_approval_secs: '180.5',
             }])
             .mockResolvedValueOnce([
                 { payment_method: 'TELEBIRR', submitted: 200, approved: 170 },
@@ -61,7 +60,6 @@ describe('AnalyticsService.getDepositFunnel', () => {
         )
         expect(out.stages[0]).toEqual({ name: 'modal_opened', count: 500, dropOffPct: 0 })
         expect(out.stages[4]).toEqual({ name: 'approved', count: 240, dropOffPct: 20 })
-        expect(out.avgApprovalSecs).toBe(181)
         expect(out.byMethod).toHaveLength(2)
         expect(out.byMethod[0].method).toBe('TELEBIRR')
         expect(out.byMethod[0].conversionPct).toBe(85)

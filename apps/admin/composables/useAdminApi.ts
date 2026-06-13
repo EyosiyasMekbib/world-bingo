@@ -91,7 +91,6 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<{
                 stages: Array<{ name: string; count: number; dropOffPct: number }>
-                avgApprovalSecs: number | null
                 byMethod: Array<{ method: string; submitted: number; approved: number; conversionPct: number }>
             }>(`/admin/analytics/deposit-funnel${query ? `?${query}` : ''}`)
         },
