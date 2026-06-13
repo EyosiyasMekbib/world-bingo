@@ -83,11 +83,12 @@ const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_L
 
 
 const CRASH_PRIORITY = [
+  'hotline', 'rocketman', 'rocket stars',
+  'bomb runner', 'crashkick', 'shaktimaan',
+  'just jump', "chick 'n' road 2", "chick 'n' road",
   'helicrash', 'aviator', 'tiny roulette', 'magic aladdin',
   'chicken road', 'chicken road 2', 'jetx', 'aviatrix', 'plinko',
-  'goal', 'dice', 'miner', 'hotline', 'rocketman', 'rocket stars',
-  'bomb runner', 'crashkick', 'shaktimaan', 'just jump',
-  "chick 'n' road 2", "chick 'n' road",
+  'goal', 'dice', 'miner',
 ]
 
 function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
