@@ -11,6 +11,7 @@ const providerStore = useProviderGamesStore()
 const gameStore = useGameStore()
 const auth = useAuthStore()
 const { patternLabel } = usePatternLabel()
+const { track } = useAnalytics()
 
 const rawCategory = computed(() => route.params.category as string)
 const category = computed(() => rawCategory.value.toUpperCase())
@@ -138,6 +139,7 @@ const bingoGames = computed((): Game[] => {
 const showBingo = computed(() => ['BINGO', 'TRENDING', 'POPULAR'].includes(category.value))
 
 function handleJoinGame(gameId: string) {
+  track('game_view', { gameId })
   if (!auth.isAuthenticated) {
     showAuthPrompt.value = true
     return

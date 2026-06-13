@@ -26,7 +26,7 @@
                 :key="m.code"
                 class="method-tab"
                 :class="{ 'method-tab--active': selectedMethod?.code === m.code }"
-                @click="selectedMethod = m"
+                @click="selectedMethod = m; track('deposit_method_selected', { paymentMethod: m.code })"
               >
                 <span>{{ m.icon || '💳' }}</span>
                 <span>{{ m.name }}</span>
@@ -175,6 +175,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const { track } = useAnalytics()
 
 type DepositMethod = {
   id: string
@@ -241,7 +242,10 @@ const fetchMethods = async () => {
 }
 
 watch(() => props.modelValue, (open) => {
-  if (open) fetchMethods()
+  if (open) {
+    fetchMethods()
+    track('deposit_modal_opened')
+  }
 })
 
 function onFileChange(e: Event) {
@@ -276,6 +280,8 @@ async function submit() {
   error.value = ''
   success.value = false
   uploadProgress.value = 0
+  const amountBucket = form.amount < 500 ? '<500' : form.amount < 1000 ? '500-1000' : form.amount < 5000 ? '1000-5000' : '5000+'
+  track('deposit_amount_entered', { paymentMethod: selectedMethod.value?.code ?? null, amountBucket })
 
   try {
     const formData = new FormData()

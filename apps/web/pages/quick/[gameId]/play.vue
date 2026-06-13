@@ -376,6 +376,7 @@ const gameId = route.params.gameId as string
 const gameStore = useGameStore()
 const auth = useAuthStore()
 const { connect } = useSocket()
+const { track } = useAnalytics()
 
 // ── State ──────────────────────────────────────────────────────────────────
 const loading = ref(true)
@@ -684,6 +685,7 @@ function startCountdown(startsAt: string) {
 // ── Join ───────────────────────────────────────────────────────────────────
 async function handleJoin() {
   if (!selectedSerials.value.length) return
+  track('join_click', { gameId })
   joining.value = true
   joinError.value = ''
   try {
