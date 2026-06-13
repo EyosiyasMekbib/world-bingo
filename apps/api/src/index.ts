@@ -223,9 +223,10 @@ await server.register(gameProviderRoutes, { prefix: '/providers' })
 // T49 — BullMQ Dashboard at /admin/queues
 await registerBullBoard(server)
 
-// Serve local uploads directory (dev only)
-if (!isProd) {
-    const uploadsDir = new URL('../uploads', import.meta.url).pathname
+// Serve the uploads directory written by lib/storage.ts (STORAGE_PROVIDER=local).
+// Must be registered in prod too — receipts are stored locally there as well.
+{
+    const uploadsDir = path.resolve(process.cwd(), 'uploads')
     const fs = await import('fs')
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true })
