@@ -4,6 +4,7 @@ import redis from '../../lib/redis.js'
 import prisma from '../../lib/prisma.js'
 import { GameCatalogService } from '../../services/game-catalog.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
+import { EventService } from '../../services/event.service.js'
 
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
@@ -120,6 +121,20 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             if (token) {
                 await redis.setex(`tp:token:${token}`, TOKEN_TTL, user.id)
             }
+
+            // Fire analytics event non-blocking — never fail the launch
+            Promise.all([
+                prisma.wallet.findUnique({ where: { userId: user.id }, select: { realBalance: true } }),
+            ]).then(([wallet]) => {
+                EventService.record([{
+                    name: 'provider_game_launched',
+                    props: {
+                        providerCode,
+                        gameCode,
+                        balanceBefore: wallet ? Number(wallet.realBalance) : null,
+                    },
+                }], { userId: user.id }).catch(() => {})
+            }).catch(() => {})
 
             return { gameUrl, token }
         },
