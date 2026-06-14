@@ -361,4 +361,247 @@ export class AnalyticsService {
             browseToJoinPct: this.pct(r.join_clicks, r.total_visitors),
         }
     }
+
+    /** Per-game new-player return lift scorecard (bingo + provider games). */
+    static async getGameRetentionScorecard(from: Date, to: Date) {
+        const [cohortRows, stickinessRows] = await Promise.all([
+            prisma.$queryRaw<Array<{
+                game_key: string
+                game_label: string
+                game_type: string
+                cohort_size: number
+                returned_7d: number
+                returned_next_day: number
+                baseline_total: number
+                baseline_returned: number
+            }>>(Prisma.sql`
+                WITH all_plays AS (
+                    SELECT ge."userId",
+                           CONCAT('bingo:', gt.id) AS game_key,
+                           gt.title              AS game_label,
+                           'bingo'::text         AS game_type,
+                           ge."joinedAt"         AS played_at
+                    FROM game_entries ge
+                    JOIN games g ON g.id = ge."gameId"
+                    JOIN game_templates gt ON gt.id = g."templateId"
+                    JOIN users u ON u.id = ge."userId"
+                    WHERE u."passwordHash" != 'BOT_ACCOUNT' AND u.role = 'PLAYER'
+
+                    UNION ALL
+
+                    SELECT tpt."userId",
+                           CONCAT('provider:', tpt."gameCode")         AS game_key,
+                           COALESCE(pg."gameName", tpt."gameCode")     AS game_label,
+                           'provider'::text                            AS game_type,
+                           DATE_TRUNC('day', MIN(tpt."createdAt"))     AS played_at
+                    FROM third_party_transactions tpt
+                    LEFT JOIN provider_games pg ON pg."gameCode" = tpt."gameCode"
+                    JOIN users u ON u.id = tpt."userId"
+                    WHERE tpt.amount < 0
+                      AND tpt."gameCode" IS NOT NULL
+                      AND u."passwordHash" != 'BOT_ACCOUNT' AND u.role = 'PLAYER'
+                    GROUP BY tpt."userId", tpt."gameCode",
+                             DATE_TRUNC('day', tpt."createdAt"), pg."gameName"
+                ),
+                player_first AS (
+                    SELECT "userId", MIN(played_at) AS first_at
+                    FROM all_plays
+                    GROUP BY "userId"
+                ),
+                new_players AS (
+                    SELECT pf."userId",
+                           ap.game_key, ap.game_label, ap.game_type,
+                           ap.played_at AS first_played_at
+                    FROM player_first pf
+                    JOIN all_plays ap
+                      ON ap."userId" = pf."userId" AND ap.played_at = pf.first_at
+                    WHERE pf.first_at >= ${from} AND pf.first_at < ${to}
+                ),
+                returns_7d AS (
+                    SELECT DISTINCT np."userId"
+                    FROM new_players np
+                    WHERE EXISTS (
+                        SELECT 1 FROM all_plays r
+                        WHERE r."userId" = np."userId"
+                          AND DATE(r.played_at) > DATE(np.first_played_at)
+                          AND r.played_at < np.first_played_at + INTERVAL '7 days'
+                    )
+                ),
+                returns_next_day AS (
+                    SELECT DISTINCT np."userId"
+                    FROM new_players np
+                    WHERE EXISTS (
+                        SELECT 1 FROM all_plays r
+                        WHERE r."userId" = np."userId"
+                          AND DATE(r.played_at) = DATE(np.first_played_at) + 1
+                    )
+                ),
+                baseline AS (
+                    SELECT
+                        COUNT(DISTINCT np."userId")::int AS total,
+                        COUNT(DISTINCT r."userId")::int  AS returned
+                    FROM new_players np
+                    LEFT JOIN returns_7d r ON r."userId" = np."userId"
+                )
+                SELECT
+                    gs.game_key,
+                    gs.game_label,
+                    gs.game_type,
+                    gs.cohort_size,
+                    gs.returned_7d,
+                    gs.returned_next_day,
+                    b.total    AS baseline_total,
+                    b.returned AS baseline_returned
+                FROM (
+                    SELECT
+                        np.game_key,
+                        MAX(np.game_label)                             AS game_label,
+                        MAX(np.game_type)                              AS game_type,
+                        COUNT(DISTINCT np."userId")::int               AS cohort_size,
+                        COUNT(DISTINCT r7."userId")::int               AS returned_7d,
+                        COUNT(DISTINCT rnd."userId")::int              AS returned_next_day
+                    FROM new_players np
+                    LEFT JOIN returns_7d r7    ON r7."userId"  = np."userId"
+                    LEFT JOIN returns_next_day rnd ON rnd."userId" = np."userId"
+                    GROUP BY np.game_key
+                ) gs
+                CROSS JOIN baseline b
+                ORDER BY gs.cohort_size DESC
+            `),
+
+            prisma.$queryRaw<Array<{
+                game_key: string
+                total_sessions: number
+                total_players: number
+                replay_players: number
+                avg_net_pnl: string | null
+            }>>(Prisma.sql`
+                WITH sessions AS (
+                    SELECT ge."userId",
+                           CONCAT('bingo:', gt.id) AS game_key,
+                           DATE(ge."joinedAt")     AS play_date,
+                           NULL::numeric           AS session_pnl
+                    FROM game_entries ge
+                    JOIN games g ON g.id = ge."gameId"
+                    JOIN game_templates gt ON gt.id = g."templateId"
+                    JOIN users u ON u.id = ge."userId"
+                    WHERE u."passwordHash" != 'BOT_ACCOUNT' AND u.role = 'PLAYER'
+                      AND ge."joinedAt" >= ${from} AND ge."joinedAt" < ${to}
+
+                    UNION ALL
+
+                    SELECT tpt."userId",
+                           CONCAT('provider:', tpt."gameCode") AS game_key,
+                           DATE(tpt."createdAt")               AS play_date,
+                           SUM(tpt.amount)::numeric            AS session_pnl
+                    FROM third_party_transactions tpt
+                    JOIN users u ON u.id = tpt."userId"
+                    WHERE tpt."gameCode" IS NOT NULL
+                      AND u."passwordHash" != 'BOT_ACCOUNT' AND u.role = 'PLAYER'
+                      AND tpt."createdAt" >= ${from} AND tpt."createdAt" < ${to}
+                    GROUP BY tpt."userId", tpt."gameCode", DATE(tpt."createdAt")
+                ),
+                per_player AS (
+                    SELECT "userId", game_key, COUNT(DISTINCT play_date)::int AS day_count
+                    FROM sessions
+                    GROUP BY "userId", game_key
+                )
+                SELECT
+                    s.game_key,
+                    COUNT(*)::int                                                 AS total_sessions,
+                    COUNT(DISTINCT s."userId")::int                               AS total_players,
+                    COUNT(DISTINCT CASE WHEN pp.day_count > 1 THEN s."userId" END)::int AS replay_players,
+                    ROUND(AVG(s.session_pnl) FILTER (WHERE s.session_pnl IS NOT NULL), 2)::text AS avg_net_pnl
+                FROM sessions s
+                JOIN per_player pp ON pp."userId" = s."userId" AND pp.game_key = s.game_key
+                GROUP BY s.game_key
+            `),
+        ])
+
+        if (!cohortRows.length) return { rows: [], baselineReturn7dPct: 0 }
+
+        const baselineReturn7dPct = this.pct(
+            cohortRows[0]?.baseline_returned ?? 0,
+            cohortRows[0]?.baseline_total ?? 0,
+        )
+
+        const stickyMap = new Map(stickinessRows.map(r => [r.game_key, r]))
+
+        const rows = cohortRows.map(c => {
+            const s = stickyMap.get(c.game_key)
+            const returnRate7d = this.pct(c.returned_7d, c.cohort_size)
+            const totalSessions = s?.total_sessions ?? 0
+            const totalPlayers = s?.total_players ?? 0
+            return {
+                gameKey: c.game_key,
+                gameLabel: c.game_label,
+                gameType: c.game_type as 'bingo' | 'provider',
+                firstGameCohort: c.cohort_size,
+                returnRate7d,
+                lift: Math.round((returnRate7d - baselineReturn7dPct) * 10) / 10,
+                nextDayReturn: this.pct(c.returned_next_day, c.cohort_size),
+                replayRate: this.pct(s?.replay_players ?? 0, totalPlayers),
+                sessionsPerPlayer: totalPlayers ? Math.round((totalSessions / totalPlayers) * 10) / 10 : 0,
+                avgNetPnl: s?.avg_net_pnl != null ? Number(s.avg_net_pnl) : null,
+                lowSample: c.cohort_size < 10,
+            }
+        })
+
+        return { rows, baselineReturn7dPct }
+    }
+
+    /** Provider browse funnel: viewed → launched → first_bet → returned_7d */
+    static async getProviderBrowseFunnel(from: Date, to: Date) {
+        const rows = await prisma.$queryRaw<Array<{
+            viewed: number; launched: number; first_bet: number; returned_7d: number
+        }>>(Prisma.sql`
+            WITH viewed AS (
+                SELECT DISTINCT coalesce("userId", "anonId") AS actor
+                FROM analytics_events
+                WHERE name = 'provider_game_view'
+                  AND "createdAt" >= ${from} AND "createdAt" < ${to}
+            ),
+            launched AS (
+                SELECT DISTINCT "userId" AS actor
+                FROM analytics_events
+                WHERE name = 'provider_game_launched'
+                  AND "userId" IS NOT NULL
+                  AND "createdAt" >= ${from} AND "createdAt" < ${to}
+            ),
+            first_betters AS (
+                SELECT DISTINCT tpt."userId" AS actor
+                FROM third_party_transactions tpt
+                JOIN users u ON u.id = tpt."userId"
+                WHERE tpt.amount < 0
+                  AND tpt."gameCode" IS NOT NULL
+                  AND u."passwordHash" != 'BOT_ACCOUNT' AND u.role = 'PLAYER'
+                  AND tpt."createdAt" >= ${from} AND tpt."createdAt" < ${to}
+            ),
+            retained AS (
+                SELECT DISTINCT fb.actor
+                FROM first_betters fb
+                WHERE EXISTS (
+                    SELECT 1 FROM third_party_transactions tpt2
+                    JOIN users u2 ON u2.id = tpt2."userId"
+                    WHERE tpt2."userId" = fb.actor
+                      AND tpt2.amount < 0
+                      AND tpt2."createdAt" > ${to}
+                      AND tpt2."createdAt" < ${to}::timestamptz + INTERVAL '7 days'
+                      AND u2."passwordHash" != 'BOT_ACCOUNT' AND u2.role = 'PLAYER'
+                )
+            )
+            SELECT
+                (SELECT count(*)::int FROM viewed)       AS viewed,
+                (SELECT count(*)::int FROM launched)     AS launched,
+                (SELECT count(*)::int FROM first_betters) AS first_bet,
+                (SELECT count(*)::int FROM retained)     AS returned_7d
+        `)
+        const r = rows[0] ?? { viewed: 0, launched: 0, first_bet: 0, returned_7d: 0 }
+        const labels = ['viewed', 'launched', 'first_bet', 'returned_7d']
+        const values = [r.viewed, r.launched, r.first_bet, r.returned_7d]
+        return {
+            stages: this.buildFunnelStages(labels, values),
+            hasEnoughData: r.viewed >= 50,
+        }
+    }
 }
