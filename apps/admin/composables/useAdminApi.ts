@@ -111,6 +111,40 @@ export const useAdminApi = () => {
             }>(`/admin/analytics/conversion-kpis${query ? `?${query}` : ''}`)
         },
 
+        getGameRetentionScorecard: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                rows: Array<{
+                    gameKey: string
+                    gameLabel: string
+                    gameType: 'bingo' | 'provider'
+                    firstGameCohort: number
+                    returnRate7d: number
+                    lift: number
+                    nextDayReturn: number
+                    replayRate: number
+                    sessionsPerPlayer: number
+                    avgNetPnl: number | null
+                    lowSample: boolean
+                }>
+                baselineReturn7dPct: number
+            }>(`/admin/analytics/game-retention${query ? `?${query}` : ''}`)
+        },
+
+        getProviderBrowseFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                stages: Array<{ name: string; count: number; dropOffPct: number }>
+                hasEnoughData: boolean
+            }>(`/admin/analytics/provider-browse-funnel${query ? `?${query}` : ''}`)
+        },
+
         getPendingDeposits: (params?: {
             status?: string
             search?: string
