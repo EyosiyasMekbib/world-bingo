@@ -4,6 +4,7 @@ import { useAuthStore } from '~/store/auth'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { track } = useAnalytics()
 
 const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
@@ -12,11 +13,22 @@ const gameUrl = ref<string | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+const sessionStartedAt = ref<number | null>(null)
+
+function fireSessionEnd() {
+  if (!sessionStartedAt.value) return
+  const durationSecs = Math.round((Date.now() - sessionStartedAt.value) / 1000)
+  track('provider_session_ended', { providerCode, gameCode, sessionDurationSecs: durationSecs, balanceDelta: null })
+  sessionStartedAt.value = null
+}
+
 onMounted(async () => {
   if (!auth.isAuthenticated) {
     router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
     return
   }
+
+  track('provider_game_view', { providerCode, gameCode })
 
   try {
     const lobbyUrl = `${window.location.origin}/`
@@ -28,11 +40,21 @@ onMounted(async () => {
       },
     )
     gameUrl.value = result.gameUrl
+    sessionStartedAt.value = Date.now()
   } catch (e: any) {
     error.value = e?.data?.message ?? e?.message ?? 'Failed to launch game'
   } finally {
     loading.value = false
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') fireSessionEnd()
+  })
+  window.addEventListener('beforeunload', fireSessionEnd)
+})
+
+onUnmounted(() => {
+  fireSessionEnd()
 })
 
 useHead({

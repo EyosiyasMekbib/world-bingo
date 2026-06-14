@@ -8,6 +8,8 @@ const ALLOWED = new Set([
     'deposit_method_selected',
     'deposit_amount_entered',
     'identify',
+    'provider_game_view',
+    'provider_session_ended',
 ])
 
 interface RawEvent {
