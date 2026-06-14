@@ -25,13 +25,17 @@ const engagement = ref<Awaited<ReturnType<typeof api.getAnalyticsEngagement>> | 
 const browseFunnel = ref<Awaited<ReturnType<typeof api.getAnalyticsBrowseFunnel>> | null>(null)
 const depositFunnel = ref<Awaited<ReturnType<typeof api.getAnalyticsDepositFunnel>> | null>(null)
 const conversionKpis = ref<Awaited<ReturnType<typeof api.getAnalyticsConversionKpis>> | null>(null)
+const gameRetention = ref<Awaited<ReturnType<typeof api.getGameRetentionScorecard>> | null>(null)
+const providerFunnel = ref<Awaited<ReturnType<typeof api.getProviderBrowseFunnel>> | null>(null)
+const retentionSortKey = ref<'lift' | 'firstGameCohort' | 'returnRate7d' | 'replayRate'>('lift')
+const retentionSortDir = ref<'asc' | 'desc'>('desc')
 
 async function load() {
   loading.value = true
   error.value = null
   const from = new Date(Date.now() - rangeDays.value * 24 * 3600 * 1000).toISOString()
   try {
-    const [f, r, g, e, bf, df, ck] = await Promise.all([
+    const [f, r, g, e, bf, df, ck, gr, pf] = await Promise.all([
       api.getAnalyticsFunnel({ from }),
       api.getAnalyticsRetention(8),
       api.getAnalyticsGamesHealth({ from }),
@@ -39,6 +43,8 @@ async function load() {
       api.getAnalyticsBrowseFunnel({ from }),
       api.getAnalyticsDepositFunnel({ from }),
       api.getAnalyticsConversionKpis({ from }),
+      api.getGameRetentionScorecard({ from }),
+      api.getProviderBrowseFunnel({ from }),
     ])
     funnel.value = f
     retention.value = r
@@ -47,6 +53,8 @@ async function load() {
     browseFunnel.value = bf
     depositFunnel.value = df
     conversionKpis.value = ck
+    gameRetention.value = gr
+    providerFunnel.value = pf
   } catch (err: any) {
     error.value = err?.data?.error ?? err?.message ?? 'Failed to load analytics'
   } finally {
@@ -114,6 +122,23 @@ const chartOptions = {
 
 function retentionCellStyle(pct: number) {
   return { background: `rgba(245, 158, 11, ${Math.min(pct / 100, 1) * 0.75})` }
+}
+
+const sortedRetentionRows = computed(() => {
+  if (!gameRetention.value) return []
+  const rows = [...gameRetention.value.rows]
+  const key = retentionSortKey.value
+  const dir = retentionSortDir.value === 'desc' ? -1 : 1
+  return rows.sort((a, b) => (a[key] - b[key]) * dir)
+})
+
+function toggleSort(key: typeof retentionSortKey.value) {
+  if (retentionSortKey.value === key) {
+    retentionSortDir.value = retentionSortDir.value === 'desc' ? 'asc' : 'desc'
+  } else {
+    retentionSortKey.value = key
+    retentionSortDir.value = 'desc'
+  }
 }
 </script>
 
@@ -265,6 +290,97 @@ function retentionCellStyle(pct: number) {
         </div>
       </section>
 
+      <!-- ── Game Retention Scorecard ────────────────────────────── -->
+      <section class="card" v-if="gameRetention">
+        <h2 class="card-title">
+          Which games retain new players?
+          <span class="card-hint">
+            baseline 7-day return: {{ gameRetention.baselineReturn7dPct }}%
+          </span>
+        </h2>
+        <div class="retention-scroll">
+          <table class="scorecard-table">
+            <thead>
+              <tr>
+                <th class="sc-name">Game</th>
+                <th class="sc-type">Type</th>
+                <th class="sc-num" @click="toggleSort('firstGameCohort')" style="cursor:pointer">
+                  Cohort <span v-if="retentionSortKey === 'firstGameCohort'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
+                </th>
+                <th class="sc-num" @click="toggleSort('returnRate7d')" style="cursor:pointer">
+                  Return 7d <span v-if="retentionSortKey === 'returnRate7d'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
+                </th>
+                <th class="sc-num" @click="toggleSort('lift')" style="cursor:pointer">
+                  Lift <span v-if="retentionSortKey === 'lift'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
+                </th>
+                <th class="sc-num">Next-day</th>
+                <th class="sc-num" @click="toggleSort('replayRate')" style="cursor:pointer">
+                  Replay <span v-if="retentionSortKey === 'replayRate'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
+                </th>
+                <th class="sc-num">Plays/player</th>
+                <th class="sc-num">Avg P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in sortedRetentionRows"
+                :key="row.gameKey"
+                :class="{
+                  'sc-row--retaining': row.lift > 5,
+                  'sc-row--churn': row.lift < -5,
+                }"
+              >
+                <td class="sc-name">
+                  {{ row.gameLabel }}
+                  <span v-if="row.lowSample" class="sc-low-sample" title="Small cohort — treat with caution">⚠</span>
+                </td>
+                <td class="sc-type">
+                  <span class="sc-badge" :class="row.gameType === 'bingo' ? 'sc-badge--bingo' : 'sc-badge--provider'">
+                    {{ row.gameType === 'bingo' ? 'Bingo' : 'Slot' }}
+                  </span>
+                </td>
+                <td class="sc-num">{{ row.firstGameCohort.toLocaleString() }}</td>
+                <td class="sc-num">{{ row.returnRate7d }}%</td>
+                <td class="sc-num sc-lift" :class="row.lift > 0 ? 'sc-lift--up' : row.lift < 0 ? 'sc-lift--down' : ''">
+                  {{ row.lift > 0 ? '+' : '' }}{{ row.lift }}%
+                </td>
+                <td class="sc-num">{{ row.nextDayReturn }}%</td>
+                <td class="sc-num">{{ row.replayRate }}%</td>
+                <td class="sc-num">{{ row.sessionsPerPlayer }}×</td>
+                <td class="sc-num" :class="row.avgNetPnl != null && row.avgNetPnl < 0 ? 'sc-pnl--neg' : 'sc-pnl--pos'">
+                  {{ row.avgNetPnl != null ? (row.avgNetPnl >= 0 ? '+' : '') + row.avgNetPnl.toFixed(2) : '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Provider browse funnel sub-section (only when Tier 2 data exists) -->
+        <template v-if="providerFunnel">
+          <div v-if="!providerFunnel.hasEnoughData" class="sc-no-data">
+            Provider browse funnel — not enough data yet (need ≥ 50 provider game views in the window)
+          </div>
+          <template v-else>
+            <h3 class="sc-subtitle">Provider browse funnel</h3>
+            <div class="funnel">
+              <div v-for="stage in providerFunnel.stages" :key="stage.name" class="funnel-row">
+                <span class="funnel-label">{{ { viewed: 'Viewed game', launched: 'Launched', first_bet: 'Placed first bet', returned_7d: 'Returned 7d' }[stage.name] ?? stage.name }}</span>
+                <div class="funnel-track">
+                  <div
+                    class="funnel-bar funnel-bar--blue"
+                    :style="{ width: (providerFunnel.stages[0]?.count ? (stage.count / providerFunnel.stages[0].count) * 100 : 0) + '%' }"
+                  />
+                </div>
+                <span class="funnel-count">{{ stage.count.toLocaleString() }}</span>
+                <span class="funnel-pct" :class="stage.dropOffPct > 40 ? 'funnel-pct--warn' : ''">
+                  {{ stage.dropOffPct > 0 ? `-${stage.dropOffPct}%` : '—' }}
+                </span>
+              </div>
+            </div>
+          </template>
+        </template>
+      </section>
+
       <!-- ── Retention matrix ────────────────────────────────────── -->
       <section class="card" v-if="retention">
         <h2 class="card-title">Weekly retention cohorts <span class="card-hint">% of signup cohort playing in week N</span></h2>
@@ -359,4 +475,26 @@ function retentionCellStyle(pct: number) {
 .method-name { font-size: 13px; color: var(--text-primary); flex: 1; }
 .method-conv { font-size: 14px; font-weight: 700; color: #34d399; width: 44px; text-align: right; }
 .method-detail { font-size: 11px; color: var(--text-muted); }
+
+/* Game Retention Scorecard */
+.scorecard-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.scorecard-table th { padding: 6px 10px; text-align: right; color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--surface-border); white-space: nowrap; }
+.scorecard-table th.sc-name, .scorecard-table td.sc-name { text-align: left; }
+.scorecard-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-primary); }
+.sc-num { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-type { text-align: center; }
+.sc-row--retaining td { background: rgba(52,211,153,0.04); }
+.sc-row--churn td { background: rgba(248,113,113,0.05); }
+.sc-lift { font-weight: 700; }
+.sc-lift--up { color: #34d399; }
+.sc-lift--down { color: #f87171; }
+.sc-pnl--neg { color: #f87171; }
+.sc-pnl--pos { color: #34d399; }
+.sc-low-sample { color: #fbbf24; font-size: 10px; margin-left: 4px; cursor: help; }
+.sc-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+.sc-badge--bingo { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.sc-badge--provider { background: rgba(99,102,241,0.15); color: #818cf8; }
+.sc-subtitle { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 16px 0 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.sc-no-data { font-size: 12px; color: var(--text-muted); padding: 12px 0; margin-top: 12px; border-top: 1px solid var(--surface-border); }
+.retention-scroll { overflow-x: auto; }
 </style>
