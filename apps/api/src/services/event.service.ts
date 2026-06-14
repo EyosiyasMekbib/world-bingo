@@ -9,6 +9,9 @@ export const ALLOWED_EVENTS = [
     'deposit_amount_entered',
     'deposit_submitted',
     'identify',
+    'provider_game_view',
+    'provider_game_launched',
+    'provider_session_ended',
 ] as const
 
 export type AllowedEventName = (typeof ALLOWED_EVENTS)[number]
