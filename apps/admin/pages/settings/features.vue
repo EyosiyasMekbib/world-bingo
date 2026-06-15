@@ -19,6 +19,8 @@ const gameSettings = reactive({
   featured_template_id: '__NONE__',
   min_deposit_amount: 10,
   min_withdrawal_amount: 100,
+  max_deposit_amount: 50000,
+  max_withdrawal_amount: 10000,
 })
 
 const templates = ref<{ id: string; title: string; active: boolean }[]>([])
@@ -36,6 +38,8 @@ const fetchAll = async () => {
     gameSettings.featured_template_id = gs.featured_template_id ?? '__NONE__'
     gameSettings.min_deposit_amount = gs.min_deposit_amount ?? 10
     gameSettings.min_withdrawal_amount = gs.min_withdrawal_amount ?? 100
+    gameSettings.max_deposit_amount = gs.max_deposit_amount ?? 50000
+    gameSettings.max_withdrawal_amount = gs.max_withdrawal_amount ?? 10000
     templates.value = Array.isArray(tmpl) ? tmpl.filter((t: any) => t.active) : []
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
@@ -48,9 +52,9 @@ const saveFlags = async () => {
   saving.value = true
   try {
     await updateFeatureFlags({ ...features })
-    toast.add({ title: 'Saved ✅', description: 'Feature flags updated successfully', color: 'success' })
+    toast.add({ title: 'Saved ✅', description: 'Settings updated successfully', color: 'success' })
   } catch {
-    toast.add({ title: 'Error', description: 'Failed to save feature flags', color: 'error' })
+    toast.add({ title: 'Error', description: 'Failed to save settings', color: 'error' })
   } finally {
     saving.value = false
   }
@@ -66,6 +70,8 @@ const saveGameSettings = async () => {
       featured_template_id: gameSettings.featured_template_id === '__NONE__' ? null : gameSettings.featured_template_id,
       min_deposit_amount: gameSettings.min_deposit_amount,
       min_withdrawal_amount: gameSettings.min_withdrawal_amount,
+      max_deposit_amount: gameSettings.max_deposit_amount,
+      max_withdrawal_amount: gameSettings.max_withdrawal_amount,
     }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
@@ -73,6 +79,8 @@ const saveGameSettings = async () => {
     gameSettings.featured_template_id = result.featured_template_id ?? '__NONE__'
     gameSettings.min_deposit_amount = result.min_deposit_amount ?? 10
     gameSettings.min_withdrawal_amount = result.min_withdrawal_amount ?? 100
+    gameSettings.max_deposit_amount = result.max_deposit_amount ?? 50000
+    gameSettings.max_withdrawal_amount = result.max_withdrawal_amount ?? 10000
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -219,6 +227,46 @@ onMounted(fetchAll)
             </div>
           </div>
 
+          <!-- Max Deposit Amount -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-emerald-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:arrow-down-tray" class="w-6 h-6 text-emerald-400" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Maximum Deposit (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Maximum amount a player can deposit per transaction. Enforced on submission.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.max_deposit_amount"
+                  type="number"
+                  min="1"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Max Withdrawal Amount -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-blue-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:arrow-up-tray" class="w-6 h-6 text-blue-400" />
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-white">Maximum Withdrawal (ETB)</p>
+              <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Maximum amount a player can withdraw per request. Enforced on submission.</p>
+              <div class="flex items-center gap-2 mt-3">
+                <UInput
+                  v-model.number="gameSettings.max_withdrawal_amount"
+                  type="number"
+                  min="1"
+                  class="w-36"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Featured Hero Game -->
           <div class="flex items-start gap-4 mb-4 mt-4 pt-4 border-t border-white/10">
             <div class="p-3 rounded-xl border border-amber-500/20 shrink-0" style="background:var(--surface-overlay);">
@@ -252,11 +300,11 @@ onMounted(fetchAll)
         </div>
       </div>
 
-      <!-- ── Feature Flags ── -->
+      <!-- ── Platform Features ── -->
       <div class="space-y-4">
         <h2 class="text-base font-bold text-white flex items-center gap-2">
           <UIcon name="i-heroicons:beaker" class="w-5 h-5 text-cyan-400" />
-          Experimental Features
+          Platform Features
         </h2>
 
         <div class="space-y-3">

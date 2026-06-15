@@ -12,6 +12,8 @@ const DEFAULTS: Record<string, string> = {
     featured_template_id: '',
     min_deposit_amount: '10',
     min_withdrawal_amount: '100',
+    max_deposit_amount: '50000',
+    max_withdrawal_amount: '10000',
 }
 
 /**
@@ -49,7 +51,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     }, async (_req, _reply) => {
         await ensureDefaults()
         const rows = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount', 'max_deposit_amount', 'max_withdrawal_amount'] } },
         })
         const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
         return {
@@ -59,6 +61,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             featured_template_id: map.featured_template_id ?? '',
             min_deposit_amount: Number(map.min_deposit_amount ?? 10),
             min_withdrawal_amount: Number(map.min_withdrawal_amount ?? 100),
+            max_deposit_amount: Number(map.max_deposit_amount ?? 50000),
+            max_withdrawal_amount: Number(map.max_withdrawal_amount ?? 10000),
         }
     })
 
@@ -67,7 +71,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put('/game', {
         preValidation: [fastify.requireAdmin],
     }, async (req: any, _reply) => {
-        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }
+        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number; max_deposit_amount?: number; max_withdrawal_amount?: number }
         const updates: Record<string, string> = {}
         if (body.ball_interval_secs != null) {
             updates.ball_interval_secs = String(Math.max(1, Math.min(30, Number(body.ball_interval_secs))))
@@ -87,6 +91,12 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (body.min_withdrawal_amount != null) {
             updates.min_withdrawal_amount = String(Math.max(1, Number(body.min_withdrawal_amount)))
         }
+        if (body.max_deposit_amount != null) {
+            updates.max_deposit_amount = String(Math.max(1, Number(body.max_deposit_amount)))
+        }
+        if (body.max_withdrawal_amount != null) {
+            updates.max_withdrawal_amount = String(Math.max(1, Number(body.max_withdrawal_amount)))
+        }
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({
                 where: { key },
@@ -95,7 +105,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             })
         }
         const saved = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount', 'max_deposit_amount', 'max_withdrawal_amount'] } },
         })
         const savedMap = Object.fromEntries(saved.map((r) => [r.key, r.value]))
         return {
@@ -105,6 +115,8 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             featured_template_id: savedMap.featured_template_id ?? '',
             min_deposit_amount: Number(savedMap.min_deposit_amount ?? 10),
             min_withdrawal_amount: Number(savedMap.min_withdrawal_amount ?? 100),
+            max_deposit_amount: Number(savedMap.max_deposit_amount ?? 50000),
+            max_withdrawal_amount: Number(savedMap.max_withdrawal_amount ?? 10000),
         }
     })
 

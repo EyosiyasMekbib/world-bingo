@@ -14,10 +14,17 @@ export class WalletService {
     }
 
     static async initiateDeposit(userId: string, data: DepositDto) {
-        const minRow = await prisma.siteSetting.findUnique({ where: { key: 'min_deposit_amount' } })
+        const [minRow, maxRow] = await Promise.all([
+            prisma.siteSetting.findUnique({ where: { key: 'min_deposit_amount' } }),
+            prisma.siteSetting.findUnique({ where: { key: 'max_deposit_amount' } }),
+        ])
         const minDeposit = minRow ? Number(minRow.value) : 10
+        const maxDeposit = maxRow ? Number(maxRow.value) : 50000
         if (data.amount < minDeposit) {
             throw Object.assign(new Error(`Minimum deposit amount is ${minDeposit} Birr`), { statusCode: 400 })
+        }
+        if (data.amount > maxDeposit) {
+            throw Object.assign(new Error(`Maximum deposit amount is ${maxDeposit} Birr`), { statusCode: 400 })
         }
 
         // Normalize so dedup is case-insensitive (e.g. "ABC123" == "abc123")
@@ -192,10 +199,17 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
-        const minRow = await prisma.siteSetting.findUnique({ where: { key: 'min_withdrawal_amount' } })
+        const [minRow, maxRow] = await Promise.all([
+            prisma.siteSetting.findUnique({ where: { key: 'min_withdrawal_amount' } }),
+            prisma.siteSetting.findUnique({ where: { key: 'max_withdrawal_amount' } }),
+        ])
         const minWithdrawal = minRow ? Number(minRow.value) : 100
+        const maxWithdrawal = maxRow ? Number(maxRow.value) : 10000
         if (data.amount < minWithdrawal) {
             throw new Error(`Minimum withdrawal amount is ${minWithdrawal} Birr`)
+        }
+        if (data.amount > maxWithdrawal) {
+            throw new Error(`Maximum withdrawal amount is ${maxWithdrawal} Birr`)
         }
 
         return await prisma.$transaction(async (tx) => {

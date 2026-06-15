@@ -42,7 +42,7 @@ const allNavGroups = [
       { label: 'Providers',       icon: 'i-heroicons:globe-alt',              to: '/providers',                adminOnly: true },
       { label: 'Cashback',        icon: 'i-heroicons:gift',                   to: '/cashback',                 adminOnly: true },
       { label: 'Payment Methods', icon: 'i-heroicons:credit-card',            to: '/settings/payment-methods', adminOnly: true },
-      { label: 'Feature Flags',   icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features',        adminOnly: true },
+      { label: 'Settings',         icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features',        adminOnly: true },
       { label: 'Profile',         icon: 'i-heroicons:user-circle',            to: '/settings/profile',         adminOnly: false },
     ],
   },
