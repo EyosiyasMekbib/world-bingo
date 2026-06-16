@@ -106,11 +106,21 @@ onMounted(fetchPlayer)
         </div>
         <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Wagered</p>
-          <p class="font-bold text-white text-lg">{{ player.stats.totalWagered.toFixed(2) }}</p>
+          <p class="font-bold text-white text-lg">{{ player.stats.totalWagered.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
         </div>
         <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Won</p>
-          <p class="font-bold text-white text-lg">{{ player.stats.totalWon.toFixed(2) }}</p>
+          <p class="font-bold text-white text-lg">{{ player.stats.totalWon.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
+        </div>
+        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+          <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Deposited</p>
+          <p class="font-bold text-emerald-400 text-lg">{{ player.stats.totalDeposited.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
+          <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.depositCount }} deposits</p>
+        </div>
+        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+          <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Withdrawn</p>
+          <p class="font-bold text-red-400 text-lg">{{ player.stats.totalWithdrawn.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
+          <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.withdrawalCount }} withdrawals</p>
         </div>
       </div>
 

@@ -325,12 +325,16 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             const stats = await Promise.all([
                 prisma.transaction.aggregate({ where: { userId: req.params.id, type: TransactionType.GAME_ENTRY }, _count: true, _sum: { amount: true } }),
                 prisma.transaction.aggregate({ where: { userId: req.params.id, type: TransactionType.PRIZE_WIN }, _count: true, _sum: { amount: true } }),
+                prisma.transaction.aggregate({ where: { userId: req.params.id, type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED }, _count: true, _sum: { amount: true } }),
+                prisma.transaction.aggregate({ where: { userId: req.params.id, type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED }, _count: true, _sum: { amount: true } }),
             ])
             return {
                 ...user, transactions,
                 stats: {
                     gamesPlayed: stats[0]._count, totalWagered: Number(stats[0]._sum.amount ?? 0),
                     gamesWon: stats[1]._count, totalWon: Number(stats[1]._sum.amount ?? 0),
+                    depositCount: stats[2]._count, totalDeposited: Number(stats[2]._sum.amount ?? 0),
+                    withdrawalCount: stats[3]._count, totalWithdrawn: Number(stats[3]._sum.amount ?? 0),
                 },
             }
         })
