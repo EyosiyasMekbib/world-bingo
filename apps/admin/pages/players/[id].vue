@@ -9,6 +9,25 @@ const player = ref<any>(null)
 const loading = ref(true)
 const showAdjust = ref(false)
 const adjusting = ref(false)
+const activeFilter = ref<string | null>(null)
+
+const FILTER_MAP: Record<string, string[]> = {
+  games: ['GAME_ENTRY'],
+  wins: ['PRIZE_WIN'],
+  deposits: ['DEPOSIT'],
+  withdrawals: ['WITHDRAWAL'],
+}
+
+const filteredTransactions = computed(() => {
+  if (!player.value?.transactions) return []
+  if (!activeFilter.value) return player.value.transactions
+  const types = FILTER_MAP[activeFilter.value] ?? []
+  return player.value.transactions.filter((tx: any) => types.includes(tx.type))
+})
+
+function toggleFilter(key: string) {
+  activeFilter.value = activeFilter.value === key ? null : key
+}
 
 const adjustForm = reactive({
   type: 'real' as 'real' | 'bonus',
@@ -96,32 +115,46 @@ onMounted(fetchPlayer)
 
       <!-- Stats -->
       <div v-if="player.stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+        <button
+          class="p-4 rounded-2xl border text-left transition-all"
+          :class="activeFilter === 'games' ? 'border-yellow-500/60 ring-1 ring-yellow-500/40' : 'border-(--surface-border) hover:border-white/20'"
+          style="background:var(--surface-raised);"
+          @click="toggleFilter('games')"
+        >
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Games Played</p>
           <p class="font-bold text-white text-lg">{{ player.stats.gamesPlayed }}</p>
-        </div>
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+          <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.totalWagered.toFixed(2) }} ETB wagered</p>
+        </button>
+        <button
+          class="p-4 rounded-2xl border text-left transition-all"
+          :class="activeFilter === 'wins' ? 'border-yellow-500/60 ring-1 ring-yellow-500/40' : 'border-(--surface-border) hover:border-white/20'"
+          style="background:var(--surface-raised);"
+          @click="toggleFilter('wins')"
+        >
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Games Won</p>
           <p class="font-bold text-white text-lg">{{ player.stats.gamesWon }}</p>
-        </div>
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
-          <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Wagered</p>
-          <p class="font-bold text-white text-lg">{{ player.stats.totalWagered.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
-        </div>
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
-          <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Won</p>
-          <p class="font-bold text-white text-lg">{{ player.stats.totalWon.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
-        </div>
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+          <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.totalWon.toFixed(2) }} ETB won</p>
+        </button>
+        <button
+          class="p-4 rounded-2xl border text-left transition-all"
+          :class="activeFilter === 'deposits' ? 'border-emerald-500/60 ring-1 ring-emerald-500/40' : 'border-(--surface-border) hover:border-white/20'"
+          style="background:var(--surface-raised);"
+          @click="toggleFilter('deposits')"
+        >
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Deposited</p>
           <p class="font-bold text-emerald-400 text-lg">{{ player.stats.totalDeposited.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
           <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.depositCount }} deposits</p>
-        </div>
-        <div class="p-4 rounded-2xl border border-(--surface-border)" style="background:var(--surface-raised);">
+        </button>
+        <button
+          class="p-4 rounded-2xl border text-left transition-all"
+          :class="activeFilter === 'withdrawals' ? 'border-red-500/60 ring-1 ring-red-500/40' : 'border-(--surface-border) hover:border-white/20'"
+          style="background:var(--surface-raised);"
+          @click="toggleFilter('withdrawals')"
+        >
           <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Total Withdrawn</p>
           <p class="font-bold text-red-400 text-lg">{{ player.stats.totalWithdrawn.toFixed(2) }} <span class="text-xs text-white/30">ETB</span></p>
           <p class="text-[10px] text-white/20 mt-0.5">{{ player.stats.withdrawalCount }} withdrawals</p>
-        </div>
+        </button>
       </div>
 
       <!-- Actions -->
@@ -131,7 +164,13 @@ onMounted(fetchPlayer)
 
       <!-- Transaction History -->
       <div>
-        <h2 class="text-base font-bold text-white mb-3">Recent Transactions</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-bold text-white">
+            {{ activeFilter ? { games: 'Game Entries', wins: 'Prize Wins', deposits: 'Deposits', withdrawals: 'Withdrawals' }[activeFilter] : 'Recent Transactions' }}
+            <span class="text-white/30 font-normal text-sm ml-1">({{ filteredTransactions.length }})</span>
+          </h2>
+          <UButton v-if="activeFilter" icon="i-heroicons:x-mark" label="Clear filter" color="neutral" variant="ghost" size="xs" @click="activeFilter = null" />
+        </div>
         <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl bg-(--surface-raised)">
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -145,10 +184,10 @@ onMounted(fetchPlayer)
                 </tr>
               </thead>
               <tbody class="divide-y divide-white/5">
-                <tr v-if="!player.transactions?.length">
+                <tr v-if="!filteredTransactions.length">
                   <td colspan="5" class="px-4 py-8 text-center text-white/30">No transactions</td>
                 </tr>
-                <tr v-for="tx in player.transactions" :key="tx.id" class="hover:bg-white/3">
+                <tr v-for="tx in filteredTransactions" :key="tx.id" class="hover:bg-white/3">
                   <td class="px-4 py-3">
                     <UBadge :color="txColor(tx.type)" variant="soft" :label="tx.type" size="xs" />
                   </td>
