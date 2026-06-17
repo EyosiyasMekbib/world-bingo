@@ -134,6 +134,26 @@ export const useAdminApi = () => {
             }>(`/admin/analytics/game-retention${query ? `?${query}` : ''}`)
         },
 
+        getAnalyticsGamePnl: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<Array<{
+                gameId: string
+                title: string
+                ticketPrice: number
+                houseEdgePct: number
+                endedAt: string | null
+                playerCount: number
+                grossRevenue: number
+                totalPrizes: number
+                netPnl: number
+                expectedHouse: number
+                shortfall: number
+            }>>(`/admin/analytics/game-pnl${query ? `?${query}` : ''}`)
+        },
+
         getProviderBrowseFunnel: (params?: { from?: string; to?: string }) => {
             const qs = new URLSearchParams()
             if (params?.from) qs.set('from', params.from)

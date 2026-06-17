@@ -550,6 +550,64 @@ export class AnalyticsService {
         return { rows, baselineReturn7dPct }
     }
 
+    /** Top 50 games by ascending net P&L (entry fees collected minus prizes paid to real players). */
+    static async getGamePnl(from: Date, to: Date) {
+        const rows = await prisma.$queryRaw<Array<{
+            game_id: string
+            title: string
+            ticket_price: string
+            house_edge_pct: string
+            ended_at: Date | null
+            player_count: number
+            gross_revenue: string
+            total_prizes: string
+            net_pnl: string
+            expected_house: string
+        }>>(Prisma.sql`
+            SELECT
+                g.id                                                              AS game_id,
+                g.title,
+                g."ticketPrice"::text                                             AS ticket_price,
+                g."houseEdgePct"::text                                            AS house_edge_pct,
+                g."endedAt"                                                        AS ended_at,
+                COUNT(DISTINCT ge."userId")::int                                  AS player_count,
+                COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0)::text  AS gross_revenue,
+                COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)::text   AS total_prizes,
+                (
+                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) -
+                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)
+                )::text                                                           AS net_pnl,
+                (
+                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) *
+                  g."houseEdgePct" / 100
+                )::text                                                           AS expected_house
+            FROM games g
+            LEFT JOIN game_entries ge ON ge."gameId" = g.id
+            LEFT JOIN transactions te ON te."referenceId" = g.id
+                AND te.type IN ('GAME_ENTRY', 'PRIZE_WIN')
+                AND te.status = 'APPROVED'
+            WHERE g.status = 'COMPLETED'
+              AND g."endedAt" >= ${from} AND g."endedAt" < ${to}
+            GROUP BY g.id
+            ORDER BY net_pnl::numeric ASC
+            LIMIT 50
+        `)
+
+        return rows.map(r => ({
+            gameId: r.game_id,
+            title: r.title,
+            ticketPrice: Number(r.ticket_price),
+            houseEdgePct: Number(r.house_edge_pct),
+            endedAt: r.ended_at?.toISOString() ?? null,
+            playerCount: r.player_count,
+            grossRevenue: Number(r.gross_revenue),
+            totalPrizes: Number(r.total_prizes),
+            netPnl: Number(r.net_pnl),
+            expectedHouse: Number(r.expected_house),
+            shortfall: Number(r.expected_house) - Number(r.net_pnl),
+        }))
+    }
+
     /** Provider browse funnel: viewed → launched → first_bet → returned_7d */
     static async getProviderBrowseFunnel(from: Date, to: Date) {
         const rows = await prisma.$queryRaw<Array<{

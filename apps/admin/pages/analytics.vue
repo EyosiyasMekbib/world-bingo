@@ -27,6 +27,9 @@ const depositFunnel = ref<Awaited<ReturnType<typeof api.getAnalyticsDepositFunne
 const conversionKpis = ref<Awaited<ReturnType<typeof api.getAnalyticsConversionKpis>> | null>(null)
 const gameRetention = ref<Awaited<ReturnType<typeof api.getGameRetentionScorecard>> | null>(null)
 const providerFunnel = ref<Awaited<ReturnType<typeof api.getProviderBrowseFunnel>> | null>(null)
+const gamePnl = ref<Awaited<ReturnType<typeof api.getAnalyticsGamePnl>> | null>(null)
+const pnlSortKey = ref<'netPnl' | 'shortfall' | 'grossRevenue' | 'totalPrizes' | 'playerCount'>('netPnl')
+const pnlSortDir = ref<'asc' | 'desc'>('asc')
 const retentionSortKey = ref<'lift' | 'firstGameCohort' | 'returnRate7d' | 'replayRate'>('lift')
 const retentionSortDir = ref<'asc' | 'desc'>('desc')
 
@@ -35,7 +38,7 @@ async function load() {
   error.value = null
   const from = new Date(Date.now() - rangeDays.value * 24 * 3600 * 1000).toISOString()
   try {
-    const [f, r, g, e, bf, df, ck, gr, pf] = await Promise.all([
+    const [f, r, g, e, bf, df, ck, gr, pf, gp] = await Promise.all([
       api.getAnalyticsFunnel({ from }),
       api.getAnalyticsRetention(8),
       api.getAnalyticsGamesHealth({ from }),
@@ -45,6 +48,7 @@ async function load() {
       api.getAnalyticsConversionKpis({ from }),
       api.getGameRetentionScorecard({ from }),
       api.getProviderBrowseFunnel({ from }),
+      api.getAnalyticsGamePnl({ from }),
     ])
     funnel.value = f
     retention.value = r
@@ -55,6 +59,7 @@ async function load() {
     conversionKpis.value = ck
     gameRetention.value = gr
     providerFunnel.value = pf
+    gamePnl.value = gp
   } catch (err: any) {
     error.value = err?.data?.error ?? err?.message ?? 'Failed to load analytics'
   } finally {
@@ -139,6 +144,48 @@ function toggleSort(key: typeof retentionSortKey.value) {
     retentionSortKey.value = key
     retentionSortDir.value = 'desc'
   }
+}
+
+const sortedGamePnl = computed(() => {
+  if (!gamePnl.value) return []
+  const rows = [...gamePnl.value]
+  const key = pnlSortKey.value
+  const dir = pnlSortDir.value === 'asc' ? 1 : -1
+  return rows.sort((a, b) => (a[key] - b[key]) * dir)
+})
+
+function togglePnlSort(key: typeof pnlSortKey.value) {
+  if (pnlSortKey.value === key) {
+    pnlSortDir.value = pnlSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    pnlSortKey.value = key
+    pnlSortDir.value = 'asc'
+  }
+}
+
+function exportGamePnlCsv() {
+  if (!gamePnl.value?.length) return
+  const headers = ['Game', 'Ended At', 'Players', 'Ticket Price (ETB)', 'House Edge %', 'Gross Revenue (ETB)', 'Prizes Paid (ETB)', 'Net P&L (ETB)', 'Expected House (ETB)', 'Shortfall (ETB)']
+  const rows = sortedGamePnl.value.map(r => [
+    `"${r.title.replace(/"/g, '""')}"`,
+    r.endedAt ? new Date(r.endedAt).toISOString().slice(0, 19).replace('T', ' ') : '',
+    r.playerCount,
+    r.ticketPrice.toFixed(2),
+    r.houseEdgePct.toFixed(1),
+    r.grossRevenue.toFixed(2),
+    r.totalPrizes.toFixed(2),
+    r.netPnl.toFixed(2),
+    r.expectedHouse.toFixed(2),
+    r.shortfall.toFixed(2),
+  ])
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `game-pnl-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 </script>
 
@@ -381,6 +428,75 @@ function toggleSort(key: typeof retentionSortKey.value) {
         </template>
       </section>
 
+      <!-- ── Game P&L ─────────────────────────────────────────────── -->
+      <section class="card" v-if="gamePnl">
+        <div class="pnl-head">
+          <div>
+            <h2 class="card-title" style="margin-bottom:2px;">Which games are costing us money?</h2>
+            <p class="pnl-sub">Top 50 completed games sorted by net P&amp;L — lowest first. Net = entries collected − prizes paid to real players.</p>
+          </div>
+          <button class="pnl-export-btn" @click="exportGamePnlCsv">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+        <div class="retention-scroll">
+          <table class="scorecard-table">
+            <thead>
+              <tr>
+                <th class="sc-name">Game</th>
+                <th class="sc-num" @click="togglePnlSort('playerCount')" style="cursor:pointer">
+                  Players <span v-if="pnlSortKey === 'playerCount'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num">Ticket</th>
+                <th class="sc-num">Edge %</th>
+                <th class="sc-num" @click="togglePnlSort('grossRevenue')" style="cursor:pointer">
+                  Revenue <span v-if="pnlSortKey === 'grossRevenue'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num" @click="togglePnlSort('totalPrizes')" style="cursor:pointer">
+                  Prizes Paid <span v-if="pnlSortKey === 'totalPrizes'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num" @click="togglePnlSort('expectedHouse')" style="cursor:pointer">
+                  Expected <span v-if="pnlSortKey === 'expectedHouse'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num" @click="togglePnlSort('netPnl')" style="cursor:pointer">
+                  Net P&amp;L <span v-if="pnlSortKey === 'netPnl'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num" @click="togglePnlSort('shortfall')" style="cursor:pointer">
+                  Shortfall <span v-if="pnlSortKey === 'shortfall'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
+                </th>
+                <th class="sc-num">Ended</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!sortedGamePnl.length">
+                <td colspan="10" class="pnl-empty">No completed games in this period</td>
+              </tr>
+              <tr
+                v-for="row in sortedGamePnl"
+                :key="row.gameId"
+                :class="row.netPnl < 0 ? 'sc-row--churn' : row.shortfall > 0 ? 'sc-row--warn' : ''"
+              >
+                <td class="sc-name pnl-title">{{ row.title }}</td>
+                <td class="sc-num">{{ row.playerCount }}</td>
+                <td class="sc-num pnl-mono">{{ row.ticketPrice.toFixed(2) }}</td>
+                <td class="sc-num pnl-mono">{{ row.houseEdgePct }}%</td>
+                <td class="sc-num pnl-mono">{{ row.grossRevenue.toFixed(2) }}</td>
+                <td class="sc-num pnl-mono">{{ row.totalPrizes.toFixed(2) }}</td>
+                <td class="sc-num pnl-mono pnl-expected">{{ row.expectedHouse.toFixed(2) }}</td>
+                <td class="sc-num pnl-mono" :class="row.netPnl < 0 ? 'sc-pnl--neg' : 'sc-pnl--pos'">
+                  {{ row.netPnl >= 0 ? '+' : '' }}{{ row.netPnl.toFixed(2) }}
+                </td>
+                <td class="sc-num pnl-mono" :class="row.shortfall > 0.01 ? 'sc-pnl--neg' : 'sc-pnl--pos'">
+                  {{ row.shortfall > 0.01 ? '-' : '' }}{{ Math.abs(row.shortfall).toFixed(2) }}
+                </td>
+                <td class="sc-num pnl-date">{{ row.endedAt ? new Date(row.endedAt).toLocaleDateString('en-ET', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ── Retention matrix ────────────────────────────────────── -->
       <section class="card" v-if="retention">
         <h2 class="card-title">Weekly retention cohorts <span class="card-hint">% of signup cohort playing in week N</span></h2>
@@ -497,4 +613,22 @@ function toggleSort(key: typeof retentionSortKey.value) {
 .sc-subtitle { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 16px 0 10px; text-transform: uppercase; letter-spacing: 0.06em; }
 .sc-no-data { font-size: 12px; color: var(--text-muted); padding: 12px 0; margin-top: 12px; border-top: 1px solid var(--surface-border); }
 .retention-scroll { overflow-x: auto; }
+
+/* Game P&L table */
+.pnl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.pnl-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.pnl-export-btn {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border-radius: 6px; border: 1px solid var(--surface-border);
+  background: rgba(255,255,255,0.04); color: var(--text-secondary);
+  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background 0.15s;
+}
+.pnl-export-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+.pnl-title { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pnl-mono { font-variant-numeric: tabular-nums; font-family: monospace; font-size: 11px; }
+.pnl-expected { color: rgba(255,255,255,0.35); }
+.pnl-date { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.pnl-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.sc-row--warn td { background: rgba(251,191,36,0.04); }
 </style>

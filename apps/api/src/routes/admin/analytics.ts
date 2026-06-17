@@ -89,6 +89,17 @@ const analyticsRoutes: FastifyPluginAsync = async (fastify) => {
         }
     })
 
+    fastify.get('/game-pnl', async (req: any, reply) => {
+        const parsed = rangeQuerySchema.safeParse(req.query)
+        if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', details: parsed.error.issues })
+        try {
+            const { from, to } = AnalyticsService.parseRange(parsed.data.from, parsed.data.to)
+            return await AnalyticsService.getGamePnl(from, to)
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message })
+        }
+    })
+
     fastify.get('/provider-browse-funnel', async (req: any, reply) => {
         const parsed = rangeQuerySchema.safeParse(req.query)
         if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', details: parsed.error.issues })
