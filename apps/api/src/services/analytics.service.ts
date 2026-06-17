@@ -564,32 +564,34 @@ export class AnalyticsService {
             net_pnl: string
             expected_house: string
         }>>(Prisma.sql`
+            WITH game_stats AS (
+                SELECT
+                    g.id                                                                    AS game_id,
+                    g.title,
+                    g."ticketPrice"::text                                                   AS ticket_price,
+                    g."houseEdgePct"::text                                                  AS house_edge_pct,
+                    g."endedAt"                                                             AS ended_at,
+                    COUNT(DISTINCT ge."userId")::int                                        AS player_count,
+                    COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0)      AS gross_revenue,
+                    COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)       AS total_prizes,
+                    COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) -
+                    COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)       AS net_pnl,
+                    COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) *
+                    g."houseEdgePct" / 100                                                  AS expected_house
+                FROM games g
+                LEFT JOIN game_entries ge ON ge."gameId" = g.id
+                LEFT JOIN transactions te ON te."referenceId" = g.id
+                    AND te.type IN ('GAME_ENTRY', 'PRIZE_WIN')
+                    AND te.status = 'APPROVED'
+                WHERE g.status = 'COMPLETED'
+                  AND g."endedAt" >= ${from} AND g."endedAt" < ${to}
+                GROUP BY g.id
+            )
             SELECT
-                g.id                                                              AS game_id,
-                g.title,
-                g."ticketPrice"::text                                             AS ticket_price,
-                g."houseEdgePct"::text                                            AS house_edge_pct,
-                g."endedAt"                                                        AS ended_at,
-                COUNT(DISTINCT ge."userId")::int                                  AS player_count,
-                COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0)::text  AS gross_revenue,
-                COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)::text   AS total_prizes,
-                (
-                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) -
-                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'PRIZE_WIN'), 0)
-                )::text                                                           AS net_pnl,
-                (
-                  COALESCE(SUM(te.amount) FILTER (WHERE te.type = 'GAME_ENTRY'), 0) *
-                  g."houseEdgePct" / 100
-                )::text                                                           AS expected_house
-            FROM games g
-            LEFT JOIN game_entries ge ON ge."gameId" = g.id
-            LEFT JOIN transactions te ON te."referenceId" = g.id
-                AND te.type IN ('GAME_ENTRY', 'PRIZE_WIN')
-                AND te.status = 'APPROVED'
-            WHERE g.status = 'COMPLETED'
-              AND g."endedAt" >= ${from} AND g."endedAt" < ${to}
-            GROUP BY g.id
-            ORDER BY net_pnl::numeric ASC
+                game_id, title, ticket_price, house_edge_pct, ended_at, player_count,
+                gross_revenue::text, total_prizes::text, net_pnl::text, expected_house::text
+            FROM game_stats
+            ORDER BY net_pnl ASC
             LIMIT 50
         `)
 
