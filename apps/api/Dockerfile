@@ -9,7 +9,7 @@ FROM node:22-alpine AS builder
 RUN apk add --no-cache openssl
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN npm install -g pnpm@9.15.0
 
 WORKDIR /app
 
