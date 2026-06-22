@@ -154,7 +154,7 @@ async function submit() {
       resetForm()
     }, 2500)
   } catch (e: any) {
-    error.value = e?.data?.message ?? e?.message ?? 'Withdrawal request failed. Please try again.'
+    error.value = e?.data?.error ?? e?.data?.message ?? e?.message ?? 'Withdrawal request failed. Please try again.'
   } finally {
     loading.value = false
   }

@@ -199,6 +199,16 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
+        const pendingWithdrawal = await prisma.transaction.findFirst({
+            where: { userId, type: TransactionType.WITHDRAWAL, status: PaymentStatus.PENDING_REVIEW },
+        })
+        if (pendingWithdrawal) {
+            throw Object.assign(
+                new Error('You already have a pending withdrawal request. Please wait for it to be processed before submitting a new one.'),
+                { statusCode: 409 },
+            )
+        }
+
         const [minRow, maxRow] = await Promise.all([
             prisma.siteSetting.findUnique({ where: { key: 'min_withdrawal_amount' } }),
             prisma.siteSetting.findUnique({ where: { key: 'max_withdrawal_amount' } }),

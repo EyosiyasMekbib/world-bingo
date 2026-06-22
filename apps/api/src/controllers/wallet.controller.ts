@@ -103,8 +103,15 @@ export class WalletController {
     static async withdraw(request: FastifyRequest<{ Body: WithdrawalDto }>, reply: FastifyReply) {
         // @ts-ignore
         const userId = request.user.id
-        const transaction = await WalletService.requestWithdrawal(userId, request.body)
-        return transaction
+        try {
+            const transaction = await WalletService.requestWithdrawal(userId, request.body)
+            return transaction
+        } catch (err: any) {
+            if (err.statusCode === 409) {
+                return reply.status(409).send({ error: err.message })
+            }
+            throw err
+        }
     }
 
     static async getStats(request: FastifyRequest, reply: FastifyReply) {
