@@ -40,13 +40,11 @@ export async function verifyPalaceCallbackToken(
         return reply.status(200).send(palaceError(1001, 'INTERNAL_SERVER_ERROR'))
     }
 
-    // Pad both to same length before timingSafeEqual (requires equal-length buffers)
-    const maxLen = Math.max(received.length, expected.length)
-    const a = Buffer.from(received.padEnd(maxLen))
-    const b = Buffer.from(expected.padEnd(maxLen))
-    const timingSafe = crypto.timingSafeEqual(a, b)
-    // Also do direct string comparison to prevent padded-match false positives
-    const same = timingSafe && received === expected
+    // Hash both sides to fixed-length digests before comparing — hides both value and length
+    const hmacKey = Buffer.alloc(32)
+    const digestA = crypto.createHmac('sha256', hmacKey).update(received).digest()
+    const digestB = crypto.createHmac('sha256', hmacKey).update(expected).digest()
+    const same = crypto.timingSafeEqual(digestA, digestB)
 
     if (!same) {
         request.log.warn('[Palace] Invalid Callback-Token on %s', request.url)

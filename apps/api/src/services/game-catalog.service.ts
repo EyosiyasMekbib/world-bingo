@@ -299,7 +299,8 @@ export class GameCatalogService {
         })
         const seenDedupKeys = new Map<string, true>()
         const dedupedGames = sortedForDedup.filter((game) => {
-            const key = dedupKey(game.vendor?.name ?? '', game.gameName)
+            if (!game.vendor?.name) return true // no vendor info → always include
+            const key = dedupKey(game.vendor.name, game.gameName)
             if (seenDedupKeys.has(key)) return false
             seenDedupKeys.set(key, true)
             return true

@@ -24,6 +24,7 @@ async function request<T>(path: string, body: object): Promise<T> {
     if (!res.ok) throw new Error(`Palace ${path} responded ${res.status}`)
     const json = (await res.json()) as { code: number; message: string; data?: T }
     if (json.code !== 0) throw new Error(`Palace error: ${json.code} — ${json.message}`)
+    if (json.data == null) throw new Error(`Palace ${path} returned no data`)
     return json.data as T
 }
 
@@ -168,6 +169,7 @@ export class PalaceGateway implements GameProviderGateway {
 
         const t = data[0]
         if (!t) throw new Error(`Palace transaction ${betId} not found`)
+        if (String(t.trans_id) !== betId) throw new Error(`Palace transaction ${betId} not found (cursor returned ${t.trans_id})`)
 
         return {
             betId: String(t.trans_id),
@@ -206,9 +208,17 @@ export class PalaceGateway implements GameProviderGateway {
         if (existing) return existing.externalUserCode
 
         const data = await request<{ user_code: number }>('/v4/user/create', { name: username })
-        await prisma.providerUserAccount.create({
-            data: { providerId: provider.id, userId: user.id, externalUserCode: String(data.user_code) },
-        })
+        try {
+            await prisma.providerUserAccount.create({
+                data: { providerId: provider.id, userId: user.id, externalUserCode: String(data.user_code) },
+            })
+        } catch {
+            // Unique constraint: concurrent request already created the record
+            const conflict = await prisma.providerUserAccount.findUnique({
+                where: { providerId_userId: { providerId: provider.id, userId: user.id } },
+            })
+            if (conflict) return conflict.externalUserCode
+        }
         return String(data.user_code)
     }
 
