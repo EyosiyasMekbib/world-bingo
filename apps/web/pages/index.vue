@@ -317,6 +317,19 @@ function providerToCard(g: ProviderGame): LobbyCard {
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
 const categoryGamesLoading = ref<Record<string, boolean>>({})
 
+// Pool of every loaded provider game (default page + each fetched category), deduped by gameCode.
+// Ensures featured games living in non-default categories (e.g. INSTWIN) can surface in the ALL grid.
+const allProviderGames = computed<ProviderGame[]>(() => {
+  const seen = new Set<string>()
+  const pool: ProviderGame[] = []
+  for (const g of [...providerStore.games, ...Object.values(categoryGamesMap.value).flat()]) {
+    if (seen.has(g.gameCode)) continue
+    seen.add(g.gameCode)
+    pool.push(g)
+  }
+  return pool
+})
+
 const gridGames = computed<LobbyCard[]>(() => {
   const cat = selectedCategory.value
   let cards: LobbyCard[]
@@ -324,9 +337,9 @@ const gridGames = computed<LobbyCard[]>(() => {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
     // Featured games first, then remaining provider games; bingo rooms at the bottom
-    cards = [...sortFeatured(providerStore.games.filter(hasImage)).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...sortFeatured(providerStore.games.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
     cards = popularBingo.value.map(bingoToCard)
   } else {
