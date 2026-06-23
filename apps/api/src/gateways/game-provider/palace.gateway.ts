@@ -194,12 +194,18 @@ export class PalaceGateway implements GameProviderGateway {
         }
     }
 
-    /** Lazily provision or retrieve Palace user_code for a given username. */
+    /** Lazily provision or retrieve Palace user_code for a given username or UUID-without-dashes. */
     async getUserCode(username: string): Promise<string> {
         const provider = await prisma.gameProvider.findUnique({ where: { code: 'palace' } })
         if (!provider) throw new Error('Palace provider not seeded in DB')
 
-        const user = await prisma.user.findUnique({ where: { username }, select: { id: true } })
+        let user: { id: string } | null = null
+        if (/^[0-9a-f]{32}$/i.test(username)) {
+            const id = `${username.slice(0,8)}-${username.slice(8,12)}-${username.slice(12,16)}-${username.slice(16,20)}-${username.slice(20)}`
+            user = await prisma.user.findUnique({ where: { id }, select: { id: true } })
+        } else {
+            user = await prisma.user.findUnique({ where: { username }, select: { id: true } })
+        }
         if (!user) throw new Error(`User not found: ${username}`)
 
         const existing = await prisma.providerUserAccount.findUnique({
