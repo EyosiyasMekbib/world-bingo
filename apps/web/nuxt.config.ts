@@ -30,7 +30,11 @@ export default defineNuxtConfig({
         serverBundle: 'remote',
     },
 
-    css: ['@world-bingo/ui/styles/tokens.css', '~/assets/css/theme.css'],
+    css: [
+        '@world-bingo/ui/theme/tokens.base.css',
+        '@world-bingo/ui/styles/tokens.css',
+        '~/assets/css/theme.css',
+    ],
 
     runtimeConfig: {
         jwtSecret: '',
@@ -43,6 +47,7 @@ export default defineNuxtConfig({
             wsUrl: 'http://localhost:8080',
             telegramBotName: '',
             telegramBotId: '',
+            brand: 'arada', // overridden per-deployment by NUXT_PUBLIC_BRAND
         },
     },
 
@@ -67,10 +72,10 @@ export default defineNuxtConfig({
     pwa: {
         registerType: 'autoUpdate',
         manifest: {
-            name: 'World Bingo',
-            short_name: 'Bingo',
-            theme_color: '#f59e0b',
-            background_color: '#0a0d14',
+            name: 'Arada Bingo',
+            short_name: 'Arada',
+            theme_color: '#f5a623',
+            background_color: '#0a1628',
         },
     },
 
