@@ -14,326 +14,150 @@ const { connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
 const { track } = useAnalytics()
-const { tournamentsEnabled } = useFeatureFlags()
 
-const searchQuery = ref('')
 const showAuthPrompt = ref(false)
-const selectedCategory = ref('POPULAR')
 
+/* ── Categories ─────────────────────────────────────────────────────────── */
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
   TRENDING: 'Trending',
   POPULAR: 'Popular',
   BINGO: 'Bingo',
+  ARCADE: 'Arcade',
+  FISH: 'Fish',
+  MINI: 'Mini',
   SLOTS: 'Slots',
   LIVE: 'Live',
   TABLE: 'Table',
   CRASH: 'Crash',
 }
 
+const selectedCategory = ref('ALL')
+const showFavorites = ref(false)
+
 const allCategories = computed(() => {
   const base = ['ALL', 'TRENDING', 'POPULAR', 'BINGO']
-  const providerCats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
-  return [...base, ...providerCats]
+  const extra = providerStore.categories.filter((c) => !base.includes(c) && c !== 'ALL')
+  return [...base, ...extra]
 })
 
 function selectCategory(cat: string) {
   selectedCategory.value = cat
-  searchQuery.value = ''
+  showFavorites.value = false
 }
 
-function goToSearch() {
-  const q = searchQuery.value.trim()
-  if (!q) return
-  navigateTo({ path: '/search', query: { q } })
-}
-
-// TRENDING: live/starting games first, then by player count
-const trendingBingoGames = computed(() => {
-  const weight = (s: string) => s === 'IN_PROGRESS' ? 0 : s === 'STARTING' ? 1 : s === 'LOCKING' ? 2 : 3
-  return [...gameStore.availableGames].sort((a, b) => {
-    const sw = weight(a.status) - weight(b.status)
-    if (sw !== 0) return sw
-    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
-    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
-    return bp - ap
-  })
-})
-
-// POPULAR: most players, then cheapest ticket
-const popularBingoGames = computed(() => {
-  return [...gameStore.availableGames].sort((a, b) => {
-    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
-    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
-    if (bp !== ap) return bp - ap
-    return Number(a.ticketPrice) - Number(b.ticketPrice)
-  })
-})
-
-const BINGO_HOME_LIMIT = 12
-const PROVIDER_HOME_LIMIT = 12
-
-const activeBingoGames = computed(() => {
-  if (selectedCategory.value === 'TRENDING') return trendingBingoGames.value
-  if (selectedCategory.value === 'POPULAR') return popularBingoGames.value
-  return gameStore.availableGames
-})
-
-const displayedBingoGames = computed(() => activeBingoGames.value.slice(0, BINGO_HOME_LIMIT))
-const hasMoreBingo = computed(() => activeBingoGames.value.length > BINGO_HOME_LIMIT)
-
-// Order mirrors the amolebet crash tab sequence for games we carry
-const CRASH_PRIORITY = [
-  'hotline', 'helicopterx', 'aviator',
-  'jetx', 'aviatrix', 'plinko',
-  'spaceman', 'goal', 'mines',
-  'limbo', 'dice', 'keno',
-  'balloon', 'wheel', 'crash game',
+/* ── Winners (decorative — no backend leaderboard yet) ──────────────────── */
+const winnerTabs = [
+  { key: 'DAILY', label: 'Daily Top Winners' },
+  { key: 'WEEKLY', label: 'Weekly Winners' },
+  { key: 'MONTHLY', label: 'Monthly Winners' },
 ]
+const activeWinnerTab = ref('WEEKLY')
 
-function sortedByPriority(games: ProviderGame[]): ProviderGame[] {
-  const rank = (g: ProviderGame) => {
-    const name = g.gameName.toLowerCase()
-    const idx = CRASH_PRIORITY.findIndex((p) => name.includes(p) || p.includes(name))
-    return idx === -1 ? CRASH_PRIORITY.length : idx
-  }
-  return [...games].sort((a, b) => rank(a) - rank(b))
+interface Winner {
+  letter: string
+  color: string
+  amount: string
+  phone: string
+  date: string
 }
 
-const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
-const categoryGamesLoading = ref<Record<string, boolean>>({})
-
-// Popular tab = MINI category (crash/instant-win games), priority-sorted, paginated
-const POPULAR_CATEGORY = 'MINI'
-const popularPage = ref(1)
-const popularTotalPages = ref(1)
-const popularLoadingMore = ref(false)
-
-const popularFeed = computed(() =>
-  sortedByPriority(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
-)
-
-function hasImage(g: ProviderGame) {
-  return !!(g.imageSquare || g.imageLandscape)
+const WINNERS: Record<string, Winner[]> = {
+  DAILY: [
+    { letter: 'D', color: '#1d4a8a', amount: '12,408.3', phone: '+251******512', date: '23.06.2026 | 14:22' },
+    { letter: 'T', color: '#a8521a', amount: '11,901.3', phone: '+251******077', date: '23.06.2026 | 13:09' },
+    { letter: 'K', color: '#1a7a4a', amount: '11,546.3', phone: '+251******341', date: '23.06.2026 | 12:48' },
+    { letter: 'H', color: '#7a2a8a', amount: '11,265.3', phone: '+251******908', date: '23.06.2026 | 11:31' },
+    { letter: 'Y', color: '#0e7490', amount: '11,056.3', phone: '+251******620', date: '23.06.2026 | 10:05' },
+  ],
+  WEEKLY: [
+    { letter: 'B', color: '#1d4a8a', amount: '80,908.3', phone: '+251******137', date: '22.06.2026 | 21:52' },
+    { letter: 'S', color: '#a8521a', amount: '81,001.3', phone: '+251******204', date: '22.06.2026 | 21:31' },
+    { letter: 'A', color: '#1a7a4a', amount: '80,946.3', phone: '+251******088', date: '22.06.2026 | 20:18' },
+    { letter: 'F', color: '#7a2a8a', amount: '80,965.3', phone: '+251******319', date: '21.06.2026 | 19:44' },
+    { letter: 'M', color: '#0e7490', amount: '80,956.3', phone: '+251******161', date: '21.06.2026 | 18:09' },
+  ],
+  MONTHLY: [
+    { letter: 'G', color: '#1d4a8a', amount: '342,118.3', phone: '+251******455', date: '18.06.2026 | 22:40' },
+    { letter: 'N', color: '#a8521a', amount: '338,902.3', phone: '+251******781', date: '14.06.2026 | 20:12' },
+    { letter: 'R', color: '#1a7a4a', amount: '331,540.3', phone: '+251******029', date: '11.06.2026 | 19:55' },
+    { letter: 'E', color: '#7a2a8a', amount: '327,866.3', phone: '+251******610', date: '07.06.2026 | 18:33' },
+    { letter: 'W', color: '#0e7490', amount: '321,204.3', phone: '+251******372', date: '03.06.2026 | 17:21' },
+  ],
 }
 
-// ALL tab helpers (section-based design)
-const providerCategories = computed(() =>
-  providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL' && c !== POPULAR_CATEGORY),
-)
+const winners = computed(() => WINNERS[activeWinnerTab.value] ?? [])
 
-function getCategoryDisplayGames(cat: string) {
-  return (categoryGamesMap.value[cat] ?? []).filter(hasImage).slice(0, PROVIDER_HOME_LIMIT)
+/* ── Hero carousel (coded slides) ───────────────────────────────────────── */
+interface HeroSlide {
+  id: string
+  badge: string
+  title: string
+  sub: string
+  cta: string
+  watermark: string
+  gradient: string
+  accent: string
+  action: 'games' | 'rooms' | 'deposit'
 }
 
-function categoryHasMore(cat: string) {
-  return (categoryGamesMap.value[cat]?.filter(hasImage).length ?? 0) > PROVIDER_HOME_LIMIT
-}
-
-const feedGames = computed(() => {
-  const cat = selectedCategory.value
-  if (cat === 'BINGO') return []
-  if (cat === 'POPULAR') return popularFeed.value.filter(hasImage)
-  if (cat === 'ALL') {
-    return providerStore.games.filter(hasImage)
-  }
-  if (cat === 'TRENDING') {
-    const miniGames = categoryGamesMap.value[POPULAR_CATEGORY] ?? []
-    const miniCodes = new Set(miniGames.map((g) => g.gameCode))
-    const rest = providerStore.games.filter((g) => !miniCodes.has(g.gameCode))
-    return [...sortedByPriority(miniGames), ...rest].filter(hasImage)
-  }
-  return sortedByPriority(categoryGamesMap.value[cat] ?? []).filter(hasImage)
-})
-
-const feedLoading = computed(() => {
-  const cat = selectedCategory.value
-  if (cat === 'POPULAR') return !popularFeed.value.length && !!categoryGamesLoading.value[POPULAR_CATEGORY]
-  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.loading && !providerStore.games.length
-  return !!categoryGamesLoading.value[cat]
-})
-
-const feedLoadingMore = computed(() => {
-  const cat = selectedCategory.value
-  if (cat === 'POPULAR') return popularLoadingMore.value
-  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.loading && providerStore.games.length > 0
-  return false
-})
-
-const canLoadMore = computed(() => {
-  const cat = selectedCategory.value
-  if (cat === 'POPULAR') return popularPage.value < popularTotalPages.value
-  if (cat === 'ALL' || cat === 'TRENDING') return providerStore.hasMore
-  return false
-})
-
-async function loadMoreFeed() {
-  const cat = selectedCategory.value
-  if (cat === 'POPULAR') {
-    if (popularPage.value >= popularTotalPages.value || popularLoadingMore.value) return
-    popularLoadingMore.value = true
-    popularPage.value++
-    const code = providerStore.activeProviderCode
-    if (code) {
-      try {
-        const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
-          `${config.public.apiBase}/providers/${code}/games?page=${popularPage.value}&pageSize=100&category=${POPULAR_CATEGORY}`,
-        )
-        categoryGamesMap.value[POPULAR_CATEGORY] = [
-          ...(categoryGamesMap.value[POPULAR_CATEGORY] ?? []),
-          ...result.games,
-        ]
-        popularTotalPages.value = result.totalPages
-      } finally {
-        popularLoadingMore.value = false
-      }
-    }
-    return
-  }
-  await providerStore.loadMore()
-}
-
-async function fetchCategoryGames(category: string, pageSize = 20) {
-  const code = providerStore.activeProviderCode
-  if (!code) return
-  categoryGamesLoading.value[category] = true
-  try {
-    const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
-      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`,
-    )
-    categoryGamesMap.value[category] = result.games
-    if (category === POPULAR_CATEGORY) {
-      popularTotalPages.value = result.totalPages
-      popularPage.value = 1
-    }
-  } catch {
-    categoryGamesMap.value[category] = []
-  } finally {
-    delete categoryGamesLoading.value[category]
-  }
-}
-
-// Infinite scroll
-const feedSentinel = ref<HTMLElement | null>(null)
-let feedObserver: IntersectionObserver | null = null
-
-function setupFeedObserver() {
-  if (!feedSentinel.value) return
-  feedObserver = new IntersectionObserver(
-    (entries) => {
-      if (entries[0].isIntersecting && canLoadMore.value && !feedLoadingMore.value) {
-        loadMoreFeed()
-      }
-    },
-    { rootMargin: '800px' },
-  )
-  feedObserver.observe(feedSentinel.value)
-}
-
-function onImgLoad(e: Event) {
-  ;(e.currentTarget as HTMLImageElement).classList.add('fc-img--loaded')
-}
-
-function onImgError(e: Event) {
-  const card = (e.currentTarget as HTMLElement).closest('.feed-card') as HTMLElement | null
-  if (card) card.style.display = 'none'
-}
-
-function onPgImgError(e: Event) {
-  const card = (e.currentTarget as HTMLElement).closest('.pg-card') as HTMLElement | null
-  if (card) card.style.display = 'none'
-}
-
+const heroSlides: HeroSlide[] = [
+  {
+    id: 'aviator',
+    badge: 'High Flyer',
+    title: 'Aviator — Cash\nOut Before It Flies',
+    sub: 'Watch the multiplier climb and grab your winnings before the plane takes off into the clouds.',
+    cta: 'Fly Now',
+    watermark: 'X10',
+    gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
+    accent: '#34d399',
+    action: 'games',
+  },
+  {
+    id: 'bingo',
+    badge: 'Live Rooms',
+    title: 'Bingo — Daub\nYour Way To Big Wins',
+    sub: 'Join a live room, grab your cartela and race to complete the pattern before everyone else.',
+    cta: 'Play Now',
+    watermark: 'B',
+    gradient: 'linear-gradient(105deg,#071633 0%,#0d2a5c 50%,#143b86 100%)',
+    accent: '#60a5fa',
+    action: 'rooms',
+  },
+  {
+    id: 'bonus',
+    badge: 'Welcome Offer',
+    title: 'First Deposit —\n100% Bonus',
+    sub: 'Double your first deposit and start playing with twice the balance. A limited-time welcome gift.',
+    cta: 'Deposit Now',
+    watermark: '+100%',
+    gradient: 'linear-gradient(105deg,#3a2407 0%,#5c3a0d 45%,#7a4f12 100%)',
+    accent: '#fbbf24',
+    action: 'deposit',
+  },
+]
 
 const currentSlide = ref(0)
+const activeSlide = computed(() => heroSlides[currentSlide.value])
 let slideTimer: ReturnType<typeof setInterval> | null = null
-
-const heroSlides = [
-  {
-    id: 'aviatrix',
-    title: 'Aviatrix promotion',
-    desktopAvif: '/ads/hero/aviatrix-desktop.avif',
-    desktopWebp: '/ads/hero/aviatrix-desktop.webp',
-    desktopJpg: '/ads/hero/aviatrix-desktop.jpg',
-    mobileAvif: '/ads/hero/aviatrix-mobile.avif',
-    mobileWebp: '/ads/hero/aviatrix-mobile.webp',
-    mobileJpg: '/ads/hero/aviatrix-mobile.jpg',
-  },
-  {
-    id: 'aradabet',
-    title: 'Aradabet promotion',
-    desktopAvif: '/ads/hero/aradabet-desktop.avif',
-    desktopWebp: '/ads/hero/aradabet-desktop.webp',
-    desktopJpg: '/ads/hero/aradabet-desktop.jpg',
-    mobileAvif: '/ads/hero/aradabet-mobile.avif',
-    mobileWebp: '/ads/hero/aradabet-mobile.webp',
-    mobileJpg: '/ads/hero/aradabet-mobile.jpg',
-  },
-  {
-    id: 'arada-games',
-    title: 'Arada Games promotion',
-    desktopAvif: '/ads/hero/arada-games-desktop.avif',
-    desktopWebp: '/ads/hero/arada-games-desktop.webp',
-    desktopJpg: '/ads/hero/arada-games-desktop.jpg',
-    mobileAvif: '/ads/hero/arada-games-mobile.avif',
-    mobileWebp: '/ads/hero/arada-games-mobile.webp',
-    mobileJpg: '/ads/hero/arada-games-mobile.jpg',
-  },
-]
-
-const activeHeroSlide = computed(() => heroSlides[currentSlide.value])
-const heroFallbackStyle = computed<Record<string, string>>(() => ({
-  '--hero-desktop-fallback': `url("${activeHeroSlide.value.desktopJpg}")`,
-  '--hero-mobile-fallback': `url("${activeHeroSlide.value.mobileJpg}")`,
-}))
-
-useHead({
-  link: [
-    {
-      rel: 'preload',
-      as: 'image',
-      href: heroSlides[0].desktopAvif,
-      type: 'image/avif',
-      media: '(min-width: 641px)',
-      fetchpriority: 'high',
-    },
-    {
-      rel: 'preload',
-      as: 'image',
-      href: heroSlides[0].mobileAvif,
-      type: 'image/avif',
-      media: '(max-width: 640px)',
-      fetchpriority: 'high',
-    },
-  ],
-})
 
 function goToSlide(idx: number) {
   currentSlide.value = idx
   if (slideTimer) clearInterval(slideTimer)
   startSlideTimer()
 }
-
 function prevSlide() {
   goToSlide((currentSlide.value - 1 + heroSlides.length) % heroSlides.length)
 }
-
 function nextSlide() {
   goToSlide((currentSlide.value + 1) % heroSlides.length)
 }
-
-function onHeroImageError(event: Event) {
-  const image = event.currentTarget as HTMLImageElement
-  image.style.opacity = '0'
-}
-
 function startSlideTimer() {
   slideTimer = setInterval(() => {
     currentSlide.value = (currentSlide.value + 1) % heroSlides.length
-  }, 5000)
+  }, 6000)
 }
 
-// Touch swipe support
 const touchStartX = ref(0)
 function onTouchStart(e: TouchEvent) {
   touchStartX.value = e.changedTouches[0].clientX
@@ -345,7 +169,178 @@ function onTouchEnd(e: TouchEvent) {
   else prevSlide()
 }
 
-function handleJoinGame(gameId: string) {
+function heroAction(action: HeroSlide['action']) {
+  if (action === 'rooms') {
+    document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
+    selectCategory('BINGO')
+  } else if (action === 'deposit') {
+    if (!auth.isAuthenticated) showAuthPrompt.value = true
+    else navigateTo('/wallet')
+  } else {
+    navigateTo('/games')
+  }
+}
+
+/* ── Vendor / provider chips ────────────────────────────────────────────── */
+const STATIC_VENDORS = [
+  '1x2 Network', '3 Oaks Gaming', '7Mojos', '7Mojos Live', 'AGT Software',
+  'ATLAS V2', 'Absolute', 'Ad Lunam', 'Amigo Gaming', 'Amusnet', 'Amusnet Live',
+]
+const activeVendor = ref('ALL')
+
+const vendorsAreReal = computed(() =>
+  providerStore.games.some((g) => g.vendorCode || g.providerName),
+)
+
+const vendorChips = computed<{ code: string; name: string }[]>(() => {
+  const map = new Map<string, string>()
+  for (const g of providerStore.games) {
+    const name = g.providerName ?? g.vendorCode
+    const code = g.vendorCode ?? g.providerName
+    if (name && code) map.set(code, name)
+  }
+  const derived = [...map.entries()].map(([code, name]) => ({ code, name }))
+  if (derived.length) return derived
+  return STATIC_VENDORS.map((n) => ({ code: n, name: n }))
+})
+
+function selectVendor(code: string) {
+  activeVendor.value = code
+}
+
+/* ── Favorites ──────────────────────────────────────────────────────────── */
+const favorites = ref<Set<string>>(new Set())
+function isFav(key: string) {
+  return favorites.value.has(key)
+}
+function toggleFav(key: string, e: Event) {
+  e.preventDefault()
+  e.stopPropagation()
+  const next = new Set(favorites.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  favorites.value = next
+}
+
+/* ── Game grid model ────────────────────────────────────────────────────── */
+interface LobbyCard {
+  key: string
+  badge: string
+  title: string
+  image: string | null
+  letter: string
+  to?: string
+  gameId?: string
+  price?: string
+  status?: string
+  vendor?: string
+}
+
+const trendingBingo = computed(() => {
+  const weight = (s: string) => (s === 'IN_PROGRESS' ? 0 : s === 'STARTING' ? 1 : s === 'LOCKING' ? 2 : 3)
+  return [...gameStore.availableGames].sort((a, b) => {
+    const sw = weight(a.status) - weight(b.status)
+    if (sw !== 0) return sw
+    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
+    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
+    return bp - ap
+  })
+})
+
+const popularBingo = computed(() =>
+  [...gameStore.availableGames].sort((a, b) => {
+    const ap = gameStore.livePlayers[a.id] ?? (a as any).currentPlayers ?? 0
+    const bp = gameStore.livePlayers[b.id] ?? (b as any).currentPlayers ?? 0
+    if (bp !== ap) return bp - ap
+    return Number(a.ticketPrice) - Number(b.ticketPrice)
+  }),
+)
+
+function bingoToCard(g: Game): LobbyCard {
+  return {
+    key: 'b-' + g.id,
+    badge: 'Bingo',
+    title: patternLabel(g.pattern) || 'Bingo Room',
+    image: null,
+    letter: 'B',
+    gameId: g.id,
+    price: Number(g.ticketPrice).toLocaleString() + ' ETB',
+    status: g.status,
+  }
+}
+
+function providerToCard(g: ProviderGame): LobbyCard {
+  return {
+    key: 'p-' + g.gameCode,
+    badge: CATEGORY_LABELS[g.categoryCode] ?? g.categoryCode,
+    title: g.gameName,
+    image: g.imageSquare ?? g.imageLandscape ?? null,
+    letter: (g.gameName?.[0] ?? '?').toUpperCase(),
+    to: `/play/${providerStore.activeProviderCode}/${g.gameCode}`,
+    vendor: g.vendorCode ?? g.providerName ?? undefined,
+  }
+}
+
+const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
+const categoryGamesLoading = ref<Record<string, boolean>>({})
+
+const gridGames = computed<LobbyCard[]>(() => {
+  const cat = selectedCategory.value
+  let cards: LobbyCard[]
+  if (cat === 'BINGO') {
+    cards = gameStore.availableGames.map(bingoToCard)
+  } else if (cat === 'ALL') {
+    cards = [...gameStore.availableGames.map(bingoToCard), ...providerStore.games.map(providerToCard)]
+  } else if (cat === 'TRENDING') {
+    cards = [...trendingBingo.value.map(bingoToCard), ...providerStore.games.map(providerToCard)]
+  } else if (cat === 'POPULAR') {
+    cards = popularBingo.value.map(bingoToCard)
+  } else {
+    cards = (categoryGamesMap.value[cat] ?? []).map(providerToCard)
+  }
+
+  if (activeVendor.value !== 'ALL' && vendorsAreReal.value) {
+    cards = cards.filter((c) => c.vendor === activeVendor.value)
+  }
+  if (showFavorites.value) {
+    cards = cards.filter((c) => favorites.value.has(c.key))
+  }
+  return cards
+})
+
+const gridCount = computed(() => gridGames.value.length)
+
+const headingLabel = computed(() =>
+  showFavorites.value ? 'Favorites' : CATEGORY_LABELS[selectedCategory.value] ?? selectedCategory.value,
+)
+
+const gridLoading = computed(() => {
+  if (showFavorites.value) return false
+  const cat = selectedCategory.value
+  if (cat === 'BINGO' || cat === 'ALL' || cat === 'TRENDING' || cat === 'POPULAR') {
+    return gameStore.loadingGames && !gameStore.availableGames.length
+  }
+  return !!categoryGamesLoading.value[cat] && !(categoryGamesMap.value[cat]?.length)
+})
+
+async function fetchCategoryGames(category: string, pageSize = 24) {
+  const code = providerStore.activeProviderCode
+  if (!code) return
+  categoryGamesLoading.value[category] = true
+  try {
+    const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
+      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`,
+    )
+    categoryGamesMap.value[category] = result.games
+  } catch {
+    categoryGamesMap.value[category] = []
+  } finally {
+    delete categoryGamesLoading.value[category]
+  }
+}
+
+function handleJoinGame(gameId?: string) {
+  if (!gameId) return
   if (!auth.isAuthenticated) {
     showAuthPrompt.value = true
     return
@@ -353,12 +348,15 @@ function handleJoinGame(gameId: string) {
   navigateTo(`/quick/${gameId}`)
 }
 
-function scrollToRooms() {
-  document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth' })
-}
-
+/* ── Lifecycle ──────────────────────────────────────────────────────────── */
 onMounted(async () => {
   track('lobby_view')
+
+  try {
+    const saved = localStorage.getItem('ab_favs')
+    if (saved) favorites.value = new Set(JSON.parse(saved))
+  } catch { /* ignore */ }
+
   try {
     await gameStore.fetchAvailableGames()
   } catch { /* errors stored in gameStore.error */ }
@@ -368,46 +366,40 @@ onMounted(async () => {
   await providerStore.fetchProviders()
   if (providerStore.activeProviderCode) {
     await providerStore.fetchCategories()
-    await providerStore.fetchGames({ reset: true })
+    await providerStore.fetchGames({ reset: true, pageSize: 60 })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
-    await Promise.all(
-      cats.map((c) => fetchCategoryGames(c, c === POPULAR_CATEGORY ? 100 : 20)),
-    )
+    await Promise.all(cats.map((c) => fetchCategoryGames(c)))
   }
 
   startSlideTimer()
-  await nextTick()
-  setupFeedObserver()
 
   const socket = connect()
   if (!socket) return
 
   socket.emit('lobby:subscribe')
-
-  socket.on('lobby:game-added', (game: Game) => {
-    gameStore.onLobbyGameAdded(game)
-  })
-
-  socket.on('lobby:game-removed', (gameId: string) => {
-    gameStore.onLobbyGameRemoved(gameId)
-  })
-
-  socket.on('game:updated', (game: Game) => {
-    gameStore.onGameUpdated(game)
-  })
-
-  ;(socket as any).on('player_count_update', (payload: { gameId: string; playerCount: number }) => {
-    gameStore.onPlayerCountUpdate(payload.gameId, payload.playerCount)
-  })
-
-  socket.on('game:countdown', (payload: { gameId: string; countdownSecs: number; startsAt: string }) => {
-    gameStore.onGameCountdown(payload)
-  })
+  socket.on('lobby:game-added', (game: Game) => gameStore.onLobbyGameAdded(game))
+  socket.on('lobby:game-removed', (gameId: string) => gameStore.onLobbyGameRemoved(gameId))
+  socket.on('game:updated', (game: Game) => gameStore.onGameUpdated(game))
+  ;(socket as any).on('player_count_update', (p: { gameId: string; playerCount: number }) =>
+    gameStore.onPlayerCountUpdate(p.gameId, p.playerCount),
+  )
+  socket.on('game:countdown', (p: { gameId: string; countdownSecs: number; startsAt: string }) =>
+    gameStore.onGameCountdown(p),
+  )
 })
+
+watch(
+  favorites,
+  (v) => {
+    try {
+      localStorage.setItem('ab_favs', JSON.stringify([...v]))
+    } catch { /* ignore */ }
+  },
+  { deep: true },
+)
 
 onUnmounted(() => {
   if (slideTimer) clearInterval(slideTimer)
-  feedObserver?.disconnect()
   const socket = connect()
   socket?.emit('lobby:unsubscribe')
 })
@@ -415,1581 +407,746 @@ onUnmounted(() => {
 
 <template>
   <div class="lobby-page">
+    <!-- ═══════════════ HERO ═══════════════ -->
+    <section class="max-wrap">
+      <div
+        class="hero"
+        :style="{ background: activeSlide.gradient }"
+        @touchstart.passive="onTouchStart"
+        @touchend.passive="onTouchEnd"
+      >
+        <div :key="activeSlide.id" class="hero-content">
+          <span class="hero-badge">{{ activeSlide.badge }}</span>
+          <h1 class="hero-title">{{ activeSlide.title }}</h1>
+          <p class="hero-sub">{{ activeSlide.sub }}</p>
+          <button class="hero-cta" @click="heroAction(activeSlide.action)">{{ activeSlide.cta }}</button>
+        </div>
 
-    <!-- ── HERO ─────────────────────────────────────────────────── -->
-    <section class="hero" :style="heroFallbackStyle" @touchstart.passive="onTouchStart" @touchend.passive="onTouchEnd">
-      <div class="hero-bg"></div>
+        <div class="hero-watermark" :style="{ color: activeSlide.accent }" aria-hidden="true">
+          {{ activeSlide.watermark }}
+        </div>
 
-      <!-- Arrow navigation (desktop only) -->
-      <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-      </button>
-      <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </button>
+        <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+        <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
 
-      <Transition name="hero-fade" mode="out-in">
-        <picture
-          :key="activeHeroSlide.id"
-          class="hero-ad"
-          @click="scrollToRooms"
-        >
-          <source media="(max-width: 640px)" type="image/avif" :srcset="activeHeroSlide.mobileAvif">
-          <source media="(max-width: 640px)" type="image/webp" :srcset="activeHeroSlide.mobileWebp">
-          <source media="(max-width: 640px)" :srcset="activeHeroSlide.mobileJpg">
-          <source type="image/avif" :srcset="activeHeroSlide.desktopAvif">
-          <source type="image/webp" :srcset="activeHeroSlide.desktopWebp">
-          <img
-            :src="activeHeroSlide.desktopJpg"
-            :alt="activeHeroSlide.title"
-            class="hero-ad__image"
-            loading="eager"
-            decoding="async"
-            fetchpriority="high"
-            @error="onHeroImageError"
-          >
-        </picture>
-      </Transition>
-
-      <div class="hero-dots" role="tablist" aria-label="Slide navigation">
-        <button
-          v-for="(slide, i) in heroSlides"
-          :key="slide.id"
-          class="dot"
-          :class="{ 'dot--active': currentSlide === i }"
-          :aria-label="`Go to slide ${i + 1}`"
-          role="tab"
-          :aria-selected="currentSlide === i"
-          @click="goToSlide(i)"
-        ></button>
+        <div class="hero-dots" role="tablist" aria-label="Slides">
+          <button
+            v-for="(s, i) in heroSlides"
+            :key="s.id"
+            class="hdot"
+            :class="{ 'hdot--active': currentSlide === i }"
+            role="tab"
+            :aria-selected="currentSlide === i"
+            :aria-label="`Slide ${i + 1}`"
+            @click="goToSlide(i)"
+          />
+        </div>
       </div>
     </section>
 
-    <!-- ── PROMO BANNERS ─────────────────────────────────────────── -->
-    <div class="max-container promos-row">
-      <CashbackBanner />
-      <FirstDepositBanner />
-    </div>
+    <!-- ═══════════════ WINNERS ═══════════════ -->
+    <section class="max-wrap winners">
+      <div class="win-tabs" role="tablist">
+        <button
+          v-for="t in winnerTabs"
+          :key="t.key"
+          class="win-tab"
+          :class="{ 'win-tab--active': activeWinnerTab === t.key }"
+          role="tab"
+          :aria-selected="activeWinnerTab === t.key"
+          @click="activeWinnerTab = t.key"
+        >
+          {{ t.label }}
+        </button>
+      </div>
 
-    <!-- ── FILTER BAR ────────────────────────────────────────────── -->
-    <div class="filter-bar">
-      <div class="max-container filter-inner">
-        <nav class="cat-strip" aria-label="Game categories">
+      <div class="win-grid">
+        <div v-for="(w, i) in winners" :key="i" class="win-card">
+          <div class="win-av" :style="{ background: w.color }">{{ w.letter }}</div>
+          <div class="win-info">
+            <div class="win-amt">{{ w.amount }} <span>ETB</span></div>
+            <div class="win-phone">{{ w.phone }}</div>
+            <div class="win-date">{{ w.date }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ FILTERS ═══════════════ -->
+    <section class="max-wrap filters">
+      <div class="cat-row">
+        <div class="cat-pills noscroll">
           <button
             v-for="cat in allCategories"
             :key="cat"
             class="cat-pill"
-            :class="{ 'cat-pill--active': selectedCategory === cat }"
+            :class="{ 'cat-pill--active': selectedCategory === cat && !showFavorites }"
             @click="selectCategory(cat)"
           >
-            <!-- ALL -->
-            <svg v-if="cat === 'ALL'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-            <!-- TRENDING -->
-            <svg v-else-if="cat === 'TRENDING'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
-            </svg>
-            <!-- POPULAR -->
-            <svg v-else-if="cat === 'POPULAR'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            <!-- BINGO -->
-            <svg v-else-if="cat === 'BINGO'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="2"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="16" y1="2" x2="16" y2="22"/><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="16" x2="22" y2="16"/>
-            </svg>
-            <!-- SLOTS -->
-            <svg v-else-if="cat === 'SLOTS'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/><line x1="2" y1="16" x2="22" y2="16"/>
-            </svg>
-            <!-- LIVE -->
-            <svg v-else-if="cat === 'LIVE'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 000 11.4M17.7 6.3a8 8 0 010 11.4M3.5 3.5a13 13 0 000 17M20.5 3.5a13 13 0 010 17"/>
-            </svg>
-            <!-- TABLE -->
-            <svg v-else-if="cat === 'TABLE'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
-            </svg>
-            <!-- CRASH -->
-            <svg v-else-if="cat === 'CRASH'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-            <!-- default -->
-            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/>
-            </svg>
-            {{ CATEGORY_LABELS[cat] ?? cat }}
+            {{ (CATEGORY_LABELS[cat] ?? cat) }}
           </button>
-          <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="cat-pill">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M8 3h8v11a4 4 0 01-8 0V3z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/>
-            </svg>
-            Tournaments
+        </div>
+        <button class="fav-btn" :class="{ 'fav-btn--active': showFavorites }" @click="showFavorites = !showFavorites">
+          <svg viewBox="0 0 24 24" :fill="showFavorites ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+          Favorites
+        </button>
+      </div>
+
+      <div class="vendor-row">
+        <div class="vendor-chips noscroll">
+          <button
+            class="vchip"
+            :class="{ 'vchip--active': activeVendor === 'ALL' }"
+            @click="selectVendor('ALL')"
+          >
+            All
+          </button>
+          <button
+            v-for="v in vendorChips"
+            :key="v.code"
+            class="vchip"
+            :class="{ 'vchip--active': activeVendor === v.code }"
+            @click="selectVendor(v.code)"
+          >
+            {{ v.name }}
+          </button>
+        </div>
+        <button class="providers-btn">
+          Providers
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ═══════════════ GAMES ═══════════════ -->
+    <section id="games-grid" class="max-wrap games-sec">
+      <div class="games-head">
+        <h2 class="games-title">{{ headingLabel }}</h2>
+        <span class="games-count">{{ gridCount }} games</span>
+      </div>
+
+      <div v-if="gridLoading" class="game-grid" aria-busy="true">
+        <div v-for="n in 12" :key="n" class="gc-skel">
+          <div class="gc-skel-thumb" />
+          <div class="gc-skel-name" />
+        </div>
+      </div>
+
+      <div v-else-if="!gridGames.length" class="empty">
+        <template v-if="showFavorites">No favorites yet — tap the star on a game to save it.</template>
+        <template v-else>No games available right now. Check back soon.</template>
+      </div>
+
+      <div v-else class="game-grid">
+        <template v-for="card in gridGames" :key="card.key">
+          <!-- Provider game → link -->
+          <NuxtLink v-if="card.to" :to="card.to" class="game-card">
+            <div class="gc-thumb">
+              <div class="gc-letter">{{ card.letter }}</div>
+              <img
+                v-if="card.image"
+                :src="card.image"
+                :alt="card.title"
+                class="gc-img"
+                loading="lazy"
+                @error="(e) => ((e.target as HTMLImageElement).style.display = 'none')"
+              />
+              <span class="gc-badge">{{ card.badge }}</span>
+              <span class="gc-fav" :class="{ 'gc-fav--on': isFav(card.key) }" role="button" :aria-label="isFav(card.key) ? 'Remove favorite' : 'Add favorite'" @click="toggleFav(card.key, $event)">
+                <svg viewBox="0 0 24 24" :fill="isFav(card.key) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+              </span>
+            </div>
+            <div class="gc-name">{{ card.title }}</div>
           </NuxtLink>
-        </nav>
 
-        <form class="search-wrap" role="search" @submit.prevent="goToSearch">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search games..."
-            class="search-input"
-            aria-label="Search games"
-          />
-          <button type="submit" class="search-submit" aria-label="Search games">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+          <!-- Bingo room → join -->
+          <button v-else type="button" class="game-card game-card--btn" @click="handleJoinGame(card.gameId)">
+            <div class="gc-thumb gc-thumb--bingo">
+              <div class="gc-letter">{{ card.letter }}</div>
+              <span class="gc-badge">{{ card.badge }}</span>
+              <span class="gc-fav" :class="{ 'gc-fav--on': isFav(card.key) }" role="button" :aria-label="isFav(card.key) ? 'Remove favorite' : 'Add favorite'" @click="toggleFav(card.key, $event)">
+                <svg viewBox="0 0 24 24" :fill="isFav(card.key) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+              </span>
+              <span v-if="card.status && card.status !== 'WAITING'" class="gc-live"><span class="gc-live-dot" />Live</span>
+              <span v-if="card.price" class="gc-price">{{ card.price }}</span>
+            </div>
+            <div class="gc-name">{{ card.title }}</div>
           </button>
-          <button v-if="searchQuery" type="button" class="search-clear" aria-label="Clear search" @click="searchQuery = ''">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </form>
+        </template>
       </div>
-    </div>
-
-    <!-- ── UNIFIED FEED ─────────────────────────────────────────── -->
-    <div class="feed-section">
-      <div class="max-container">
-
-        <!-- ALL tab: sectioned design — top row + per-category + bingo -->
-        <template v-if="selectedCategory === 'ALL'">
-
-          <!-- Top scrollable tiles row -->
-          <div class="top-row">
-            <div class="top-row-scroll">
-
-              <!-- Bingo tile -->
-              <NuxtLink to="/games/bingo" class="type-tile type-tile--bingo">
-                <div class="tt-thumb">
-                  <div class="mini-grid" aria-hidden="true">
-                    <div class="mg-cell">7</div><div class="mg-cell mg-cell--m">23</div><div class="mg-cell">41</div><div class="mg-cell">54</div><div class="mg-cell mg-cell--m">68</div>
-                    <div class="mg-cell mg-cell--m">12</div><div class="mg-cell">29</div><div class="mg-cell mg-cell--m">43</div><div class="mg-cell">58</div><div class="mg-cell">71</div>
-                    <div class="mg-cell">3</div><div class="mg-cell mg-cell--m">30</div><div class="mg-cell mg-cell--f">FR</div><div class="mg-cell">60</div><div class="mg-cell mg-cell--m">75</div>
-                    <div class="mg-cell">14</div><div class="mg-cell">27</div><div class="mg-cell">44</div><div class="mg-cell mg-cell--m">57</div><div class="mg-cell">72</div>
-                    <div class="mg-cell mg-cell--m">9</div><div class="mg-cell">32</div><div class="mg-cell">46</div><div class="mg-cell">62</div><div class="mg-cell mg-cell--m">74</div>
-                  </div>
-                  <div class="tt-live-badge"><span class="live-dot"></span>Live</div>
-                </div>
-                <div class="tt-label">Bingo</div>
-                <div class="tt-meta">
-                  From {{ gameStore.availableGames.length > 0 ? Math.min(...gameStore.availableGames.map((g: Game) => Number(g.ticketPrice))).toLocaleString() : 10 }} ETB
-                </div>
-              </NuxtLink>
-
-              <!-- Provider game tiles -->
-              <template v-if="providerStore.games.length">
-                <NuxtLink
-                  v-for="g in providerStore.games.filter(hasImage).slice(0, 6)"
-                  :key="g.gameCode"
-                  :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-                  class="type-tile"
-                >
-                  <div class="tt-thumb tt-thumb--provider">
-                    <img
-                      :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                      :alt="g.gameName"
-                      class="tt-img"
-                      loading="lazy"
-                    />
-                    <div class="tt-cat-badge">{{ g.categoryCode }}</div>
-                  </div>
-                  <div class="tt-label">{{ g.gameName }}</div>
-                  <div class="tt-meta">{{ g.categoryCode }}</div>
-                </NuxtLink>
-              </template>
-
-              <!-- Coming Soon tiles when no provider games yet -->
-              <template v-else>
-                <div class="type-tile type-tile--soon">
-                  <div class="tt-thumb">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                    </svg>
-                    <div class="tt-soon-badge">Soon</div>
-                  </div>
-                  <div class="tt-label">Aviator</div>
-                  <div class="tt-meta">Coming Soon</div>
-                </div>
-                <div class="type-tile type-tile--soon">
-                  <div class="tt-thumb">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <rect x="2" y="3" width="20" height="18" rx="2"/><rect x="5" y="7" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="8" rx="1"/><rect x="15" y="7" width="4" height="8" rx="1"/><line x1="2" y1="16" x2="22" y2="16"/>
-                    </svg>
-                    <div class="tt-soon-badge">Soon</div>
-                  </div>
-                  <div class="tt-label">Slots</div>
-                  <div class="tt-meta">Coming Soon</div>
-                </div>
-                <div class="type-tile type-tile--soon">
-                  <div class="tt-thumb">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/>
-                    </svg>
-                    <div class="tt-soon-badge">Soon</div>
-                  </div>
-                  <div class="tt-label">Crash</div>
-                  <div class="tt-meta">Coming Soon</div>
-                </div>
-                <div class="type-tile type-tile--soon">
-                  <div class="tt-thumb">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
-                    </svg>
-                    <div class="tt-soon-badge">Soon</div>
-                  </div>
-                  <div class="tt-label">Table</div>
-                  <div class="tt-meta">Coming Soon</div>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <!-- Per-category provider game sections -->
-          <template v-if="providerCategories.length">
-            <div
-              v-for="cat in providerCategories"
-              :key="cat"
-              class="content-section"
-            >
-              <div class="section-with-label">
-                <div class="section-side-label" aria-hidden="true">{{ CATEGORY_LABELS[cat] ?? cat }}</div>
-                <div class="section-body">
-                  <h2 class="section-heading">{{ CATEGORY_LABELS[cat] ?? cat }}</h2>
-                  <div v-if="categoryGamesLoading[cat]" class="state-msg">
-                    <span class="spinner" aria-hidden="true"></span> Loading...
-                  </div>
-                  <div v-else-if="!getCategoryDisplayGames(cat).length" class="state-msg">
-                    No games available.
-                  </div>
-                  <template v-else>
-                    <div class="pg-grid">
-                      <NuxtLink
-                        v-for="g in getCategoryDisplayGames(cat)"
-                        :key="g.gameCode"
-                        :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-                        class="pg-card"
-                      >
-                        <div class="pg-thumb">
-                          <img
-                            :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                            :alt="g.gameName"
-                            class="pg-img"
-                            loading="lazy"
-                            @error="onPgImgError"
-                          />
-                          <div class="pg-hover">
-                            <span class="pg-play">Play</span>
-                          </div>
-                        </div>
-                        <div class="pg-name">{{ g.gameName }}</div>
-                      </NuxtLink>
-                    </div>
-                    <div v-if="categoryHasMore(cat)" class="more-row">
-                      <NuxtLink :to="`/games/${cat.toLowerCase()}`" class="more-btn">
-                        See All {{ CATEGORY_LABELS[cat] ?? cat }} Games
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <polyline points="9 18 15 12 9 6"/>
-                        </svg>
-                      </NuxtLink>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- Bingo rooms section -->
-          <div id="rooms" class="content-section">
-            <div class="section-with-label">
-              <div class="section-side-label" aria-hidden="true">Bingo</div>
-              <div class="section-body">
-                <h2 class="section-heading">Bingo Rooms</h2>
-                <div v-if="gameStore.loadingGames" class="state-msg">
-                  <span class="spinner" aria-hidden="true"></span> Loading games...
-                </div>
-                <div v-else-if="gameStore.error" class="state-msg state-msg--error">
-                  Could not load games.
-                  <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
-                </div>
-                <div v-else-if="!activeBingoGames.length" class="state-msg">
-                  No bingo rooms available right now. Check back soon.
-                </div>
-                <template v-else>
-                  <div class="rooms-grid">
-                    <div
-                      v-for="(game, idx) in displayedBingoGames"
-                      :key="game.id"
-                      class="room-tile"
-                      :style="{ '--delay': `${idx * 50}ms` }"
-                    >
-                      <div class="rt-thumb">
-                        <div v-if="game.status !== 'WAITING'" class="rt-badge rt-badge--live">
-                          <span class="live-dot-sm"></span> Live
-                        </div>
-                        <div v-else-if="gameStore.countdowns[game.id]" class="rt-badge rt-badge--timer">
-                          <GameCountdown :starts-at="gameStore.countdowns[game.id]" compact />
-                        </div>
-                        <div v-else class="rt-badge rt-badge--timer">1:00</div>
-                        <div class="rt-pattern">{{ patternLabel(game.pattern) }}</div>
-                        <div class="rt-price-wrap">
-                          <span class="rt-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
-                          <span class="rt-currency">ETB</span>
-                        </div>
-                      </div>
-                      <div class="rt-footer">
-                        <div class="rt-players">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-                          </svg>
-                          {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
-                        </div>
-                        <button
-                          v-if="game.status === 'WAITING'"
-                          class="rt-join"
-                          @click="handleJoinGame(game.id)"
-                        >
-                          Join
-                        </button>
-                        <div v-else class="rt-join rt-join--live">
-                          {{ game.status === 'STARTING' ? 'Starting' : 'Live' }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="hasMoreBingo" class="more-row">
-                    <NuxtLink to="/games/bingo" class="more-btn">
-                      See All Bingo Rooms
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </NuxtLink>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </div>
-
-        </template>
-
-        <!-- POPULAR / TRENDING / other category tabs: skeleton + infinite scroll -->
-        <template v-else-if="selectedCategory !== 'BINGO'">
-          <!-- Initial skeleton grid while first page loads -->
-          <div v-if="feedLoading && !feedGames.length" class="feed-grid" aria-busy="true" aria-label="Loading games">
-            <div v-for="n in 18" :key="n" class="fc-skel">
-              <div class="fc-skel-thumb"></div>
-              <div class="fc-skel-name"></div>
-            </div>
-          </div>
-          <div v-else-if="!feedGames.length && !feedLoading" class="state-msg">
-            No games available.
-          </div>
-          <div v-else class="feed-grid">
-            <NuxtLink
-              v-for="g in feedGames"
-              :key="g.gameCode"
-              :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
-              class="feed-card"
-            >
-              <div class="fc-thumb">
-                <img
-                  :src="g.imageSquare ?? g.imageLandscape ?? ''"
-                  :alt="g.gameName"
-                  class="fc-img"
-                  loading="lazy"
-                  @load="onImgLoad"
-                  @error="onImgError"
-                />
-              </div>
-              <div class="fc-name">{{ g.gameName }}</div>
-            </NuxtLink>
-          </div>
-
-          <!-- Infinite scroll sentinel -->
-          <div ref="feedSentinel" class="feed-sentinel" aria-hidden="true"></div>
-
-          <!-- Skeleton row while loading next page -->
-          <div v-if="feedLoadingMore" class="feed-grid feed-grid--more" aria-busy="true">
-            <div v-for="n in 6" :key="n" class="fc-skel">
-              <div class="fc-skel-thumb"></div>
-              <div class="fc-skel-name"></div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Bingo tab -->
-        <template v-else>
-          <div v-if="gameStore.loadingGames" class="state-msg">
-            <span class="spinner" aria-hidden="true"></span> Loading games...
-          </div>
-          <div v-else-if="gameStore.error" class="state-msg state-msg--error">
-            Could not load games.
-            <button class="retry-btn" @click="gameStore.fetchAvailableGames()">Retry</button>
-          </div>
-          <div v-else-if="!activeBingoGames.length" class="state-msg">
-            No bingo rooms available right now. Check back soon.
-          </div>
-          <template v-else>
-            <div class="rooms-grid">
-              <div
-                v-for="(game, idx) in displayedBingoGames"
-                :key="game.id"
-                class="room-tile"
-                :style="{ '--delay': `${idx * 50}ms` }"
-              >
-                <div class="rt-thumb">
-                  <div v-if="game.status !== 'WAITING'" class="rt-badge rt-badge--live">
-                    <span class="live-dot-sm"></span> Live
-                  </div>
-                  <div v-else-if="gameStore.countdowns[game.id]" class="rt-badge rt-badge--timer">
-                    <GameCountdown :starts-at="gameStore.countdowns[game.id]" compact />
-                  </div>
-                  <div v-else class="rt-badge rt-badge--timer">1:00</div>
-                  <div class="rt-pattern">{{ patternLabel(game.pattern) }}</div>
-                  <div class="rt-price-wrap">
-                    <span class="rt-price">{{ Number(game.ticketPrice).toLocaleString() }}</span>
-                    <span class="rt-currency">ETB</span>
-                  </div>
-                </div>
-                <div class="rt-footer">
-                  <div class="rt-players">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-                    </svg>
-                    {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
-                  </div>
-                  <button
-                    v-if="game.status === 'WAITING'"
-                    class="rt-join"
-                    @click="handleJoinGame(game.id)"
-                  >
-                    Join
-                  </button>
-                  <div v-else class="rt-join rt-join--live">
-                    {{ game.status === 'STARTING' ? 'Starting' : 'Live' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-if="hasMoreBingo" class="more-row">
-              <NuxtLink to="/games/bingo" class="more-btn">
-                See All Bingo Rooms
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </NuxtLink>
-            </div>
-          </template>
-        </template>
-
-      </div>
-    </div>
+    </section>
 
     <AuthPromptModal v-model="showAuthPrompt" />
   </div>
 </template>
 
 <style scoped>
-/* ── Page ─────────────────────────────────────────────────────────────── */
 .lobby-page {
   min-height: 100vh;
   background: var(--surface-base);
   font-family: var(--font-body);
-  padding-bottom: 48px;
+  padding-bottom: 56px;
 }
 
-.max-container {
-  max-width: 1400px;
+.max-wrap {
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 28px;
 }
+
+.noscroll { scrollbar-width: none; -ms-overflow-style: none; }
+.noscroll::-webkit-scrollbar { display: none; }
 
 /* ── HERO ──────────────────────────────────────────────────────────────── */
 .hero {
   position: relative;
+  margin-top: 22px;
+  border-radius: 18px;
   overflow: hidden;
-  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  min-height: 330px;
+  padding: 52px 60px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  isolation: isolate;
 }
-
-.hero-bg {
+.hero::after {
+  content: '';
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 50% 80% at 72% 50%, rgba(245, 158, 11, 0.07) 0%, transparent 65%),
-    radial-gradient(ellipse 35% 55% at 15% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+  background: radial-gradient(120% 120% at 80% 50%, rgba(255, 255, 255, 0.06), transparent 60%);
   pointer-events: none;
 }
 
-.hero-ad {
+.hero-content {
   position: relative;
-  z-index: 1;
-  display: block;
-  cursor: pointer;
-}
-
-.hero-ad__image {
-  display: block;
-  width: 100%;
-  height: auto;
-  transition: opacity 0.15s ease;
-}
-
-.hero-inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: 1;
-  padding-top: 28px;
-  padding-bottom: 12px;
-  gap: 32px;
-}
-
-.hero-text {
-  flex: 1;
-  min-width: 0;
+  z-index: 2;
+  max-width: 600px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: flex-start;
+  animation: hero-in 0.4s ease both;
+}
+@keyframes hero-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
-.hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
+.hero-badge {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-ui);
   font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.55);
-  margin: 0;
-}
-
-.eyebrow-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--brand-primary);
-  border-radius: 50%;
-  flex-shrink: 0;
-  animation: pulse-dot 2s infinite;
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin-bottom: 20px;
 }
 
 .hero-title {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: clamp(34px, 6.5vw, 50px);
+  font-family: var(--font-ui);
   font-weight: 700;
-  color: #f0f4ff;
-  line-height: 1.05;
+  font-size: clamp(30px, 4.6vw, 54px);
+  line-height: 1.04;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: pre-line;
   margin: 0;
+  color: #fff;
 }
 
-.hero-accent { color: var(--brand-primary); }
-
 .hero-sub {
-  font-size: 14px;
-  color: rgba(180, 205, 240, 0.65);
-  margin: 0;
-  line-height: 1.6;
-  max-width: 360px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 460px;
+  margin: 18px 0 26px;
 }
 
 .hero-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   background: var(--brand-primary);
-  color: #0a0f1a;
-  font-weight: 800;
-  font-size: 14px;
-  padding: 11px 22px;
-  border-radius: 8px;
+  color: var(--text-on-brand);
   border: none;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 13px 32px;
+  border-radius: 9px;
   cursor: pointer;
-  width: fit-content;
-  font-family: var(--font-body);
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
 }
-.hero-cta:hover { background: #fbbf24; transform: translateY(-1px); }
+.hero-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--brand-primary) 38%, transparent);
+}
 .hero-cta:active { transform: translateY(0); }
-.hero-cta:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
-.hero-cta--muted {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.45);
-  cursor: default;
-}
-.hero-cta--muted:hover { background: rgba(255,255,255,0.08); transform: none; }
 
-/* ── HERO ART ────────────────────────────────────────────────────────── */
-.hero-art {
-  flex-shrink: 0;
-  position: relative;
-  height: 200px;
-  width: 250px;
-}
-
-.hero-art--centered {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@media (max-width: 620px) { .hero-art { display: none; } }
-
-.bingo-card {
+.hero-watermark {
   position: absolute;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 3px;
-  padding: 8px;
-  border-radius: 10px;
-}
-.bingo-card--front {
-  width: 145px;
-  right: 85px;
-  top: 10px;
-  transform: rotate(-5deg);
-  z-index: 2;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  background: rgba(0, 0, 0, 0.4);
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.1);
-}
-.bingo-card--back {
-  width: 115px;
-  right: 6px;
-  top: 45px;
-  transform: rotate(4deg);
-  opacity: 0.35;
   z-index: 1;
-  border: 1px solid rgba(6, 182, 212, 0.35);
-  background: rgba(0, 0, 0, 0.3);
-}
-.bc-cell {
-  aspect-ratio: 1;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 8px;
+  right: 5%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-ui);
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Rajdhani', sans-serif;
-}
-.bc-cell--blue { background: var(--accent-dim); color: rgba(255,255,255,0.9); }
-.bc-cell--gold { background: rgba(245,158,11,0.25); color: var(--brand-primary); }
-.bc-cell--free { background: var(--brand-primary); color: #0a0f1a; font-size: 5px; font-weight: 900; }
-
-/* ── FEATURED CARD ───────────────────────────────────────────────────── */
-.featured-card {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 16px;
-  padding: 24px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 210px;
-}
-.fc-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--brand-primary);
-}
-.fc-title { font-size: 20px; font-weight: 800; color: #f0f4ff; line-height: 1.2; }
-.fc-price {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 30px;
-  font-weight: 900;
-  color: var(--brand-primary);
+  font-size: clamp(110px, 17vw, 250px);
   line-height: 1;
-}
-.fc-currency { font-size: 15px; font-weight: 700; color: rgba(245,158,11,0.65); }
-.fc-meta { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 600; }
-.fc-join {
-  display: inline-flex;
-  align-items: center;
-  background: var(--brand-primary);
-  color: #0a0f1a;
-  font-weight: 800;
-  font-size: 13px;
-  padding: 9px 18px;
-  min-height: 44px;
-  border-radius: 8px;
-  text-decoration: none;
-  align-self: flex-start;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-.fc-join:hover { background: #fbbf24; transform: translateY(-1px); }
-.fc-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #34d399;
-  font-weight: 700;
-  font-size: 13px;
+  opacity: 0.14;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
-/* ── AD CARD ─────────────────────────────────────────────────────────── */
-.ad-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 24px 28px;
-  min-width: 185px;
-}
-.ad-mult {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-.ad-mult-num {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 34px;
-  font-weight: 900;
-  line-height: 1;
-}
-.ad-mult-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.4);
-}
-
-/* ── HERO ARROWS ─────────────────────────────────────────────────────── */
 .hero-arrow {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 10;
-  width: 36px;
-  height: 36px;
+  z-index: 3;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.7);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transition: background 0.12s, transform 0.12s;
 }
-.hero-arrow:hover {
-  background: rgba(255,255,255,0.14);
-  color: #fff;
-  transform: translateY(-50%) scale(1.08);
-}
-.hero-arrow:active { transform: translateY(-50%) scale(0.96); }
-.hero-arrow:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.hero-arrow svg { width: 18px; height: 18px; }
+.hero-arrow:hover { background: rgba(0, 0, 0, 0.5); }
+.hero-arrow:active { transform: translateY(-50%) scale(0.94); }
 .hero-arrow--prev { left: 16px; }
 .hero-arrow--next { right: 16px; }
 
-@media (max-width: 640px) { .hero-arrow { display: none; } }
-
-/* ── HERO DOTS ───────────────────────────────────────────────────────── */
 .hero-dots {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+.hdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: width 0.2s, background 0.2s;
+}
+.hdot--active { width: 26px; border-radius: 4px; background: var(--brand-primary); }
+
+@media (max-width: 720px) {
+  .hero { padding: 34px 26px; min-height: 260px; }
+  .hero-arrow { display: none; }
+  .hero-sub { font-size: 13px; }
+}
+
+/* ── WINNERS ───────────────────────────────────────────────────────────── */
+.winners { margin-top: 34px; }
+
+.win-tabs {
   display: flex;
   justify-content: center;
-  gap: 5px;
-  padding: 10px 0 14px;
-  flex-shrink: 0;
+  gap: 34px;
+  margin-bottom: 20px;
 }
-.hero-dots button {
+.win-tab {
   background: none;
   border: none;
-  padding: 4px;
   cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 6px 2px;
+  position: relative;
+  transition: color 0.15s;
 }
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  transition: background 0.2s ease, width 0.2s ease;
-}
-.dot:hover { background: rgba(255,255,255,0.4); }
-.dot--active { background: var(--brand-primary); width: 18px; border-radius: 3px; }
-
-/* ── HERO TRANSITION ─────────────────────────────────────────────────── */
-/* The Transition wrapper becomes a block child — make it fill flex space */
-.hero > .hero-fade-enter-active,
-.hero > .hero-fade-leave-active,
-.hero-ad { flex: 1; }
-
-.hero-fade-enter-active,
-.hero-fade-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; display: flex; flex: 1; }
-.hero-fade-enter-from { opacity: 0; transform: translateX(20px); }
-.hero-fade-leave-to   { opacity: 0; transform: translateX(-20px); }
-
-/* ── PROMOS ──────────────────────────────────────────────────────────── */
-.promos-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  padding-bottom: 4px;
+.win-tab:hover { color: rgba(255, 255, 255, 0.8); }
+.win-tab--active { color: #fff; }
+.win-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand-primary);
 }
 
-/* ── FILTER BAR ──────────────────────────────────────────────────────── */
-.filter-bar {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  background: rgba(6, 14, 36, 0.95);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+.win-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
 }
 
-.filter-inner {
+.win-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-top: 0;
-  padding-bottom: 0;
-  overflow: hidden;
+  gap: 13px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px 16px;
 }
-
-.cat-strip {
+.win-av {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 22px;
+  color: #fff;
+}
+.win-info { min-width: 0; line-height: 1.35; }
+.win-amt {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+  white-space: nowrap;
+}
+.win-amt span { font-size: 11px; color: var(--brand-primary); margin-left: 2px; }
+.win-phone { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+.win-date { font-size: 11px; color: rgba(255, 255, 255, 0.38); }
+
+@media (max-width: 1080px) { .win-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 720px) {
+  .win-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .win-tabs { gap: 18px; }
+  .win-tab { font-size: 12px; letter-spacing: 0.5px; }
+}
+@media (max-width: 440px) { .win-grid { grid-template-columns: 1fr; } }
+
+/* ── FILTERS ───────────────────────────────────────────────────────────── */
+.filters { margin-top: 36px; }
+
+.cat-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cat-pills {
+  display: flex;
+  gap: 10px;
   overflow-x: auto;
-  scrollbar-width: none;
   flex: 1;
   min-width: 0;
-  padding: 10px 0;
+  padding-bottom: 2px;
 }
-.cat-strip::-webkit-scrollbar { display: none; }
-
 .cat-pill {
+  flex: none;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cat-pill:hover { color: #fff; border-color: rgba(255, 255, 255, 0.18); }
+.cat-pill--active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+
+.fav-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 50%, transparent);
+  color: var(--brand-primary);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.fav-btn svg { width: 16px; height: 16px; }
+.fav-btn:hover { background: color-mix(in srgb, var(--brand-primary) 10%, transparent); }
+.fav-btn--active { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--text-on-brand); }
+
+.vendor-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+.vendor-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+.vchip {
+  flex: none;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 8px 17px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.vchip:hover { color: #fff; }
+.vchip--active {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+}
+
+.providers-btn {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.5);
-  background: none;
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
   font-family: var(--font-body);
-  transition: color 0.15s ease, background 0.15s ease;
-  text-decoration: none;
-  flex-shrink: 0;
-}
-.cat-pill svg { opacity: 0.6; flex-shrink: 0; }
-.cat-pill:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.05); }
-.cat-pill:hover svg { opacity: 0.85; }
-.cat-pill--active { color: var(--brand-primary); background: rgba(245,158,11,0.1); }
-.cat-pill--active svg { opacity: 1; color: var(--brand-primary); }
-.cat-pill:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: -2px; border-radius: 6px; }
-
-.search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 7px;
-  padding: 7px 12px;
-  color: rgba(255,255,255,0.3);
-  cursor: text;
-  flex-shrink: 0;
-  transition: border-color 0.15s ease;
-}
-.search-wrap:focus-within { border-color: rgba(245,158,11,0.35); }
-.search-submit {
-  background: none;
-  border: none;
-  padding: 2px;
-  cursor: pointer;
-  color: rgba(255,255,255,0.3);
-  display: flex;
-  align-items: center;
-  transition: color 0.15s ease;
-  flex-shrink: 0;
-}
-.search-submit:hover { color: rgba(255,255,255,0.7); }
-.search-input {
-  background: none;
-  border: none;
-  outline: none;
-  color: rgba(255,255,255,0.75);
-  font-size: 13px;
-  font-family: var(--font-body);
-  width: 160px;
-}
-.search-input::placeholder { color: rgba(255,255,255,0.3); }
-
-.search-clear {
-  background: none;
-  border: none;
-  padding: 2px;
-  cursor: pointer;
-  color: rgba(255,255,255,0.3);
-  display: flex;
-  align-items: center;
-  transition: color 0.15s ease;
-  flex-shrink: 0;
-}
-.search-clear:hover { color: rgba(255,255,255,0.7); }
-
-@media (max-width: 640px) {
-  .filter-inner {
-    flex-wrap: wrap;
-    row-gap: 0;
-    padding-bottom: 8px;
-  }
-  .cat-strip {
-    flex: 0 0 100%;
-    padding-bottom: 6px;
-  }
-  .search-wrap {
-    flex: 0 0 100%;
-    margin: 0 0 2px;
-  }
-  .search-input {
-    width: 100%;
-    flex: 1;
-  }
-}
-
-/* ── FEED SECTION ────────────────────────────────────────────────────── */
-.feed-section {
-  padding: 12px 0 48px;
-}
-
-.feed-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-@media (min-width: 480px) { .feed-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 640px) { .feed-grid { grid-template-columns: repeat(5, 1fr); } }
-@media (min-width: 900px) { .feed-grid { grid-template-columns: repeat(6, 1fr); } }
-@media (min-width: 1200px) { .feed-grid { grid-template-columns: repeat(8, 1fr); } }
-
-.feed-card {
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgba(10, 22, 55, 0.7);
-  border: 1px solid rgba(255,255,255,0.06);
-  text-decoration: none;
-  display: block;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-  cursor: pointer;
-}
-.feed-card:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.2); }
-.feed-card:active { transform: scale(0.97); }
-
-.fc-thumb {
-  aspect-ratio: 3/4;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(145deg, #0d2050, #1a3870);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.fc-img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-.fc-img--loaded { opacity: 1; }
-.fc-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-
-.fc-name {
-  padding: 6px 8px 8px;
-  font-size: 11px;
   font-weight: 600;
-  color: rgba(255,255,255,0.7);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@media (max-width: 380px) {
-  .fc-name { font-size: 10px; padding: 5px 6px 7px; }
-}
-
-/* ── TOP GAMES ROW ───────────────────────────────────────────────────── */
-.top-row {
-  padding: 16px 0 0;
-}
-
-.top-row-scroll {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  margin: 0 -20px;
-  padding: 0 20px 12px;
-}
-.top-row-scroll::-webkit-scrollbar { display: none; }
-
-.type-tile {
-  width: 160px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.07);
-  background: rgba(10, 22, 55, 0.75);
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
   cursor: pointer;
-  text-decoration: none;
-  transition: transform 0.15s ease, border-color 0.15s ease;
 }
-.type-tile:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.25); }
-.type-tile:active { transform: translateY(0); }
-.type-tile--soon { cursor: default; }
-.type-tile--soon:hover { transform: none; border-color: rgba(255,255,255,0.07); }
+.providers-btn svg { width: 14px; height: 14px; }
+.providers-btn:hover { border-color: var(--brand-primary); color: #fff; }
 
-.tt-thumb {
-  height: 110px;
-  position: relative;
+/* ── GAMES ─────────────────────────────────────────────────────────────── */
+.games-sec { margin-top: 30px; }
+
+.games-head {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(145deg, #0d2050, #1a3870);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 18px;
 }
-.tt-thumb--provider {
-  background: #0d2050;
-  overflow: hidden;
-}
-.tt-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tt-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.type-tile--bingo .tt-thumb { background: linear-gradient(145deg, #091840, #142e62); }
-
-.mini-grid {
-  width: 82px;
-  padding: 5px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 7px;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 2px;
-}
-.mg-cell {
-  aspect-ratio: 1;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.05);
-  font-size: 6.5px;
+.games-title {
+  font-family: var(--font-ui);
   font-weight: 700;
-  color: rgba(255,255,255,0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Rajdhani', sans-serif;
-}
-.mg-cell--m { background: var(--accent-dim); color: rgba(255,255,255,0.9); }
-.mg-cell--f { background: var(--brand-primary); color: #0a0f1a; font-size: 5px; font-weight: 900; }
-
-.tt-live-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  background: #dc2626;
+  font-size: 24px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
   color: #fff;
-  border-radius: 4px;
-  padding: 2px 7px;
-  font-size: 9px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  letter-spacing: 0.03em;
+  margin: 0;
 }
+.games-count { font-size: 14px; color: rgba(255, 255, 255, 0.45); }
 
-.tt-cat-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.75);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.tt-soon-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: rgba(124, 58, 237, 0.18);
-  border: 1px solid rgba(139,92,246,0.3);
-  color: #c4b5fd;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.tt-label {
-  padding: 8px 10px 2px;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  color: #e8eef8;
-}
-.tt-meta {
-  padding: 0 10px 9px;
-  font-size: 11px;
-  color: rgba(255,255,255,0.38);
-}
-
-/* ── CONTENT SECTIONS ────────────────────────────────────────────────── */
-.content-section {
-  padding: 20px 0 0;
-}
-
-.section-with-label {
-  display: flex;
-  gap: 0;
-  align-items: flex-start;
-}
-
-.section-side-label {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(245,158,11,0.35);
-  flex-shrink: 0;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  border-left: 1px solid rgba(245,158,11,0.15);
-  margin-right: 16px;
-  padding: 8px 0;
-}
-
-.section-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.section-heading {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 17px;
-  font-weight: 700;
-  color: #e0e8f8;
-  letter-spacing: 0.01em;
-  margin: 0 0 14px;
-}
-
-/* ── PROVIDER GAME GRID ──────────────────────────────────────────────── */
-.pg-grid {
+.game-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding-bottom: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
 }
-@media (min-width: 480px) { .pg-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 640px) { .pg-grid { grid-template-columns: repeat(5, 1fr); } }
-@media (min-width: 900px) { .pg-grid { grid-template-columns: repeat(7, 1fr); } }
-@media (min-width: 1200px) { .pg-grid { grid-template-columns: repeat(9, 1fr); } }
+@media (max-width: 640px) {
+  .game-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
 
-.pg-card {
-  border-radius: 8px;
+.game-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
   overflow: hidden;
-  background: rgba(10, 22, 55, 0.7);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-raised);
   text-decoration: none;
-  transition: transform 0.15s ease, border-color 0.15s ease;
   cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s, border-color 0.14s;
 }
-.pg-card:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.2); }
-.pg-card:active { transform: translateY(0); }
+.game-card--btn { font-family: inherit; }
+.game-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent); }
+.game-card:active { transform: translateY(0); }
 
-.pg-thumb {
-  aspect-ratio: 3/4;
+.gc-thumb {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(145deg, #0d2050, #1a3870);
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(150deg, #0d2050 0%, #16306a 100%);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
-.pg-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.pg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.gc-thumb--bingo { background: linear-gradient(150deg, #091840 0%, #142e62 100%); }
 
-.pg-hover {
+.gc-letter {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: clamp(48px, 7vw, 72px);
+  color: rgba(255, 255, 255, 0.16);
+  user-select: none;
+}
+.gc-img {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.pg-card:hover .pg-hover { opacity: 1; }
-
-.pg-play {
-  background: var(--brand-primary);
-  color: #0a0f1a;
-  font-weight: 800;
-  font-size: 12px;
-  padding: 7px 18px;
-  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.pg-name {
-  padding: 7px 9px 8px;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: #c8d4e8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── BINGO ROOMS GRID ────────────────────────────────────────────────── */
-.rooms-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  padding-bottom: 8px;
-}
-@media (min-width: 560px) { .rooms-grid { gap: 10px; } }
-@media (min-width: 800px) { .rooms-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 1100px) { .rooms-grid { grid-template-columns: repeat(5, 1fr); } }
-@media (min-width: 1400px) { .rooms-grid { grid-template-columns: repeat(6, 1fr); } }
-
-/* ── ROOM TILE ───────────────────────────────────────────────────────── */
-.room-tile {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.07);
-  background: rgba(10, 22, 55, 0.75);
-  animation: fadeUp 0.3s ease both;
-  animation-delay: var(--delay, 0ms);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-.room-tile:hover {
-  transform: translateY(-2px);
-  border-color: rgba(245,158,11,0.22);
-}
-.room-tile:active { transform: translateY(0); }
-
-/* Thumbnail */
-.rt-thumb {
-  position: relative;
-  padding: 28px 16px 24px;
-  background: linear-gradient(155deg, #091840 0%, #142e62 100%);
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  min-height: 120px;
-}
-
-.rt-badge {
+.gc-badge {
   position: absolute;
   top: 9px;
   left: 9px;
-  border-radius: 4px;
-  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(245, 166, 35, 0.4);
+  color: var(--brand-primary);
+  font-family: var(--font-ui);
+  font-weight: 700;
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+
+.gc-fav {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s, color 0.14s, background 0.14s;
+}
+.game-card:hover .gc-fav { opacity: 1; }
+.gc-fav svg { width: 15px; height: 15px; }
+.gc-fav:hover { background: rgba(0, 0, 0, 0.6); color: var(--brand-primary); }
+.gc-fav--on { opacity: 1; color: var(--brand-primary); }
+
+.gc-live {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
-}
-.rt-badge--live {
   background: #dc2626;
   color: #fff;
-}
-.rt-badge--timer {
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  color: var(--brand-primary);
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-}
-
-.rt-pattern {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  background: rgba(6, 182, 212, 0.1);
-  border: 1px solid rgba(6, 182, 212, 0.22);
-  color: #22d3ee;
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.rt-price-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-}
-.rt-price {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: clamp(26px, 4vw, 32px);
-  font-weight: 700;
-  color: #f0f4ff;
-  line-height: 1;
-}
-.rt-currency {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.4);
-}
-
-/* Footer */
-.rt-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-}
-
-.rt-players {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: rgba(255,255,255,0.45);
-  font-weight: 600;
-}
-.rt-slash { color: rgba(255,255,255,0.2); margin: 0 1px; }
-
-.rt-join {
-  background: var(--brand-primary);
-  color: #0a0f1a;
-  border: none;
-  border-radius: 6px;
-  padding: 7px 14px;
-  min-height: 34px;
-  font-size: 12px;
   font-weight: 800;
-  cursor: pointer;
-  text-decoration: none;
-  font-family: var(--font-body);
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 0.15s ease;
-  display: inline-flex;
-  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  padding: 3px 7px;
+  border-radius: 5px;
 }
-.rt-join:hover:not(.rt-join--live) { background: #fbbf24; }
-.rt-join:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
-.rt-join--live {
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #34d399;
-  cursor: default;
-  font-size: 11px;
-}
-
-/* Mobile 3-col compact adjustments */
-@media (max-width: 559px) {
-  .rt-thumb {
-    padding: 22px 10px 16px;
-    min-height: 90px;
-  }
-  .rt-price { font-size: 20px; }
-  .rt-currency { font-size: 11px; }
-  .rt-badge { padding: 2px 5px; font-size: 9px; top: 6px; left: 6px; }
-  .rt-pattern { padding: 2px 5px; font-size: 9px; top: 6px; right: 6px; }
-  .rt-footer { padding: 8px 8px; gap: 4px; }
-  .rt-players { font-size: 10px; gap: 3px; }
-  .rt-join { padding: 5px 8px; min-height: 28px; font-size: 11px; }
-  .feed-grid { gap: 6px; }
-}
-
-/* ── STATE MESSAGES ──────────────────────────────────────────────────── */
-.state-msg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: rgba(255,255,255,0.4);
-  padding: 3rem 0;
-  font-size: 14px;
-  text-align: center;
-}
-.state-msg--error { flex-direction: column; color: #f87171; }
-
-.retry-btn {
-  padding: 6px 16px;
-  border-radius: 7px;
-  background: transparent;
-  border: 1px solid rgba(245,158,11,0.35);
-  color: var(--brand-primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: var(--font-body);
-  transition: background 0.15s ease;
-}
-.retry-btn:hover { background: rgba(245,158,11,0.08); }
-.retry-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
-
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.08);
-  border-top-color: var(--brand-primary);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  flex-shrink: 0;
-}
-
-/* ── LIVE DOTS ───────────────────────────────────────────────────────── */
-.live-dot {
+.gc-live-dot {
   width: 5px;
   height: 5px;
-  background: #fff;
   border-radius: 50%;
-  animation: blink 1.2s infinite;
-  flex-shrink: 0;
-}
-.live-dot-sm {
-  width: 6px;
-  height: 6px;
   background: #fff;
-  border-radius: 50%;
-  animation: blink 1.2s infinite;
-  flex-shrink: 0;
+  animation: gc-blink 1.2s infinite;
 }
-
-/* ── MORE ROW ────────────────────────────────────────────────────────── */
-.more-row {
-  display: flex;
-  justify-content: center;
-  padding: 20px 0 4px;
-}
-
-.more-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 22px;
-  border-radius: 8px;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+.gc-price {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: color-mix(in srgb, var(--brand-primary) 18%, rgba(0, 0, 0, 0.5));
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
   color: var(--brand-primary);
-  background: rgba(245, 158, 11, 0.06);
-  font-size: 13px;
+  font-family: var(--font-ui);
   font-weight: 700;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+
+.gc-name {
+  padding: 10px 12px;
   font-family: var(--font-body);
-  text-decoration: none;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  font-weight: 600;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
   white-space: nowrap;
-}
-.more-btn:hover {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(245, 158, 11, 0.5);
-  transform: translateY(-1px);
-}
-.more-btn:active { transform: translateY(0); }
-.more-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
-.more-btn svg { transition: transform 0.15s ease; }
-.more-btn:hover svg { transform: translateX(2px); }
-
-/* ── FEED SKELETON ───────────────────────────────────────────────────── */
-.fc-skel {
-  border-radius: 8px;
   overflow: hidden;
-  background: rgba(10, 22, 55, 0.7);
-  border: 1px solid rgba(255,255,255,0.04);
+  text-overflow: ellipsis;
 }
-.fc-skel-thumb {
-  aspect-ratio: 3/4;
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.04) 0%,
-    rgba(255,255,255,0.09) 40%,
-    rgba(255,255,255,0.04) 80%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
-}
-.fc-skel-name {
-  height: 10px;
-  margin: 9px 9px 10px;
-  border-radius: 3px;
-  width: 70%;
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.04) 0%,
-    rgba(255,255,255,0.09) 40%,
-    rgba(255,255,255,0.04) 80%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
-  animation-delay: 0.07s;
-}
-.feed-grid--more { margin-top: 8px; }
-.feed-sentinel { height: 1px; }
 
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
+/* ── States ────────────────────────────────────────────────────────────── */
+.empty {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 64px 0;
+  font-size: 14px;
+}
+
+.gc-skel {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-raised);
+}
+.gc-skel-thumb {
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.09) 40%, rgba(255, 255, 255, 0.04) 80%);
+  background-size: 200% 100%;
+  animation: gc-shimmer 1.4s ease-in-out infinite;
+}
+.gc-skel-name {
+  height: 11px;
+  width: 65%;
+  margin: 11px 12px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.09) 40%, rgba(255, 255, 255, 0.04) 80%);
+  background-size: 200% 100%;
+  animation: gc-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes gc-shimmer {
+  0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
-
-/* ── KEYFRAMES ───────────────────────────────────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes blink {
+@keyframes gc-blink {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.25; }
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
+  50% { opacity: 0.25; }
 }
 </style>
