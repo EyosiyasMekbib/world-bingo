@@ -66,11 +66,15 @@ export const useProviderGamesStore = defineStore('provider-games', {
 
     hasMore: (state): boolean => state.page * state.pageSize < state.total,
 
-    displayCategories: (state): string[] => [
-      CATEGORY_ALL,
-      CATEGORY_BINGO,
-      ...state.categories.filter((c) => c !== CATEGORY_BINGO),
-    ],
+    displayCategories: (state): string[] => {
+      const ORDER = ['SLOTS', 'MINI', 'INSTWIN', 'POKER', 'LIVE', 'LIVEGRAND', 'ARCADE', 'BINGO']
+      const all = [CATEGORY_BINGO, ...state.categories.filter((c) => c !== CATEGORY_BINGO)]
+      const sorted = [
+        ...ORDER.filter((c) => all.some((x) => x.toUpperCase() === c)),
+        ...all.filter((c) => !ORDER.includes(c.toUpperCase())),
+      ].map((c) => all.find((x) => x.toUpperCase() === c) ?? c)
+      return [CATEGORY_ALL, ...sorted]
+    },
   },
 
   actions: {
