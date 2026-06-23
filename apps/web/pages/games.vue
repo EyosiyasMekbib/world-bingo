@@ -54,9 +54,15 @@ const activeCategory = ref('ALL')
 const favView = ref(false)
 const gridSearch = ref('')
 
+const ORDER = ['SLOTS', 'MINI', 'INSTWIN', 'POKER', 'LIVE', 'LIVEGRAND', 'ARCADE', 'BINGO']
+
 const allCategories = computed(() => {
-  const providerCats = providerStore.categories.filter((c) => c !== BINGO_CAT && c !== 'ALL')
-  return ['ALL', BINGO_CAT, ...providerCats]
+  const raw = [BINGO_CAT, ...providerStore.categories.filter((c) => c !== BINGO_CAT && c !== 'ALL')]
+  const sorted = [
+    ...ORDER.filter((o) => raw.some((c) => c.toUpperCase() === o)),
+    ...raw.filter((c) => !ORDER.includes(c.toUpperCase())),
+  ].map((o) => raw.find((c) => c.toUpperCase() === o) ?? o)
+  return ['ALL', ...sorted]
 })
 
 function catLabel(cat: string) {
