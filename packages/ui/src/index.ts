@@ -9,3 +9,8 @@ export * from './components/AppSidebar.vue'
 export * from './composables/useSocket'
 export * from './composables/useWallet'
 export * from './composables/useGame'
+
+export * from './theme/types'
+export * from './theme/resolveBrand'
+export * from './theme/brandToCssVars'
+export * from './theme/brands'
