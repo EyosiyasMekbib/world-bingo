@@ -275,6 +275,10 @@ function bingoToCard(g: Game): LobbyCard {
   }
 }
 
+function hasImage(g: ProviderGame) {
+  return !!(g.imageSquare || g.imageLandscape)
+}
+
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
     key: 'p-' + g.gameCode,
@@ -297,13 +301,13 @@ const gridGames = computed<LobbyCard[]>(() => {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
     // Provider games first; bingo rooms in the lower part of the grid
-    cards = [...providerStore.games.map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    cards = [...providerStore.games.filter(hasImage).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...providerStore.games.map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...providerStore.games.filter(hasImage).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
     cards = popularBingo.value.map(bingoToCard)
   } else {
-    cards = (categoryGamesMap.value[cat] ?? []).map(providerToCard)
+    cards = (categoryGamesMap.value[cat] ?? []).filter(hasImage).map(providerToCard)
   }
 
   if (activeVendor.value !== 'ALL' && vendorsAreReal.value) {

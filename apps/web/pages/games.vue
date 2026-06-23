@@ -165,7 +165,7 @@ const providerCards = computed<Card[]>(() => {
   }))
 })
 
-const allCards = computed<Card[]>(() => [...bingoCards.value, ...providerCards.value])
+const allCards = computed<Card[]>(() => [...providerCards.value, ...bingoCards.value])
 
 const displayCards = computed<Card[]>(() => {
   let list = favView.value ? allCards.value.filter((c) => isFav(c.key)) : allCards.value
