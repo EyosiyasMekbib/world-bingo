@@ -3,8 +3,8 @@ import { useAuthStore } from '~/store/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
-const { socket, connect } = useSocket()
-const { locale, setLocale, t } = useI18n()
+const { connect } = useSocket()
+const { locale, setLocale } = useI18n()
 const { referralsEnabled, tournamentsEnabled } = useFeatureFlags()
 
 const showDeposit = ref(false)
@@ -18,7 +18,6 @@ onMounted(async () => {
   }
 })
 
-// Watch for auth changes
 watch(() => auth.isAuthenticated, (val) => {
   if (val) connect()
 })
@@ -34,440 +33,724 @@ const formattedBalance = computed(() => {
   return total.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 })
 
-// Mobile nav toggle
-const mobileNavOpen = ref(false)
+// Player id shown beneath the balance (design: "ID: 940588")
+const playerId = computed(() => auth.user?.serial ?? '—')
 
-// Language toggle helper
+// Mobile nav drawer + locale
+const mobileNavOpen = ref(false)
 const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
+
+// Header search → search page
+const search = ref('')
+function submitSearch() {
+  const q = search.value.trim()
+  if (q) navigateTo(`/search?q=${encodeURIComponent(q)}`)
+}
 </script>
 
 <template>
-  <div
-    class="min-h-screen flex flex-col"
-    style="background: var(--surface-base); color: var(--text-primary)"
-  >
-    <!-- ── Top Header ────────────────────────────────────────────────────── -->
-    <header
-      class="sticky top-0 z-40 border-b border-white/10"
-      style="
-        background: rgba(0, 10, 56, 0.95);
-        backdrop-filter: blur(12px);
-      "
-    >
-      <div class="max-w-6xl mx-auto px-2 h-14 flex items-center justify-between gap-1 sm:gap-3">
-        <!-- Logo -->
-        <NuxtLink to="/" class="flex items-center gap-2.5 flex-shrink-0">
-          <img src="/logo.png" alt="Arada Bingo" class="h-8 sm:h-12 object-contain rounded-xl flex-shrink-0" />
+  <div class="ab-shell">
+    <!-- ═══════════════ DESKTOP HEADER ═══════════════ -->
+    <header class="ab-desktop ab-header">
+      <!-- Utility bar -->
+      <div class="ab-util">
+        <NuxtLink to="/" class="ab-logo">
+          <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
         </NuxtLink>
 
-        <nav class="hidden sm:flex items-center gap-1">
-          <NuxtLink
-            to="/"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            exact-active-class="!text-amber-400 !bg-amber-400/10"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            Home
-          </NuxtLink>
-          <NuxtLink
-            v-if="tournamentsEnabled"
-            to="/tournaments"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            active-class="text-amber-400 bg-amber-400/10"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0012 0V2z" />
-            </svg>
-            Tournaments
-          </NuxtLink>
-          <NuxtLink
-            v-if="auth.isAuthenticated"
-            to="/transactions"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            active-class="text-amber-400 bg-amber-400/10"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" />
-              <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            History
-          </NuxtLink>
-          <NuxtLink
-            v-if="referralsEnabled && auth.isAuthenticated"
-            to="/refer"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/8 transition-all flex items-center gap-1.5"
-            active-class="text-amber-400 bg-amber-400/10"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            Refer
-          </NuxtLink>
-        </nav>
-
-        <!-- Right side actions -->
-        <div class="flex items-center gap-1 sm:gap-2">
-          <!-- Authenticated user -->
-          <template v-if="auth.isAuthenticated">
-            <!-- Mobile: compact balance chip -->
-            <div class="flex sm:hidden items-center gap-1 px-1.5 py-1 rounded-lg bg-white/8 border border-white/10 text-[11px] min-w-0">
-              <span class="text-white font-semibold truncate">{{ formattedBalance }}</span>
-              <span class="text-white/50 text-[9px] uppercase font-bold tracking-tight flex-shrink-0">ETB</span>
-            </div>
-
-            <!-- Mobile: deposit button -->
-            <button
-              class="flex sm:hidden items-center px-2 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-[11px] font-semibold transition-colors flex-shrink-0"
-              @click="showDeposit = true"
-            >
-              Deposit
-            </button>
-
-            <!-- Mobile: withdraw button -->
-            <button
-              class="flex sm:hidden items-center px-2 py-1 rounded-lg border border-white/20 text-white hover:bg-white/8 text-[11px] font-semibold transition-colors flex-shrink-0"
-              @click="showWithdrawal = true"
-            >
-              Withdraw
-            </button>
-
-            <!-- Wallet balance chip with coin + refresh -->
-            <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/10 text-sm">
-              <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" /><circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" /></svg>
-              <span class="text-white font-semibold">{{ formattedBalance }}</span>
-              <span class="text-white/50 text-[10px] uppercase font-bold tracking-tight">ETB</span>
-              <button
-                class="ml-0.5 text-white/40 hover:text-white/70 transition-colors"
-                title="Refresh balance"
-                @click="auth.fetchWallet()"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-            </div>
-
-            <!-- Deposit button -->
-            <button
-              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-all"
-              @click="showDeposit = true"
-            >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Deposit
-            </button>
-
-            <!-- Withdraw button -->
-            <button
-              class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/8 text-white text-sm font-semibold transition-all"
-              @click="showWithdrawal = true"
-            >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 20V4m-8 8l8-8 8 8" />
-              </svg>
-              Withdraw
-            </button>
-
-            <!-- User avatar circle with dropdown -->
-            <div class="hidden sm:block relative group">
-              <button class="w-9 h-9 rounded-full bg-amber-400 hover:bg-amber-300 flex items-center justify-center flex-shrink-0 transition-colors">
-                <span class="text-black text-sm font-bold leading-none">
-                  {{ (auth.user?.username ?? 'U')[0].toUpperCase() }}
-                </span>
-              </button>
-              <!-- Dropdown -->
-              <div class="absolute right-0 top-full mt-1 w-44 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 overflow-hidden">
-                <NuxtLink to="/profile" class="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/8 hover:text-white transition-colors">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
-                  Profile
-                </NuxtLink>
-                <NuxtLink to="/transactions" class="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/8 hover:text-white transition-colors">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" /><polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                  History
-                </NuxtLink>
-                <button
-                  class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-white/50 hover:bg-white/5 transition-colors"
-                  @click="showWithdrawal = true"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" /></svg>
-                  Withdraw
-                </button>
-                <hr class="border-white/10 my-1" />
-                <button
-                  class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                  @click="handleLogout"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                  Logout
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <!-- Guest -->
-          <template v-else>
-            <NuxtLink
-              to="/auth/login"
-              class="hidden sm:flex px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-sm font-semibold transition-colors"
-            >
-              Login
-            </NuxtLink>
-            <NuxtLink
-              to="/auth/register"
-              class="hidden sm:flex px-4 py-1.5 rounded-lg border border-white/20 hover:bg-white/8 text-white text-sm font-medium transition-colors"
-            >
-              Register
-            </NuxtLink>
-          </template>
-
-          <!-- Mobile hamburger -->
-          <button
-            class="sm:hidden p-2 rounded-lg hover:bg-white/8 transition-colors text-zinc-300"
-            @click="mobileNavOpen = !mobileNavOpen"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path v-if="!mobileNavOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-              <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <div class="ab-search">
+          <input
+            v-model="search"
+            placeholder="Search Games"
+            @keyup.enter="submitSearch"
+          />
+          <button class="ab-search-ico" aria-label="Search" @click="submitSearch">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="m20 20-3.2-3.2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
         </div>
+
+        <div class="ab-spacer" />
+
+        <div class="ab-balance">
+          <div class="ab-balance-amt">{{ formattedBalance }} <span>ETB</span></div>
+          <div class="ab-balance-id">ID: {{ playerId }}</div>
+        </div>
+
+        <template v-if="auth.isAuthenticated">
+          <button class="ab-btn-primary" @click="showDeposit = true">Deposit</button>
+          <button class="ab-icon-btn" title="Withdraw" @click="showWithdrawal = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" /></svg>
+          </button>
+          <div class="ab-account">
+            <button class="ab-icon-btn ab-account-trigger" title="Account">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+            </button>
+            <div class="ab-menu">
+              <NuxtLink to="/profile" class="ab-menu-item">Profile</NuxtLink>
+              <NuxtLink to="/transactions" class="ab-menu-item">History</NuxtLink>
+              <NuxtLink to="/wallet" class="ab-menu-item">Wallet</NuxtLink>
+              <hr />
+              <button class="ab-menu-item ab-menu-danger" @click="handleLogout">Logout</button>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <NuxtLink to="/auth/login" class="ab-btn-primary">Login</NuxtLink>
+          <NuxtLink to="/auth/register" class="ab-btn-ghost">Register</NuxtLink>
+        </template>
+
+        <button class="ab-lang" @click="toggleLocale">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>
+          {{ locale === 'en' ? 'EN' : 'አማ' }}
+          <span class="ab-caret">▾</span>
+        </button>
       </div>
 
-      <!-- Mobile nav drawer -->
-      <Transition
-        enter-active-class="transition ease-out duration-150"
-        enter-from-class="opacity-0 -translate-y-2"
-        enter-to-class="opacity-100 translate-y-0"
-        leave-active-class="transition ease-in duration-100"
-        leave-from-class="opacity-100 translate-y-0"
-        leave-to-class="opacity-0 -translate-y-2"
-      >
-        <div
-          v-if="mobileNavOpen"
-          class="sm:hidden fixed inset-x-0 top-0 z-50 flex flex-col bg-[var(--surface-base)] shadow-2xl"
+      <!-- Primary nav -->
+      <nav class="ab-nav">
+        <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
+        <NuxtLink to="/games" class="ab-nav-link" active-class="ab-nav-active">Games</NuxtLink>
+        <NuxtLink
+          v-if="tournamentsEnabled"
+          to="/tournaments"
+          class="ab-nav-link"
+          active-class="ab-nav-active"
         >
-          <!-- Drawer Header -->
-          <div class="h-16 px-4 flex items-center justify-between border-b border-white/10" style="background: rgba(0, 10, 56, 1);">
-            <div class="flex items-center gap-2.5">
-              <img src="/logo.png" alt="Arada Bingo" class="w-10 h-10 object-contain rounded-xl flex-shrink-0" />
-            </div>
-            <div class="flex items-center gap-3">
-              <div class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 flex items-center gap-2">
-                <span class="text-yellow-500 font-bold text-sm">{{ formattedBalance }}</span>
-                <span class="text-white/40 text-[10px] uppercase font-bold">ETB</span>
-              </div>
-              <button @click="mobileNavOpen = false" class="p-2 text-white/60 hover:text-white transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="p-4 flex flex-col gap-1">
-            <template v-if="auth.isAuthenticated">
-              <div class="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/5 mb-3">
-                <span class="text-sm text-white/60">Balance</span>
-                <span class="text-base font-bold text-yellow-500">{{ formattedBalance }} ETB</span>
-              </div>
-
-              <button
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
-                @click="showDeposit = true; mobileNavOpen = false"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
-                Deposit
-              </button>
-
-              <button
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
-                @click="showWithdrawal = true; mobileNavOpen = false"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" /></svg>
-                Withdraw
-              </button>
-
-              <button
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
-                @click="toggleLocale(); mobileNavOpen = false"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>
-                {{ locale === 'en' ? 'Switch to Amharic (አማ)' : 'Switch to English (EN)' }}
-              </button>
-
-              <NuxtLink
-                to="/profile"
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
-                @click="mobileNavOpen = false"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
-                Profile
-              </NuxtLink>
-
-              <NuxtLink
-                v-if="referralsEnabled"
-                to="/refer"
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-medium text-white/80 hover:bg-white/5 flex items-center gap-3 transition-colors"
-                @click="mobileNavOpen = false"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                Refer &amp; Earn
-              </NuxtLink>
-
-              <button
-                class="w-full text-left px-4 py-3.5 rounded-xl text-[15px] font-semibold text-red-500/90 hover:bg-red-500/5 flex items-center gap-3 transition-colors mt-2"
-                @click="handleLogout"
-              >
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                Logout
-              </button>
-            </template>
-
-            <template v-else>
-              <NuxtLink
-                to="/auth/login"
-                class="w-full px-4 py-3.5 rounded-xl bg-yellow-500 text-black text-center font-bold mb-2 shadow-lg shadow-yellow-500/20"
-                @click="mobileNavOpen = false"
-              >
-                Login
-              </NuxtLink>
-              <NuxtLink
-                to="/auth/register"
-                class="w-full px-4 py-3.5 rounded-xl border border-white/20 text-white text-center font-medium hover:bg-white/5"
-                @click="mobileNavOpen = false"
-              >
-                Create Account
-              </NuxtLink>
-            </template>
-          </div>
-        </div>
-      </Transition>
+          Tournaments<span class="ab-new">NEW</span>
+        </NuxtLink>
+        <NuxtLink
+          v-if="auth.isAuthenticated"
+          to="/transactions"
+          class="ab-nav-link"
+          active-class="ab-nav-active"
+        >
+          History
+        </NuxtLink>
+        <NuxtLink
+          v-if="referralsEnabled && auth.isAuthenticated"
+          to="/refer"
+          class="ab-nav-link"
+          active-class="ab-nav-active"
+        >
+          Promotions
+        </NuxtLink>
+      </nav>
     </header>
 
-    <!-- ── Page Content ───────────────────────────────────────────────────── -->
-    <main class="flex-1 pb-16 sm:pb-0">
+    <!-- ═══════════════ MOBILE HEADER ═══════════════ -->
+    <header class="ab-mobile ab-header">
+      <div class="ab-mtop">
+        <button class="ab-micon" aria-label="Menu" @click="mobileNavOpen = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <NuxtLink to="/" class="ab-logo ab-logo-sm">
+          <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+        </NuxtLink>
+        <NuxtLink to="/search" class="ab-micon" aria-label="Search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" /><path d="m20 20-3.2-3.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </NuxtLink>
+        <div class="ab-spacer" />
+        <div class="ab-balance ab-balance-sm">
+          <div class="ab-balance-amt">{{ formattedBalance }} <span>ETB</span></div>
+          <div class="ab-balance-id">ID: {{ playerId }}</div>
+        </div>
+        <button
+          v-if="auth.isAuthenticated"
+          class="ab-btn-primary ab-btn-sm"
+          @click="showDeposit = true"
+        >
+          Deposit
+        </button>
+        <NuxtLink v-else to="/auth/login" class="ab-btn-primary ab-btn-sm">Login</NuxtLink>
+      </div>
+
+      <div class="ab-mnav noscroll">
+        <NuxtLink to="/" class="ab-mtab" exact-active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
+          <span>Home</span>
+        </NuxtLink>
+        <NuxtLink to="/games" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+          <span>Games</span>
+        </NuxtLink>
+        <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M18 2H6v7a6 6 0 0012 0V2z" /></svg>
+          <span>Tournaments</span>
+        </NuxtLink>
+        <NuxtLink v-if="auth.isAuthenticated" to="/wallet" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M16 6V5a2 2 0 00-2-2H8" /><circle cx="16.5" cy="12.5" r="1.3" fill="currentColor" stroke="none" /></svg>
+          <span>Wallet</span>
+        </NuxtLink>
+        <NuxtLink v-if="referralsEnabled && auth.isAuthenticated" to="/refer" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 13 21l-9-9V4h8l8.5 8.5z" /><circle cx="7.5" cy="7.5" r="1.5" /></svg>
+          <span>Promotions</span>
+        </NuxtLink>
+      </div>
+    </header>
+
+    <!-- Mobile slide-in drawer -->
+    <Transition
+      enter-active-class="ab-drawer-enter"
+      leave-active-class="ab-drawer-leave"
+    >
+      <div v-if="mobileNavOpen" class="ab-drawer-wrap">
+        <div class="ab-drawer-scrim" @click="mobileNavOpen = false" />
+        <aside class="ab-drawer">
+          <div class="ab-drawer-head">
+            <span class="ab-logo ab-logo-sm">
+              <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+            </span>
+            <button class="ab-micon" @click="mobileNavOpen = false" aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          <div class="ab-drawer-body">
+            <template v-if="auth.isAuthenticated">
+              <div class="ab-drawer-balance">
+                <span>Balance</span>
+                <strong>{{ formattedBalance }} ETB</strong>
+              </div>
+              <button class="ab-drawer-item" @click="showDeposit = true; mobileNavOpen = false">Deposit</button>
+              <button class="ab-drawer-item" @click="showWithdrawal = true; mobileNavOpen = false">Withdraw</button>
+              <NuxtLink to="/profile" class="ab-drawer-item" @click="mobileNavOpen = false">Profile</NuxtLink>
+              <NuxtLink to="/transactions" class="ab-drawer-item" @click="mobileNavOpen = false">History</NuxtLink>
+              <NuxtLink v-if="referralsEnabled" to="/refer" class="ab-drawer-item" @click="mobileNavOpen = false">Refer &amp; Earn</NuxtLink>
+              <button class="ab-drawer-item" @click="toggleLocale(); mobileNavOpen = false">
+                {{ locale === 'en' ? 'Switch to Amharic (አማ)' : 'Switch to English (EN)' }}
+              </button>
+              <button class="ab-drawer-item ab-drawer-danger" @click="handleLogout">Logout</button>
+            </template>
+            <template v-else>
+              <NuxtLink to="/auth/login" class="ab-btn-primary ab-drawer-cta" @click="mobileNavOpen = false">Login</NuxtLink>
+              <NuxtLink to="/auth/register" class="ab-btn-ghost ab-drawer-cta" @click="mobileNavOpen = false">Create Account</NuxtLink>
+              <button class="ab-drawer-item" @click="toggleLocale(); mobileNavOpen = false">
+                {{ locale === 'en' ? 'Switch to Amharic (አማ)' : 'Switch to English (EN)' }}
+              </button>
+            </template>
+          </div>
+        </aside>
+      </div>
+    </Transition>
+
+    <!-- ═══════════════ PAGE CONTENT ═══════════════ -->
+    <main class="ab-main">
       <Transition name="page-fade" mode="out-in">
         <slot />
       </Transition>
     </main>
 
-    <!-- ── Mobile Bottom Nav ──────────────────────────────────────────────── -->
-    <nav
-      class="sm:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/10 flex items-stretch"
-      style="background: rgba(0, 10, 56, 0.97); backdrop-filter: blur(12px);"
-    >
-      <!-- Home -->
-      <NuxtLink
-        to="/"
-        exact-active-class="text-amber-400 [&_svg]:stroke-amber-400"
-        class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-      >
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-        <span class="text-[10px] font-medium">Home</span>
-      </NuxtLink>
+    <!-- ═══════════════ FOOTER ═══════════════ -->
+    <footer class="ab-footer">
+      <div class="ab-footer-inner">
+        <div class="ab-footer-top">
+          <div class="ab-footer-brand">
+            <span class="ab-logo">
+              <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+            </span>
+            <p>Ethiopia's premium online bingo and gaming destination. Play responsibly and enjoy the thrill.</p>
+          </div>
+          <div class="ab-footer-cols">
+            <div class="ab-footer-col">
+              <h4>Games</h4>
+              <NuxtLink to="/games">Bingo</NuxtLink>
+              <NuxtLink to="/games">Slots</NuxtLink>
+              <NuxtLink to="/games">Fish Games</NuxtLink>
+              <NuxtLink to="/games">Arcade</NuxtLink>
+            </div>
+            <div class="ab-footer-col">
+              <h4>Account</h4>
+              <NuxtLink to="/wallet">Deposit</NuxtLink>
+              <NuxtLink to="/wallet">Withdraw</NuxtLink>
+              <NuxtLink to="/profile">My Profile</NuxtLink>
+              <NuxtLink to="/transactions">History</NuxtLink>
+            </div>
+            <div class="ab-footer-col">
+              <h4>Support</h4>
+              <a href="#">Help Center</a>
+              <a href="#">Contact Us</a>
+              <a href="#">Terms</a>
+              <a href="#">Privacy Policy</a>
+            </div>
+          </div>
+        </div>
+        <div class="ab-footer-bottom">
+          <p>Responsible Gaming: AradaBingo is intended for users 18 years and older. Gambling can be addictive — play within your limits. If you or someone you know has a gambling problem, please seek help. © 2026 AradaBingo. All rights reserved.</p>
+          <span class="ab-18">18+</span>
+        </div>
+      </div>
+    </footer>
 
-      <!-- Tournaments -->
-      <NuxtLink
-        v-if="tournamentsEnabled"
-        to="/tournaments"
-        active-class="text-amber-400"
-        class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-      >
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0012 0V2z" />
-        </svg>
-        <span class="text-[10px] font-medium">Tournaments</span>
-      </NuxtLink>
-
-      <!-- Wallet (authenticated) / Login (guest) -->
-      <template v-if="auth.isAuthenticated">
-        <NuxtLink
-          to="/wallet"
-          active-class="text-amber-400"
-          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-        >
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="2" y="7" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" />
-            <circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" />
-          </svg>
-          <span class="text-[10px] font-medium">Wallet</span>
-        </NuxtLink>
-
-        <!-- Profile -->
-        <NuxtLink
-          to="/profile"
-          active-class="text-amber-400"
-          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-        >
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-          </svg>
-          <span class="text-[10px] font-medium">Profile</span>
-        </NuxtLink>
-
-        <!-- Refer (when enabled) -->
-        <NuxtLink
-          v-if="referralsEnabled"
-          to="/refer"
-          active-class="text-amber-400"
-          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-        >
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-          <span class="text-[10px] font-medium">Refer</span>
-        </NuxtLink>
-      </template>
-
-      <template v-else>
-        <NuxtLink
-          to="/auth/login"
-          active-class="text-amber-400"
-          class="flex-1 flex flex-col items-center justify-center gap-1 py-2 text-zinc-400 hover:text-white transition-colors"
-        >
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
-          </svg>
-          <span class="text-[10px] font-medium">Login</span>
-        </NuxtLink>
-      </template>
-    </nav>
-
-    <!-- ── Modals ─────────────────────────────────────────────────────────── -->
-    <DepositModal
-      v-model="showDeposit"
-      @deposited="auth.fetchWallet(); showDeposit = false"
-    />
+    <!-- ═══════════════ MODALS ═══════════════ -->
+    <DepositModal v-model="showDeposit" @deposited="auth.fetchWallet(); showDeposit = false" />
     <WithdrawalModal
       v-model="showWithdrawal"
       :balance="Number(auth.wallet?.realBalance ?? 0)"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
-
   </div>
 </template>
 
-<style>
-/* ── Page transition ─────────────────────────────────────────────────── */
+<style scoped>
+.ab-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
+.noscroll::-webkit-scrollbar { display: none; }
+.noscroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* breakpoint matches the design's 860px swap */
+.ab-mobile { display: none; }
+@media (max-width: 860px) {
+  .ab-desktop { display: none !important; }
+  .ab-mobile { display: flex !important; }
+}
+
+/* ── Header shell ── */
+.ab-header {
+  flex-direction: column;
+  background: var(--surface-raised);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ab-desktop { display: flex; }
+
+/* ── Logo ── */
+.ab-logo {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  text-decoration: none;
+  flex: none;
+}
+.ab-logo-1,
+.ab-logo-2 {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.ab-logo-1 { color: var(--text-primary); }
+.ab-logo-2 { color: var(--brand-primary); }
+.ab-logo-sm .ab-logo-1,
+.ab-logo-sm .ab-logo-2 { font-size: 18px; letter-spacing: 0.5px; }
+
+/* ── Utility bar ── */
+.ab-util {
+  max-width: 1480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.ab-spacer { flex: 1; }
+
+.ab-search {
+  flex: 1;
+  max-width: 360px;
+  position: relative;
+  display: flex;
+}
+.ab-search input {
+  width: 100%;
+  height: 38px;
+  background: var(--surface-base);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 0 38px 0 14px;
+  outline: none;
+}
+.ab-search input:focus { border-color: var(--brand-primary); }
+.ab-search-ico {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ab-search-ico svg { width: 17px; height: 17px; }
+
+.ab-balance {
+  text-align: right;
+  flex: none;
+  line-height: 1.2;
+}
+.ab-balance-amt {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brand-primary);
+}
+.ab-balance-amt span { font-size: 11px; }
+.ab-balance-id {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Buttons ── */
+.ab-btn-primary {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  border: none;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 11px 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  text-decoration: none;
+  transition: box-shadow 0.12s, transform 0.12s, background 0.12s;
+}
+.ab-btn-primary:hover {
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+  transform: translateY(-1px);
+}
+.ab-btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.ab-btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+.ab-icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  background: var(--surface-base);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.12s, color 0.12s;
+}
+.ab-icon-btn:hover { border-color: var(--brand-primary); color: var(--text-primary); }
+.ab-icon-btn svg { width: 18px; height: 18px; }
+
+.ab-lang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ab-lang svg { width: 16px; height: 16px; }
+.ab-caret { font-size: 10px; opacity: 0.7; }
+
+/* ── Account dropdown ── */
+.ab-account { position: relative; flex: none; }
+.ab-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 168px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: var(--shadow-modal);
+  padding: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.15s;
+  z-index: 60;
+}
+.ab-account:hover .ab-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+.ab-menu hr { border: none; border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 6px 4px; }
+.ab-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.ab-menu-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-primary); }
+.ab-menu-danger { color: var(--status-error); }
+.ab-menu-danger:hover { background: color-mix(in srgb, var(--status-error) 12%, transparent); color: var(--status-error); }
+
+/* ── Primary nav ── */
+.ab-nav {
+  max-width: 1480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ab-nav-link {
+  position: relative;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 14px 18px;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ab-nav-link:hover { color: var(--brand-primary); }
+.ab-nav-active { color: var(--brand-primary); border-bottom-color: var(--brand-primary); }
+.ab-new {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ── Mobile header ── */
+.ab-mtop {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ab-micon {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+.ab-micon svg { width: 22px; height: 22px; }
+.ab-btn-sm { font-size: 13px; padding: 9px 14px; letter-spacing: 0.4px; }
+.ab-balance-sm .ab-balance-amt { font-size: 14px; }
+.ab-balance-sm .ab-balance-id { font-size: 10px; }
+
+.ab-mnav {
+  display: flex;
+  overflow-x: auto;
+  background: color-mix(in srgb, var(--surface-raised) 80%, var(--surface-base));
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ab-mtab {
+  flex: none;
+  min-width: 84px;
+  padding: 10px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 3px solid transparent;
+}
+.ab-mtab svg { width: 22px; height: 22px; }
+.ab-mtab span {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ab-mtab-active { color: var(--brand-primary); border-bottom-color: var(--brand-primary); }
+
+/* ── Mobile drawer ── */
+.ab-drawer-wrap { position: fixed; inset: 0; z-index: 80; }
+.ab-drawer-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
+.ab-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 82%;
+  max-width: 320px;
+  background: var(--surface-raised);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-modal);
+}
+.ab-drawer-head {
+  height: 60px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ab-drawer-body { padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.ab-drawer-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface-base);
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.ab-drawer-balance strong { color: var(--brand-primary); font-size: 16px; }
+.ab-drawer-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.ab-drawer-item:hover { background: rgba(255, 255, 255, 0.05); }
+.ab-drawer-danger { color: var(--status-error); margin-top: 6px; }
+.ab-drawer-cta { text-align: center; margin-bottom: 6px; }
+
+.ab-drawer-enter { animation: ab-fade 0.15s ease; }
+.ab-drawer-enter .ab-drawer { animation: ab-slide 0.2s var(--wb-ease-out); }
+.ab-drawer-leave { animation: ab-fade 0.12s ease reverse; }
+@keyframes ab-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ab-slide { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
+/* ── Main ── */
+.ab-main { flex: 1; }
+
+/* ── Footer ── */
+.ab-footer {
+  background: var(--surface-raised);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ab-footer-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 44px 28px 30px;
+}
+.ab-footer-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.ab-footer-brand { max-width: 300px; }
+.ab-footer-brand .ab-logo { margin-bottom: 14px; }
+.ab-footer-brand p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.6;
+}
+.ab-footer-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+.ab-footer-col { display: flex; flex-direction: column; gap: 10px; }
+.ab-footer-col h4 {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin-bottom: 4px;
+}
+.ab-footer-col a {
+  text-decoration: none;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.15s;
+}
+.ab-footer-col a:hover { color: var(--brand-primary); }
+.ab-footer-bottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 34px;
+  padding-top: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.ab-footer-bottom p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.6;
+  max-width: 760px;
+}
+.ab-18 {
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  flex: none;
+}
+
+/* ── Page transition ── */
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
-.page-fade-enter-from {
-  opacity: 0;
-  transform: translateY(6px);
-}
-.page-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
+.page-fade-enter-from { opacity: 0; transform: translateY(6px); }
+.page-fade-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>

@@ -13,7 +13,9 @@ export default defineNuxtPlugin(() => {
     title: theme.name,
     link: [{ rel: 'stylesheet', href: theme.fonts.googleHref }],
     meta: [{ name: 'theme-color', content: theme.manifest.themeColor }],
-    style: [{ children: `:root{${cssText}}` }],
+    // `:root:root` (specificity 0,2,0) outranks the static `:root` blocks in the
+    // global CSS files so the active brand always wins, regardless of load order.
+    style: [{ innerHTML: `:root:root{${cssText}}` }],
     htmlAttrs: { 'data-brand': theme.id },
   })
 })
