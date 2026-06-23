@@ -401,6 +401,17 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             return { data, total, page, limit }
         })
 
+        f.patch('/providers/:id/primary', async (req: any, reply) => {
+            const { id } = req.params as { id: string }
+            const { isPrimary } = req.body as { isPrimary: boolean }
+            if (typeof isPrimary !== 'boolean') return reply.status(400).send({ error: 'isPrimary must be a boolean' })
+            if (isPrimary) {
+                await prisma.gameProvider.updateMany({ data: { isPrimary: false } })
+            }
+            const provider = await prisma.gameProvider.update({ where: { id }, data: { isPrimary } })
+            return provider
+        })
+
         // ── Cashback Promotions ───────────────────────────────────────────────
         f.get('/cashback', async (_req, _reply) => CashbackService.listPromotions())
 
