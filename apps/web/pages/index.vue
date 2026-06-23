@@ -35,10 +35,16 @@ const CATEGORY_LABELS: Record<string, string> = {
 const selectedCategory = ref('ALL')
 const showFavorites = ref(false)
 
+const CATEGORY_ORDER = ['SLOTS', 'MINI', 'INSTWIN', 'POKER', 'LIVE', 'LIVEGRAND', 'ARCADE', 'BINGO']
+
 const allCategories = computed(() => {
-  const base = ['ALL', 'TRENDING', 'POPULAR', 'BINGO']
-  const extra = providerStore.categories.filter((c) => !base.includes(c) && c !== 'ALL')
-  return [...base, ...extra]
+  const fixed = ['ALL', 'TRENDING', 'POPULAR']
+  const provider = providerStore.categories.filter((c) => c !== 'ALL')
+  const sorted = [
+    ...CATEGORY_ORDER.filter((o) => provider.some((c) => c.toUpperCase() === o)),
+    ...provider.filter((c) => !CATEGORY_ORDER.includes(c.toUpperCase())),
+  ].map((o) => provider.find((c) => c.toUpperCase() === o) ?? o)
+  return [...fixed, ...sorted]
 })
 
 function selectCategory(cat: string) {
