@@ -81,17 +81,18 @@ function submitSearch() {
 
         <template v-if="auth.isAuthenticated">
           <button class="ab-btn-primary" @click="showDeposit = true">Deposit</button>
-          <button class="ab-icon-btn" title="Withdraw" @click="showWithdrawal = true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7l7-7 7 7" /></svg>
-          </button>
+          <NuxtLink to="/transactions" class="ab-icon-btn" title="Messages">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="m3 7 9 6 9-6" /></svg>
+          </NuxtLink>
           <div class="ab-account">
-            <button class="ab-icon-btn ab-account-trigger" title="Account">
+            <button class="ab-icon-btn ab-account-trigger ab-account-round" title="Account">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
             </button>
             <div class="ab-menu">
               <NuxtLink to="/profile" class="ab-menu-item">Profile</NuxtLink>
               <NuxtLink to="/transactions" class="ab-menu-item">History</NuxtLink>
               <NuxtLink to="/wallet" class="ab-menu-item">Wallet</NuxtLink>
+              <button class="ab-menu-item" @click="showWithdrawal = true">Withdraw</button>
               <hr />
               <button class="ab-menu-item ab-menu-danger" @click="handleLogout">Logout</button>
             </div>
@@ -112,23 +113,12 @@ function submitSearch() {
       <!-- Primary nav -->
       <nav class="ab-nav">
         <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
+        <NuxtLink to="/games" class="ab-nav-link">Aviator</NuxtLink>
         <NuxtLink to="/games" class="ab-nav-link" active-class="ab-nav-active">Games</NuxtLink>
-        <NuxtLink
-          v-if="tournamentsEnabled"
-          to="/tournaments"
-          class="ab-nav-link"
-          active-class="ab-nav-active"
-        >
-          Tournaments<span class="ab-new">NEW</span>
+        <NuxtLink to="/games" class="ab-nav-link">
+          Virtual Sport<span class="ab-new">NEW</span>
         </NuxtLink>
-        <NuxtLink
-          v-if="auth.isAuthenticated"
-          to="/transactions"
-          class="ab-nav-link"
-          active-class="ab-nav-active"
-        >
-          History
-        </NuxtLink>
+        <NuxtLink to="/refer" class="ab-nav-link" active-class="ab-nav-active">Promotions</NuxtLink>
       </nav>
     </header>
 
@@ -459,6 +449,7 @@ function submitSearch() {
 }
 .ab-icon-btn:hover { border-color: var(--brand-primary); color: var(--text-primary); }
 .ab-icon-btn svg { width: 18px; height: 18px; }
+.ab-account-round { border-radius: 50%; }
 
 .ab-lang {
   display: flex;
