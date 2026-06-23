@@ -281,26 +281,15 @@ function hasImage(g: ProviderGame) {
 
 // Popular crash/instant games pinned to the top of the All Games grid (in this order)
 const FEATURED_GAMES = [
-  'aviator',
-  'aviatrix',
-  'jetx',
-  'plinko',
-  'chickenroad',
-  'chickenroad2',
-  'chicknroad',
-  'chicknroad2',
-  'rocketman',
-  'helicrash',
-  'rocketstars',
-  'bombrunner',
-  'magicaladdin',
-  'crashkick',
-  'justjump',
-  'shaktimaan',
-  'hotline',
-  'goal',
-  'dice',
-  'mines',
+  'flyx',
+  'flyxcashturbo',
+  'plinkopop',
+  'minepop',
+  'dicepop',
+  'bigbuttonbash',
+  'soccerstriker',
+  'theincredibleballoonmachine',
+  'fruitblast',
 ]
 
 function featuredRank(g: ProviderGame) {
