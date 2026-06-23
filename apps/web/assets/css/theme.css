@@ -1,28 +1,30 @@
+/* App-level theme layer.
+   Color & font tokens are owned by the active brand and injected at runtime by
+   plugins/00.brand.ts (see packages/ui/src/theme). Do NOT hardcode brand colors
+   here — it would override the active brand and break theming. Keep this file to
+   token-derived aesthetics only. */
+
 :root {
-  /* User provided colors */
-  --surface-base: #000A38;
-  --wb-text-primary: #FFFFFF;
-  --text-primary: #FFFFFF;
-  --brand-primary: #FFD700;
-  
-  /* Additional updates for consistency with the provided colors */
-  --surface-raised: #041433;
-  --surface-overlay: #0b1f47;
-  --surface-border: #132b5e;
-  
-  --brand-primary-dim: #cca800;
-  --brand-primary-glow: rgba(255, 215, 0, 0.3);
-  
-  --cartela-free-bg: var(--brand-primary);
-  --winner-glow: rgba(255, 215, 0, 0.8);
-  --shadow-glow-gold: 0 0 24px rgba(255, 215, 0, 0.4);
+  /* Derived helpers the brand layer doesn't emit directly. */
+  --brand-primary-glow: color-mix(in srgb, var(--brand-primary) 32%, transparent);
+  --winner-glow: color-mix(in srgb, var(--brand-primary) 80%, transparent);
+  --shadow-glow-gold: 0 0 24px color-mix(in srgb, var(--brand-primary) 40%, transparent);
 }
 
-/* ── Global layered mesh background override for web app aesthetics ── */
+body {
+  font-family: var(--font-body);
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
+/* ── Subtle depth: a faint warm glow off the top, fading into the flat navy
+   base the AradaBingo design uses. Token-driven so it tracks the brand. ── */
 body::before {
   background:
-    radial-gradient(ellipse 90% 60% at 20% -10%, rgba(255, 215, 0, 0.08) 0%, transparent 65%),
-    radial-gradient(ellipse 70% 50% at 80% 110%, rgba(6, 182, 212, 0.07) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 75%),
+    radial-gradient(
+      ellipse 100% 55% at 20% -10%,
+      color-mix(in srgb, var(--brand-primary) 9%, transparent) 0%,
+      transparent 60%
+    ),
     var(--surface-base);
 }
