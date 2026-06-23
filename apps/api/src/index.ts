@@ -26,6 +26,7 @@ import promotionsRoutes from './routes/promotions'
 import paymentMethodRoutes from './routes/payment-methods/index.js'
 import { registerBullBoard } from './routes/bull-board.js'
 import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
+import { palaceCallbackRoute } from './routes/palace/callback.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
 import eventsRoutes from './routes/events/index.js'
 import './@types/fastify.d.ts'
@@ -102,6 +103,7 @@ await server.register(rateLimit, {
     // Also skip IPs explicitly whitelisted via RATE_LIMIT_WHITELIST env var.
     allowList: (req) => {
         if (req.url.startsWith('/v1/aggregator/')) return true
+        if (req.url.startsWith('/v1/palace/')) return true
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
         return rateLimitWhitelist.has(ip)
     },
@@ -220,6 +222,7 @@ await server.register(settingsRoutes, { prefix: '/settings' })
 await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
+await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
 await server.register(gameProviderRoutes, { prefix: '/providers' })
 await server.register(eventsRoutes)
 

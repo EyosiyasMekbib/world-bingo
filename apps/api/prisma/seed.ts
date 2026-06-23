@@ -143,6 +143,23 @@ async function main() {
     })
     console.log('GASea provider seeded')
 
+    // 6b. Seed Palace Casino game provider
+    console.log('Seeding Palace Casino provider...')
+    await prisma.gameProvider.upsert({
+        where: { code: 'palace' },
+        update: {},  // don't overwrite status if admin changed it
+        create: {
+            code: 'palace',
+            name: 'Palace Casino',
+            status: 'ACTIVE',
+            isPrimary: false,
+            apiBaseUrl: process.env.PALACE_API_BASE_URL ?? '',
+            currency: process.env.PALACE_CURRENCY ?? 'ETB',
+            config: {},
+        },
+    })
+    console.log('Palace Casino provider seeded')
+
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')
     const defaultMethods = [

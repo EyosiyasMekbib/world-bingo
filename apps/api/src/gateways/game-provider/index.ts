@@ -1,5 +1,6 @@
 import type { GameProviderGateway } from './game-provider.interface.js'
 import { GaseaGateway } from './gasea.gateway.js'
+import { PalaceGateway } from './palace.gateway.js'
 
 const registry = new Map<string, GameProviderGateway>()
 
@@ -19,6 +20,7 @@ export function listGameProviderGateways(): GameProviderGateway[] {
 
 // Register built-in providers
 registerGameProviderGateway(new GaseaGateway())
+registerGameProviderGateway(new PalaceGateway())
 
 export type { GameProviderGateway }
 export * from './game-provider.interface.js'
