@@ -279,6 +279,40 @@ function hasImage(g: ProviderGame) {
   return !!(g.imageSquare || g.imageLandscape)
 }
 
+// Popular crash/instant games pinned to the top of the All Games grid (in this order)
+const FEATURED_GAMES = [
+  'aviator',
+  'aviatrix',
+  'jetx',
+  'plinko',
+  'chickenroad',
+  'chickenroad2',
+  'chicknroad',
+  'chicknroad2',
+  'rocketman',
+  'helicrash',
+  'rocketstars',
+  'bombrunner',
+  'magicaladdin',
+  'crashkick',
+  'justjump',
+  'shaktimaan',
+  'hotline',
+  'goal',
+  'dice',
+  'mines',
+]
+
+function featuredRank(g: ProviderGame) {
+  const name = (g.gameName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const i = FEATURED_GAMES.indexOf(name)
+  return i === -1 ? Number.MAX_SAFE_INTEGER : i
+}
+
+function sortFeatured(games: ProviderGame[]) {
+  return [...games].sort((a, b) => featuredRank(a) - featuredRank(b))
+}
+
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
     key: 'p-' + g.gameCode,
@@ -300,10 +334,10 @@ const gridGames = computed<LobbyCard[]>(() => {
   if (cat === 'BINGO') {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
-    // Provider games first; bingo rooms in the lower part of the grid
-    cards = [...providerStore.games.filter(hasImage).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    // Featured games first, then remaining provider games; bingo rooms at the bottom
+    cards = [...sortFeatured(providerStore.games.filter(hasImage)).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...providerStore.games.filter(hasImage).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...sortFeatured(providerStore.games.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
     cards = popularBingo.value.map(bingoToCard)
   } else {
