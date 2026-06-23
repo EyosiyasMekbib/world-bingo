@@ -8,7 +8,7 @@ import type {
     Vendor,
 } from './game-provider.interface.js'
 
-const BASE_URL = (process.env.PALACE_API_BASE_URL ?? '').replace(/\/$/, '')
+const BASE_URL = (process.env.PALACE_API_BASE_URL ?? 'https://agent.goldslotpalase.com').replace(/\/$/, '')
 const API_TOKEN = process.env.PALACE_API_TOKEN ?? ''
 
 async function request<T>(path: string, body: object): Promise<T> {
