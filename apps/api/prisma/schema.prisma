@@ -487,17 +487,19 @@ enum ThirdPartyTxStatus {
 // One row per aggregator (GASea is the first; more can be added).
 // Credentials (apiKey, apiSecret) are stored in env vars only — not in this table.
 model GameProvider {
-  id         String             @id @default(uuid())
-  code       String             @unique              // e.g. "gasea"
-  name       String                                  // e.g. "GASea"
-  status     GameProviderStatus @default(ACTIVE)
-  apiBaseUrl String                                  // e.g. "https://api.gasea.com/v3"
-  currency   String             @default("ETB")
-  config     Json?                                   // provider-specific config blob
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-  vendors    GameVendor[]
-  games      ProviderGame[]
+  id           String             @id @default(uuid())
+  code         String             @unique              // e.g. "gasea"
+  name         String                                  // e.g. "GASea"
+  status       GameProviderStatus @default(ACTIVE)
+  apiBaseUrl   String                                  // e.g. "https://api.gasea.com/v3"
+  currency     String             @default("ETB")
+  isPrimary    Boolean            @default(false)
+  config       Json?                                   // provider-specific config blob
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  vendors      GameVendor[]
+  games        ProviderGame[]
+  userAccounts ProviderUserAccount[]
 
   @@map("game_providers")
 }
@@ -541,6 +543,19 @@ model ProviderGame {
   @@index([categoryCode])
   @@index([isActive, categoryCode])
   @@map("provider_games")
+}
+
+model ProviderUserAccount {
+  id               String       @id @default(uuid())
+  providerId       String
+  userId           String
+  externalUserCode String                               // Palace's numeric user_code as string
+  createdAt        DateTime     @default(now())
+  provider         GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, userId])
+  @@index([providerId])
+  @@map("provider_user_accounts")
 }
 
 // Raw GASea transaction details + idempotency key.
