@@ -11,7 +11,7 @@
     <div class="app-header__actions">
       <button class="app-header__icon-btn" @click="emit('notifications')" aria-label="Notifications">
         <span>🔔</span>
-        <span v-if="unreadCount > 0" class="app-header__badge">{{ unreadCount }}</span>
+        <span v-if="(unreadCount ?? 0) > 0" class="app-header__badge">{{ unreadCount }}</span>
       </button>
       <WalletBalance :balance="balance" @click="emit('wallet')" />
     </div>
