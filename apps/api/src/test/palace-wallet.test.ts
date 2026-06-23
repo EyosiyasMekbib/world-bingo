@@ -72,7 +72,7 @@ describe('PalaceWalletService', () => {
             trans_guid: 'tg1', account: 'alice', gplay_id: 'gp1',
             round_id: 'r1', game_code: 'game1', amount: 100,
         })
-        expect(res).toEqual({ result: 2006, status: 'BALANCE_NOT_ENOUGH', data: null })
+        expect(res).toEqual({ result: 2006, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
     })
 
     it('getStatus returns NOT_FOUND when trans_guid does not exist', async () => {

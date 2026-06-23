@@ -183,11 +183,11 @@ export class PalaceWalletService {
             return ok({ balance: Number(balanceAfter.toFixed(2)) })
         } catch (e: any) {
             if (e?.code === 'BALANCE_NOT_ENOUGH') {
+                const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+                const current = wallet
+                    ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+                    : new Decimal(0)
                 try {
-                    const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-                    const current = wallet
-                        ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
-                        : new Decimal(0)
                     const providerId = await getPalaceProviderId()
                     await prisma.thirdPartyTransaction.create({
                         data: {
@@ -206,7 +206,7 @@ export class PalaceWalletService {
                         },
                     })
                 } catch { /* ignore duplicate */ }
-                return palaceErr(2006, 'BALANCE_NOT_ENOUGH')
+                return { result: 2006, status: 'BALANCE_NOT_ENOUGH', data: { balance: Number(current.toFixed(2)) } }
             }
             if (e?.code) return palaceErr(1001, 'INTERNAL_SERVER_ERROR')
             throw e
