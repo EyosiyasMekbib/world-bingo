@@ -55,7 +55,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
                 round_id: d.round_id,
                 game_code: d.game_code,
                 amount: d.amount,
-                type: d.type,
+                type: d.type ?? 2,
               }),
             )
 
