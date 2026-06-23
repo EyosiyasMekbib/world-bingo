@@ -14,6 +14,16 @@ export class AdminService {
             ? { createdAt: { ...(params.from && { gte: params.from }), ...(params.to && { lte: params.to }) } }
             : {}
 
+        // Bot accounts use fake money — exclude them from revenue/profit aggregates so the
+        // numbers reflect real money only (mirrors analytics.service's bot exclusion).
+        const botUsers = await prisma.user.findMany({
+            where: { passwordHash: 'BOT_ACCOUNT' },
+            select: { id: true },
+        })
+        const botIds = new Set(botUsers.map(b => b.id))
+        const botIdList = botUsers.map(b => b.id)
+        const excludeBots = botIdList.length ? { userId: { notIn: botIdList } } : {}
+
         const [
             approvedDeposits,
             approvedWithdrawals,
@@ -63,18 +73,15 @@ export class AdminService {
             prisma.transaction.count({ where: { type: TransactionType.WITHDRAWAL, status: PaymentStatus.APPROVED, ...dateRange } }),
             // Third-party game totals: amount < 0 = bet debit, amount > 0 = win credit
             prisma.thirdPartyTransaction.aggregate({
-                where: { amount: { lt: 0 }, ...dateRange },
+                where: { amount: { lt: 0 }, ...dateRange, ...excludeBots },
                 _sum: { amount: true },
             }),
             prisma.thirdPartyTransaction.aggregate({
-                where: { amount: { gt: 0 }, ...dateRange },
+                where: { amount: { gt: 0 }, ...dateRange, ...excludeBots },
                 _sum: { amount: true },
             }),
         ])
 
-        const botIds = new Set(
-            (await prisma.user.findMany({ where: { passwordHash: 'BOT_ACCOUNT' }, select: { id: true } })).map(b => b.id)
-        )
         const activePlayers = activePlayersGroups.filter(g => !botIds.has(g.userId)).length
         const bingoPrizePools = completedGames.reduce((acc, g) => {
             return acc + Number(g.ticketPrice) * g._count.entries
@@ -87,12 +94,12 @@ export class AdminService {
         const [providerGained, providerLost] = await Promise.all([
             prisma.thirdPartyTransaction.groupBy({
                 by: ['providerId'],
-                where: { amount: { lt: 0 }, ...dateRange },
+                where: { amount: { lt: 0 }, ...dateRange, ...excludeBots },
                 _sum: { amount: true },
             }),
             prisma.thirdPartyTransaction.groupBy({
                 by: ['providerId'],
-                where: { amount: { gt: 0 }, ...dateRange },
+                where: { amount: { gt: 0 }, ...dateRange, ...excludeBots },
                 _sum: { amount: true },
             }),
         ])
@@ -116,7 +123,10 @@ export class AdminService {
         })
 
         const totalProviderProfit = providerStats.reduce((sum, p) => sum + p.net, 0)
-        const bingoProfit = houseSummary.COMMISSION
+        // Bingo cash the house actually keeps = edge commission + prizes reclaimed from bot
+        // wins, less refunds paid out on cancelled games. This mirrors the house wallet balance
+        // (bingo side); counting commission alone understated profit whenever a bot won.
+        const bingoProfit = houseSummary.COMMISSION + houseSummary.BOT_PRIZE_WIN - houseSummary.REFUND_ISSUED
         const totalProfit = bingoProfit + totalProviderProfit
 
         const approvedDepositSum = Number(approvedDeposits._sum.amount ?? 0)
@@ -143,7 +153,7 @@ export class AdminService {
             registeredPlayers,
             inactivePlayers,
             houseBalance: Number(houseBalance),
-            houseCommissionEarned: bingoProfit,
+            houseCommissionEarned: houseSummary.COMMISSION,
             totalProviderProfit,
             totalProfit,
             providerStats,
@@ -151,7 +161,7 @@ export class AdminService {
             declinedDepositSum: 0,
             usersCount: 0,
             gamesCount: gamesCompleted,
-            commission: bingoProfit,
+            commission: houseSummary.COMMISSION,
         }
     }
 

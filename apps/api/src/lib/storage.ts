@@ -91,9 +91,11 @@ async function uploadToMinio(
         return uploadToLocal(buffer, originalFilename, mimetype)
     }
 
-    const { Client: MinioClient } = await import('minio').catch(() => {
+    // Dynamically import to avoid requiring the optional package in dev
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { Client: MinioClient } = await import('minio' as any).catch(() => {
         throw new Error('minio is not installed. Run: pnpm add minio')
-    })
+    }) as any
 
     const url = new URL(endpoint)
     const client = new MinioClient({
