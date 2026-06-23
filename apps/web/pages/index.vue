@@ -290,9 +290,10 @@ const gridGames = computed<LobbyCard[]>(() => {
   if (cat === 'BINGO') {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
-    cards = [...gameStore.availableGames.map(bingoToCard), ...providerStore.games.map(providerToCard)]
+    // Provider games first; bingo rooms in the lower part of the grid
+    cards = [...providerStore.games.map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...trendingBingo.value.map(bingoToCard), ...providerStore.games.map(providerToCard)]
+    cards = [...providerStore.games.map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
     cards = popularBingo.value.map(bingoToCard)
   } else {
@@ -492,7 +493,7 @@ onUnmounted(() => {
         </div>
         <button class="fav-btn" :class="{ 'fav-btn--active': showFavorites }" @click="showFavorites = !showFavorites">
           <svg viewBox="0 0 24 24" :fill="showFavorites ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-          Favorites
+          <span class="fav-label">Favorites</span>
         </button>
       </div>
 
@@ -556,11 +557,13 @@ onUnmounted(() => {
                 @error="(e) => ((e.target as HTMLImageElement).style.display = 'none')"
               />
               <span class="gc-badge">{{ card.badge }}</span>
+            </div>
+            <div class="gc-foot">
+              <span class="gc-name">{{ card.title }}</span>
               <span class="gc-fav" :class="{ 'gc-fav--on': isFav(card.key) }" role="button" :aria-label="isFav(card.key) ? 'Remove favorite' : 'Add favorite'" @click="toggleFav(card.key, $event)">
                 <svg viewBox="0 0 24 24" :fill="isFav(card.key) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
               </span>
             </div>
-            <div class="gc-name">{{ card.title }}</div>
           </NuxtLink>
 
           <!-- Bingo room → join -->
@@ -568,13 +571,15 @@ onUnmounted(() => {
             <div class="gc-thumb gc-thumb--bingo">
               <div class="gc-letter">{{ card.letter }}</div>
               <span class="gc-badge">{{ card.badge }}</span>
-              <span class="gc-fav" :class="{ 'gc-fav--on': isFav(card.key) }" role="button" :aria-label="isFav(card.key) ? 'Remove favorite' : 'Add favorite'" @click="toggleFav(card.key, $event)">
-                <svg viewBox="0 0 24 24" :fill="isFav(card.key) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-              </span>
               <span v-if="card.status && card.status !== 'WAITING'" class="gc-live"><span class="gc-live-dot" />Live</span>
               <span v-if="card.price" class="gc-price">{{ card.price }}</span>
             </div>
-            <div class="gc-name">{{ card.title }}</div>
+            <div class="gc-foot">
+              <span class="gc-name">{{ card.title }}</span>
+              <span class="gc-fav" :class="{ 'gc-fav--on': isFav(card.key) }" role="button" :aria-label="isFav(card.key) ? 'Remove favorite' : 'Add favorite'" @click="toggleFav(card.key, $event)">
+                <svg viewBox="0 0 24 24" :fill="isFav(card.key) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+              </span>
+            </div>
           </button>
         </template>
       </div>
@@ -597,6 +602,9 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 0 28px;
 }
+@media (max-width: 720px) {
+  .max-wrap { padding: 0 16px; }
+}
 
 .noscroll { scrollbar-width: none; -ms-overflow-style: none; }
 .noscroll::-webkit-scrollbar { display: none; }
@@ -607,8 +615,8 @@ onUnmounted(() => {
   margin-top: 22px;
   border-radius: 18px;
   overflow: hidden;
-  min-height: 330px;
-  padding: 52px 60px;
+  min-height: 200px;
+  padding: 28px 60px;
   display: flex;
   align-items: center;
   color: #fff;
@@ -752,9 +760,12 @@ onUnmounted(() => {
 .hdot--active { width: 26px; border-radius: 4px; background: var(--brand-primary); }
 
 @media (max-width: 720px) {
-  .hero { padding: 34px 26px; min-height: 260px; }
+  .hero { padding: 16px 20px; min-height: 120px; }
   .hero-arrow { display: none; }
-  .hero-sub { font-size: 13px; }
+  .hero-sub { display: none; }
+  .hero-badge { margin-bottom: 8px; padding: 4px 10px; font-size: 10px; }
+  .hero-title { font-size: clamp(18px, 5.5vw, 26px); }
+  .hero-cta { padding: 10px 22px; font-size: 13px; margin-top: 12px; }
 }
 
 /* ── WINNERS ───────────────────────────────────────────────────────────── */
@@ -835,11 +846,21 @@ onUnmounted(() => {
 
 @media (max-width: 1080px) { .win-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 720px) {
-  .win-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .win-tabs { gap: 18px; }
-  .win-tab { font-size: 12px; letter-spacing: 0.5px; }
+  .win-grid {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    gap: 12px;
+    scroll-snap-type: x mandatory;
+    margin: 0 -16px;
+    padding: 0 16px 4px;
+    scrollbar-width: none;
+  }
+  .win-grid::-webkit-scrollbar { display: none; }
+  .win-card { flex: 0 0 80%; scroll-snap-align: start; }
+  .win-tabs { gap: 16px; }
+  .win-tab { font-size: 12px; letter-spacing: 0.4px; }
 }
-@media (max-width: 440px) { .win-grid { grid-template-columns: 1fr; } }
 
 /* ── FILTERS ───────────────────────────────────────────────────────────── */
 .filters { margin-top: 36px; }
@@ -955,6 +976,20 @@ onUnmounted(() => {
 .providers-btn svg { width: 14px; height: 14px; }
 .providers-btn:hover { border-color: var(--brand-primary); color: #fff; }
 
+/* Mobile filters — match the app reference: pills + star row, centered Providers */
+@media (max-width: 720px) {
+  .fav-btn {
+    gap: 0;
+    padding: 10px;
+    width: 42px;
+    justify-content: center;
+  }
+  .fav-btn .fav-label { display: none; }
+  .vendor-row { margin-top: 12px; }
+  .vendor-chips { display: none; }
+  .providers-btn { margin: 0 auto; }
+}
+
 /* ── GAMES ─────────────────────────────────────────────────────────────── */
 .games-sec { margin-top: 30px; }
 
@@ -1043,26 +1078,28 @@ onUnmounted(() => {
   border-radius: 5px;
 }
 
+.gc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+}
 .gc-fav {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 28px;
-  height: 28px;
+  flex: none;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  background: rgba(0, 0, 0, 0.4);
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.4);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.14s, color 0.14s, background 0.14s;
+  transition: color 0.14s, background 0.14s;
 }
-.game-card:hover .gc-fav { opacity: 1; }
-.gc-fav svg { width: 15px; height: 15px; }
-.gc-fav:hover { background: rgba(0, 0, 0, 0.6); color: var(--brand-primary); }
-.gc-fav--on { opacity: 1; color: var(--brand-primary); }
+.gc-fav svg { width: 16px; height: 16px; }
+.gc-fav:hover { background: rgba(255, 255, 255, 0.06); color: var(--brand-primary); }
+.gc-fav--on { color: var(--brand-primary); }
 
 .gc-live {
   position: absolute;
@@ -1101,7 +1138,8 @@ onUnmounted(() => {
 }
 
 .gc-name {
-  padding: 10px 12px;
+  min-width: 0;
+  flex: 1;
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 13px;
