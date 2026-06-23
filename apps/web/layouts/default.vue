@@ -129,14 +129,6 @@ function submitSearch() {
         >
           History
         </NuxtLink>
-        <NuxtLink
-          v-if="referralsEnabled && auth.isAuthenticated"
-          to="/refer"
-          class="ab-nav-link"
-          active-class="ab-nav-active"
-        >
-          Promotions
-        </NuxtLink>
       </nav>
     </header>
 
