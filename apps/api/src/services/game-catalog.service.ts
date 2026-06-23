@@ -35,6 +35,11 @@ function normalizeQuery(query: string) {
     return query.trim().toLowerCase()
 }
 
+function dedupKey(vendorName: string, gameName: string): string {
+    const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    return `${clean(vendorName)}::${clean(gameName)}`
+}
+
 function matchesBingoSearch(game: {
     title: string
     ticketPrice: unknown
@@ -280,9 +285,24 @@ export class GameCatalogService {
                 categoryCode: true,
                 imageSquare: true,
                 imageLandscape: true,
-                provider: { select: { code: true, name: true } },
-                vendor: { select: { code: true } },
+                provider: { select: { code: true, name: true, isPrimary: true } },
+                vendor: { select: { code: true, name: true } },
             },
+        })
+
+        // Dedup: when multiple providers serve the same game (same vendor+game name),
+        // show only the primary provider's version. Primary providers sort first.
+        const sortedForDedup = [...providerGames].sort((a, b) => {
+            if (a.provider.isPrimary && !b.provider.isPrimary) return -1
+            if (!a.provider.isPrimary && b.provider.isPrimary) return 1
+            return 0
+        })
+        const seenDedupKeys = new Map<string, true>()
+        const dedupedGames = sortedForDedup.filter((game) => {
+            const key = dedupKey(game.vendor?.name ?? '', game.gameName)
+            if (seenDedupKeys.has(key)) return false
+            seenDedupKeys.set(key, true)
+            return true
         })
 
         const bingoGames = await prisma.game.findMany({
@@ -301,7 +321,7 @@ export class GameCatalogService {
             orderBy: { createdAt: 'desc' },
         })
 
-        const results: SearchResult[] = providerGames.map((game) => ({
+        const results: SearchResult[] = dedupedGames.map((game) => ({
             kind: 'provider',
             id: game.id,
             providerCode: game.provider.code,
