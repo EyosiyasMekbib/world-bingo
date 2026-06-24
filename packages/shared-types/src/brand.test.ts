@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BrandConfigSchema,
+  BrandConfigUpdateSchema,
   DEFAULT_BRAND,
   brandTokensToCss,
 } from './brand'
@@ -22,6 +23,26 @@ describe('BrandConfigSchema', () => {
 
   it('rejects an empty displayName', () => {
     expect(() => BrandConfigSchema.parse({ ...DEFAULT_BRAND, displayName: '' })).toThrow()
+  })
+})
+
+describe('BrandConfigUpdateSchema', () => {
+  it('accepts a partial tokens-only payload', () => {
+    expect(() =>
+      BrandConfigUpdateSchema.parse({ tokens: { brandPrimary: '#ffffff' } }),
+    ).not.toThrow()
+  })
+
+  it('rejects an unknown top-level key', () => {
+    expect(() =>
+      BrandConfigUpdateSchema.parse({ unknownField: 'x' }),
+    ).toThrow()
+  })
+
+  it('rejects a token-level unknown key', () => {
+    expect(() =>
+      BrandConfigUpdateSchema.parse({ tokens: { notAToken: '#fff' } }),
+    ).toThrow()
   })
 })
 

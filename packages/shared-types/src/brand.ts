@@ -4,7 +4,7 @@ import { z } from 'zod'
 const colorValue = z
   .string()
   .regex(
-    /^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\([^)]*\))$/,
+    /^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\(\s*\S[^)]*\))$/,
     'Must be a hex (#rgb/#rrggbb) or rgb()/rgba() color',
   )
 
