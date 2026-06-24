@@ -163,7 +163,7 @@ onMounted(load)
             <!-- Logo -->
             <div>
               <p class="text-sm font-bold text-white mb-1">Logo</p>
-              <p class="text-xs text-white/40 mb-3 font-medium">Displayed in the app header. Recommended: 200×200px, PNG/SVG.</p>
+              <p class="text-xs text-white/40 mb-3 font-medium">Displayed in the app header. Recommended: 200×200px, PNG.</p>
               <label
                 class="flex items-center gap-2 px-3 py-2 rounded-lg border border-(--surface-border) cursor-pointer hover:border-yellow-500/40 transition-colors text-sm text-white/60"
                 style="background: var(--surface-overlay);"

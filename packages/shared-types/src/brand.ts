@@ -8,6 +8,16 @@ const colorValue = z
     'Must be a hex (#rgb/#rrggbb) or rgb()/rgba() color',
   )
 
+// Asset URL: an absolute http(s) URL or a root-relative path. Uploaded assets
+// are stored as root-relative `/uploads/...` paths (served by the API and
+// proxied by the frontends), so a strict `.url()` would wrongly reject them.
+const assetUrl = z
+  .string()
+  .refine(
+    (s) => s.startsWith('/') || /^https?:\/\//.test(s),
+    'Must be an absolute URL or a root-relative path',
+  )
+
 // Token key -> CSS custom property name(s). The map IS the closed set of keys.
 export const BRAND_TOKEN_CSS_VARS = {
   surfaceBase: ['--surface-base'],
@@ -56,8 +66,8 @@ export const BrandConfigSchema = z
   .object({
     displayName: z.string().min(1).max(60),
     shortName: z.string().min(1).max(30),
-    logoUrl: z.string().url().nullable(),
-    faviconUrl: z.string().url().nullable(),
+    logoUrl: assetUrl.nullable(),
+    faviconUrl: assetUrl.nullable(),
     tokens: BrandTokensSchema,
   })
   .strict()
@@ -68,8 +78,8 @@ export const BrandConfigUpdateSchema = z
   .object({
     displayName: z.string().min(1).max(60),
     shortName: z.string().min(1).max(30),
-    logoUrl: z.string().url().nullable(),
-    faviconUrl: z.string().url().nullable(),
+    logoUrl: assetUrl.nullable(),
+    faviconUrl: assetUrl.nullable(),
     tokens: BrandTokensSchema.partial(),
   })
   .partial()

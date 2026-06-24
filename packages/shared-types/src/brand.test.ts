@@ -44,6 +44,19 @@ describe('BrandConfigUpdateSchema', () => {
       BrandConfigUpdateSchema.parse({ tokens: { notAToken: '#fff' } }),
     ).toThrow()
   })
+
+  it('accepts a root-relative upload path for logoUrl', () => {
+    expect(() =>
+      BrandConfigUpdateSchema.parse({ logoUrl: '/uploads/abc123.png' }),
+    ).not.toThrow()
+  })
+
+  it('accepts an absolute URL for faviconUrl and rejects a bare word', () => {
+    expect(() =>
+      BrandConfigUpdateSchema.parse({ faviconUrl: 'https://cdn.example.com/f.ico' }),
+    ).not.toThrow()
+    expect(() => BrandConfigUpdateSchema.parse({ logoUrl: 'notaurl' })).toThrow()
+  })
 })
 
 describe('brandTokensToCss', () => {

@@ -66,7 +66,9 @@ export default defineNuxtConfig({
         },
         '/api/**': { proxy: 'http://api:8080/**' },
         '/socket.io/': { proxy: 'http://api:8080/socket.io/' },
-        '/v1/**': { proxy: 'http://api:8080/v1/**' }
+        '/v1/**': { proxy: 'http://api:8080/v1/**' },
+        // Serve brand logo/favicon (and any uploaded asset) through the API.
+        '/uploads/**': { proxy: 'http://api:8080/uploads/**' }
     },
 
     pwa: {
