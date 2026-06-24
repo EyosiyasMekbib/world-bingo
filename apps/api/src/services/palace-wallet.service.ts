@@ -308,11 +308,16 @@ export class PalaceWalletService {
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
 
-            const refundAmount = originalBet
-                ? new Decimal(originalBet.betAmount ?? params.amount).abs()
+            // Reverse the original transaction by negating its signed amount:
+            //  - a BET was a debit (stored negative) → reversal credits the player
+            //  - a BET_RESULT/win was a credit (stored positive) → reversal debits
+            // Fall back to refunding the cancel amount when the original can't be found.
+            const delta = originalBet
+                ? new Decimal(originalBet.amount).negated()
                 : new Decimal(params.amount).abs()
 
-            const newReal = realBefore.plus(refundAmount)
+            // Never let the real balance go below zero (house rule).
+            const newReal = Decimal.max(new Decimal(0), realBefore.plus(delta))
             const newTotal = newReal.plus(bonusBefore)
 
             await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
@@ -327,7 +332,7 @@ export class PalaceWalletService {
                     gameCode: params.game_code,
                     type: ThirdPartyTxType.ROLLBACK,
                     status: ThirdPartyTxStatus.COMPLETED,
-                    amount: refundAmount,
+                    amount: delta,
                     balanceBefore: totalBefore,
                     balanceAfter: newTotal,
                     rawRequest: params as any,
@@ -338,7 +343,7 @@ export class PalaceWalletService {
                 data: {
                     userId: user.id,
                     type: TransactionType.TP_ROLLBACK,
-                    amount: refundAmount,
+                    amount: delta,
                     status: PaymentStatus.APPROVED,
                     note: `Palace cancel: ${params.game_code} round ${params.round_id}`,
                     referenceId: cancelTxId,
