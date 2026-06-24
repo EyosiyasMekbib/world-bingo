@@ -1,21 +1,27 @@
-// apps/web/plugins/00.brand.ts
-import { resolveBrand, brandToCssVars } from '@world-bingo/ui'
+import { type BrandConfig, DEFAULT_BRAND } from '@world-bingo/shared-types'
+import { buildBrandStyle, useBrand } from '~/composables/useBrand'
 
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin(async () => {
   const config = useRuntimeConfig()
-  const theme = resolveBrand(config.public.brand as string | undefined)
+  const brand = useBrand()
 
-  const cssText = Object.entries(brandToCssVars(theme))
-    .map(([k, v]) => `${k}:${v}`)
-    .join(';')
+  // Fetch once on the server; serialized into the payload and reused on the
+  // client via useState (no client refetch / no flash).
+  if (import.meta.server) {
+    try {
+      const fetched = await $fetch<BrandConfig>(`${config.public.apiBase}/brand`)
+      brand.value = fetched
+    } catch {
+      brand.value = DEFAULT_BRAND
+    }
+  }
 
+  const b = brand.value
   useHead({
-    title: theme.name,
-    link: [{ rel: 'stylesheet', href: theme.fonts.googleHref }],
-    meta: [{ name: 'theme-color', content: theme.manifest.themeColor }],
-    // `:root:root` (specificity 0,2,0) outranks the static `:root` blocks in the
-    // global CSS files so the active brand always wins, regardless of load order.
-    style: [{ innerHTML: `:root:root{${cssText}}` }],
-    htmlAttrs: { 'data-brand': theme.id },
+    title: b.displayName,
+    titleTemplate: (t) => (t && t !== b.displayName ? `${t} · ${b.displayName}` : b.displayName),
+    style: [{ id: 'brand-tokens', innerHTML: buildBrandStyle(b.tokens) }],
+    link: b.faviconUrl ? [{ rel: 'icon', href: b.faviconUrl }] : [],
+    meta: [{ name: 'application-name', content: b.displayName }],
   })
 })
