@@ -10,15 +10,15 @@
 
     <div class="auth-actions">
       <form @submit.prevent="handleRegister">
-        <div class="field">
-          <label class="field-label" for="username">Username</label>
+        <div class="wb-field">
+          <label class="wb-label" for="username">Username</label>
           <input
             id="username"
             v-model="form.username"
             type="text"
             autocomplete="username"
             placeholder="2–32 characters"
-            class="field-input"
+            class="wb-input"
             :disabled="loading"
             required
             minlength="2"
@@ -26,15 +26,15 @@
           />
         </div>
 
-        <div class="field">
-          <label class="field-label" for="phone">Phone Number</label>
+        <div class="wb-field">
+          <label class="wb-label" for="phone">Phone Number</label>
           <input
             id="phone"
             v-model="form.phone"
             type="tel"
             autocomplete="tel"
             placeholder="e.g. 0911234567"
-            class="field-input"
+            class="wb-input"
             :disabled="loading"
             required
             minlength="9"
@@ -42,8 +42,8 @@
           />
         </div>
 
-        <div class="field">
-          <label class="field-label" for="password">Password</label>
+        <div class="wb-field">
+          <label class="wb-label" for="password">Password</label>
           <div class="input-wrap">
             <input
               id="password"
@@ -51,7 +51,7 @@
               :type="showPassword ? 'text' : 'password'"
               autocomplete="new-password"
               placeholder="Min. 6 characters"
-              class="field-input"
+              class="wb-input"
               :disabled="loading"
               required
               minlength="6"
@@ -74,14 +74,14 @@
             {{ showReferral ? '− Hide referral code' : '+ Have a referral code?' }}
           </button>
         </div>
-        <div v-if="showReferral" class="field">
-          <label class="field-label" for="referralCode">Referral Code</label>
+        <div v-if="showReferral" class="wb-field">
+          <label class="wb-label" for="referralCode">Referral Code</label>
           <input
             id="referralCode"
             v-model="form.referralCode"
             type="text"
             placeholder="6–12 characters (optional)"
-            class="field-input"
+            class="wb-input"
             :disabled="loading"
             minlength="6"
             maxlength="12"
@@ -95,7 +95,7 @@
           {{ errorMsg }}
         </p>
 
-        <button type="submit" class="btn-primary-auth" :disabled="loading">
+        <button type="submit" class="btn-primary-auth wb-btn--block" :disabled="loading">
           <span v-if="loading" class="spinner" />
           <span>{{ loading ? 'Creating account…' : 'Create Account' }}</span>
         </button>
@@ -168,15 +168,15 @@ async function handleRegister() {
 </script>
 
 <style scoped>
-/* ── Glass card ─────────────────────────────────────────────────────── */
+form { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Card ───────────────────────────────────────────────────────────── */
 .auth-card {
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-xl, 24px);
   padding: 2.5rem 2rem 2rem;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: var(--shadow-modal, 0 20px 60px rgba(0, 0, 0, 0.6));
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -197,64 +197,21 @@ async function handleRegister() {
 }
 
 .auth-subtitle {
-  font-size: 0.9rem;
-  color: var(--text-secondary, #94a3b8);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
   margin: 0;
 }
 
 /* ── Actions ─────────────────────────────────────────────────────────── */
 .auth-actions { display: flex; flex-direction: column; gap: 1rem; }
 
-/* ── Form fields ─────────────────────────────────────────────────────── */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin-bottom: 0.75rem;
-}
-
-.field-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary, #94a3b8);
-  letter-spacing: 0.02em;
-}
-
-.input-wrap {
-  position: relative;
-}
-
-.field-input {
-  width: 100%;
-  padding: 0.7rem 0.9rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: var(--text-primary, #f1f5f9);
-  font-size: 0.9rem;
-  font-family: inherit;
-  transition: border-color 0.2s, background 0.2s;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.input-wrap .field-input {
-  padding-right: 2.75rem;
-}
-
-.field-input::placeholder {
-  color: rgba(148, 163, 184, 0.5);
-}
-
-.field-input:focus {
-  border-color: rgba(245, 158, 11, 0.5);
-  background: rgba(245, 158, 11, 0.04);
-}
-
-.field-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* ── Password field eye toggle ───────────────────────────────────────── */
+.input-wrap { position: relative; }
+.input-wrap .wb-input { padding-right: 2.75rem; }
 
 .eye-btn {
   position: absolute;
@@ -265,53 +222,43 @@ async function handleRegister() {
   border: none;
   padding: 0;
   cursor: pointer;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
 }
-
-.eye-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.eye-btn:hover {
-  color: var(--text-primary, #f1f5f9);
-}
+.eye-btn svg { width: 16px; height: 16px; }
+.eye-btn:hover { color: var(--brand-primary); }
 
 /* ── Referral toggle ─────────────────────────────────────────────────── */
-.referral-toggle-wrap {
-  margin-bottom: 0.5rem;
-}
+.referral-toggle-wrap { margin: -2px 0 2px; }
 
 .referral-toggle {
   background: none;
   border: none;
   padding: 0;
-  font-family: inherit;
-  font-size: 0.82rem;
-  color: #f59e0b;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--brand-primary);
   cursor: pointer;
-  font-weight: 600;
   text-underline-offset: 3px;
 }
-
-.referral-toggle:hover {
-  text-decoration: underline;
-}
+.referral-toggle:hover { text-decoration: underline; }
 
 /* ── Error ───────────────────────────────────────────────────────────── */
 .auth-error {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
-  margin: 0 0 0.5rem;
+  font-size: 13px;
+  color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-error) 32%, transparent);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.6rem 0.85rem;
+  margin: 0;
 }
 .auth-error svg { width: 15px; height: 15px; flex-shrink: 0; }
 
@@ -322,22 +269,23 @@ async function handleRegister() {
   justify-content: center;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.8rem 1.5rem;
-  background: var(--brand-primary, #f59e0b);
-  color: #000;
+  padding: 0.85rem 1.5rem;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 0.95rem;
-  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md, 12px);
   cursor: pointer;
   margin-top: 0.25rem;
   transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
 }
 .btn-primary-auth:hover:not(:disabled) {
-  background: #fbbf24;
-  box-shadow: 0 0 30px rgba(245, 158, 11, 0.4);
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--brand-primary) 38%, transparent);
   transform: translateY(-1px);
 }
 .btn-primary-auth:active:not(:disabled) { transform: translateY(0); }
@@ -346,8 +294,8 @@ async function handleRegister() {
 /* Spinner */
 .spinner {
   width: 16px; height: 16px;
-  border: 2px solid rgba(0,0,0,0.3);
-  border-top-color: #000;
+  border: 2px solid color-mix(in srgb, var(--text-on-brand) 30%, transparent);
+  border-top-color: var(--text-on-brand);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   flex-shrink: 0;
@@ -358,15 +306,13 @@ async function handleRegister() {
 .auth-footer-link {
   margin: 0;
   text-align: center;
-  font-size: 0.85rem;
-  color: var(--text-secondary, #94a3b8);
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 .auth-footer-link a {
-  color: #f59e0b;
-  font-weight: 600;
+  color: var(--brand-primary);
+  font-weight: 700;
   text-decoration: none;
 }
-.auth-footer-link a:hover {
-  text-decoration: underline;
-}
+.auth-footer-link a:hover { text-decoration: underline; }
 </style>

@@ -227,17 +227,20 @@ onMounted(() => {
 }
 
 .page-title {
-  font-size: 1.5rem;
+  font-family: var(--font-ui);
+  font-size: 26px;
   font-weight: 700;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-primary);
   margin: 0;
 }
 
 /* ── Card ───────────────────────────────────────────────────────────── */
 .card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
   padding: 1.5rem;
 }
 
@@ -252,13 +255,14 @@ onMounted(() => {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dim));
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #000;
+  font-family: var(--font-ui);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-on-brand);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -270,14 +274,16 @@ onMounted(() => {
 }
 
 .username {
-  font-size: 1.25rem;
+  font-family: var(--font-ui);
+  font-size: 1.3rem;
   font-weight: 700;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .phone {
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   font-size: 0.9rem;
   margin: 0.15rem 0 0;
 }
@@ -292,7 +298,7 @@ onMounted(() => {
 .user-id {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.05em;
 }
@@ -305,14 +311,14 @@ onMounted(() => {
   line-height: 1;
   display: flex;
   align-items: center;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   opacity: 0.7;
   transition: opacity 0.2s, color 0.2s;
 }
 
 .copy-btn:hover {
   opacity: 1;
-  color: var(--text-primary, #f1f5f9);
+  color: var(--brand-primary);
 }
 
 .copy-icon {
@@ -321,7 +327,7 @@ onMounted(() => {
 }
 
 .member-since {
-  color: var(--text-disabled, #475569);
+  color: var(--text-secondary);
   font-size: 0.8rem;
   margin: 0.25rem 0 0;
 }
@@ -337,19 +343,25 @@ onMounted(() => {
 .wallet-header h3 {
   margin: 0;
   font-size: 1rem;
-  color: var(--text-primary, #f1f5f9);
+  color: var(--text-primary);
 }
 
 .card-heading {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-primary);
 }
 
 .card-icon {
   width: 18px;
   height: 18px;
-  color: #f59e0b;
+  color: var(--brand-primary);
   flex-shrink: 0;
 }
 
@@ -369,18 +381,22 @@ onMounted(() => {
 
 .refresh-btn {
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-secondary, #94a3b8);
-  padding: 0.35rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.8rem;
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-md, 12px);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .refresh-btn:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary, #f1f5f9);
+  color: var(--brand-primary);
 }
 
 .refresh-btn:disabled {
@@ -395,26 +411,25 @@ onMounted(() => {
 }
 
 .balance-amount {
-  font-size: 2rem;
-  font-weight: 800;
-  color: #f59e0b;
-  font-family: var(--font-game, 'Rajdhani', sans-serif);
+  font-family: var(--font-ui);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .balance-currency {
+  font-family: var(--font-ui);
   font-size: 1rem;
-  color: var(--text-secondary, #94a3b8);
-  font-weight: 600;
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 /* ── Stats Card ─────────────────────────────────────────────────────── */
 .stats-title {
   margin: 0 0 1rem;
-  font-size: 1rem;
-  color: var(--text-primary, #f1f5f9);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .stats-grid {
@@ -434,30 +449,32 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 0.85rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.95rem 0.5rem;
   text-align: center;
 }
 
 .stat-val {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--text-primary, #f1f5f9);
-  font-family: var(--font-game, 'Rajdhani', sans-serif);
+  font-family: var(--font-ui);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-val.won {
-  color: #10b981;
+  color: var(--status-success);
 }
 
 .stat-label {
-  font-size: 0.7rem;
-  color: var(--text-secondary, #94a3b8);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-secondary);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.6px;
   white-space: nowrap;
 }
 
@@ -472,25 +489,27 @@ onMounted(() => {
 .section-header h3 {
   margin: 0;
   font-size: 1rem;
-  color: var(--text-primary, #f1f5f9);
+  color: var(--text-primary);
 }
 
 .view-all-link {
-  font-size: 0.85rem;
-  color: #f59e0b;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--brand-primary);
   text-decoration: none;
-  font-weight: 600;
-  transition: color 0.2s;
+  transition: opacity 0.2s;
 }
 
 .view-all-link:hover {
-  color: #fbbf24;
+  opacity: 0.75;
 }
 
 .loading-state,
 .empty-state {
   text-align: center;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   padding: 2rem 0;
   font-size: 0.9rem;
 }
@@ -498,7 +517,7 @@ onMounted(() => {
 .tx-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .tx-row {
@@ -506,7 +525,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md, 12px);
   background: rgba(255, 255, 255, 0.02);
   transition: background 0.15s;
 }
@@ -516,15 +535,15 @@ onMounted(() => {
 }
 
 .tx-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md, 12px);
   background: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--brand-primary);
 }
 
 .tx-icon-svg {
@@ -541,14 +560,16 @@ onMounted(() => {
 }
 
 .tx-type {
-  font-size: 0.9rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
 }
 
 .tx-date {
   font-size: 0.75rem;
-  color: var(--text-disabled, #475569);
+  color: var(--text-secondary);
 }
 
 .tx-right {
@@ -560,42 +581,47 @@ onMounted(() => {
 }
 
 .tx-amount {
+  font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 14px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tx-amount.positive {
-  color: #10b981;
+  color: var(--status-success);
 }
 
 .tx-amount.negative {
-  color: #ef4444;
+  color: var(--status-error);
 }
 
 .tx-status {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
   padding: 0.2rem 0.5rem;
-  border-radius: 6px;
-  letter-spacing: 0.03em;
+  border-radius: var(--radius-sm, 6px);
+  letter-spacing: 0.5px;
   white-space: nowrap;
 }
 
-.status-approved {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+.status-approved,
+.status-completed {
+  background: color-mix(in srgb, var(--status-success) 16%, transparent);
+  color: var(--status-success);
 }
 
 .status-pending,
 .status-pending_review {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: color-mix(in srgb, var(--brand-primary) 16%, transparent);
+  color: var(--brand-primary);
 }
 
-.status-rejected {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+.status-rejected,
+.status-failed {
+  background: color-mix(in srgb, var(--status-error) 16%, transparent);
+  color: var(--status-error);
 }
 </style>

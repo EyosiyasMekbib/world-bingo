@@ -34,6 +34,7 @@ export default defineNuxtConfig({
         '@world-bingo/ui/theme/tokens.base.css',
         '@world-bingo/ui/styles/tokens.css',
         '~/assets/css/theme.css',
+        '~/assets/css/components.css',
     ],
 
     runtimeConfig: {

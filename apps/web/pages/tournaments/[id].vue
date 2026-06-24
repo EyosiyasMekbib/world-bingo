@@ -355,9 +355,9 @@ useHead({ title: computed(() => tournament.value ? `${tournament.value.title} â€
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #1a1a2e;
-  border: 1px solid #4f46e5;
-  border-radius: 12px;
+  background: var(--surface-raised);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 40%, transparent);
+  border-radius: var(--radius-md, 12px);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
@@ -450,8 +450,9 @@ useHead({ title: computed(() => tournament.value ? `${tournament.value.title} â€
   font-size: 0.9rem;
 }
 .leaderboard-header {
-  background: #1a1a2e;
-  color: #6b7280;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
   font-size: 0.75rem;
   text-transform: uppercase;
   font-weight: 600;

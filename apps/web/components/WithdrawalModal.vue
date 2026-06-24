@@ -1,46 +1,49 @@
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="modal-overlay" @click.self="$emit('update:modelValue', false)">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Withdraw Funds</h3>
-          <button class="close-btn" @click="$emit('update:modelValue', false)">✕</button>
+    <div v-if="modelValue" class="wb-overlay" @click.self="$emit('update:modelValue', false)">
+      <div class="wb-modal">
+        <div class="wb-modal__head">
+          <h3 class="wb-modal__title">Withdraw Funds</h3>
+          <button class="wb-close" aria-label="Close" @click="$emit('update:modelValue', false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
         </div>
 
-        <div class="modal-body">
-          <p class="balance-info">
-            Available Balance: <strong>{{ balance.toFixed(2) }} ETB</strong>
-          </p>
+        <div class="wb-modal__body">
+          <div class="balance-info">
+            <span>Available Balance</span>
+            <strong>{{ balance.toFixed(2) }} ETB</strong>
+          </div>
 
           <!-- Loading methods -->
-          <div v-if="loadingMethods" class="methods-loading">
+          <div v-if="loadingMethods" class="wb-empty">
             Loading payment methods…
           </div>
 
           <!-- No methods -->
-          <div v-else-if="withdrawalMethods.length === 0" class="no-methods">
+          <div v-else-if="withdrawalMethods.length === 0" class="wb-empty">
             No withdrawal methods are currently available. Please try again later.
           </div>
 
           <template v-else>
             <!-- Amount -->
-            <div class="field">
-              <label>Amount (ETB)</label>
+            <div class="wb-field">
+              <label class="wb-label">Amount (ETB)</label>
               <input
                 v-model.number="form.amount"
                 type="number"
                 :min="100"
                 :max="balance"
                 placeholder="Min 100 ETB"
-                class="input"
+                class="wb-input"
               />
-              <span class="hint">Minimum: 100 ETB</span>
+              <span class="wb-hint">Minimum: 100 ETB</span>
             </div>
 
             <!-- Bank / Payment Method (dynamic) -->
-            <div class="field">
-              <label>Bank / Payment Method</label>
-              <select v-model="form.paymentMethod" class="input">
+            <div class="wb-field">
+              <label class="wb-label">Bank / Payment Method</label>
+              <select v-model="form.paymentMethod" class="wb-select">
                 <option v-for="m in withdrawalMethods" :key="m.code" :value="m.code">
                   {{ m.icon ? m.icon + ' ' : '' }}{{ m.name }}
                 </option>
@@ -48,25 +51,25 @@
             </div>
 
             <!-- Account Number -->
-            <div class="field">
-              <label>Account / Phone Number</label>
+            <div class="wb-field">
+              <label class="wb-label">Account / Phone Number</label>
               <input
                 v-model="form.accountNumber"
                 type="text"
                 placeholder="e.g. 0912345678"
-                class="input"
+                class="wb-input"
               />
             </div>
 
-            <p v-if="error" class="msg error">{{ error }}</p>
-            <p v-if="success" class="msg success">✅ Withdrawal request submitted! We'll process it within 24h.</p>
+            <p v-if="error" class="wb-notice wb-notice--error"><span class="wb-notice__title">{{ error }}</span></p>
+            <p v-if="success" class="wb-notice wb-notice--success"><span class="wb-notice__title">Withdrawal request submitted — we'll process it within 24h.</span></p>
           </template>
         </div>
 
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="$emit('update:modelValue', false)">Cancel</button>
+        <div class="wb-modal__foot">
+          <button class="wb-btn wb-btn--subtle" @click="$emit('update:modelValue', false)">Cancel</button>
           <button
-            class="btn-primary"
+            class="wb-btn wb-btn--primary"
             :disabled="loading || !canSubmit || withdrawalMethods.length === 0"
             @click="submit"
           >
@@ -170,163 +173,30 @@ function resetForm() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--color-surface, #1a1a2e);
-  border: 1px solid var(--color-primary, #c9a96e);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 420px;
-  padding: 0;
-}
-
-.modal-header {
+.balance-info {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 12px;
+  padding: 12px 15px;
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 28%, transparent);
 }
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  color: var(--color-primary, #c9a96e);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.modal-body {
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.balance-info {
-  color: #aaa;
-  font-size: 0.9rem;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  margin: 0;
-}
-
-.balance-info strong {
-  color: var(--color-primary, #c9a96e);
-}
-
-.methods-loading,
-.no-methods {
-  text-align: center;
-  color: #888;
-  font-size: 0.9rem;
-  padding: 0.5rem 0;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-label {
-  font-size: 0.85rem;
-  color: #aaa;
-}
-
-.hint {
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  color: #fff;
-  padding: 0.6rem 0.8rem;
-  font-size: 1rem;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.input:focus {
-  border-color: var(--color-primary, #c9a96e);
-}
-
-select.input option {
-  background: #1a1a2e;
-  color: #fff;
-}
-
-.msg {
-  font-size: 0.875rem;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  margin: 0;
-}
-
-.msg.error {
-  background: rgba(220, 38, 38, 0.1);
-  color: #f87171;
-  border: 1px solid rgba(220, 38, 38, 0.3);
-}
-
-.msg.success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #86efac;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.modal-footer {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: flex-end;
-  padding: 1rem 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.btn-primary {
-  padding: 0.6rem 1.4rem;
-  background: var(--color-primary, #c9a96e);
-  color: #000;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
+.balance-info span {
+  font-family: var(--font-ui);
   font-weight: 600;
-  font-size: 0.95rem;
-  transition: opacity 0.2s;
+  font-size: 12px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.balance-info strong {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--brand-primary);
 }
 
-.btn-primary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 0.6rem 1.2rem;
-  background: transparent;
-  color: #aaa;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.95rem;
-}
+select.wb-select option { background: var(--surface-raised); color: var(--text-primary); }
 </style>

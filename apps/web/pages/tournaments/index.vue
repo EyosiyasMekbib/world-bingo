@@ -202,9 +202,9 @@ useHead({ title: 'Tournaments — World Bingo' })
 }
 
 .tournament-card {
-  background: #1a1a2e;
-  border: 1px solid #2a2a4a;
-  border-radius: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
   padding: 1.25rem;
   display: flex;
   flex-direction: column;

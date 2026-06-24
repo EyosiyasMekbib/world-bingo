@@ -178,30 +178,32 @@ onMounted(fetchStats)
 /* ── Header ──────────────────────────────────────────────────────────── */
 .refer-header { display: flex; flex-direction: column; gap: 0.4rem; }
 .refer-title {
-  font-size: 1.6rem;
+  font-family: var(--font-ui);
+  font-size: 1.7rem;
   font-weight: 700;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.02em;
 }
 .refer-subtitle {
   font-size: 0.9rem;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.55;
 }
-.highlight { color: var(--brand-primary, #f59e0b); }
+.highlight { color: var(--brand-primary); }
 
 /* ── Loading / error ─────────────────────────────────────────────────── */
 .state-message {
   display: flex; align-items: center; gap: 0.75rem;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   padding: 3rem 0; justify-content: center; font-size: 0.95rem;
 }
 .spinner-lg {
   width: 18px; height: 18px;
   border: 2px solid rgba(255,255,255,0.1);
-  border-top-color: var(--brand-primary, #f59e0b);
+  border-top-color: var(--brand-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
@@ -211,10 +213,10 @@ onMounted(fetchStats)
 .error-box {
   display: flex; align-items: center; gap: 0.5rem;
   font-size: 0.875rem;
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 10px;
+  color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-error) 32%, transparent);
+  border-radius: var(--radius-md, 12px);
   padding: 0.75rem 1rem;
 }
 .error-box svg { width: 16px; height: 16px; flex-shrink: 0; }
@@ -226,40 +228,41 @@ onMounted(fetchStats)
   gap: 1rem;
 }
 .stat-card {
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
   padding: 1.1rem;
   text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
   transition: border-color 0.2s, transform 0.2s;
 }
-.stat-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
-.stat-card--green { border-color: rgba(52, 211, 153, 0.2); }
-.stat-card--amber { border-color: rgba(245, 158, 11, 0.2); }
+.stat-card:hover { border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent); transform: translateY(-2px); }
+.stat-card--green { border-color: color-mix(in srgb, var(--status-success) 28%, transparent); }
+.stat-card--amber { border-color: color-mix(in srgb, var(--brand-primary) 28%, transparent); }
 .stat-icon { font-size: 1.3rem; line-height: 1; margin-bottom: 0.1rem; }
 .stat-value {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: var(--text-primary, #f1f5f9);
+  font-family: var(--font-ui);
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.stat-sub { font-size: 0.72rem; font-weight: 600; color: var(--text-disabled, #475569); }
-.stat-card--green .stat-value { color: #34d399; }
-.stat-card--amber .stat-value { color: #fbbf24; }
-.stat-label { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); margin-top: 0.15rem; }
+.stat-sub { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); }
+.stat-card--green .stat-value { color: var(--status-success); }
+.stat-card--amber .stat-value { color: var(--brand-primary); }
+.stat-label { font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-secondary); margin-top: 0.15rem; }
 
-/* ── Code card ───────────────────────────────────────────────────────── */
+/* ── Code card — echoes the home "Bingo" hero slide ──────────────────── */
 .code-card {
-  background: linear-gradient(135deg, rgba(29,78,216,0.85) 0%, rgba(124,58,237,0.85) 100%);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(167, 139, 250, 0.25);
-  border-radius: 16px;
+  position: relative;
+  background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg, 16px);
   padding: 1.5rem;
   display: flex; flex-direction: column; gap: 1rem;
-  box-shadow: 0 8px 32px rgba(124, 58, 237, 0.2);
+  box-shadow: var(--shadow-card, 0 4px 24px rgba(0, 0, 0, 0.4));
+  overflow: hidden;
 }
 .code-card-top {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
@@ -272,20 +275,20 @@ onMounted(fetchStats)
   color: rgba(255,255,255,0.6);
 }
 .code-value {
-  font-size: 2rem;
-  font-weight: 800;
+  font-size: 2.1rem;
+  font-weight: 700;
   color: #fff;
   letter-spacing: 0.15em;
-  font-family: var(--font-game, 'Rajdhani', monospace);
+  font-family: var(--font-ui);
   line-height: 1.1;
 }
 .copied-badge {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.12);
-  border: 1px solid rgba(52, 211, 153, 0.3);
-  border-radius: 20px;
+  color: var(--status-success);
+  background: color-mix(in srgb, var(--status-success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-success) 34%, transparent);
+  border-radius: var(--radius-full, 9999px);
   padding: 0.25rem 0.65rem;
   white-space: nowrap;
   flex-shrink: 0;
@@ -354,19 +357,19 @@ onMounted(fetchStats)
 
 /* ── How it works ────────────────────────────────────────────────────── */
 .how-card {
-  background: rgba(17, 24, 39, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
   padding: 1.25rem 1.5rem;
 }
 .how-title {
-  font-size: 0.9rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 700;
-  color: var(--text-primary, #f1f5f9);
+  color: var(--text-primary);
   margin: 0 0 0.875rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.7px;
 }
 .how-list {
   list-style: none;
@@ -376,21 +379,22 @@ onMounted(fetchStats)
 .how-list li {
   display: flex; align-items: flex-start; gap: 0.65rem;
   font-size: 0.875rem;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 .how-num {
   flex-shrink: 0;
   width: 20px; height: 20px;
   border-radius: 50%;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  color: var(--brand-primary, #f59e0b);
+  background: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 32%, transparent);
+  color: var(--brand-primary);
+  font-family: var(--font-ui);
   font-size: 0.72rem;
   font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
-.how-list strong { color: var(--text-primary, #f1f5f9); }
+.how-list strong { color: var(--text-primary); }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 480px) {

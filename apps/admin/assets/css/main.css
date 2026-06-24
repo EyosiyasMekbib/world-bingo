@@ -2,37 +2,50 @@
 @import "@nuxt/ui";
 
 /* ── Design tokens ─────────────────────────────────────────────────────── */
+/* Aligned to the Arada Bingo player brand (packages/ui/src/theme/brands/arada.ts)
+   so the admin back-office reads as the same product as the home page:
+   deep-navy surfaces, amber accent, Barlow Condensed UI + Inter body. */
 :root {
-  --surface-base:    #030c22;
-  --surface-raised:  #071026;
-  --surface-overlay: #0b162e;
-  --surface-border:  rgba(255, 255, 255, 0.07);
-  --surface-line:    rgba(255, 255, 255, 0.04);
+  --surface-base:    #0a1628;
+  --surface-raised:  #0d1f3c;
+  --surface-overlay: #122a4e;
+  --surface-border:  rgba(255, 255, 255, 0.12);
+  --surface-line:    rgba(255, 255, 255, 0.06);
 
-  --brand-primary:     #f59e0b;
-  --brand-primary-dim: #d97706;
-  --brand-glow:        rgba(245, 158, 11, 0.07);
+  --brand-primary:     #f5a623;
+  --brand-primary-dim: #c8851a;
+  --brand-glow:        rgba(245, 166, 35, 0.09);
 
-  --text-primary:   #dde6f5;
-  --text-secondary: rgba(190, 210, 240, 0.5);
-  --text-muted:     rgba(190, 210, 240, 0.28);
+  --text-primary:   #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted:     rgba(255, 255, 255, 0.4);
 
   --positive:        #34d399;
-  --positive-bg:     rgba(52, 211, 153, 0.07);
-  --positive-border: rgba(52, 211, 153, 0.18);
-  --negative:        #f87171;
-  --negative-bg:     rgba(248, 113, 113, 0.07);
-  --negative-border: rgba(248, 113, 113, 0.18);
+  --positive-bg:     rgba(52, 211, 153, 0.1);
+  --positive-border: rgba(52, 211, 153, 0.26);
+  --negative:        #ef4444;
+  --negative-bg:     rgba(239, 68, 68, 0.1);
+  --negative-border: rgba(239, 68, 68, 0.28);
+
+  --font-ui:   'Barlow Condensed', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
 html, body {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-body);
   background: var(--surface-base);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+}
+
+/* Headings & UI chrome use the condensed display face, like the home page. */
+h1, h2, h3, h4,
+.admin-table thead th,
+.status-tag {
+  font-family: var(--font-ui);
 }
 
 /* ── Sidebar active nav link ───────────────────────────────────────────── */
@@ -54,7 +67,7 @@ html, body {
 .admin-card {
   background: var(--surface-raised);
   border: 1px solid var(--surface-border);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 /* ── Data table ────────────────────────────────────────────────────────── */
@@ -96,11 +109,11 @@ html, body {
 /* ── Status tags ───────────────────────────────────────────────────────── */
 .status-tag {
   display: inline-block;
-  padding: 2px 7px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   border: 1px solid transparent;
 }
@@ -146,8 +159,8 @@ textarea {
 /* Override the group/wrapper background Nuxt UI adds around inputs */
 :is(input, select, textarea):focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) !important;
-  border-color: rgba(245, 158, 11, 0.4) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 28%, transparent) !important;
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent) !important;
 }
 
 /* Ensure placeholder text matches brand */

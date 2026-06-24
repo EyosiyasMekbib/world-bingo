@@ -1229,7 +1229,7 @@ onUnmounted(() => {
   gap: 0.5rem;
   padding: 1rem;
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(201,169,110,0.18);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, transparent);
   border-radius: 16px;
   width: 100%;
   max-width: 360px;
@@ -1364,14 +1364,14 @@ onUnmounted(() => {
 .spinner, .waiting-spinner {
   width: 40px; height: 40px;
   border: 3px solid rgba(255,255,255,0.1);
-  border-top-color: var(--color-primary, #c9a96e);
+  border-top-color: var(--brand-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .back-btn {
   padding: 0.6rem 1.5rem;
-  background: var(--color-primary, #c9a96e);
+  background: var(--brand-primary);
   color: #000; border: none; border-radius: 8px;
   font-weight: 700; cursor: pointer; font-size: 0.9rem;
   transition: opacity 0.2s;
@@ -1398,7 +1398,7 @@ onUnmounted(() => {
 .status-badge.starting { background: rgba(99,102,241,0.15); color: #a5b4fc; }
 .status-badge.in-progress { background: rgba(34,197,94,0.15); color: #4ade80; }
 .status-badge.completed { background: rgba(100,116,139,0.15); color: #94a3b8; }
-.pattern-badge { background: rgba(201,169,110,0.12); color: var(--color-primary,#c9a96e); }
+.pattern-badge { background: color-mix(in srgb, var(--brand-primary) 12%, transparent); color: var(--brand-primary); }
 .stake-badge { background: rgba(245,158,11,0.1); color: #fbbf24; }
 .players-badge { background: rgba(99,102,241,0.12); color: #a5b4fc; }
 .ball-count-badge { background: rgba(255,255,255,0.06); color: #888; }
@@ -1438,7 +1438,7 @@ onUnmounted(() => {
 .countdown-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring-track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 8; }
 .ring-fill {
-  fill: none; stroke: var(--color-primary, #c9a96e); stroke-width: 8;
+  fill: none; stroke: var(--brand-primary); stroke-width: 8;
   stroke-linecap: round; stroke-dasharray: 326.73; stroke-dashoffset: 0;
   transition: stroke-dashoffset 0.25s linear;
 }
@@ -1446,7 +1446,7 @@ onUnmounted(() => {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.countdown-secs { font-size: 2.8rem; font-weight: 900; color: var(--color-primary, #c9a96e); line-height: 1; }
+.countdown-secs { font-size: 2.8rem; font-weight: 900; color: var(--brand-primary); line-height: 1; }
 .countdown-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: #888; }
 .countdown-msg { font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin: 0; }
 .countdown-sub { font-size: 0.78rem; color: #666; margin: 0; }
@@ -1514,7 +1514,7 @@ onUnmounted(() => {
 .col-o { --ball-bg: #a855f7; color: white; }
 
 .ball-counter { display: flex; flex-direction: column; align-items: center; min-width: 60px; }
-.bc-num { font-size: 1.2rem; font-weight: 900; color: var(--color-primary, #c9a96e); }
+.bc-num { font-size: 1.2rem; font-weight: 900; color: var(--brand-primary); }
 .bc-label { font-size: 0.65rem; color: #888; text-transform: uppercase; white-space: nowrap; }
 
 /* ── 75-Ball Master Board (Horizontal) ───────────────────────────────────── */
@@ -1550,7 +1550,7 @@ onUnmounted(() => {
 
 .mb-cell.last-called {
   transform: scale(1.15); border-width: 2px; border-color: #fff !important; font-weight: 900; z-index: 2;
-  box-shadow: 0 0 10px rgba(255,255,255,0.5); background: var(--color-primary, #c9a96e) !important; color: #000 !important;
+  box-shadow: 0 0 10px rgba(255,255,255,0.5); background: var(--brand-primary) !important; color: #000 !important;
 }
 
 /* ── Cartelas (Tickets) & Grids ──────────────────────────────────────────── */
@@ -1588,13 +1588,13 @@ onUnmounted(() => {
 .bcg-cell:hover:not(.free-space) { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); }
 
 /* Auto-mark (server called) vs Manual Tick (user act) */
-.bcg-cell.free-space { background: rgba(201,169,110,0.15); color: var(--color-primary, #c9a96e); cursor: default; border: none; font-size: 1.3rem; }
-.bcg-cell.auto-marked { border-color: var(--color-primary, #c9a96e); color: #fff; background: rgba(201,169,110,0.15); opacity: 0.7; }
+.bcg-cell.free-space { background: color-mix(in srgb, var(--brand-primary) 15%, transparent); color: var(--brand-primary); cursor: default; border: none; font-size: 1.3rem; }
+.bcg-cell.auto-marked { border-color: var(--brand-primary); color: #fff; background: color-mix(in srgb, var(--brand-primary) 15%, transparent); opacity: 0.7; }
 
 /* The manual tick adds a nice green gradient and tick mark if the user clicks it BEFORE it's auto-marked,
    or just makes it clearly "checked off" if both are true. */
 .bcg-cell.manually-ticked {
-  background: var(--color-primary, #c9a96e); color: #000; opacity: 1; transform: scale(1.04); box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-color: #fcd34d;
+  background: var(--brand-primary); color: #000; opacity: 1; transform: scale(1.04); box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-color: #fcd34d;
 }
 .tick-mark { position: absolute; bottom: 1px; right: 2px; font-size: 0.55rem; color: #000; font-weight: 900; line-height: 1; text-shadow: none; }
 .bcg-cell.manually-ticked.auto-marked { background: linear-gradient(135deg, #10b981, #059669); color: white; border-color: #34d399; }
@@ -1653,8 +1653,8 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center; z-index: 1000;
 }
 .overlay-card {
-  background: var(--color-surface, #1a1a2e);
-  border: 2px solid var(--color-primary, #c9a96e);
+  background: var(--surface-raised);
+  border: 2px solid var(--brand-primary);
   border-radius: 16px; padding: 2.5rem; text-align: center;
   max-width: 400px; width: 90%; position: relative; overflow: hidden;
 }
@@ -1666,7 +1666,7 @@ onUnmounted(() => {
 }
 .trophy { font-size: 4rem; margin-bottom: 0.5rem; }
 .icon { font-size: 3.5rem; margin-bottom: 0.5rem; }
-.overlay-card h2 { font-size: 1.8rem; margin: 0 0 0.5rem; color: var(--color-primary, #c9a96e); }
+.overlay-card h2 { font-size: 1.8rem; margin: 0 0 0.5rem; color: var(--brand-primary); }
 .you-won { color: #4ade80 !important; font-size: 2rem !important; }
 .prize-amount {
   display: flex; flex-direction: column; align-items: center;
