@@ -21,6 +21,7 @@ import notificationRoutes from './routes/user/index.js'
 import referralRoutes from './routes/referral'
 import tournamentRoutes from './routes/tournament'
 import settingsRoutes from './routes/settings'
+import brandRoutes from './routes/brand'
 import promotionsRoutes from './routes/promotions'
 import paymentMethodRoutes from './routes/payment-methods/index.js'
 import { registerBullBoard } from './routes/bull-board.js'
@@ -229,6 +230,7 @@ await server.register(notificationRoutes, { prefix: '/user' })
 await server.register(referralRoutes, { prefix: '/referral' })
 await server.register(tournamentRoutes, { prefix: '/tournaments' })
 await server.register(settingsRoutes, { prefix: '/settings' })
+await server.register(brandRoutes, { prefix: '/brand' })
 await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
