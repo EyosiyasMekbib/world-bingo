@@ -321,16 +321,14 @@ export class PalaceWalletService {
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
 
-            // Reverse the original transaction by negating its signed amount:
-            //  - a BET was a debit (stored negative) → reversal credits the player
-            //  - a BET_RESULT/win was a credit (stored positive) → reversal debits
-            // Fall back to refunding the cancel amount when the original can't be found.
+            // Per palace docs, a cancel is always a BetCancel(16): "the amount will be
+            // returned" — i.e. always credit the cancel amount back to the user. Prefer
+            // the original transaction's amount when we can find it, else the cancel amount.
             const delta = originalBet
-                ? new Decimal(originalBet.amount).negated()
+                ? new Decimal(originalBet.betAmount ?? originalBet.amount).abs()
                 : new Decimal(params.amount).abs()
 
-            // Never let the real balance go below zero (house rule).
-            const newReal = Decimal.max(new Decimal(0), realBefore.plus(delta))
+            const newReal = realBefore.plus(delta)
             const newTotal = newReal.plus(bonusBefore)
 
             await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
