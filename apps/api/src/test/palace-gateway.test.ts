@@ -55,17 +55,27 @@ describe('PalaceGateway', () => {
     expect(result.totalItems).toBe(1)
   })
 
-  it('throws on non-zero response code', async () => {
+  it('throws PalaceApiError carrying the upstream code on non-zero response code', async () => {
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ code: 2002, message: 'USER_NOT_FOUND', data: null }) })
-    const { PalaceGateway } = await import('../gateways/game-provider/palace.gateway.js')
+    const { PalaceGateway, PalaceApiError } = await import('../gateways/game-provider/palace.gateway.js')
     const gw = new PalaceGateway()
-    await expect(gw.getVendors('ETB', 'en')).rejects.toThrow('Palace error: 2002')
+    await expect(gw.getVendors('ETB', 'en')).rejects.toMatchObject({
+      constructor: PalaceApiError,
+      code: 'PALACE_UPSTREAM_ERROR',
+      palaceCode: 2002,
+      statusCode: 502,
+    })
   })
 
-  it('throws on non-ok HTTP status', async () => {
+  it('throws PalaceApiError on non-ok HTTP status', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 503 })
-    const { PalaceGateway } = await import('../gateways/game-provider/palace.gateway.js')
+    const { PalaceGateway, PalaceApiError } = await import('../gateways/game-provider/palace.gateway.js')
     const gw = new PalaceGateway()
-    await expect(gw.getVendors('ETB', 'en')).rejects.toThrow('Palace /v4/game/providers responded 503')
+    await expect(gw.getVendors('ETB', 'en')).rejects.toMatchObject({
+      constructor: PalaceApiError,
+      code: 'PALACE_UPSTREAM_HTTP_ERROR',
+      statusCode: 502,
+      details: { upstreamHttpStatus: 503 },
+    })
   })
 })

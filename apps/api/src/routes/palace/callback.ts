@@ -11,17 +11,34 @@ import { PalaceWalletService } from '../../services/palace-wallet.service.js'
  * Palace sends: { command: string, data: { ... } }
  * We respond: { result: number, status: string, data: object | null }
  */
+// Palace's HTTP client aborts the request (logged as "An error occurred while
+// sending the request") if we don't answer in time. Cap our own work well under
+// that so we ALWAYS return a valid 200 body instead of letting the socket hang.
+const HANDLER_TIMEOUT_MS = Number(process.env.PALACE_CALLBACK_TIMEOUT_MS ?? 8000)
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error('palace callback timeout'), { code: 'TIMEOUT' })), ms),
+    ),
+  ])
+}
+
 export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post('/', {
     preHandler: [verifyPalaceCallbackToken],
     handler: async (req, reply) => {
+      // Capture exactly what Palace sent (full raw body) so any future error in
+      // their dashboard can be matched to the request/response on our side.
+      req.log.info({ rawBody: req.body }, '[Palace] callback received')
       try {
-        const body = req.body as {
-          command: string
-          data: Record<string, any>
+        const body = (req.body ?? {}) as {
+          command?: string
+          data?: Record<string, any>
         }
 
-        const { command, data: d } = body
+        const { command, data: d = {} } = body
 
         // Log every command's payload and the result we return, so Palace's
         // dashboard test failures (e.g. 1015 CALLBACK_ERROR) can be matched to the
@@ -34,28 +51,23 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
           return reply.status(200).send(payload)
         }
 
-        switch (command) {
-          case 'authenticate':
-            return respond(await PalaceWalletService.authenticate(d.account))
-
-          case 'balance':
-            return respond(await PalaceWalletService.getBalance(d.account))
-
-          case 'bet':
-            return respond(
-              await PalaceWalletService.processBet({
+        const dispatch = (): Promise<{ result: number; status: string; data: object | null }> => {
+          switch (command) {
+            case 'authenticate':
+              return PalaceWalletService.authenticate(d.account)
+            case 'balance':
+              return PalaceWalletService.getBalance(d.account)
+            case 'bet':
+              return PalaceWalletService.processBet({
                 trans_guid: d.trans_guid,
                 account: d.account,
                 gplay_id: d.gplay_id,
                 round_id: d.round_id,
                 game_code: d.game_code,
                 amount: d.amount,
-              }),
-            )
-
-          case 'win':
-            return respond(
-              await PalaceWalletService.processWin({
+              })
+            case 'win':
+              return PalaceWalletService.processWin({
                 trans_guid: d.trans_guid,
                 account: d.account,
                 gplay_id: d.gplay_id,
@@ -63,12 +75,9 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
                 game_code: d.game_code,
                 amount: d.amount,
                 type: d.type ?? 2,
-              }),
-            )
-
-          case 'cancel':
-            return respond(
-              await PalaceWalletService.processCancel({
+              })
+            case 'cancel':
+              return PalaceWalletService.processCancel({
                 trans_guid: d.trans_guid,
                 account: d.account,
                 gplay_id: d.gplay_id,
@@ -78,23 +87,26 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
                 // Palace sends the correctly-spelled `cancel_trans_guid`; keep the
                 // legacy misspelling as a fallback for safety.
                 cancle_trans_guid: d.cancel_trans_guid ?? d.cancle_trans_guid,
-              }),
-            )
-
-          case 'status':
-            return respond(await PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? ''))
-
-          default:
-            return respond({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
+              })
+            case 'status':
+              return PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? '')
+            default:
+              return Promise.resolve({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
+          }
         }
+
+        return respond(await withTimeout(dispatch(), HANDLER_TIMEOUT_MS))
       } catch (err) {
         // Log the command + payload (not just the error) so we can see exactly which
         // fields Palace sent — essential for diagnosing missing/renamed keys.
         const body = req.body as { command?: string; data?: Record<string, any> }
+        const timedOut = (err as any)?.code === 'TIMEOUT'
         req.log.error(
-          { err, command: body?.command, dataKeys: body?.data ? Object.keys(body.data) : [], data: body?.data },
+          { err, command: body?.command, dataKeys: body?.data ? Object.keys(body.data) : [], data: body?.data, timedOut },
           '[Palace] Unhandled error in callback handler',
         )
+        // Always return a well-formed 200 — a hung socket is what shows up in Palace's
+        // dashboard as "An error occurred while sending the request".
         return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
       }
     },
