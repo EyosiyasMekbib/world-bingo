@@ -17,6 +17,9 @@ const { track } = useAnalytics()
 
 const showAuthPrompt = ref(false)
 
+// True until the first bingo + casino load settles together (see onMounted).
+const lobbyInitialLoading = ref(true)
+
 /* ── Categories ─────────────────────────────────────────────────────────── */
 const CATEGORY_LABELS: Record<string, string> = {
   ALL: 'All Games',
@@ -364,7 +367,12 @@ const headingLabel = computed(() =>
 const gridLoading = computed(() => {
   if (showFavorites.value) return false
   const cat = selectedCategory.value
-  if (cat === 'BINGO' || cat === 'ALL' || cat === 'TRENDING' || cat === 'POPULAR') {
+  // ALL & TRENDING blend casino + bingo — hold the skeleton until the combined
+  // first load settles so every game (bingo included) reveals together.
+  if (cat === 'ALL' || cat === 'TRENDING') {
+    return lobbyInitialLoading.value
+  }
+  if (cat === 'BINGO' || cat === 'POPULAR') {
     return gameStore.loadingGames && !gameStore.availableGames.length
   }
   return !!categoryGamesLoading.value[cat] && !(categoryGamesMap.value[cat]?.length)
@@ -404,18 +412,27 @@ onMounted(async () => {
     if (saved) favorites.value = new Set(JSON.parse(saved))
   } catch { /* ignore */ }
 
-  try {
-    await gameStore.fetchAvailableGames()
-  } catch { /* errors stored in gameStore.error */ }
-
   promotionsStore.fetch()
 
-  await providerStore.fetchProviders()
+  // Load bingo rooms and casino games in parallel so the ALL/TRENDING grid can
+  // reveal every game at once instead of bingo popping in ahead of the casino.
+  const bingoLoad = gameStore.fetchAvailableGames().catch(() => { /* gameStore.error */ })
+  const providerLoad = (async () => {
+    await providerStore.fetchProviders()
+    if (providerStore.activeProviderCode) {
+      await providerStore.fetchCategories()
+      await providerStore.fetchGames({ reset: true, pageSize: 60 })
+    }
+  })().catch(() => { /* keep lobby usable on provider failure */ })
+
+  await Promise.allSettled([bingoLoad, providerLoad])
+  lobbyInitialLoading.value = false
+
+  // Secondary: per-category pools that feed the featured pins. Non-blocking —
+  // the grid is already shown; these progressively enrich it.
   if (providerStore.activeProviderCode) {
-    await providerStore.fetchCategories()
-    await providerStore.fetchGames({ reset: true, pageSize: 60 })
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
-    await Promise.all(cats.map((c) => fetchCategoryGames(c)))
+    Promise.all(cats.map((c) => fetchCategoryGames(c)))
   }
 
   startSlideTimer()
@@ -576,10 +593,17 @@ onUnmounted(() => {
         <span class="games-count">{{ gridCount }} games</span>
       </div>
 
-      <div v-if="gridLoading" class="game-grid" aria-busy="true">
-        <div v-for="n in 12" :key="n" class="gc-skel">
-          <div class="gc-skel-thumb" />
-          <div class="gc-skel-name" />
+      <div v-if="gridLoading" class="game-grid" aria-busy="true" aria-label="Loading games">
+        <div v-for="n in 12" :key="n" class="gc-skel" :style="{ '--sk-delay': `${((n - 1) % 6) * 90}ms` }">
+          <div class="gc-skel-thumb">
+            <span class="gc-skel-badge" />
+            <span class="gc-skel-letter" />
+            <span class="gc-skel-price" />
+          </div>
+          <div class="gc-skel-foot">
+            <span class="gc-skel-name" />
+            <span class="gc-skel-fav" />
+          </div>
         </div>
       </div>
 
@@ -1203,31 +1227,84 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* Skeleton mirrors the real game card so the grid settles in place once
+   data lands. A single brand-tinted sheen sweeps across each card, with a
+   staggered delay (--sk-delay) for a gentle left-to-right cascade. */
 .gc-skel {
+  position: relative;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: var(--surface-raised);
+  isolation: isolate;
+  animation: gc-skel-in 0.4s ease both;
 }
-.gc-skel-thumb {
-  aspect-ratio: 4 / 3;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.09) 40%, rgba(255, 255, 255, 0.04) 80%);
-  background-size: 200% 100%;
-  animation: gc-shimmer 1.4s ease-in-out infinite;
-}
-.gc-skel-name {
-  height: 11px;
-  width: 65%;
-  margin: 11px 12px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.09) 40%, rgba(255, 255, 255, 0.04) 80%);
-  background-size: 200% 100%;
-  animation: gc-shimmer 1.4s ease-in-out infinite;
+.gc-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.07) 45%,
+    color-mix(in srgb, var(--brand-primary) 14%, rgba(255, 255, 255, 0.07)) 50%,
+    rgba(255, 255, 255, 0.07) 55%,
+    transparent 75%
+  );
+  background-size: 220% 100%;
+  background-position: 180% 0;
+  animation: gc-sheen 1.5s ease-in-out infinite;
+  animation-delay: var(--sk-delay, 0ms);
 }
 
-@keyframes gc-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+.gc-skel-thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(150deg, #0d2050 0%, #16306a 100%);
+}
+
+/* dim placeholder blocks — the sheen above gives them life */
+.gc-skel-badge,
+.gc-skel-letter,
+.gc-skel-price,
+.gc-skel-name,
+.gc-skel-fav {
+  display: block;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+}
+.gc-skel-badge { position: absolute; top: 9px; left: 9px; width: 44px; height: 16px; }
+.gc-skel-price { position: absolute; bottom: 8px; right: 8px; width: 50px; height: 18px; }
+.gc-skel-letter {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gc-skel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+}
+.gc-skel-name { height: 11px; width: 62%; border-radius: 3px; }
+.gc-skel-fav { width: 22px; height: 22px; border-radius: 6px; flex: none; }
+
+@keyframes gc-sheen {
+  0% { background-position: 180% 0; }
+  60%, 100% { background-position: -120% 0; }
+}
+@keyframes gc-skel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 @keyframes gc-blink {
   0%, 100% { opacity: 1; }
