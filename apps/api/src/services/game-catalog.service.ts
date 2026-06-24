@@ -162,9 +162,10 @@ export class GameCatalogService {
             console.log(`[GameCatalog] Re-enabled ${reenableIds.length} previously auto-hidden games for ${providerCode}/${vendorCode}`)
         }
 
-        // Invalidate Redis cache for this provider
+        // Invalidate Redis cache for this provider (games + categories)
         const keys = await redis.keys(`tp:games:${providerCode}:*`)
         if (keys.length > 0) await redis.del(...keys)
+        await redis.del(`tp:categories:${providerCode}`)
 
         console.log(`[GameCatalog] Synced ${total} games for ${providerCode}/${vendorCode}`)
         return total
@@ -257,9 +258,14 @@ export class GameCatalogService {
     }
 
     /**
-     * Get distinct game categories for a provider.
+     * Get distinct game categories for a provider (Redis-cached).
+     * Stable data — same TTL and bust path as the games cache (tp:games:*).
      */
     static async getCategories(providerCode: string): Promise<string[]> {
+        const cacheKey = `tp:categories:${providerCode}`
+        const cached = await redis.get(cacheKey)
+        if (cached) return JSON.parse(cached)
+
         const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
         if (!provider) return []
 
@@ -268,7 +274,10 @@ export class GameCatalogService {
             select: { categoryCode: true },
             distinct: ['categoryCode'],
         })
-        return rows.map((r) => r.categoryCode).sort()
+        const categories = rows.map((r) => r.categoryCode).sort()
+
+        await redis.setex(cacheKey, GAME_CACHE_TTL, JSON.stringify(categories))
+        return categories
     }
 
     static async searchCatalog(query: string) {

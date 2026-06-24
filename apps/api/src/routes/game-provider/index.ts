@@ -136,6 +136,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                         .catch(() => {})
                     const keys = await redis.keys(`tp:games:${providerCode}:*`)
                     if (keys.length > 0) await redis.del(...keys)
+                    await redis.del(`tp:categories:${providerCode}`)
 
                     req.log.warn(
                         { providerCode, gameCode, userId: user.id, err: msg },
