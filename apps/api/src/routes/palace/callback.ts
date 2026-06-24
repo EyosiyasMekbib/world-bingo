@@ -36,7 +36,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
 
         switch (command) {
           case 'authenticate':
-            return respond({ result: 0, status: 'OK', data: { account: d.account } })
+            return respond(await PalaceWalletService.authenticate(d.account))
 
           case 'balance':
             return respond(await PalaceWalletService.getBalance(d.account))

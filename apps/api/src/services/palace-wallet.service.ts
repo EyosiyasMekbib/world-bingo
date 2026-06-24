@@ -98,6 +98,19 @@ async function findExisting(transactionId: string | undefined | null) {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export class PalaceWalletService {
+    // Palace's authenticate callback expects data: { account, balance }.
+    static async authenticate(account: string): Promise<PalaceResponse> {
+        const user = await resolveUser(account)
+        if (!user) return palaceErr(21, 'USER_NOT_FOUND')
+        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+
+        const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+        const balance = wallet
+            ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+            : new Decimal(0)
+        return ok({ account, balance: Number(balance.toFixed(2)) })
+    }
+
     static async getBalance(account: string): Promise<PalaceResponse> {
         const user = await resolveUser(account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
