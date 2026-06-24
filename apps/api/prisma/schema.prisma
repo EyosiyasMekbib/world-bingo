@@ -535,6 +535,7 @@ model ProviderGame {
   platformCodes  String[]                            // e.g. ["H5", "WEB"]
   currencyCodes  String[]                            // e.g. ["ETB", "USD"]
   isActive       Boolean      @default(true)
+  autoHidden     Boolean      @default(false)   // hidden by us after an upstream "disabled" launch; re-enabled on next sync
   sortOrder      Int          @default(0)
   provider       GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   vendor         GameVendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)

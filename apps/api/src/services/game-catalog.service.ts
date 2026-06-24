@@ -106,11 +106,13 @@ export class GameCatalogService {
 
         let page = 1
         let total = 0
+        const seenCodes: string[] = []
 
         while (true) {
             const result = await gateway.getGames(vendorCode, page, 100, CURRENCY, 'en')
 
             for (const g of result.games) {
+                seenCodes.push(g.gameCode)
                 await prisma.providerGame.upsert({
                     where: { providerId_gameCode: { providerId: provider.id, gameCode: g.gameCode } },
                     update: {
@@ -141,6 +143,23 @@ export class GameCatalogService {
 
             if (page >= result.totalPages) break
             page++
+        }
+
+        // Self-heal: re-enable games we auto-hid that the provider is listing again.
+        // Bounded by the (small) number of auto-hidden games — never touches games an
+        // admin disabled manually (those have autoHidden=false).
+        const autoHidden = await prisma.providerGame.findMany({
+            where: { providerId: provider.id, autoHidden: true },
+            select: { id: true, gameCode: true },
+        })
+        const seen = new Set(seenCodes)
+        const reenableIds = autoHidden.filter((g) => seen.has(g.gameCode)).map((g) => g.id)
+        if (reenableIds.length > 0) {
+            await prisma.providerGame.updateMany({
+                where: { id: { in: reenableIds } },
+                data: { isActive: true, autoHidden: false },
+            })
+            console.log(`[GameCatalog] Re-enabled ${reenableIds.length} previously auto-hidden games for ${providerCode}/${vendorCode}`)
         }
 
         // Invalidate Redis cache for this provider

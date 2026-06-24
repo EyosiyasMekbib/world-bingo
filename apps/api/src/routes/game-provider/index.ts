@@ -131,7 +131,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                     await prisma.providerGame
                         .updateMany({
                             where: { provider: { code: providerCode }, gameCode },
-                            data: { isActive: false },
+                            data: { isActive: false, autoHidden: true },
                         })
                         .catch(() => {})
                     const keys = await redis.keys(`tp:games:${providerCode}:*`)

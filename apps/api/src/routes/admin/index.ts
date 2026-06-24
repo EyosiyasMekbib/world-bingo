@@ -386,7 +386,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             if (!provider) return reply.status(404).send({ error: 'Provider not found' })
             const game = await prisma.providerGame.findUnique({ where: { providerId_gameCode: { providerId: provider.id, gameCode: req.params.gameCode } } })
             if (!game) return reply.status(404).send({ error: 'Game not found' })
-            return prisma.providerGame.update({ where: { id: game.id }, data: { isActive: req.body.isActive } })
+            // Manual admin action always wins — clear the auto-hidden flag so a
+            // later sync won't override a deliberate enable/disable.
+            return prisma.providerGame.update({ where: { id: game.id }, data: { isActive: req.body.isActive, autoHidden: false } })
         })
 
         f.get('/providers/:code/transactions', async (req: any, _reply) => {
