@@ -379,6 +379,9 @@ const gridLoading = computed(() => {
   // ALL & TRENDING blend casino + bingo — hold the skeleton until the combined
   // first load settles so every game (bingo included) reveals together.
   if (cat === 'ALL' || cat === 'TRENDING') {
+    // Reveal as soon as either branch (casino or bingo) has data instead of
+    // holding the skeleton for the slower one — the rest streams in.
+    if (allProviderGames.value.length || gameStore.availableGames.length) return false
     return lobbyInitialLoading.value
   }
   if (cat === 'BINGO' || cat === 'POPULAR') {
@@ -423,25 +426,31 @@ onMounted(async () => {
 
   promotionsStore.fetch()
 
-  // Load bingo rooms and casino games in parallel so the ALL/TRENDING grid can
-  // reveal every game at once instead of bingo popping in ahead of the casino.
+  // Load bingo rooms and casino games in parallel. Once providers resolve,
+  // categories and the first games page are independent — fire them concurrently
+  // instead of chaining, saving a full network round-trip on first paint.
   const bingoLoad = gameStore.fetchAvailableGames().catch(() => { /* gameStore.error */ })
   const providerLoad = (async () => {
     await providerStore.fetchProviders()
     if (providerStore.activeProviderCode) {
-      await providerStore.fetchCategories()
-      await providerStore.fetchGames({ reset: true, pageSize: 60 })
+      await Promise.all([
+        providerStore.fetchCategories(),
+        providerStore.fetchGames({ reset: true, pageSize: 60 }),
+      ])
     }
   })().catch(() => { /* keep lobby usable on provider failure */ })
 
   await Promise.allSettled([bingoLoad, providerLoad])
   lobbyInitialLoading.value = false
 
-  // Secondary: per-category pools that feed the featured pins. Non-blocking —
-  // the grid is already shown; these progressively enrich it.
+  // Secondary: per-category pools that feed the featured pins. Non-blocking and
+  // deferred to idle so the initial fan-out doesn't contend with the user's
+  // first scroll — the grid is already shown; these progressively enrich it.
   if (providerStore.activeProviderCode) {
     const cats = providerStore.categories.filter((c) => c !== 'BINGO' && c !== 'ALL')
-    Promise.all(cats.map((c) => fetchCategoryGames(c)))
+    const loadCats = () => Promise.all(cats.map((c) => fetchCategoryGames(c)))
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => loadCats())
+    else setTimeout(loadCats, 200)
   }
 
   startSlideTimer()

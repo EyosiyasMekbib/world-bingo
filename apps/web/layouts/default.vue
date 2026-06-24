@@ -5,7 +5,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const { connect } = useSocket()
 const { locale, setLocale } = useI18n()
-const { referralsEnabled, tournamentsEnabled } = useFeatureFlags()
+const { referralsEnabled } = useFeatureFlags()
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -54,8 +54,8 @@ function submitSearch() {
     <header class="ab-desktop ab-header">
       <!-- Utility bar -->
       <div class="ab-util">
-        <NuxtLink to="/" class="ab-logo">
-          <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+        <NuxtLink to="/" class="ab-logo" aria-label="AradaBingo home">
+          <BrandLogo :height="34" />
         </NuxtLink>
 
         <div class="ab-search">
@@ -128,8 +128,8 @@ function submitSearch() {
         <button class="ab-micon" aria-label="Menu" @click="mobileNavOpen = true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-        <NuxtLink to="/" class="ab-logo ab-logo-sm">
-          <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+        <NuxtLink to="/" class="ab-logo ab-logo-sm" aria-label="AradaBingo home">
+          <BrandLogo :height="26" />
         </NuxtLink>
         <NuxtLink to="/search" class="ab-micon" aria-label="Search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" /><path d="m20 20-3.2-3.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -154,21 +154,21 @@ function submitSearch() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
           <span>Home</span>
         </NuxtLink>
+        <NuxtLink to="/games" class="ab-mtab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-3 3 6 2-4 2 2h7" /><path d="M17 6l4 2-4 2" /></svg>
+          <span>Aviator</span>
+        </NuxtLink>
         <NuxtLink to="/games" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
           <span>Games</span>
         </NuxtLink>
-        <NuxtLink v-if="tournamentsEnabled" to="/tournaments" class="ab-mtab" active-class="ab-mtab-active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M18 2H6v7a6 6 0 0012 0V2z" /></svg>
-          <span>Tournaments</span>
+        <NuxtLink to="/games" class="ab-mtab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+          <span>Virtual</span>
         </NuxtLink>
-        <NuxtLink v-if="auth.isAuthenticated" to="/wallet" class="ab-mtab" active-class="ab-mtab-active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M16 6V5a2 2 0 00-2-2H8" /><circle cx="16.5" cy="12.5" r="1.3" fill="currentColor" stroke="none" /></svg>
-          <span>Wallet</span>
-        </NuxtLink>
-        <NuxtLink v-if="referralsEnabled && auth.isAuthenticated" to="/refer" class="ab-mtab" active-class="ab-mtab-active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 13 21l-9-9V4h8l8.5 8.5z" /><circle cx="7.5" cy="7.5" r="1.5" /></svg>
-          <span>Promotions</span>
+        <NuxtLink to="/refer" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" /></svg>
+          <span>Promo</span>
         </NuxtLink>
       </div>
     </header>
@@ -183,7 +183,7 @@ function submitSearch() {
         <aside class="ab-drawer">
           <div class="ab-drawer-head">
             <span class="ab-logo ab-logo-sm">
-              <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+              <BrandLogo :height="26" />
             </span>
             <button class="ab-micon" @click="mobileNavOpen = false" aria-label="Close">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
@@ -231,7 +231,7 @@ function submitSearch() {
         <div class="ab-footer-top">
           <div class="ab-footer-brand">
             <span class="ab-logo">
-              <span class="ab-logo-1">ARADA</span><span class="ab-logo-2">BINGO</span>
+              <BrandLogo :height="34" />
             </span>
             <p>Ethiopia's premium online bingo and gaming destination. Play responsibly and enjoy the thrill.</p>
           </div>
