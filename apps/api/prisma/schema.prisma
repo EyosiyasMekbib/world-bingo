@@ -403,6 +403,19 @@ model SiteSetting {
   @@map("site_settings")
 }
 
+// Singleton white-label brand config. Absent row => app uses DEFAULT_BRAND.
+model BrandSetting {
+  id          String   @id @default("default")
+  displayName String
+  shortName   String
+  logoUrl     String?
+  faviconUrl  String?
+  tokens      Json
+  updatedAt   DateTime @updatedAt
+
+  @@map("brand_settings")
+}
+
 // ─── Payment Methods ─────────────────────────────────────────────────────────
 // Configurable deposit/withdrawal payment methods managed via the admin panel.
 
