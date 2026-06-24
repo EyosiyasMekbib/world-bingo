@@ -362,10 +362,13 @@ export class PalaceWalletService {
 
     static async getStatus(account: string, transGuid: string): Promise<PalaceResponse> {
         const providerId = await getPalaceProviderId()
-        const tx = await prisma.thirdPartyTransaction.findUnique({
-            where: { providerId_transactionId: { providerId, transactionId: transGuid } },
-        })
+        const tx = transGuid
+            ? await prisma.thirdPartyTransaction.findUnique({
+                  where: { providerId_transactionId: { providerId, transactionId: transGuid } },
+              })
+            : null
 
+        // Per palace docs the status response is data: { account, trans_guid, trans_status }.
         return ok({
             account,
             trans_guid: transGuid,

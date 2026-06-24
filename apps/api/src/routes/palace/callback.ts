@@ -82,7 +82,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             )
 
           case 'status':
-            return respond(await PalaceWalletService.getStatus(d.account, d.trans_guid ?? ''))
+            return respond(await PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? ''))
 
           default:
             return respond({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
