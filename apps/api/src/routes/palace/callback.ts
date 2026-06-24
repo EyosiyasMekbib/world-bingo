@@ -81,7 +81,13 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             return reply.status(200).send({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
         }
       } catch (err) {
-        req.log.error(err, '[Palace] Unhandled error in callback handler')
+        // Log the command + payload (not just the error) so we can see exactly which
+        // fields Palace sent — essential for diagnosing missing/renamed keys.
+        const body = req.body as { command?: string; data?: Record<string, any> }
+        req.log.error(
+          { err, command: body?.command, dataKeys: body?.data ? Object.keys(body.data) : [], data: body?.data },
+          '[Palace] Unhandled error in callback handler',
+        )
         return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
       }
     },

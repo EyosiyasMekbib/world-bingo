@@ -85,7 +85,10 @@ async function lockWallet(
     return rows[0]
 }
 
-async function findExisting(transactionId: string) {
+async function findExisting(transactionId: string | undefined | null) {
+    // A missing transactionId would make findUnique throw (composite key incomplete).
+    // Treat it as "no existing record" so callers can decide how to handle it.
+    if (!transactionId) return null
     const providerId = await getPalaceProviderId()
     return prisma.thirdPartyTransaction.findUnique({
         where: { providerId_transactionId: { providerId, transactionId } },
@@ -277,14 +280,22 @@ export class PalaceWalletService {
         if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
         if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
 
+        // A cancel must carry its own trans_guid so the rollback can be recorded
+        // idempotently. Without it we cannot safely write the ledger row.
+        if (!params.trans_guid) return palaceErr(1002, 'INVALID_REQUEST')
+
         const existing = await findExisting(params.trans_guid)
         if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
 
         const providerId = await getPalaceProviderId()
 
-        const originalBet = await prisma.thirdPartyTransaction.findUnique({
-            where: { providerId_transactionId: { providerId, transactionId: params.cancle_trans_guid } },
-        })
+        // Original bet reference may be absent (or sent under an unexpected key) —
+        // fall back to the cancel amount rather than crashing on an incomplete key.
+        const originalBet = params.cancle_trans_guid
+            ? await prisma.thirdPartyTransaction.findUnique({
+                  where: { providerId_transactionId: { providerId, transactionId: params.cancle_trans_guid } },
+              })
+            : null
 
         const balanceAfter = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
