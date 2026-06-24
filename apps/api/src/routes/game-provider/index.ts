@@ -87,7 +87,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
     // Returns a game URL the frontend opens in an iframe.
     fastify.post('/:providerCode/games/:gameCode/launch', {
         preValidation: [fastify.authenticate],
-        handler: async (req) => {
+        handler: async (req, reply) => {
             const { providerCode, gameCode } = req.params as {
                 providerCode: string
                 gameCode: string
@@ -122,8 +122,34 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 gameUrl = launched.gameUrl
                 token = launched.token
             } catch (err: any) {
+                const msg: string = err?.message ?? ''
+
+                // Provider reports the game is turned off on their side (e.g. GASea
+                // SC_GAME_DISABLED). Hide the dead tile from our catalog so other
+                // players stop hitting it, then return a friendly 409 instead of a 500.
+                if (/disabled/i.test(msg)) {
+                    await prisma.providerGame
+                        .updateMany({
+                            where: { provider: { code: providerCode }, gameCode },
+                            data: { isActive: false },
+                        })
+                        .catch(() => {})
+                    const keys = await redis.keys(`tp:games:${providerCode}:*`)
+                    if (keys.length > 0) await redis.del(...keys)
+
+                    req.log.warn(
+                        { providerCode, gameCode, userId: user.id, err: msg },
+                        'game disabled upstream — hidden from catalog',
+                    )
+                    return reply.status(409).send({
+                        statusCode: 409,
+                        error: 'GameUnavailable',
+                        message: 'This game is currently unavailable. Please try another.',
+                    })
+                }
+
                 req.log.error(
-                    { providerCode, gameCode, userId: user.id, err: err?.message },
+                    { providerCode, gameCode, userId: user.id, err: msg },
                     'provider launch failed',
                 )
                 throw err
