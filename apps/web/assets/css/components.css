@@ -1,0 +1,404 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Home-style component primitives.
+
+   These classes encode the lobby/home-page aesthetic so every modal, form,
+   table and surface in the player app reads as one product:
+     · deep-navy raised surfaces (--surface-raised) on the flat base
+     · amber brand accent (--brand-primary) for emphasis & focus
+     · Barlow Condensed (--font-ui), UPPERCASE + tracked for headings/labels
+     · 9–14px radii, hair-line white borders, soft hover lift
+
+   All tokens are brand-injected at runtime (see plugins/00.brand.ts) — never
+   hardcode colors here. Prefixed `wb-` to stay clear of scoped component CSS.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* ═══════════ OVERLAY + MODAL ═══════════ */
+.wb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--surface-base) 78%, rgba(0, 0, 0, 0.86));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: wb-fade 0.18s ease both;
+}
+
+.wb-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: min(90vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: var(--shadow-modal, 0 20px 60px rgba(0, 0, 0, 0.6));
+  animation: wb-pop 0.22s var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+.wb-modal--sm { max-width: 380px; }
+.wb-modal--lg { max-width: 560px; }
+
+.wb-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 60%, transparent);
+}
+.wb-modal__title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.wb-modal__body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+.wb-modal__foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px 22px;
+  border-top: 1px solid color-mix(in srgb, var(--surface-border) 60%, transparent);
+}
+
+/* round ghost close button */
+.wb-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full, 9999px);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: background 0.14s, color 0.14s, transform 0.14s;
+}
+.wb-close:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-primary); }
+.wb-close:active { transform: scale(0.92); }
+.wb-close svg { width: 16px; height: 16px; }
+
+/* ═══════════ BUTTONS ═══════════ */
+.wb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 12px 22px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: transform 0.12s, background 0.12s, box-shadow 0.12s, border-color 0.12s, color 0.12s;
+}
+.wb-btn:active { transform: translateY(0); }
+.wb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.wb-btn svg { width: 17px; height: 17px; }
+
+.wb-btn--primary {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+.wb-btn--primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--brand-primary) 38%, transparent);
+}
+
+.wb-btn--ghost {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
+  color: var(--brand-primary);
+}
+.wb-btn--ghost:not(:disabled):hover {
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+  border-color: var(--brand-primary);
+}
+
+.wb-btn--subtle {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--surface-border);
+  color: var(--text-secondary);
+}
+.wb-btn--subtle:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-primary);
+}
+
+.wb-btn--danger {
+  background: color-mix(in srgb, var(--status-error) 16%, transparent);
+  border-color: color-mix(in srgb, var(--status-error) 50%, transparent);
+  color: var(--status-error);
+}
+.wb-btn--danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--status-error) 26%, transparent);
+}
+
+.wb-btn--block { width: 100%; }
+.wb-btn--sm { padding: 8px 14px; font-size: 12px; }
+
+/* ═══════════ FORM FIELDS ═══════════ */
+.wb-field { display: flex; flex-direction: column; gap: 7px; }
+
+.wb-label {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.wb-label .wb-req { color: var(--status-error); margin-left: 3px; }
+
+.wb-input,
+.wb-select,
+.wb-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.14s, background 0.14s, box-shadow 0.14s;
+}
+.wb-textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+.wb-input::placeholder,
+.wb-textarea::placeholder { color: color-mix(in srgb, var(--text-secondary) 75%, transparent); }
+.wb-input:focus,
+.wb-select:focus,
+.wb-textarea:focus {
+  border-color: var(--brand-primary);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 16%, transparent);
+}
+.wb-input--error,
+.wb-input.wb-input--error {
+  border-color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 8%, transparent);
+}
+.wb-input--error:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-error) 18%, transparent);
+}
+
+.wb-hint { font-size: 12px; color: var(--text-secondary); margin: 0; }
+.wb-hint--error { color: var(--status-error); }
+
+/* input adornment wrapper (e.g. currency suffix) */
+.wb-input-wrap { position: relative; display: flex; align-items: center; }
+.wb-input-wrap .wb-input { padding-right: 58px; }
+.wb-input-suffix {
+  position: absolute;
+  right: 14px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  pointer-events: none;
+}
+
+/* ═══════════ CHIPS / TABS ═══════════ */
+.wb-chip {
+  flex: none;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  padding: 7px 14px;
+  border-radius: var(--radius-full, 9999px);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  color: var(--brand-primary);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
+}
+.wb-chip:hover { background: color-mix(in srgb, var(--brand-primary) 18%, transparent); }
+.wb-chip:active { transform: scale(0.96); }
+
+.wb-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.wb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 9px 15px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.wb-tab:hover { color: var(--text-primary); border-color: rgba(255, 255, 255, 0.2); }
+.wb-tab--active {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+  color: var(--brand-primary);
+}
+
+/* ═══════════ NOTICE BANNERS ═══════════ */
+.wb-notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 13px 15px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03);
+  animation: wb-slide 0.22s var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+.wb-notice__icon { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+.wb-notice__icon svg { width: 100%; height: 100%; }
+.wb-notice__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wb-notice__title { font-weight: 600; font-size: 14px; line-height: 1.4; }
+.wb-notice__text { font-size: 12.5px; line-height: 1.5; }
+
+.wb-notice--brand {
+  border-color: color-mix(in srgb, var(--brand-primary) 38%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 9%, transparent);
+}
+.wb-notice--brand .wb-notice__icon,
+.wb-notice--brand .wb-notice__title { color: var(--brand-primary); }
+
+.wb-notice--error {
+  border-color: color-mix(in srgb, var(--status-error) 40%, transparent);
+  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+}
+.wb-notice--error .wb-notice__icon,
+.wb-notice--error .wb-notice__title { color: var(--status-error); }
+.wb-notice--error .wb-notice__text { color: color-mix(in srgb, var(--status-error) 75%, var(--text-secondary)); }
+
+.wb-notice--success {
+  border-color: color-mix(in srgb, var(--status-success) 42%, transparent);
+  background: color-mix(in srgb, var(--status-success) 9%, transparent);
+}
+.wb-notice--success .wb-notice__icon,
+.wb-notice--success .wb-notice__title { color: var(--status-success); }
+.wb-notice--success .wb-notice__text { color: color-mix(in srgb, var(--status-success) 70%, var(--text-secondary)); }
+
+/* ═══════════ TABLE ═══════════ */
+.wb-table-wrap {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.wb-table { width: 100%; border-collapse: collapse; font-family: var(--font-body); }
+.wb-table thead th {
+  text-align: left;
+  padding: 13px 16px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--surface-border);
+  white-space: nowrap;
+}
+.wb-table thead th.num { text-align: right; }
+.wb-table tbody td {
+  padding: 13px 16px;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 55%, transparent);
+  vertical-align: middle;
+}
+.wb-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.wb-table tbody td.muted { color: var(--text-secondary); font-size: 12.5px; }
+.wb-table tbody tr:last-child td { border-bottom: none; }
+.wb-table tbody tr { transition: background 0.1s; }
+.wb-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+
+/* ═══════════ BADGE ═══════════ */
+.wb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+}
+.wb-badge--brand   { color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 14%, transparent); border-color: color-mix(in srgb, var(--brand-primary) 38%, transparent); }
+.wb-badge--success { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 14%, transparent); border-color: color-mix(in srgb, var(--status-success) 38%, transparent); }
+.wb-badge--error   { color: var(--status-error); background: color-mix(in srgb, var(--status-error) 14%, transparent); border-color: color-mix(in srgb, var(--status-error) 38%, transparent); }
+.wb-badge--neutral { color: var(--text-secondary); background: rgba(255, 255, 255, 0.05); border-color: var(--surface-border); }
+
+/* ═══════════ SURFACES / EMPTY ═══════════ */
+.wb-card {
+  background: var(--surface-raised);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 70%, transparent);
+  border-radius: var(--radius-lg, 16px);
+}
+
+.wb-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 56px 20px;
+}
+
+/* ═══════════ KEYFRAMES ═══════════ */
+@keyframes wb-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wb-pop {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wb-slide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 560px) {
+  .wb-overlay { padding: 0; align-items: flex-end; }
+  .wb-modal {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
+    animation: wb-sheet 0.26s var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  }
+  .wb-modal__foot { position: sticky; bottom: 0; background: var(--surface-raised); }
+}
+@keyframes wb-sheet {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}

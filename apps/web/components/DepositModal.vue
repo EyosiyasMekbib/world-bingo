@@ -1,31 +1,33 @@
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="modal-overlay" @click.self="$emit('update:modelValue', false)">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Deposit Funds</h3>
-          <button class="close-btn" @click="$emit('update:modelValue', false)">✕</button>
+    <div v-if="modelValue" class="wb-overlay" @click.self="$emit('update:modelValue', false)">
+      <div class="wb-modal wb-modal--lg">
+        <div class="wb-modal__head">
+          <h3 class="wb-modal__title">Deposit Funds</h3>
+          <button class="wb-close" aria-label="Close" @click="$emit('update:modelValue', false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
         </div>
 
-        <div class="modal-body">
+        <div class="wb-modal__body">
           <!-- Loading methods -->
-          <div v-if="loadingMethods" class="methods-loading">
+          <div v-if="loadingMethods" class="wb-empty">
             <span class="spin">⏳</span> Loading payment methods…
           </div>
 
           <!-- No methods available -->
-          <div v-else-if="depositMethods.length === 0" class="no-methods">
+          <div v-else-if="depositMethods.length === 0" class="wb-empty">
             No deposit methods are currently available. Please try again later.
           </div>
 
           <template v-else>
             <!-- Method selector (only if > 1 method) -->
-            <div v-if="depositMethods.length > 1" class="method-tabs">
+            <div v-if="depositMethods.length > 1" class="wb-tabs">
               <button
                 v-for="m in depositMethods"
                 :key="m.code"
-                class="method-tab"
-                :class="{ 'method-tab--active': selectedMethod?.code === m.code }"
+                class="wb-tab"
+                :class="{ 'wb-tab--active': selectedMethod?.code === m.code }"
                 @click="selectedMethod = m; track('deposit_method_selected', { paymentMethod: m.code })"
               >
                 <span>{{ m.icon || '💳' }}</span>
@@ -51,56 +53,56 @@
             </div>
 
             <!-- Amount -->
-            <div class="field">
-              <label>Amount (ETB)</label>
+            <div class="wb-field">
+              <label class="wb-label">Amount (ETB)</label>
               <input
                 v-model.number="form.amount"
                 type="number"
                 min="200"
                 placeholder="Min 200 ETB"
-                :class="['input', form.amount > 0 && form.amount < 200 ? 'input--error' : '']"
+                :class="['wb-input', form.amount > 0 && form.amount < 200 ? 'wb-input--error' : '']"
               />
-              <p v-if="form.amount > 0 && form.amount < 200" class="amount-error">
+              <p v-if="form.amount > 0 && form.amount < 200" class="wb-hint wb-hint--error">
                 Minimum deposit is 200 ETB
               </p>
               <div class="chips">
-                <button v-for="chip in [200, 500, 1000, 2000]" :key="chip" class="chip" @click="form.amount = chip">
+                <button v-for="chip in [200, 500, 1000, 2000]" :key="chip" class="wb-chip" @click="form.amount = chip">
                   +{{ chip }}
                 </button>
               </div>
             </div>
 
             <!-- Transaction ID -->
-            <div class="field">
-              <label>Transaction ID <span class="required">*</span></label>
+            <div class="wb-field">
+              <label class="wb-label">Transaction ID <span class="wb-req">*</span></label>
               <input
                 v-model="form.transactionId"
                 type="text"
                 placeholder="e.g. TLB202601011234"
-                class="input"
-                :class="{ 'input--error': fieldError === 'transactionId' }"
+                class="wb-input"
+                :class="{ 'wb-input--error': fieldError === 'transactionId' }"
                 @input="if (fieldError === 'transactionId') { fieldError = ''; error = '' }"
               />
-              <span v-if="fieldError === 'transactionId'" class="field-error-msg">
+              <span v-if="fieldError === 'transactionId'" class="wb-hint wb-hint--error">
                 Already used — check your pending deposits below.
               </span>
             </div>
 
             <!-- Sender Name -->
-            <div class="field">
-              <label>Your Full Name <span class="required">*</span></label>
-              <input v-model="form.senderName" type="text" placeholder="Full name" class="input" />
+            <div class="wb-field">
+              <label class="wb-label">Your Full Name <span class="wb-req">*</span></label>
+              <input v-model="form.senderName" type="text" placeholder="Full name" class="wb-input" />
             </div>
 
             <!-- Sender Account -->
-            <div class="field">
-              <label>Your {{ selectedMethod?.name ?? 'Payment' }} Phone/Account Number <span class="required">*</span></label>
-              <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="input" />
+            <div class="wb-field">
+              <label class="wb-label">Your {{ selectedMethod?.name ?? 'Payment' }} Phone/Account Number <span class="wb-req">*</span></label>
+              <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="wb-input" />
             </div>
 
             <!-- Receipt Upload -->
-            <div class="field">
-              <label>Transfer Receipt Screenshot <span class="required">*</span></label>
+            <div class="wb-field">
+              <label class="wb-label">Transfer Receipt Screenshot <span class="wb-req">*</span></label>
               <div
                 class="file-drop"
                 :class="{ 'has-preview': previewUrl }"
@@ -124,37 +126,37 @@
             </div>
 
             <!-- Error / Success -->
-            <div v-if="error" class="error-banner" :class="{ 'error-banner--field': fieldError === 'transactionId' }">
-              <div class="error-icon">
+            <div v-if="error" class="wb-notice wb-notice--error">
+              <div class="wb-notice__icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
               </div>
-              <div class="error-body">
-                <span class="error-title">{{ errorTitle }}</span>
-                <span v-if="errorHint" class="error-hint">{{ errorHint }}</span>
+              <div class="wb-notice__body">
+                <span class="wb-notice__title">{{ errorTitle }}</span>
+                <span v-if="errorHint" class="wb-notice__text">{{ errorHint }}</span>
               </div>
             </div>
-            <div v-if="success" class="success-banner">
-              <div class="success-icon">
+            <div v-if="success" class="wb-notice wb-notice--success">
+              <div class="wb-notice__icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <div class="success-body">
-                <span class="success-title">Deposit submitted</span>
-                <span class="success-hint">Pending admin verification — usually within 15 minutes.</span>
+              <div class="wb-notice__body">
+                <span class="wb-notice__title">Deposit submitted</span>
+                <span class="wb-notice__text">Pending admin verification — usually within 15 minutes.</span>
               </div>
             </div>
           </template>
         </div>
 
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="$emit('update:modelValue', false)">Cancel</button>
+        <div class="wb-modal__foot">
+          <button class="wb-btn wb-btn--subtle" @click="$emit('update:modelValue', false)">Cancel</button>
           <button
-            class="btn-primary"
+            class="wb-btn wb-btn--primary"
             :disabled="loading || !canSubmit || depositMethods.length === 0"
             @click="submit"
           >
@@ -340,392 +342,72 @@ function resetForm() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--color-surface, #1a1a2e);
-  border: 1px solid var(--color-primary, #c9a96e);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 460px;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 0;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  color: var(--color-primary, #c9a96e);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.modal-body {
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-/* ── Methods loading / empty ──────────────────────────────────── */
-.methods-loading,
-.no-methods {
-  text-align: center;
-  color: #888;
-  font-size: 0.9rem;
-  padding: 1rem 0;
-}
 .spin { display: inline-block; }
-
-/* ── Method tabs ──────────────────────────────────────────────── */
-.method-tabs {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.method-tab {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.04);
-  color: #aaa;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.18s, border-color 0.18s, color 0.18s;
-}
-
-.method-tab:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ddd;
-}
-
-.method-tab--active {
-  border-color: var(--color-primary, #c9a96e);
-  background: rgba(201, 169, 110, 0.12);
-  color: var(--color-primary, #c9a96e);
-  font-weight: 600;
-}
-
-/* ── Method banner ────────────────────────────────────────────── */
-.method-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  background: rgba(201, 169, 110, 0.1);
-  border: 1px solid rgba(201, 169, 110, 0.35);
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
-}
-
-.banner-icon {
-  font-size: 1.8rem;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-.banner-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.banner-title {
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: var(--color-primary, #c9a96e);
-}
-
-.banner-detail {
-  font-size: 0.8rem;
-  color: #bbb;
-}
-
-.merchant-number {
-  font-size: 1.25rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #fff;
-}
-
-.banner-instructions {
-  font-size: 0.8rem;
-  color: #bbb;
-  margin-top: 0.1rem;
-}
-
-/* ── Fields ───────────────────────────────────────────────────── */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-label {
-  font-size: 0.85rem;
-  color: #aaa;
-}
-
-.input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  color: #fff;
-  padding: 0.6rem 0.8rem;
-  font-size: 1rem;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.input:focus {
-  border-color: var(--color-primary, #c9a96e);
-}
 
 .chips {
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-top: 0.25rem;
+  margin-top: 4px;
 }
 
-.chip {
-  padding: 0.3rem 0.75rem;
-  background: rgba(201, 169, 110, 0.12);
-  border: 1px solid rgba(201, 169, 110, 0.4);
-  color: var(--color-primary, #c9a96e);
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: background 0.2s;
+/* ── Method banner (bespoke: merchant payout details) ─────────── */
+.method-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: color-mix(in srgb, var(--brand-primary) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 36%, transparent);
+  border-radius: var(--radius-md, 12px);
+  padding: 14px 16px;
 }
-
-.chip:hover {
-  background: rgba(201, 169, 110, 0.25);
+.banner-icon { font-size: 1.8rem; flex-shrink: 0; line-height: 1; }
+.banner-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.banner-title {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand-primary);
 }
+.banner-detail { font-size: 12.5px; color: var(--text-secondary); }
+.merchant-number {
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+.banner-instructions { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.5; }
 
+/* ── Receipt drop zone (bespoke) ──────────────────────────────── */
 .file-drop {
-  border: 2px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  min-height: 100px;
+  border: 2px dashed var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  min-height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: border-color 0.18s, background 0.18s;
   overflow: hidden;
-  padding: 0.5rem;
+  padding: 10px;
 }
-
 .file-drop:hover {
-  border-color: var(--color-primary, #c9a96e);
+  border-color: color-mix(in srgb, var(--brand-primary) 60%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 5%, transparent);
 }
-
 .drop-hint {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  color: #777;
-  font-size: 0.85rem;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
   text-align: center;
 }
-
-.drop-hint .icon {
-  font-size: 2rem;
-}
-
-.preview-img {
-  max-height: 200px;
-  max-width: 100%;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.hidden-input {
-  display: none;
-}
-
-/* ── Field-level error ─────────────────────────────────────────── */
-.input--error {
-  border-color: #f87171 !important;
-  background: rgba(239, 68, 68, 0.06) !important;
-}
-
-.amount-error {
-  font-size: 12px;
-  color: #f87171;
-  margin-top: 4px;
-  margin-bottom: 0;
-}
-
-.field-error-msg {
-  font-size: 0.75rem;
-  color: #f87171;
-  margin-top: 0.1rem;
-}
-
-/* ── Error banner ──────────────────────────────────────────────── */
-.error-banner {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 10px;
-  padding: 0.875rem 1rem;
-  animation: slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.error-banner--field {
-  border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.error-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  color: #f87171;
-  margin-top: 1px;
-}
-
-.error-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.error-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.error-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #f87171;
-  line-height: 1.4;
-}
-
-.error-hint {
-  font-size: 0.78rem;
-  color: rgba(248, 113, 113, 0.75);
-  line-height: 1.5;
-}
-
-/* ── Success banner ────────────────────────────────────────────── */
-.success-banner {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: 10px;
-  padding: 0.875rem 1rem;
-  animation: slide-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.success-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  color: #4ade80;
-  margin-top: 1px;
-}
-
-.success-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.success-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.success-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #4ade80;
-}
-
-.success-hint {
-  font-size: 0.78rem;
-  color: rgba(74, 222, 128, 0.7);
-  line-height: 1.5;
-}
-
-@keyframes slide-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.modal-footer {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: flex-end;
-  padding: 1rem 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.btn-primary {
-  padding: 0.6rem 1.4rem;
-  background: var(--color-primary, #c9a96e);
-  color: #000;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: opacity 0.2s;
-}
-
-.btn-primary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 0.6rem 1.2rem;
-  background: transparent;
-  color: #aaa;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.95rem;
-}
-
-.required {
-  color: #f87171;
-  margin-left: 2px;
-}
+.drop-hint .icon { font-size: 2rem; }
+.preview-img { max-height: 200px; max-width: 100%; object-fit: contain; border-radius: 8px; }
+.hidden-input { display: none; }
 </style>

@@ -290,7 +290,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0.04em;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-ui);
   transition: background 0.12s ease, color 0.12s ease;
 }
 .locale-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
@@ -474,7 +474,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-ui);
   transition: background 0.12s ease, color 0.12s ease;
 }
 .signout-full:hover { background: rgba(248,113,113,0.07); color: #f87171; }

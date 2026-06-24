@@ -1,30 +1,32 @@
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="modal-overlay" @click.self="$emit('update:modelValue', false)">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Sign In to Play</h3>
-          <button class="close-btn" @click="$emit('update:modelValue', false)">✕</button>
+    <div v-if="modelValue" class="wb-overlay" @click.self="$emit('update:modelValue', false)">
+      <div class="wb-modal wb-modal--sm">
+        <div class="wb-modal__head">
+          <h3 class="wb-modal__title">Sign In to Play</h3>
+          <button class="wb-close" aria-label="Close" @click="$emit('update:modelValue', false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
         </div>
 
-        <div class="modal-body">
-          <div class="icon-wrapper">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="wb-modal__body prompt">
+          <div class="prompt-icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
 
-          <div class="content">
+          <div class="prompt-copy">
             <h4>Join the Game</h4>
             <p>Create an account or sign in to start playing bingo and winning real ETB.</p>
           </div>
 
-          <div class="actions">
-            <NuxtLink to="/auth/login" class="btn-primary" @click="$emit('update:modelValue', false)">
+          <div class="prompt-actions">
+            <NuxtLink to="/auth/login" class="wb-btn wb-btn--primary wb-btn--block" @click="$emit('update:modelValue', false)">
               Sign In
             </NuxtLink>
-            <NuxtLink to="/auth/register" class="btn-secondary" @click="$emit('update:modelValue', false)">
+            <NuxtLink to="/auth/register" class="wb-btn wb-btn--ghost wb-btn--block" @click="$emit('update:modelValue', false)">
               Create Account
             </NuxtLink>
           </div>
@@ -48,148 +50,45 @@ defineEmits<{
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--color-surface, #1a1a2e);
-  border: 1px solid var(--color-primary, #c9a96e);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 380px;
-  padding: 0;
-  animation: slideUp 0.2s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  color: var(--color-primary, #c9a96e);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-}
-
-.close-btn:hover {
-  color: #ccc;
-}
-
-.modal-body {
-  padding: 2rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+.prompt {
   align-items: center;
   text-align: center;
+  gap: 22px;
+  padding: 30px 24px 28px;
 }
 
-.icon-wrapper {
-  color: var(--color-primary, #c9a96e);
+.prompt-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full, 9999px);
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 32%, transparent);
 }
 
-.icon-wrapper svg {
-  width: 48px;
-  height: 48px;
+.prompt-copy h4 {
+  margin: 0 0 7px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-primary);
 }
-
-.content h4 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1rem;
-  color: #fff;
-  font-weight: 600;
-}
-
-.content p {
+.prompt-copy p {
   margin: 0;
-  font-size: 0.9rem;
-  color: #aaa;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
-.actions {
+.prompt-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 10px;
   width: 100%;
-}
-
-.btn-primary,
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s;
-  width: 100%;
-  text-align: center;
-}
-
-.btn-primary {
-  background: var(--color-primary, #c9a96e);
-  color: #000;
-}
-
-.btn-primary:hover {
-  background: #d4af77;
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: rgba(201, 169, 110, 0.15);
-  color: var(--color-primary, #c9a96e);
-  border: 1px solid rgba(201, 169, 110, 0.4);
-}
-
-.btn-secondary:hover {
-  background: rgba(201, 169, 110, 0.25);
-  border-color: rgba(201, 169, 110, 0.6);
 }
 </style>

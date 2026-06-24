@@ -177,20 +177,20 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary, #94a3b8);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md, 12px);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--surface-border);
+  color: var(--text-secondary);
   text-decoration: none;
   flex-shrink: 0;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .back-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary, #f1f5f9);
+  color: var(--brand-primary);
 }
 
 .back-btn svg {
@@ -199,9 +199,12 @@ onMounted(() => {
 }
 
 .page-title {
-  font-size: 1.5rem;
+  font-family: var(--font-ui);
+  font-size: 26px;
   font-weight: 700;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -213,50 +216,52 @@ onMounted(() => {
 }
 
 .pill {
-  padding: 0.35rem 0.85rem;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-secondary, #94a3b8);
-  font-size: 0.8rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-full, 9999px);
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-weight: 600;
-  font-family: inherit;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary, #f1f5f9);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-primary);
 }
 
 .pill.active {
-  background: rgba(245, 158, 11, 0.2);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: #f59e0b;
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
 }
 
 /* ── Card ───────────────────────────────────────────────────────────── */
 .card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 1.5rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
+  padding: 1rem;
 }
 
 /* ── Transaction list ───────────────────────────────────────────────── */
 .loading-state,
 .empty-state {
   text-align: center;
-  color: var(--text-secondary, #94a3b8);
-  padding: 2rem 0;
+  color: var(--text-secondary);
+  padding: 2.5rem 0;
   font-size: 0.9rem;
 }
 
 .tx-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .tx-row {
@@ -264,7 +269,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md, 12px);
   background: rgba(255, 255, 255, 0.02);
   transition: background 0.15s;
 }
@@ -274,15 +279,15 @@ onMounted(() => {
 }
 
 .tx-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md, 12px);
   background: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--brand-primary);
 }
 
 .tx-icon-svg {
@@ -299,14 +304,16 @@ onMounted(() => {
 }
 
 .tx-type {
-  font-size: 0.9rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #f1f5f9);
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
 }
 
 .tx-date {
   font-size: 0.75rem;
-  color: var(--text-disabled, #475569);
+  color: var(--text-secondary);
 }
 
 .tx-right {
@@ -318,43 +325,48 @@ onMounted(() => {
 }
 
 .tx-amount {
+  font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 14px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tx-amount.positive {
-  color: #10b981;
+  color: var(--status-success);
 }
 
 .tx-amount.negative {
-  color: #ef4444;
+  color: var(--status-error);
 }
 
 .tx-status {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
   padding: 0.2rem 0.5rem;
-  border-radius: 6px;
-  letter-spacing: 0.03em;
+  border-radius: var(--radius-sm, 6px);
+  letter-spacing: 0.5px;
   white-space: nowrap;
 }
 
-.status-approved {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+.status-approved,
+.status-completed {
+  background: color-mix(in srgb, var(--status-success) 16%, transparent);
+  color: var(--status-success);
 }
 
 .status-pending,
 .status-pending_review {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: color-mix(in srgb, var(--brand-primary) 16%, transparent);
+  color: var(--brand-primary);
 }
 
-.status-rejected {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+.status-rejected,
+.status-failed {
+  background: color-mix(in srgb, var(--status-error) 16%, transparent);
+  color: var(--status-error);
 }
 
 /* ── Pagination ─────────────────────────────────────────────────────── */
@@ -366,20 +378,23 @@ onMounted(() => {
 }
 
 .page-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--text-primary, #f1f5f9);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-md, 12px);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .page-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
 }
 
 .page-btn:disabled {
@@ -388,9 +403,11 @@ onMounted(() => {
 }
 
 .page-info {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #94a3b8);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-secondary);
   font-weight: 600;
+  letter-spacing: 0.4px;
   min-width: 100px;
   text-align: center;
 }

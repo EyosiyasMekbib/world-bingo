@@ -172,14 +172,14 @@ const handleLogin = async () => {
   top: -80px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(245, 158, 11, 0.06);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
 }
 .login-glow--blue {
   width: 360px;
   height: 360px;
   bottom: -120px;
   right: -60px;
-  background: rgba(66, 99, 235, 0.07);
+  background: color-mix(in srgb, var(--accent-primary, #1d4a8a) 14%, transparent);
 }
 
 /* ── Wrap ──────────────────────────────────────────────────────────────── */
@@ -207,11 +207,11 @@ const handleLogin = async () => {
   height: 60px;
   border-radius: 18px;
   background: var(--surface-raised);
-  border: 1px solid rgba(245, 158, 11, 0.18);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.05);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-primary) 7%, transparent);
 }
 
 .login-logo {
@@ -320,7 +320,7 @@ const handleLogin = async () => {
   border: 1px solid var(--surface-border);
   border-radius: 9px;
   font-size: 14px;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-body);
   color: var(--text-primary) !important;
   outline: none;
   -webkit-appearance: none;
@@ -332,8 +332,8 @@ const handleLogin = async () => {
 }
 
 .login-input:focus {
-  border-color: rgba(245, 158, 11, 0.45);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.09);
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 12%, transparent);
 }
 
 .login-input--pw {
@@ -370,11 +370,12 @@ const handleLogin = async () => {
   border-radius: 9px;
   border: none;
   background: var(--brand-primary);
-  color: #111;
-  font-size: 14px;
+  color: var(--text-on-brand, #0a1628);
+  font-size: 15px;
   font-weight: 700;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  letter-spacing: 0.01em;
+  font-family: var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
   display: flex;
   align-items: center;

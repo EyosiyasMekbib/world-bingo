@@ -274,7 +274,7 @@ function formatRelativeTime(dateStr: string): string {
 <style scoped>
 .wallet-page {
   min-height: 100vh;
-  background: #000A38;
+  background: var(--surface-base);
   padding-bottom: 40px;
 }
 
@@ -294,50 +294,64 @@ function formatRelativeTime(dateStr: string): string {
   justify-content: space-between;
 }
 .page-title {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #f1f5f9;
+  font-family: var(--font-ui);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.02em;
 }
 .refresh-btn-header {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.5rem;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   transition: background 0.2s, color 0.2s;
 }
 .refresh-btn-header:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--brand-primary);
 }
 .refresh-btn-header:disabled { opacity: 0.4; cursor: not-allowed; }
 .refresh-icon { width: 16px; height: 16px; }
 .spinning { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Balance Card ─────────────────────────────────────────────────── */
+/* ── Balance Card — echoes the home "Bingo" hero slide ────────────── */
 .balance-card {
-  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 20px;
-  padding: 1.5rem 1.75rem;
-  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.25);
+  position: relative;
+  background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg, 16px);
+  padding: 1.6rem 1.75rem;
+  box-shadow: var(--shadow-card, 0 4px 24px rgba(0, 0, 0, 0.4));
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+}
+.balance-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 85% 0%, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 55%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .balance-label-row { display: flex; align-items: center; }
 .balance-label {
-  font-size: 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 1px;
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -347,17 +361,19 @@ function formatRelativeTime(dateStr: string): string {
   gap: 0.5rem;
 }
 .balance-amount {
-  font-size: 2.5rem;
-  font-weight: 800;
+  font-family: var(--font-ui);
+  font-size: 2.6rem;
+  font-weight: 700;
   color: #fff;
-  letter-spacing: -0.03em;
+  letter-spacing: 0.5px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .balance-currency {
+  font-family: var(--font-ui);
   font-size: 1rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--brand-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -367,7 +383,7 @@ function formatRelativeTime(dateStr: string): string {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  padding-top: 0.5rem;
+  padding-top: 0.75rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 .balance-part {
@@ -376,20 +392,22 @@ function formatRelativeTime(dateStr: string): string {
   gap: 0.15rem;
 }
 .balance-part-label {
-  font-size: 0.65rem;
+  font-family: var(--font-ui);
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.7px;
+  color: rgba(255, 255, 255, 0.45);
 }
 .balance-part-value {
-  font-size: 1rem;
+  font-family: var(--font-ui);
+  font-size: 1.05rem;
   font-weight: 700;
   color: #fff;
   font-variant-numeric: tabular-nums;
 }
 .balance-part-value--bonus {
-  color: #67e8f9;
+  color: var(--brand-primary);
 }
 
 /* ── Action Buttons ──────────────────────────────────────────────── */
@@ -404,31 +422,36 @@ function formatRelativeTime(dateStr: string): string {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding: 0.7rem 1rem;
-  border-radius: 12px;
-  border: none;
-  font-size: 0.9rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid transparent;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.15s, opacity 0.2s;
-  font-family: inherit;
+  transition: transform 0.15s, background 0.2s, box-shadow 0.15s;
 }
 .action-btn:hover { transform: translateY(-1px); }
 .action-btn:active { transform: translateY(0); }
 .action-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
 .action-btn--deposit {
-  background: #f59e0b;
-  color: #000;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
 }
-.action-btn--deposit:hover { background: #fbbf24; }
+.action-btn--deposit:hover {
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--brand-primary) 40%, transparent);
+}
 
 .action-btn--withdraw {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
 }
-.action-btn--withdraw:hover { background: rgba(255, 255, 255, 0.2); }
+.action-btn--withdraw:hover { background: rgba(255, 255, 255, 0.16); }
 
 /* ── Section ─────────────────────────────────────────────────────── */
 .section { display: flex; flex-direction: column; gap: 0.6rem; }
@@ -439,16 +462,19 @@ function formatRelativeTime(dateStr: string): string {
   justify-content: space-between;
 }
 .section-title {
-  font-size: 0.8rem;
+  font-family: var(--font-ui);
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.8px;
+  color: var(--text-secondary);
 }
 .section-link {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #f59e0b;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--brand-primary);
   text-decoration: none;
   transition: opacity 0.2s;
 }
@@ -456,9 +482,9 @@ function formatRelativeTime(dateStr: string): string {
 
 /* ── Transaction Card ─────────────────────────────────────────────── */
 .tx-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
   overflow: hidden;
 }
 
@@ -467,7 +493,7 @@ function formatRelativeTime(dateStr: string): string {
   padding: 1.5rem;
   text-align: center;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-secondary);
 }
 
 .tx-list { display: flex; flex-direction: column; }
@@ -479,13 +505,13 @@ function formatRelativeTime(dateStr: string): string {
   padding: 0.875rem 1rem;
 }
 .tx-row--bordered {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 60%, transparent);
 }
 
 .tx-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md, 12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -493,11 +519,11 @@ function formatRelativeTime(dateStr: string): string {
 }
 .tx-icon svg { width: 16px; height: 16px; }
 
-.tx-icon--deposit    { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
-.tx-icon--withdrawal { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-.tx-icon--prize_win  { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.tx-icon--refund     { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
-.tx-icon--game_entry { background: rgba(14, 165, 233, 0.15); color: #38bdf8; }
+.tx-icon--deposit    { background: color-mix(in srgb, var(--status-success) 16%, transparent); color: var(--status-success); }
+.tx-icon--withdrawal { background: color-mix(in srgb, var(--status-error) 16%, transparent); color: var(--status-error); }
+.tx-icon--prize_win  { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
+.tx-icon--refund     { background: color-mix(in srgb, var(--accent-primary) 22%, transparent); color: #a5b4fc; }
+.tx-icon--game_entry { background: color-mix(in srgb, var(--accent-primary) 24%, transparent); color: #60a5fa; }
 
 .tx-info {
   flex: 1;
@@ -507,13 +533,15 @@ function formatRelativeTime(dateStr: string): string {
   min-width: 0;
 }
 .tx-type {
-  font-size: 0.875rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
 }
 .tx-date {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-secondary);
 }
 
 .tx-right {
@@ -524,24 +552,26 @@ function formatRelativeTime(dateStr: string): string {
   flex-shrink: 0;
 }
 .tx-amount {
-  font-size: 0.875rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.amount-positive { color: #4ade80; }
-.amount-negative { color: #f87171; }
+.amount-positive { color: var(--status-success); }
+.amount-negative { color: var(--status-error); }
 
 .tx-status {
-  font-size: 0.65rem;
+  font-family: var(--font-ui);
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.45rem;
-  border-radius: 9999px;
+  letter-spacing: 0.5px;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-full, 9999px);
 }
-.status-approved { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
-.status-rejected { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-.status-pending  { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+.status-approved { background: color-mix(in srgb, var(--status-success) 16%, transparent); color: var(--status-success); }
+.status-rejected { background: color-mix(in srgb, var(--status-error) 16%, transparent); color: var(--status-error); }
+.status-pending  { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
 
 /* ── Quick Links ─────────────────────────────────────────────────── */
 .quick-links {
@@ -554,22 +584,23 @@ function formatRelativeTime(dateStr: string): string {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.875rem 1rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
   text-decoration: none;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s, border-color 0.2s, transform 0.14s;
 }
 .quick-link:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+  transform: translateY(-1px);
 }
 
 .ql-icon {
   width: 20px;
   height: 20px;
-  color: #f59e0b;
+  color: var(--brand-primary);
   flex-shrink: 0;
 }
 
@@ -581,19 +612,21 @@ function formatRelativeTime(dateStr: string): string {
   min-width: 0;
 }
 .ql-title {
-  font-size: 0.875rem;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
 }
 .ql-sub {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-secondary);
 }
 
 .ql-arrow {
   width: 15px;
   height: 15px;
-  color: #475569;
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 </style>
