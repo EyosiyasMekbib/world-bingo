@@ -48,7 +48,6 @@ export default defineNuxtConfig({
             wsUrl: 'http://localhost:8080',
             telegramBotName: '',
             telegramBotId: '',
-            brand: 'arada', // overridden per-deployment by NUXT_PUBLIC_BRAND
         },
     },
 
