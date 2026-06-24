@@ -390,6 +390,24 @@ export const useAdminApi = () => {
         }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
+
+        // ── Branding ──────────────────────────────────────────────────────────
+        getBrand: () => apiFetch('/brand', { method: 'GET' }),
+
+        updateBrand: (payload: Record<string, unknown>) =>
+            apiFetch('/brand', { method: 'PUT', body: payload }),
+
+        uploadBrandLogo: (file: File) => {
+            const form = new FormData()
+            form.append('file', file)
+            return apiFetch('/brand/logo', { method: 'POST', body: form }) as Promise<{ url: string }>
+        },
+
+        uploadBrandFavicon: (file: File) => {
+            const form = new FormData()
+            form.append('file', file)
+            return apiFetch('/brand/favicon', { method: 'POST', body: form }) as Promise<{ url: string }>
+        },
     }
 }
 
