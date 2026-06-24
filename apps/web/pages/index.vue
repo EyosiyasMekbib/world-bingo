@@ -284,6 +284,15 @@ function hasImage(g: ProviderGame) {
 
 // Popular crash/instant games pinned to the top of the All Games grid (in this order)
 const FEATURED_GAMES = [
+  'aviator',
+  'chickenroad',
+  'aviatrix',
+  'jetx',
+  'chickenroad2',
+  'plinko',
+  'crashkick',
+  'chicknroad2',
+  'chicknroad',
   'flyx',
   'flyxcashturbo',
   'plinkopop',
