@@ -97,11 +97,11 @@ async function findExisting(transactionId: string) {
 export class PalaceWalletService {
     static async getBalance(account: string): Promise<PalaceResponse> {
         const user = await resolveUser(account)
-        if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
+        if (!user) return palaceErr(21, 'USER_NOT_FOUND')
+        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-        if (!wallet) return palaceErr(2002, 'USER_NOT_FOUND')
+        if (!wallet) return palaceErr(21, 'USER_NOT_FOUND')
 
         const balance = new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
         return ok({ balance: Number(balance.toFixed(2)) })
@@ -109,12 +109,12 @@ export class PalaceWalletService {
 
     static async processBet(params: BetParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
-        if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
+        if (!user) return palaceErr(21, 'USER_NOT_FOUND')
+        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
         const existing = await findExisting(params.trans_guid)
         if (existing) {
-            if (existing.status === ThirdPartyTxStatus.FAILED) return palaceErr(2006, 'BALANCE_NOT_ENOUGH')
+            if (existing.status === ThirdPartyTxStatus.FAILED) return palaceErr(31, 'BALANCE_NOT_ENOUGH')
             return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
         }
 
@@ -206,7 +206,7 @@ export class PalaceWalletService {
                         },
                     })
                 } catch { /* ignore duplicate */ }
-                return { result: 2006, status: 'BALANCE_NOT_ENOUGH', data: { balance: Number(current.toFixed(2)) } }
+                return { result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: Number(current.toFixed(2)) } }
             }
             if (e?.code) return palaceErr(1001, 'INTERNAL_SERVER_ERROR')
             throw e
@@ -215,8 +215,8 @@ export class PalaceWalletService {
 
     static async processWin(params: WinParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
-        if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
+        if (!user) return palaceErr(21, 'USER_NOT_FOUND')
+        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
         const existing = await findExisting(params.trans_guid)
         if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
