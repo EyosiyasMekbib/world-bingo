@@ -24,14 +24,14 @@ describe('PalaceWalletService', () => {
         p.user.findUnique.mockResolvedValue(null)
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getBalance('nobody')
-        expect(res).toEqual({ result: 2002, status: 'USER_NOT_FOUND', data: null })
+        expect(res).toEqual({ result: 21, status: 'USER_NOT_FOUND', data: null })
     })
 
-    it('getBalance returns USER_NOT_FOUND for inactive user', async () => {
+    it('getBalance returns USER_INACTIVE for inactive user', async () => {
         p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: false })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getBalance('alice')
-        expect(res).toEqual({ result: 2002, status: 'USER_NOT_FOUND', data: null })
+        expect(res).toEqual({ result: 22, status: 'USER_INACTIVE', data: null })
     })
 
     it('getBalance returns balance for known active user', async () => {
@@ -72,7 +72,7 @@ describe('PalaceWalletService', () => {
             trans_guid: 'tg1', account: 'alice', gplay_id: 'gp1',
             round_id: 'r1', game_code: 'game1', amount: 100,
         })
-        expect(res).toEqual({ result: 2006, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
+        expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
     })
 
     it('getStatus returns NOT_FOUND when trans_guid does not exist', async () => {
