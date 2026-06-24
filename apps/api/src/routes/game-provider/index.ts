@@ -107,15 +107,37 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             // from the user's UUID by stripping dashes (32 hex chars, always valid).
             const gaseaUsername = user.id.replace(/-/g, '')
 
-            const { gameUrl, token } = await gateway.getGameUrl({
-                username: gaseaUsername,
-                gameCode,
-                language,
-                platform,
-                currency: process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB',
-                lobbyUrl,
-                ipAddress,
-            })
+            let gameUrl: string
+            let token: string
+            try {
+                const launched = await gateway.getGameUrl({
+                    username: gaseaUsername,
+                    gameCode,
+                    language,
+                    platform,
+                    currency: process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB',
+                    lobbyUrl,
+                    ipAddress,
+                })
+                gameUrl = launched.gameUrl
+                token = launched.token
+            } catch (err: any) {
+                req.log.error(
+                    { providerCode, gameCode, userId: user.id, err: err?.message },
+                    'provider launch failed',
+                )
+                throw err
+            }
+
+            // Surface bad/empty/non-https URLs that pass as HTTP 200 but won't load client-side.
+            if (!gameUrl || !/^https:\/\//i.test(gameUrl)) {
+                req.log.error(
+                    { providerCode, gameCode, userId: user.id, gameUrl },
+                    'provider returned an unusable game url',
+                )
+            } else {
+                req.log.info({ providerCode, gameCode, userId: user.id, gameUrl }, 'provider launch ok')
+            }
 
             // Store token → userId mapping in Redis for callback validation
             if (token) {
