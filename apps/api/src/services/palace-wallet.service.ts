@@ -280,11 +280,16 @@ export class PalaceWalletService {
         if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
         if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
 
-        // A cancel must carry its own trans_guid so the rollback can be recorded
-        // idempotently. Without it we cannot safely write the ledger row.
-        if (!params.trans_guid) return palaceErr(1002, 'INVALID_REQUEST')
+        // Idempotency key for this rollback. Prefer the cancel's own trans_guid;
+        // if Palace omits it, derive a stable key from the original bet ref so the
+        // ledger row can still be written and retries stay idempotent. Only reject
+        // if no identifier is present at all.
+        const cancelTxId =
+            params.trans_guid ||
+            (params.cancle_trans_guid ? `rollback:${params.cancle_trans_guid}` : null)
+        if (!cancelTxId) return palaceErr(1002, 'INVALID_REQUEST')
 
-        const existing = await findExisting(params.trans_guid)
+        const existing = await findExisting(cancelTxId)
         if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
 
         const providerId = await getPalaceProviderId()
@@ -316,7 +321,7 @@ export class PalaceWalletService {
                 data: {
                     providerId,
                     userId: user.id,
-                    transactionId: params.trans_guid,
+                    transactionId: cancelTxId,
                     betId: params.gplay_id,
                     roundId: params.round_id,
                     gameCode: params.game_code,
@@ -336,7 +341,7 @@ export class PalaceWalletService {
                     amount: refundAmount,
                     status: PaymentStatus.APPROVED,
                     note: `Palace cancel: ${params.game_code} round ${params.round_id}`,
-                    referenceId: params.trans_guid,
+                    referenceId: cancelTxId,
                     balanceBefore: totalBefore,
                     balanceAfter: newTotal,
                     bonusBalanceBefore: bonusBefore,
