@@ -113,12 +113,12 @@ function submitSearch() {
       <!-- Primary nav -->
       <nav class="ab-nav">
         <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
-        <NuxtLink to="/games" class="ab-nav-link">Aviator</NuxtLink>
-        <NuxtLink to="/games" class="ab-nav-link" active-class="ab-nav-active">Games</NuxtLink>
-        <NuxtLink to="/games" class="ab-nav-link">
+        <NuxtLink to="/games/crash" class="ab-nav-link" active-class="ab-nav-active">Aviator</NuxtLink>
+        <NuxtLink to="/games" class="ab-nav-link" exact-active-class="ab-nav-active">Games</NuxtLink>
+        <NuxtLink to="/games/live" class="ab-nav-link" active-class="ab-nav-active">
           Virtual Sport<span class="ab-new">NEW</span>
         </NuxtLink>
-        <NuxtLink to="/refer" class="ab-nav-link" active-class="ab-nav-active">Promotions</NuxtLink>
+        <NuxtLink to="/promotions" class="ab-nav-link" active-class="ab-nav-active">Promotions</NuxtLink>
       </nav>
     </header>
 
@@ -154,19 +154,19 @@ function submitSearch() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
           <span>Home</span>
         </NuxtLink>
-        <NuxtLink to="/games" class="ab-mtab">
+        <NuxtLink to="/games/crash" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-3 3 6 2-4 2 2h7" /><path d="M17 6l4 2-4 2" /></svg>
           <span>Aviator</span>
         </NuxtLink>
-        <NuxtLink to="/games" class="ab-mtab" active-class="ab-mtab-active">
+        <NuxtLink to="/games" class="ab-mtab" exact-active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
           <span>Games</span>
         </NuxtLink>
-        <NuxtLink to="/games" class="ab-mtab">
+        <NuxtLink to="/games/live" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           <span>Virtual</span>
         </NuxtLink>
-        <NuxtLink to="/refer" class="ab-mtab" active-class="ab-mtab-active">
+        <NuxtLink to="/promotions" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" /></svg>
           <span>Promo</span>
         </NuxtLink>

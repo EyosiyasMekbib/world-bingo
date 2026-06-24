@@ -138,5 +138,24 @@
     "insufficientBalance": "Insufficient Balance",
     "backToLobby": "Back to Lobby",
     "past": "Past Tournaments"
+  },
+  "promo": {
+    "title": "Promotions",
+    "subtitle": "Grab the latest bonuses, cashback and rewards on World Bingo.",
+    "loading": "Loading promotions…",
+    "empty": "No active promotions right now. Check back soon!",
+    "browse_games": "Browse Games",
+    "welcome_offer": "Welcome Offer",
+    "deposit_now": "Deposit Now",
+    "cashback_title": "Cashback",
+    "refer_title": "Refer & Earn",
+    "refer_text": "Invite friends and earn rewards when they join and play.",
+    "refer_cta": "Get your link",
+    "cashback_percentage": "Get {value}% cashback on your {frequency} losses",
+    "cashback_fixed": "Get {value} ETB cashback on your {frequency} losses",
+    "first_deposit": "Get {amount} ETB bonus on your first deposit",
+    "frequency_daily": "daily",
+    "frequency_weekly": "weekly",
+    "frequency_monthly": "monthly"
   }
 }

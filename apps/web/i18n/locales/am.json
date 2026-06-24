@@ -138,5 +138,24 @@
     "insufficientBalance": "በቂ ቀሪ ሂሳብ የለም",
     "backToLobby": "ወደ ሎቢ ተመለስ",
     "past": "ያለፉ ውድድሮች"
+  },
+  "promo": {
+    "title": "ማስተዋወቂያዎች",
+    "subtitle": "በዎርልድ ቢንጎ ላይ የቅርብ ጊዜ ቦነሶችን፣ ካሽባክ እና ሽልማቶችን ያግኙ።",
+    "loading": "ማስተዋወቂያዎች በመጫን ላይ…",
+    "empty": "አሁን ምንም ንቁ ማስተዋወቂያ የለም። በቅርቡ ይመለሱ!",
+    "browse_games": "ጨዋታዎችን ይመልከቱ",
+    "welcome_offer": "የእንኳን ደህና መጡ ቅናሽ",
+    "deposit_now": "አሁን ያስገቡ",
+    "cashback_title": "ካሽባክ",
+    "refer_title": "ጋብዙ እና ያግኙ",
+    "refer_text": "ጓደኞችን ይጋብዙ፣ ሲቀላቀሉ እና ሲጫወቱ ሽልማት ያግኙ።",
+    "refer_cta": "ሊንክዎን ያግኙ",
+    "cashback_percentage": "በ{frequency} ኪሳራዎ ላይ {value}% ካሽባክ ያግኙ",
+    "cashback_fixed": "በ{frequency} ኪሳራዎ ላይ {value} ብር ካሽባክ ያግኙ",
+    "first_deposit": "በመጀመሪያ ተቀማጭዎ ላይ {amount} ብር ቦነስ ያግኙ",
+    "frequency_daily": "የቀን",
+    "frequency_weekly": "የሳምንት",
+    "frequency_monthly": "የወር"
   }
 }

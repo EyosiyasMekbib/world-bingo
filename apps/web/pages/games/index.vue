@@ -11,42 +11,75 @@ const providerStore = useProviderGamesStore()
 const { connect } = useSocket()
 const { track } = useAnalytics()
 
-// ── Hero carousel (slim promo banner) ───────────────────────────────────────
-const slides = [
+// ── Hero carousel (coded slides) ─────────────────────────────────────────────
+interface HeroSlide {
+  id: string
+  badge: string
+  title: string
+  sub: string
+  cta: string
+  watermark: string
+  gradient: string
+  accent: string
+  to: string
+}
+
+const slides: HeroSlide[] = [
   {
-    kicker: 'Welcome Offer',
-    title: '100% Welcome Bonus up to 5,000 ETB',
-    sub: 'Sign up today and double your first deposit.',
+    id: 'bonus',
+    badge: 'Welcome Offer',
+    title: 'First Deposit —\n100% Bonus',
+    sub: 'Sign up today and double your first deposit up to 5,000 ETB. A limited-time welcome gift.',
     cta: 'Claim Bonus',
-    ghost: 'WIN',
+    watermark: '+100%',
+    gradient: 'linear-gradient(105deg,#3a2407 0%,#5c3a0d 45%,#7a4f12 100%)',
+    accent: '#fbbf24',
     to: '/auth/register',
-    bg: 'linear-gradient(120deg,#0a1628 0%,#14305c 55%,#1d4a8a 100%)',
   },
   {
-    kicker: 'Live Now',
-    title: 'Play Arada Bingo Rooms',
-    sub: 'New rooms open every hour with growing jackpots.',
+    id: 'bingo',
+    badge: 'Live Now',
+    title: 'Bingo — Daub\nYour Way To Big Wins',
+    sub: 'New rooms open every hour with growing jackpots. Grab your cartela and race to the pattern.',
     cta: 'Play Bingo',
-    ghost: 'BINGO',
+    watermark: 'B',
+    gradient: 'linear-gradient(105deg,#071633 0%,#0d2a5c 50%,#143b86 100%)',
+    accent: '#60a5fa',
     to: '/games',
-    bg: 'linear-gradient(120deg,#1a1206 0%,#3a2a08 50%,#6b4d0c 100%)',
   },
   {
-    kicker: 'High Flyer',
-    title: 'Win Big on Arada Tournaments',
-    sub: 'Climb the leaderboard for weekly prize pools.',
+    id: 'tournaments',
+    badge: 'High Flyer',
+    title: 'Win Big On\nArada Tournaments',
+    sub: 'Climb the leaderboard for weekly prize pools and prove you are the sharpest player around.',
     cta: 'View Tournaments',
-    ghost: 'X10',
+    watermark: 'X10',
+    gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
+    accent: '#34d399',
     to: '/tournaments',
-    bg: 'linear-gradient(120deg,#0a1628 0%,#0f2e2a 55%,#136b5a 100%)',
   },
 ]
+
 const current = ref(0)
+const activeSlide = computed(() => slides[current.value])
 let heroTimer: ReturnType<typeof setInterval> | null = null
-const trackTransform = computed(() => `translateX(-${current.value * 100}%)`)
-function goSlide(i: number) { current.value = (i + slides.length) % slides.length }
-function nextSlide() { goSlide(current.value + 1) }
+
+function goSlide(i: number) {
+  current.value = (i + slides.length) % slides.length
+  if (heroTimer) clearInterval(heroTimer)
+  heroTimer = setInterval(nextSlide, 6000)
+}
+function nextSlide() { current.value = (current.value + 1) % slides.length }
 function prevSlide() { goSlide(current.value - 1) }
+
+const touchStartX = ref(0)
+function onTouchStart(e: TouchEvent) { touchStartX.value = e.changedTouches[0].clientX }
+function onTouchEnd(e: TouchEvent) {
+  const dx = e.changedTouches[0].clientX - touchStartX.value
+  if (Math.abs(dx) < 40) return
+  if (dx < 0) nextSlide()
+  else prevSlide()
+}
 
 // ── Categories / providers ──────────────────────────────────────────────────
 const BINGO_CAT = 'BINGO'
@@ -254,29 +287,40 @@ onUnmounted(() => {
 
 <template>
   <div class="lobby">
-    <!-- ═══════════ HERO (slim) ═══════════ -->
+    <!-- ═══════════ HERO ═══════════ -->
     <section class="wrap hero-sect">
-      <div class="hero-frame">
-        <div class="hero-track" :style="{ transform: trackTransform }">
-          <div v-for="(s, i) in slides" :key="i" class="hero-slide" :style="{ background: s.bg }">
-            <div class="hero-orb" />
-            <div class="hero-ghost">{{ s.ghost }}</div>
-            <div class="hero-body">
-              <span class="hero-kicker">{{ s.kicker }}</span>
-              <h1 class="hero-title">{{ s.title }}</h1>
-              <p class="hero-sub">{{ s.sub }}</p>
-              <NuxtLink :to="s.to" class="hero-cta">{{ s.cta }}</NuxtLink>
-            </div>
-          </div>
+      <div
+        class="hero"
+        :style="{ background: activeSlide.gradient }"
+        @touchstart.passive="onTouchStart"
+        @touchend.passive="onTouchEnd"
+      >
+        <div :key="activeSlide.id" class="hero-content">
+          <span class="hero-badge">{{ activeSlide.badge }}</span>
+          <h1 class="hero-title">{{ activeSlide.title }}</h1>
+          <p class="hero-sub">{{ activeSlide.sub }}</p>
+          <NuxtLink :to="activeSlide.to" class="hero-cta">{{ activeSlide.cta }}</NuxtLink>
         </div>
-        <button class="hero-arrow hero-prev" aria-label="Previous" @click="prevSlide">‹</button>
-        <button class="hero-arrow hero-next" aria-label="Next" @click="nextSlide">›</button>
-        <div class="hero-dots">
+
+        <div class="hero-watermark" :style="{ color: activeSlide.accent }" aria-hidden="true">
+          {{ activeSlide.watermark }}
+        </div>
+
+        <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+        <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
+
+        <div class="hero-dots" role="tablist" aria-label="Slides">
           <button
             v-for="(s, i) in slides"
-            :key="i"
-            class="hero-dot"
-            :class="{ on: i === current }"
+            :key="s.id"
+            class="hdot"
+            :class="{ 'hdot--active': current === i }"
+            role="tab"
+            :aria-selected="current === i"
             :aria-label="`Slide ${i + 1}`"
             @click="goSlide(i)"
           />
@@ -414,104 +458,156 @@ onUnmounted(() => {
 
 /* ── Hero (slim) ── */
 .hero-sect { padding-top: 16px; padding-bottom: 6px; }
-.hero-frame {
+.hero {
   position: relative;
-  border-radius: 14px;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-}
-.hero-track { display: flex; transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1); }
-.hero-slide {
-  flex: 0 0 100%;
-  height: 188px;
-  position: relative;
+  min-height: 200px;
+  padding: 28px 60px;
   display: flex;
   align-items: center;
-  overflow: hidden;
+  color: #fff;
+  isolation: isolate;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
-.hero-orb {
+.hero::after {
+  content: '';
   position: absolute;
-  right: -50px;
-  top: -70px;
-  width: 320px;
-  height: 320px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--brand-primary) 24%, transparent), transparent 70%);
-}
-.hero-ghost {
-  position: absolute;
-  right: 40px;
-  bottom: 10px;
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 110px;
-  color: rgba(255, 255, 255, 0.05);
-  line-height: 0.8;
+  inset: 0;
+  background: radial-gradient(120% 120% at 80% 50%, rgba(255, 255, 255, 0.06), transparent 60%);
   pointer-events: none;
 }
-.hero-body { position: relative; padding: 0 44px; max-width: 560px; }
-.hero-kicker {
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  animation: hero-in 0.4s ease both;
+}
+@keyframes hero-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.hero-badge {
   display: inline-block;
-  background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
-  color: var(--brand-primary);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.85);
   font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 2px;
+  font-size: 12px;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 16px;
-  margin-bottom: 10px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin-bottom: 20px;
 }
+
 .hero-title {
-  font-family: var(--font-heading);
+  font-family: var(--font-ui);
   font-weight: 700;
-  font-size: clamp(24px, 3vw, 36px);
-  line-height: 1.02;
+  font-size: clamp(30px, 4.6vw, 54px);
+  line-height: 1.04;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  margin-bottom: 8px;
-  text-wrap: balance;
+  white-space: pre-line;
+  margin: 0;
+  color: #fff;
 }
-.hero-sub { font-size: 14px; color: rgba(255, 255, 255, 0.78); margin-bottom: 14px; max-width: 400px; }
+
+.hero-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 460px;
+  margin: 18px 0 26px;
+}
+
 .hero-cta {
   display: inline-block;
   background: var(--brand-primary);
   color: var(--text-on-brand);
+  border: none;
   font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.5px;
+  font-size: 16px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  padding: 10px 24px;
-  border-radius: 8px;
+  padding: 13px 32px;
+  border-radius: 9px;
   text-decoration: none;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-primary) 38%, transparent);
-  transition: transform 0.12s;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
 }
-.hero-cta:hover { transform: translateY(-1px); }
+.hero-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--brand-primary) 38%, transparent);
+}
+.hero-cta:active { transform: translateY(0); }
+
+.hero-watermark {
+  position: absolute;
+  z-index: 1;
+  right: 5%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: clamp(110px, 17vw, 250px);
+  line-height: 1;
+  opacity: 0.14;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .hero-arrow {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 34px;
-  height: 34px;
+  z-index: 3;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: rgba(10, 22, 40, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
-  font-size: 16px;
-  cursor: pointer;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
 }
-.hero-arrow:hover { background: rgba(10, 22, 40, 0.8); }
-.hero-prev { left: 12px; }
-.hero-next { right: 12px; }
-.hero-dots { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-.hero-dot { width: 6px; height: 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.4); border: none; cursor: pointer; transition: width 0.3s, background 0.3s; }
-.hero-dot.on { width: 20px; background: var(--brand-primary); }
+.hero-arrow svg { width: 18px; height: 18px; }
+.hero-arrow:hover { background: rgba(0, 0, 0, 0.5); }
+.hero-arrow:active { transform: translateY(-50%) scale(0.94); }
+.hero-arrow--prev { left: 16px; }
+.hero-arrow--next { right: 16px; }
+
+.hero-dots {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+.hdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: width 0.2s, background 0.2s;
+}
+.hdot--active { width: 26px; border-radius: 4px; background: var(--brand-primary); }
 
 /* ── Filter bar ── */
 .filter-sect {
@@ -775,9 +871,12 @@ onUnmounted(() => {
 @media (max-width: 860px) {
   .wrap { padding-left: 12px; padding-right: 12px; }
   .game-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(96px, 28vw, 140px), 1fr)); gap: 12px 10px; }
-  .hero-slide { height: 150px; }
-  .hero-body { padding: 0 20px; }
-  .hero-ghost { font-size: 72px; right: 14px; }
+  .hero { padding: 16px 20px; min-height: 120px; }
+  .hero-arrow { display: none; }
+  .hero-sub { display: none; }
+  .hero-badge { margin-bottom: 8px; padding: 4px 10px; font-size: 10px; }
+  .hero-title { font-size: clamp(18px, 5.5vw, 26px); }
+  .hero-cta { padding: 10px 22px; font-size: 13px; margin-top: 12px; }
   .filter-sect { position: static; backdrop-filter: none; flex-wrap: wrap; }
   .grid-search { width: 100%; order: -1; }
   .tile-fav { opacity: 1; transform: none; }
