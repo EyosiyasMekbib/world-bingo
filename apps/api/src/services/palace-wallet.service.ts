@@ -381,11 +381,20 @@ export class PalaceWalletService {
               })
             : null
 
-        // Per palace docs the status response is data: { account, trans_guid, trans_status }.
+        // The palace doc conflicts on the status response shape: the spec table says
+        // data:{ balance } while the saved example shows { account, trans_guid,
+        // trans_status }. Return both so either check passes.
+        const user = await resolveUser(account)
+        const wallet = user ? await prisma.wallet.findUnique({ where: { userId: user.id } }) : null
+        const balance = wallet
+            ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+            : new Decimal(0)
+
         return ok({
             account,
             trans_guid: transGuid,
             trans_status: tx ? 'OK' : 'NOT_FOUND',
+            balance: Number(balance.toFixed(2)),
         })
     }
 }
