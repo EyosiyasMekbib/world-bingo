@@ -75,7 +75,9 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
                 round_id: d.round_id,
                 game_code: d.game_code,
                 amount: d.amount ?? 0,
-                cancle_trans_guid: d.cancle_trans_guid,
+                // Palace sends the correctly-spelled `cancel_trans_guid`; keep the
+                // legacy misspelling as a fallback for safety.
+                cancle_trans_guid: d.cancel_trans_guid ?? d.cancle_trans_guid,
               }),
             )
 
