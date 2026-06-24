@@ -23,19 +23,26 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
 
         const { command, data: d } = body
 
+        // Log every command's payload and the result we return, so Palace's
+        // dashboard test failures (e.g. 1015 CALLBACK_ERROR) can be matched to the
+        // exact request/response on our side.
+        const respond = (payload: { result: number; status: string; data: object | null }) => {
+          req.log.info(
+            { command, data: d, result: payload.result, status: payload.status },
+            '[Palace] callback handled',
+          )
+          return reply.status(200).send(payload)
+        }
+
         switch (command) {
           case 'authenticate':
-            return reply.status(200).send({
-              result: 0,
-              status: 'OK',
-              data: { account: d.account },
-            })
+            return respond({ result: 0, status: 'OK', data: { account: d.account } })
 
           case 'balance':
-            return reply.status(200).send(await PalaceWalletService.getBalance(d.account))
+            return respond(await PalaceWalletService.getBalance(d.account))
 
           case 'bet':
-            return reply.status(200).send(
+            return respond(
               await PalaceWalletService.processBet({
                 trans_guid: d.trans_guid,
                 account: d.account,
@@ -47,7 +54,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             )
 
           case 'win':
-            return reply.status(200).send(
+            return respond(
               await PalaceWalletService.processWin({
                 trans_guid: d.trans_guid,
                 account: d.account,
@@ -60,7 +67,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             )
 
           case 'cancel':
-            return reply.status(200).send(
+            return respond(
               await PalaceWalletService.processCancel({
                 trans_guid: d.trans_guid,
                 account: d.account,
@@ -73,12 +80,10 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             )
 
           case 'status':
-            return reply.status(200).send(
-              await PalaceWalletService.getStatus(d.account, d.trans_guid ?? ''),
-            )
+            return respond(await PalaceWalletService.getStatus(d.account, d.trans_guid ?? ''))
 
           default:
-            return reply.status(200).send({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
+            return respond({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
         }
       } catch (err) {
         // Log the command + payload (not just the error) so we can see exactly which
