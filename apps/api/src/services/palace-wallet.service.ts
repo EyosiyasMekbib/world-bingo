@@ -277,8 +277,8 @@ export class PalaceWalletService {
 
     static async processCancel(params: CancelParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
-        if (!user) return palaceErr(2002, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(2002, 'USER_NOT_FOUND')
+        if (!user) return palaceErr(21, 'USER_NOT_FOUND')
+        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
         // Idempotency key for this rollback. Prefer the cancel's own trans_guid;
         // if Palace omits it, derive a stable key from the original bet ref so the
