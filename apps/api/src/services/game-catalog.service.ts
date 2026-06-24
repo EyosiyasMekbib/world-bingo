@@ -280,6 +280,54 @@ export class GameCatalogService {
         return categories
     }
 
+    /**
+     * Active bingo rooms for the lobby, with a live player count.
+     * Mirrors GameController.list so the lobby bootstrap can return bingo inline.
+     */
+    static async getActiveBingoGames() {
+        const games = await prisma.game.findMany({
+            where: { status: { in: ['WAITING', 'STARTING', 'IN_PROGRESS'] } },
+            include: { _count: { select: { entries: true } } },
+            orderBy: { createdAt: 'desc' },
+        })
+        return games.map((g: any) => ({ ...g, currentPlayers: g._count?.entries ?? 0 }))
+    }
+
+    /**
+     * Lobby bootstrap — everything the landing page needs for first paint in a
+     * single round-trip: providers, the active provider's categories + first
+     * games page, and active bingo rooms. Dependent reads run server-side where
+     * round-trip latency is negligible.
+     */
+    static async getLobby(opts: { pageSize?: number } = {}) {
+        const pageSize = opts.pageSize ?? 60
+
+        const [providers, bingoGames] = await Promise.all([
+            prisma.gameProvider.findMany({
+                where: { status: 'ACTIVE' },
+                select: { code: true, name: true, currency: true },
+            }),
+            GameCatalogService.getActiveBingoGames(),
+        ])
+
+        const activeProviderCode = providers[0]?.code ?? null
+        let categories: string[] = []
+        let games: any[] = []
+        let gamesTotal = 0
+
+        if (activeProviderCode) {
+            const [cats, page] = await Promise.all([
+                GameCatalogService.getCategories(activeProviderCode),
+                GameCatalogService.getGames({ providerCode: activeProviderCode, page: 1, pageSize }),
+            ])
+            categories = cats
+            games = page.games
+            gamesTotal = page.totalItems
+        }
+
+        return { providers, activeProviderCode, categories, games, gamesTotal, pageSize, bingoGames }
+    }
+
     static async searchCatalog(query: string) {
         const normalized = normalizeQuery(query)
         if (!normalized) {

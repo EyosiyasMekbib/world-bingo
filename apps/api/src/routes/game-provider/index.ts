@@ -25,6 +25,15 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         },
     })
 
+    // ── Lobby bootstrap — first-paint payload in one round-trip ──────────────
+    fastify.get('/lobby', {
+        handler: async (req) => {
+            const { pageSize = '60' } = req.query as { pageSize?: string }
+            const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10)))
+            return GameCatalogService.getLobby({ pageSize: ps })
+        },
+    })
+
     // ── Search the full catalog across all providers ─────────────────────────
     fastify.get('/search', {
         handler: async (req) => {
