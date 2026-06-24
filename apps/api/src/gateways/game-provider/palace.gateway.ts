@@ -11,20 +11,93 @@ import type {
 const BASE_URL = (process.env.PALACE_API_BASE_URL ?? 'https://agent.goldslotpalase.com').replace(/\/$/, '')
 const API_TOKEN = process.env.PALACE_API_TOKEN ?? ''
 
+/**
+ * Structured error for every Palace failure so the API can return a precise
+ * HTTP status, a stable machine-readable `code`, the upstream Palace code, and
+ * contextual `details` — instead of a flat 500 with an opaque message.
+ */
+export class PalaceApiError extends Error {
+    readonly statusCode: number
+    readonly code: string
+    readonly palaceCode: number | null
+    readonly details: Record<string, unknown>
+
+    constructor(opts: {
+        message: string
+        statusCode: number
+        code: string
+        palaceCode?: number | null
+        details?: Record<string, unknown>
+    }) {
+        super(opts.message)
+        this.name = 'PalaceApiError'
+        this.statusCode = opts.statusCode
+        this.code = opts.code
+        this.palaceCode = opts.palaceCode ?? null
+        this.details = opts.details ?? {}
+    }
+}
+
 async function request<T>(path: string, body: object): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${API_TOKEN}`,
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    })
-    if (!res.ok) throw new Error(`Palace ${path} responded ${res.status}`)
-    const json = (await res.json()) as { code: number; message: string; data?: T }
-    if (json.code !== 0) throw new Error(`Palace error: ${json.code} — ${json.message}`)
-    if (json.data == null) throw new Error(`Palace ${path} returned no data`)
+    let res: Response
+    try {
+        res = await fetch(`${BASE_URL}${path}`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${API_TOKEN}`,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        })
+    } catch (err: any) {
+        // Network-level failure (DNS, timeout, connection refused) — Palace unreachable.
+        throw new PalaceApiError({
+            message: `Palace is unreachable: ${err?.message ?? 'network error'}`,
+            statusCode: 502,
+            code: 'PALACE_UNREACHABLE',
+            details: { path, base: BASE_URL },
+        })
+    }
+
+    if (!res.ok) {
+        throw new PalaceApiError({
+            message: `Palace upstream returned HTTP ${res.status}`,
+            statusCode: 502,
+            code: 'PALACE_UPSTREAM_HTTP_ERROR',
+            details: { path, upstreamHttpStatus: res.status },
+        })
+    }
+
+    let json: { code: number; message: string; data?: T }
+    try {
+        json = (await res.json()) as { code: number; message: string; data?: T }
+    } catch {
+        throw new PalaceApiError({
+            message: `Palace ${path} returned a non-JSON response`,
+            statusCode: 502,
+            code: 'PALACE_INVALID_RESPONSE',
+            details: { path },
+        })
+    }
+
+    if (json.code !== 0) {
+        throw new PalaceApiError({
+            message: json.message || `Palace rejected the request (code ${json.code})`,
+            statusCode: 502,
+            code: 'PALACE_UPSTREAM_ERROR',
+            palaceCode: json.code,
+            details: { path },
+        })
+    }
+    if (json.data == null) {
+        throw new PalaceApiError({
+            message: `Palace ${path} returned no data`,
+            statusCode: 502,
+            code: 'PALACE_EMPTY_RESPONSE',
+            details: { path },
+        })
+    }
     return json.data as T
 }
 
@@ -197,7 +270,13 @@ export class PalaceGateway implements GameProviderGateway {
     /** Lazily provision or retrieve Palace user_code for a given username or UUID-without-dashes. */
     async getUserCode(username: string): Promise<string> {
         const provider = await prisma.gameProvider.findUnique({ where: { code: 'palace' } })
-        if (!provider) throw new Error('Palace provider not seeded in DB')
+        if (!provider) {
+            throw new PalaceApiError({
+                message: 'Palace provider is not configured (not seeded in DB)',
+                statusCode: 503,
+                code: 'PALACE_NOT_CONFIGURED',
+            })
+        }
 
         let user: { id: string } | null = null
         if (/^[0-9a-f]{32}$/i.test(username)) {
@@ -206,7 +285,14 @@ export class PalaceGateway implements GameProviderGateway {
         } else {
             user = await prisma.user.findUnique({ where: { username }, select: { id: true } })
         }
-        if (!user) throw new Error(`User not found: ${username}`)
+        if (!user) {
+            throw new PalaceApiError({
+                message: `No local user matches Palace account "${username}"`,
+                statusCode: 404,
+                code: 'PALACE_USER_NOT_FOUND',
+                details: { account: username },
+            })
+        }
 
         const existing = await prisma.providerUserAccount.findUnique({
             where: { providerId_userId: { providerId: provider.id, userId: user.id } },
@@ -230,16 +316,36 @@ export class PalaceGateway implements GameProviderGateway {
 
     private async resolveProviderId(gameCode: string): Promise<number> {
         const provider = await prisma.gameProvider.findUnique({ where: { code: 'palace' } })
-        if (!provider) throw new Error('Palace provider not seeded')
+        if (!provider) {
+            throw new PalaceApiError({
+                message: 'Palace provider is not configured (not seeded in DB)',
+                statusCode: 503,
+                code: 'PALACE_NOT_CONFIGURED',
+            })
+        }
 
         const game = await prisma.providerGame.findUnique({
             where: { providerId_gameCode: { providerId: provider.id, gameCode } },
             include: { vendor: true },
         })
-        if (!game) throw new Error(`Palace game not found in DB: ${gameCode}`)
+        if (!game) {
+            throw new PalaceApiError({
+                message: `Palace game "${gameCode}" is not in the catalog`,
+                statusCode: 404,
+                code: 'PALACE_GAME_NOT_FOUND',
+                details: { gameCode },
+            })
+        }
 
         const providerId = parseInt(game.vendor.code.replace('palace:', ''), 10)
-        if (isNaN(providerId)) throw new Error(`Invalid vendor code for game ${gameCode}: ${game.vendor.code}`)
+        if (isNaN(providerId)) {
+            throw new PalaceApiError({
+                message: `Palace game "${gameCode}" has an invalid vendor code "${game.vendor.code}"`,
+                statusCode: 500,
+                code: 'PALACE_INVALID_VENDOR',
+                details: { gameCode, vendorCode: game.vendor.code },
+            })
+        }
         return providerId
     }
 }

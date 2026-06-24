@@ -149,7 +149,15 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 }
 
                 req.log.error(
-                    { providerCode, gameCode, userId: user.id, err: msg },
+                    {
+                        providerCode,
+                        gameCode,
+                        userId: user.id,
+                        err: msg,
+                        code: err?.code,
+                        palaceCode: err?.palaceCode,
+                        details: err?.details,
+                    },
                     'provider launch failed',
                 )
                 throw err

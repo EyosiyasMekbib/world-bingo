@@ -166,6 +166,20 @@ server.setErrorHandler<FastifyError>((error, request, reply) => {
         })
     }
 
+    // Structured provider errors (e.g. PalaceApiError) — surface the machine-readable
+    // code, the upstream provider code, and contextual details, not just a message.
+    const anyErr = error as any
+    if (anyErr?.name === 'PalaceApiError') {
+        const status = anyErr.statusCode || 502
+        return reply.status(status).send({
+            statusCode: status,
+            error: anyErr.code || 'PalaceApiError',
+            message: error.message,
+            ...(anyErr.palaceCode != null ? { palaceCode: anyErr.palaceCode } : {}),
+            ...(anyErr.details && Object.keys(anyErr.details).length > 0 ? { details: anyErr.details } : {}),
+        })
+    }
+
     // Default error handler
     const statusCode = error.statusCode || 500
     return reply.status(statusCode).send({
