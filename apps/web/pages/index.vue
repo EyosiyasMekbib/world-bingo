@@ -353,7 +353,7 @@ const gridGames = computed<LobbyCard[]>(() => {
   } else if (cat === 'TRENDING') {
     cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
-    cards = popularBingo.value.map(bingoToCard)
+    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
   } else {
     cards = (categoryGamesMap.value[cat] ?? []).filter(hasImage).map(providerToCard)
   }
@@ -378,13 +378,13 @@ const gridLoading = computed(() => {
   const cat = selectedCategory.value
   // ALL & TRENDING blend casino + bingo — hold the skeleton until the combined
   // first load settles so every game (bingo included) reveals together.
-  if (cat === 'ALL' || cat === 'TRENDING') {
+  if (cat === 'ALL' || cat === 'TRENDING' || cat === 'POPULAR') {
     // Reveal as soon as either branch (casino or bingo) has data instead of
     // holding the skeleton for the slower one — the rest streams in.
     if (allProviderGames.value.length || gameStore.availableGames.length) return false
     return lobbyInitialLoading.value
   }
-  if (cat === 'BINGO' || cat === 'POPULAR') {
+  if (cat === 'BINGO') {
     return gameStore.loadingGames && !gameStore.availableGames.length
   }
   return !!categoryGamesLoading.value[cat] && !(categoryGamesMap.value[cat]?.length)
@@ -426,21 +426,36 @@ onMounted(async () => {
 
   promotionsStore.fetch()
 
-  // Load bingo rooms and casino games in parallel. Once providers resolve,
-  // categories and the first games page are independent — fire them concurrently
-  // instead of chaining, saving a full network round-trip on first paint.
-  const bingoLoad = gameStore.fetchAvailableGames().catch(() => { /* gameStore.error */ })
-  const providerLoad = (async () => {
-    await providerStore.fetchProviders()
-    if (providerStore.activeProviderCode) {
-      await Promise.all([
-        providerStore.fetchCategories(),
-        providerStore.fetchGames({ reset: true, pageSize: 60 }),
-      ])
-    }
-  })().catch(() => { /* keep lobby usable on provider failure */ })
+  // Single bootstrap call: providers + categories + first games page + bingo
+  // rooms in one round-trip (was three serial + one parallel request). Falls
+  // back to the individual fetches if the lobby endpoint is unavailable.
+  try {
+    const lobby = await $fetch<{
+      providers: any[]
+      activeProviderCode: string | null
+      categories: string[]
+      games: ProviderGame[]
+      gamesTotal: number
+      pageSize: number
+      bingoGames: Game[]
+    }>(`${config.public.apiBase}/providers/lobby?pageSize=60`)
 
-  await Promise.allSettled([bingoLoad, providerLoad])
+    providerStore.hydrateLobby(lobby)
+    gameStore.setAvailableGames(lobby.bingoGames ?? [])
+  } catch {
+    // Fallback — bootstrap unavailable; fetch the pieces individually.
+    const bingoLoad = gameStore.fetchAvailableGames().catch(() => {})
+    const providerLoad = (async () => {
+      await providerStore.fetchProviders()
+      if (providerStore.activeProviderCode) {
+        await Promise.all([
+          providerStore.fetchCategories(),
+          providerStore.fetchGames({ reset: true, pageSize: 60 }),
+        ])
+      }
+    })().catch(() => {})
+    await Promise.allSettled([bingoLoad, providerLoad])
+  }
   lobbyInitialLoading.value = false
 
   // Secondary: per-category pools that feed the featured pins. Non-blocking and

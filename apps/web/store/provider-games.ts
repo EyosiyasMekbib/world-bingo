@@ -78,6 +78,30 @@ export const useProviderGamesStore = defineStore('provider-games', {
   },
 
   actions: {
+    /**
+     * Seed the store from the /providers/lobby bootstrap payload, replacing the
+     * separate fetchProviders → fetchCategories → fetchGames round-trips.
+     */
+    hydrateLobby(payload: {
+      providers: ProviderInfo[]
+      activeProviderCode: string | null
+      categories: string[]
+      games: ProviderGame[]
+      gamesTotal: number
+      pageSize?: number
+    }) {
+      this.providers = payload.providers ?? []
+      if (payload.activeProviderCode && !this.activeProviderCode) {
+        this.activeProviderCode = payload.activeProviderCode
+      }
+      this.categories = payload.categories ?? []
+      this.games = payload.games ?? []
+      this.total = payload.gamesTotal ?? this.games.length
+      this.activeCategory = CATEGORY_ALL
+      this.page = 1
+      if (payload.pageSize) this.pageSize = payload.pageSize
+    },
+
     async fetchProviders() {
       const config = useRuntimeConfig()
       try {

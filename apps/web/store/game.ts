@@ -54,6 +54,17 @@ export const useGameStore = defineStore('game', {
     },
 
     actions: {
+        // Seed bingo rooms from a pre-fetched list (e.g. the /providers/lobby
+        // bootstrap) without a separate request.
+        setAvailableGames(games: Game[]) {
+            this.availableGames = games
+            for (const g of games) {
+                const p = (g as any).currentPlayers
+                if (p !== undefined) this.livePlayers[g.id] = p
+            }
+            this.loadingGames = false
+        },
+
         async fetchAvailableGames() {
             const config = useRuntimeConfig()
             this.loadingGames = true
