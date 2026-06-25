@@ -4,7 +4,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
 
   // Public routes that don't require auth (exact match)
-  const publicPaths = ['/auth/login', '/auth/register', '/', '/tournaments', '/games']
+  const publicPaths = ['/auth/login', '/auth/register', '/', '/tournaments', '/games', '/promotions']
 
   // Public path prefixes (any sub-path is also public for guests to browse)
   const publicPrefixes = ['/auth/', '/ref/', '/tournaments/', '/games/']

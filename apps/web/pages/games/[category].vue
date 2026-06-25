@@ -26,6 +26,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   LIVE: 'Live',
   TABLE: 'Table',
   CRASH: 'Crash',
+  MINI: 'Mini Games',
 }
 
 const categoryLabel = computed(() => CATEGORY_LABELS[category.value] ?? category.value)

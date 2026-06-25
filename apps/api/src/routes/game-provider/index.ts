@@ -192,7 +192,16 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                     },
                     'provider launch failed',
                 )
-                throw err
+
+                // Not a "this game is gone" error — it's a transient/vendor-side or
+                // integration failure (e.g. GASea SC_VENDOR_ERROR, Palace unreachable).
+                // Don't hide the game; return a clean 502 with a retry hint instead of
+                // a raw 500 so the player gets a sensible message.
+                return reply.status(502).send({
+                    statusCode: 502,
+                    error: 'GameLaunchFailed',
+                    message: 'This game could not be started right now. Please try again in a moment.',
+                })
             }
 
             // Surface bad/empty/non-https URLs that pass as HTTP 200 but won't load client-side.

@@ -1,4 +1,5 @@
 import prisma from '../../lib/prisma.js'
+import { parseNamespacedAccount } from '../hub/namespace.js'
 import type {
     GameProviderGateway,
     GameListResult,
@@ -278,12 +279,19 @@ export class PalaceGateway implements GameProviderGateway {
             })
         }
 
+        // Strip hub namespace prefix (3 chars) if present so callbacks from a
+        // namespaced account (e.g. "h00<uuid-hex>") resolve to the bare UUID-hex.
+        let bare = username
+        if (username.length === 35 && /^[0-9a-f]{32}$/i.test(username.slice(3))) {
+            bare = parseNamespacedAccount(username).account
+        }
+
         let user: { id: string } | null = null
-        if (/^[0-9a-f]{32}$/i.test(username)) {
-            const id = `${username.slice(0,8)}-${username.slice(8,12)}-${username.slice(12,16)}-${username.slice(16,20)}-${username.slice(20)}`
+        if (/^[0-9a-f]{32}$/i.test(bare)) {
+            const id = `${bare.slice(0,8)}-${bare.slice(8,12)}-${bare.slice(12,16)}-${bare.slice(16,20)}-${bare.slice(20)}`
             user = await prisma.user.findUnique({ where: { id }, select: { id: true } })
         } else {
-            user = await prisma.user.findUnique({ where: { username }, select: { id: true } })
+            user = await prisma.user.findUnique({ where: { username: bare }, select: { id: true } })
         }
         if (!user) {
             throw new PalaceApiError({

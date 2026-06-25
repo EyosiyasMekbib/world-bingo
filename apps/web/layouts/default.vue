@@ -113,7 +113,7 @@ function submitSearch() {
       <!-- Primary nav -->
       <nav class="ab-nav">
         <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
-        <NuxtLink to="/games/crash" class="ab-nav-link" active-class="ab-nav-active">Aviator</NuxtLink>
+        <NuxtLink to="/games/mini" class="ab-nav-link" active-class="ab-nav-active">Aviator</NuxtLink>
         <NuxtLink to="/games" class="ab-nav-link" exact-active-class="ab-nav-active">Games</NuxtLink>
         <NuxtLink to="/games/live" class="ab-nav-link" active-class="ab-nav-active">
           Virtual Sport<span class="ab-new">NEW</span>
@@ -154,7 +154,7 @@ function submitSearch() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
           <span>Home</span>
         </NuxtLink>
-        <NuxtLink to="/games/crash" class="ab-mtab" active-class="ab-mtab-active">
+        <NuxtLink to="/games/mini" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-3 3 6 2-4 2 2h7" /><path d="M17 6l4 2-4 2" /></svg>
           <span>Aviator</span>
         </NuxtLink>
