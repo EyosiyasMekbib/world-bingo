@@ -64,6 +64,7 @@ services:
       start_period: 90s
     networks:
       - internal
+      - dokploy-network
 
   web-betbawa:
     build:
