@@ -118,49 +118,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
           d.account = route.account
         }
 
-        const dispatch = (): Promise<{ result: number; status: string; data: object | null }> => {
-          switch (command) {
-            case 'authenticate':
-              return PalaceWalletService.authenticate(d.account)
-            case 'balance':
-              return PalaceWalletService.getBalance(d.account)
-            case 'bet':
-              return PalaceWalletService.processBet({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount,
-              })
-            case 'win':
-              return PalaceWalletService.processWin({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount,
-                type: d.type ?? 2,
-              })
-            case 'cancel':
-              return PalaceWalletService.processCancel({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount ?? 0,
-                // Palace sends the correctly-spelled `cancel_trans_guid`; keep the
-                // legacy misspelling as a fallback for safety.
-                cancle_trans_guid: d.cancel_trans_guid ?? d.cancle_trans_guid,
-              })
-            case 'status':
-              return PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? '')
-            default:
-              return Promise.resolve({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
-          }
-        }
+        const dispatch = () => PalaceWalletService.dispatch(command, d)
 
         return respond(await withTimeout(dispatch(), HANDLER_TIMEOUT_MS))
       } catch (err) {
