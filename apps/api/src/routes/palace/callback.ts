@@ -19,6 +19,10 @@ import { signBody, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hu
 // that so we ALWAYS return a valid 200 body instead of letting the socket hang.
 const HANDLER_TIMEOUT_MS = Number(process.env.PALACE_CALLBACK_TIMEOUT_MS ?? 8000)
 
+// The spoke leg must finish with margin to spare before Palace's own client aborts,
+// so it gets a tighter budget than the overall handler.
+const SPOKE_FORWARD_TIMEOUT_MS = Number(process.env.PALACE_SPOKE_TIMEOUT_MS ?? 5000)
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
@@ -65,25 +69,52 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             // Strip the prefix and relay the spoke's verbatim response.
             const forwardBody = JSON.stringify({ command, data: { ...d, account: route.account } })
             const sig = signBody(route.spoke.secret, forwardBody)
-            const res = await withTimeout(
-              fetch(`${route.spoke.baseUrl}/v1/hub/spoke-callback`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  [DEPLOYMENT_HEADER]: cfg.code,
-                  [SIGNATURE_HEADER]: sig,
-                },
-                body: forwardBody,
-              }),
-              HANDLER_TIMEOUT_MS,
-            )
-            if (!res.ok) {
-              // Non-200 to the provider → it retries. Never fabricate success.
+            try {
+              // Abort the spoke request once the tighter budget elapses, so the spoke
+              // doesn't keep processing a bet after the hub has already given up.
+              const controller = new AbortController()
+              const timer = setTimeout(() => controller.abort(), SPOKE_FORWARD_TIMEOUT_MS)
+              let res: Response
+              try {
+                res = await fetch(`${route.spoke.baseUrl}/v1/hub/spoke-callback`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    [DEPLOYMENT_HEADER]: cfg.code,
+                    [SIGNATURE_HEADER]: sig,
+                  },
+                  body: forwardBody,
+                  signal: controller.signal,
+                })
+              } finally {
+                clearTimeout(timer)
+              }
+              if (!res.ok) {
+                // Non-200 to the provider → it retries. Never fabricate success.
+                req.log.error(
+                  { spoke: route.spoke.code, baseUrl: route.spoke.baseUrl, httpStatus: res.status, command },
+                  '[Palace] spoke forward returned non-200',
+                )
+                return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
+              }
+              const relayed = (await res.json()) as { result: number; status: string; data: object | null }
+              return respond(relayed)
+            } catch (err) {
+              // Network throw, abort, or a non-JSON body — log which spoke failed and
+              // return a valid provider error instead of a thrown/hung response.
+              req.log.error(
+                { err, spoke: route.spoke.code, baseUrl: route.spoke.baseUrl, command },
+                '[Palace] spoke forward failed',
+              )
               return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
             }
-            return respond(await res.json() as { result: number; status: string; data: object | null })
           }
           // route.kind === 'local' → continue with the stripped account.
+          // Preserve the original namespaced account in logs before mutating d.
+          req.log.info(
+            { namespacedAccount: d.account, strippedAccount: route.account, command },
+            '[Palace] hub-local callback',
+          )
           d.account = route.account
         }
 
