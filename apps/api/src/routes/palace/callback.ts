@@ -62,9 +62,6 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
         const cfg = deploymentConfig()
         if (cfg.role === 'hub' && typeof d.account === 'string') {
           const route = decideCallbackRoute(cfg, d.account)
-          if (route.kind === 'unknown') {
-            return respond({ result: 1002, status: 'USER_NOT_FOUND', data: null })
-          }
           if (route.kind === 'forward') {
             // Strip the prefix and relay the spoke's verbatim response.
             const forwardBody = JSON.stringify({ command, data: { ...d, account: route.account } })
@@ -109,13 +106,23 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
               return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
             }
           }
-          // route.kind === 'local' → continue with the stripped account.
-          // Preserve the original namespaced account in logs before mutating d.
-          req.log.info(
-            { namespacedAccount: d.account, strippedAccount: route.account, command },
-            '[Palace] hub-local callback',
-          )
-          d.account = route.account
+          if (route.kind === 'local') {
+            // Strip the hub prefix and process locally.
+            req.log.info(
+              { namespacedAccount: d.account, strippedAccount: route.account, command },
+              '[Palace] hub-local callback',
+            )
+            d.account = route.account
+          } else {
+            // 'unknown' prefix — account is not a hub-namespaced UUID-hex (e.g. a
+            // plain Palace cert-test username). Fall through to local dispatch with
+            // the raw account; the wallet service returns result:21 if not found.
+            req.log.warn(
+              { account: d.account, command },
+              '[Palace] unrecognized account prefix — attempting local fallback',
+            )
+            // d.account unchanged — wallet service resolves by username
+          }
         }
 
         const dispatch = () => PalaceWalletService.dispatch(command, d)
