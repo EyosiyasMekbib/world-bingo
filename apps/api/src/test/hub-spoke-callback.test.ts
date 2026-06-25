@@ -5,7 +5,11 @@ import { resetDeploymentConfigForTests } from '../gateways/hub/deployment-config
 
 vi.mock('../services/palace-wallet.service.js', () => ({
   PalaceWalletService: {
-    dispatch: vi.fn(async (command: string, d: any) => ({ result: 0, status: 'OK', data: { account: d.account, balance: 12.5 } })),
+    dispatch: vi.fn(async (command: string, d: any) => ({
+      result: 0,
+      status: 'OK',
+      data: { account: d.account, balance: 12.5 },
+    })),
   },
 }))
 
@@ -30,8 +34,13 @@ describe('spoke-callback sink', () => {
     const app = await buildApp()
     const body = JSON.stringify({ command: 'balance', data: { account: 'a'.repeat(32) } })
     const res = await app.inject({
-      method: 'POST', url: '/v1/hub/spoke-callback',
-      headers: { 'content-type': 'application/json', 'x-deployment': 'h00', 'x-signature': signBody(SECRET, body) },
+      method: 'POST',
+      url: '/v1/hub/spoke-callback',
+      headers: {
+        'content-type': 'application/json',
+        'x-deployment': 'h00',
+        'x-signature': signBody(SECRET, body),
+      },
       payload: body,
     })
     expect(res.statusCode).toBe(200)
@@ -42,8 +51,13 @@ describe('spoke-callback sink', () => {
     const app = await buildApp()
     const body = JSON.stringify({ command: 'balance', data: { account: 'a'.repeat(32) } })
     const res = await app.inject({
-      method: 'POST', url: '/v1/hub/spoke-callback',
-      headers: { 'content-type': 'application/json', 'x-deployment': 'h00', 'x-signature': 'deadbeef' },
+      method: 'POST',
+      url: '/v1/hub/spoke-callback',
+      headers: {
+        'content-type': 'application/json',
+        'x-deployment': 'h00',
+        'x-signature': 'deadbeef',
+      },
       payload: body,
     })
     expect(res.statusCode).toBe(401)

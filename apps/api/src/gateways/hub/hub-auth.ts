@@ -11,7 +11,10 @@ export function verifySignature(secret: string, rawBody: string, received: strin
   // Compare fixed-length hex digests via HMAC-of-input to avoid length leaks / parse errors.
   const key = Buffer.alloc(32)
   const a = crypto.createHmac('sha256', key).update(expected).digest()
-  const b = crypto.createHmac('sha256', key).update(received ?? '').digest()
+  const b = crypto
+    .createHmac('sha256', key)
+    .update(received ?? '')
+    .digest()
   return crypto.timingSafeEqual(a, b)
 }
 

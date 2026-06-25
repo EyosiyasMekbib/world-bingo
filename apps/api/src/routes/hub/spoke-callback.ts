@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { PalaceWalletService } from '../../services/palace-wallet.service.js'
 import { deploymentConfig } from '../../gateways/hub/deployment-config.js'
-import { verifySignature, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hub/hub-auth.js'
+import {
+  verifySignature,
+  DEPLOYMENT_HEADER,
+  SIGNATURE_HEADER,
+} from '../../gateways/hub/hub-auth.js'
 
 /**
  * Spoke-side sink for hub-forwarded provider callbacks. The account is already

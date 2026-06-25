@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { namespaceAccount, parseNamespacedAccount, isValidDeploymentCode } from '../gateways/hub/namespace.js'
+import {
+  namespaceAccount,
+  parseNamespacedAccount,
+  isValidDeploymentCode,
+} from '../gateways/hub/namespace.js'
 
 describe('namespace', () => {
   const code = 's01'
@@ -13,8 +17,8 @@ describe('namespace', () => {
 
   it('rejects an invalid deployment code', () => {
     expect(isValidDeploymentCode('s01')).toBe(true)
-    expect(isValidDeploymentCode('S1')).toBe(false)   // wrong length + uppercase
-    expect(isValidDeploymentCode('s_1')).toBe(false)  // non-alphanumeric
+    expect(isValidDeploymentCode('S1')).toBe(false) // wrong length + uppercase
+    expect(isValidDeploymentCode('s_1')).toBe(false) // non-alphanumeric
     expect(() => namespaceAccount('S1', acct)).toThrow(/deployment code/i)
   })
 

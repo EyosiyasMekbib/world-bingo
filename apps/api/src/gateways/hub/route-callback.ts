@@ -11,8 +11,11 @@ export function decideCallbackRoute(cfg: DeploymentConfig, rawAccount: string): 
   if (cfg.role !== 'hub') return { kind: 'local', account: rawAccount }
 
   let depCode: string, account: string
-  try { ({ depCode, account } = parseNamespacedAccount(rawAccount)) }
-  catch { return { kind: 'unknown', account: rawAccount } }
+  try {
+    ;({ depCode, account } = parseNamespacedAccount(rawAccount))
+  } catch {
+    return { kind: 'unknown', account: rawAccount }
+  }
 
   if (depCode === cfg.code) return { kind: 'local', account }
   const spoke = cfg.spokes.get(depCode)

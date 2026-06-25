@@ -11,7 +11,9 @@ export function isValidDeploymentCode(code: string): boolean {
 /** Prepend the deployment code to an account. Throws if the result is invalid. */
 export function namespaceAccount(depCode: string, account: string): string {
   if (!isValidDeploymentCode(depCode)) {
-    throw new Error(`Invalid deployment code: "${depCode}" (must be 3 lowercase alphanumeric chars)`)
+    throw new Error(
+      `Invalid deployment code: "${depCode}" (must be 3 lowercase alphanumeric chars)`,
+    )
   }
   const ns = depCode + account
   if (ns.length > MAX_ACCOUNT_LENGTH) {

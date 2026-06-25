@@ -2,14 +2,18 @@ import { isValidDeploymentCode } from './namespace.js'
 
 export type DeploymentRole = 'standalone' | 'hub' | 'spoke'
 
-export interface SpokeEntry { code: string; baseUrl: string; secret: string }
+export interface SpokeEntry {
+  code: string
+  baseUrl: string
+  secret: string
+}
 
 export interface DeploymentConfig {
   role: DeploymentRole
-  code: string                 // '' when standalone
+  code: string // '' when standalone
   spokes: Map<string, SpokeEntry> // hub only
-  hubUrl: string               // spoke only
-  hubSecret: string            // spoke only
+  hubUrl: string // spoke only
+  hubSecret: string // spoke only
 }
 
 export function loadDeploymentConfig(): DeploymentConfig {
@@ -23,14 +27,20 @@ export function loadDeploymentConfig(): DeploymentConfig {
 
   const code = (process.env.DEPLOYMENT_CODE ?? '').trim()
   if (!isValidDeploymentCode(code)) {
-    throw new Error(`DEPLOYMENT_CODE "${code}" is invalid (need 3 lowercase alphanumeric chars) for role=${role}`)
+    throw new Error(
+      `DEPLOYMENT_CODE "${code}" is invalid (need 3 lowercase alphanumeric chars) for role=${role}`,
+    )
   }
 
   const spokes = new Map<string, SpokeEntry>()
   if (role === 'hub') {
     const raw = process.env.HUB_DEPLOYMENTS ?? '[]'
     let arr: SpokeEntry[]
-    try { arr = JSON.parse(raw) } catch { throw new Error('HUB_DEPLOYMENTS is not valid JSON') }
+    try {
+      arr = JSON.parse(raw)
+    } catch {
+      throw new Error('HUB_DEPLOYMENTS is not valid JSON')
+    }
     for (const s of arr) {
       if (!isValidDeploymentCode(s.code) || !s.baseUrl || !s.secret) {
         throw new Error(`HUB_DEPLOYMENTS entry invalid: ${JSON.stringify(s)}`)

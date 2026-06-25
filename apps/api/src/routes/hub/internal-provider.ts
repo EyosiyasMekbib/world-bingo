@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { deploymentConfig } from '../../gateways/hub/deployment-config.js'
-import { verifySignature, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hub/hub-auth.js'
+import {
+  verifySignature,
+  DEPLOYMENT_HEADER,
+  SIGNATURE_HEADER,
+} from '../../gateways/hub/hub-auth.js'
 import { namespaceAccount } from '../../gateways/hub/namespace.js'
 
 /**
@@ -12,8 +16,11 @@ import { namespaceAccount } from '../../gateways/hub/namespace.js'
  */
 export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
   fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
-    try { done(null, { __rawBody: body as string, ...JSON.parse(body as string) }) }
-    catch (e) { done(e as Error, undefined) }
+    try {
+      done(null, { __rawBody: body as string, ...JSON.parse(body as string) })
+    } catch (e) {
+      done(e as Error, undefined)
+    }
   })
 
   fastify.post('/', async (req, reply) => {
@@ -30,7 +37,11 @@ export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
 
     const verifiedDep = dep as string // guaranteed non-null past the auth gate
 
-    const { providerCode, method, params } = req.body as { providerCode?: string; method?: string; params?: any }
+    const { providerCode, method, params } = req.body as {
+      providerCode?: string
+      method?: string
+      params?: any
+    }
 
     try {
       if (!providerCode) {
@@ -44,7 +55,9 @@ export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
       try {
         gateway = getGameProviderGateway(providerCode)
       } catch {
-        return reply.status(200).send({ ok: false, error: { message: `unknown provider: ${providerCode}` } })
+        return reply
+          .status(200)
+          .send({ ok: false, error: { message: `unknown provider: ${providerCode}` } })
       }
 
       let result: unknown
@@ -52,12 +65,15 @@ export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
         case 'getGameUrl':
         case 'terminateSession': {
           if (typeof params.username !== 'string' || params.username.length === 0) {
-            return reply.status(200).send({ ok: false, error: { message: 'params.username is required' } })
+            return reply
+              .status(200)
+              .send({ ok: false, error: { message: 'params.username is required' } })
           }
           const nsUsername = namespaceAccount(verifiedDep, params.username)
-          result = method === 'getGameUrl'
-            ? await gateway.getGameUrl({ ...params, username: nsUsername })
-            : await gateway.terminateSession(nsUsername)
+          result =
+            method === 'getGameUrl'
+              ? await gateway.getGameUrl({ ...params, username: nsUsername })
+              : await gateway.terminateSession(nsUsername)
           break
         }
         case 'getVendors':
@@ -67,12 +83,22 @@ export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
           result = await gateway[method](...(params.args ?? []))
           break
         default:
-          return reply.status(200).send({ ok: false, error: { message: `unknown method: ${method}` } })
+          return reply
+            .status(200)
+            .send({ ok: false, error: { message: `unknown method: ${method}` } })
       }
       return reply.status(200).send({ ok: true, result })
     } catch (err: any) {
-      req.log.error({ err, providerCode, method, spoke: verifiedDep }, '[Hub] internal provider call failed')
-      return reply.status(200).send({ ok: false, error: { message: err?.message, code: err?.code, palaceCode: err?.palaceCode } })
+      req.log.error(
+        { err, providerCode, method, spoke: verifiedDep },
+        '[Hub] internal provider call failed',
+      )
+      return reply
+        .status(200)
+        .send({
+          ok: false,
+          error: { message: err?.message, code: err?.code, palaceCode: err?.palaceCode },
+        })
     }
   })
 }

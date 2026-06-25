@@ -3,13 +3,15 @@ import { decideCallbackRoute } from '../gateways/hub/route-callback.js'
 import type { DeploymentConfig } from '../gateways/hub/deployment-config.js'
 
 const hubCfg: DeploymentConfig = {
-  role: 'hub', code: 'h00',
+  role: 'hub',
+  code: 'h00',
   spokes: new Map([['s01', { code: 's01', baseUrl: 'https://s01', secret: 'sec1' }]]),
-  hubUrl: '', hubSecret: '',
+  hubUrl: '',
+  hubSecret: '',
 }
 
 describe('decideCallbackRoute', () => {
-  it('routes the hub\'s own account locally with the prefix stripped', () => {
+  it("routes the hub's own account locally with the prefix stripped", () => {
     const r = decideCallbackRoute(hubCfg, 'h00' + 'a'.repeat(32))
     expect(r).toEqual({ kind: 'local', account: 'a'.repeat(32) })
   })
@@ -25,7 +27,13 @@ describe('decideCallbackRoute', () => {
   })
 
   it('standalone always routes locally without stripping', () => {
-    const std: DeploymentConfig = { role: 'standalone', code: '', spokes: new Map(), hubUrl: '', hubSecret: '' }
+    const std: DeploymentConfig = {
+      role: 'standalone',
+      code: '',
+      spokes: new Map(),
+      hubUrl: '',
+      hubSecret: '',
+    }
     const r = decideCallbackRoute(std, 'a'.repeat(32))
     expect(r).toEqual({ kind: 'local', account: 'a'.repeat(32) })
   })
