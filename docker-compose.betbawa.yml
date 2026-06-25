@@ -1,0 +1,150 @@
+# ============================================================
+# Production Compose — betbawa (Dokploy)
+# ============================================================
+# External DB + Redis. Set DATABASE_URL / REDIS_URL in Dokploy.
+#
+# Isolation notes (why this differs from the generic prod file):
+#   - Service names suffixed `-betbawa` so their network aliases
+#     do NOT collide with other deployments on dokploy-network.
+#   - Inter-service traffic runs on a PRIVATE `internal` network;
+#     dokploy-network is only attached where the proxy needs reach.
+#   - Image tags suffixed `:betbawa` so rebuilds don't clobber other apps.
+
+services:
+  api-betbawa:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: world-bingo-api:betbawa
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DB_MAX_RETRIES: ${DB_MAX_RETRIES:-30}
+      DB_RETRY_DELAY_SECS: ${DB_RETRY_DELAY_SECS:-2}
+      RUN_SEED: "true"
+      SEED_STRICT: ${SEED_STRICT:-false}
+      MIGRATION_ROLLBACK_ID: ${MIGRATION_ROLLBACK_ID:-}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64:-}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PORT: 8080
+      HOST: 0.0.0.0
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
+      GASEA_API_KEY: ${GASEA_API_KEY:-}
+      GASEA_API_SECRET: ${GASEA_API_SECRET:-}
+      GASEA_SIGNATURE_DEBUG: ${GASEA_SIGNATURE_DEBUG:-false}
+      GASEA_DEFAULT_CURRENCY: ${GASEA_DEFAULT_CURRENCY:-ETB}
+      PALACE_API_BASE_URL: ${PALACE_API_BASE_URL:-https://agent.goldslotpalase.com}
+      PALACE_API_TOKEN: ${PALACE_API_TOKEN:-}
+      PALACE_CALLBACK_TOKEN: ${PALACE_CALLBACK_TOKEN:-}
+      PALACE_CURRENCY: ${PALACE_CURRENCY:-ETB}
+      PALACE_SPOKE_TIMEOUT_MS: ${PALACE_SPOKE_TIMEOUT_MS:-5000}
+      DEPLOYMENT_ROLE: ${DEPLOYMENT_ROLE:-standalone}
+      DEPLOYMENT_CODE: ${DEPLOYMENT_CODE:-}
+      HUB_DEPLOYMENTS: ${HUB_DEPLOYMENTS:-}
+      HUB_URL: ${HUB_URL:-}
+      HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
+      WEB_BASE_URL: ${WEB_BASE_URL:-https://www.betbawa.bet}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+    volumes:
+      - uploads_data:/app/apps/api/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - internal
+
+  web-betbawa:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: world-bingo-web:betbawa
+    restart: unless-stopped
+    ports:
+      - "3000"
+    environment:
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
+      NUXT_PUBLIC_WS_URL: /
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-betbawa:8080}
+      NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
+      NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+    depends_on:
+      api-betbawa:
+        condition: service_healthy
+    networks:
+      - internal
+      - dokploy-network
+
+  admin-betbawa:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    image: world-bingo-admin:betbawa
+    restart: unless-stopped
+    ports:
+      - "3001"
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-betbawa:8080}
+      NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
+    depends_on:
+      api-betbawa:
+        condition: service_healthy
+    networks:
+      - internal
+      - dokploy-network
+
+  prometheus-betbawa:
+    image: prom/prometheus:v2.51.2
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/prometheus/prometheus.betbawa.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - api-betbawa
+    networks:
+      - internal
+
+  grafana-betbawa:
+    image: grafana/grafana:10.4.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/datasources.betbawa.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./infrastructure/grafana/dashboard-provider.yml:/etc/grafana/provisioning/dashboards/provider.yml:ro
+      - ./infrastructure/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus-betbawa
+    networks:
+      - internal
+      - dokploy-network
+
+volumes:
+  uploads_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  internal:
+  dokploy-network:
+    external: true
