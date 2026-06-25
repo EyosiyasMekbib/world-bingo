@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { verifyPalaceCallbackToken } from '../../gateways/game-provider/palace-callback.middleware.js'
 import { PalaceWalletService } from '../../services/palace-wallet.service.js'
+import { deploymentConfig } from '../../gateways/hub/deployment-config.js'
+import { decideCallbackRoute } from '../../gateways/hub/route-callback.js'
+import { signBody, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hub/hub-auth.js'
 
 /**
  * Palace Casino wallet callback route.
@@ -49,6 +52,39 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
             '[Palace] callback handled',
           )
           return reply.status(200).send(payload)
+        }
+
+        // Hub routing: an account may belong to another deployment.
+        const cfg = deploymentConfig()
+        if (cfg.role === 'hub' && typeof d.account === 'string') {
+          const route = decideCallbackRoute(cfg, d.account)
+          if (route.kind === 'unknown') {
+            return respond({ result: 1002, status: 'USER_NOT_FOUND', data: null })
+          }
+          if (route.kind === 'forward') {
+            // Strip the prefix and relay the spoke's verbatim response.
+            const forwardBody = JSON.stringify({ command, data: { ...d, account: route.account } })
+            const sig = signBody(route.spoke.secret, forwardBody)
+            const res = await withTimeout(
+              fetch(`${route.spoke.baseUrl}/v1/hub/spoke-callback`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  [DEPLOYMENT_HEADER]: cfg.code,
+                  [SIGNATURE_HEADER]: sig,
+                },
+                body: forwardBody,
+              }),
+              HANDLER_TIMEOUT_MS,
+            )
+            if (!res.ok) {
+              // Non-200 to the provider → it retries. Never fabricate success.
+              return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
+            }
+            return respond(await res.json() as { result: number; status: string; data: object | null })
+          }
+          // route.kind === 'local' → continue with the stripped account.
+          d.account = route.account
         }
 
         const dispatch = (): Promise<{ result: number; status: string; data: object | null }> => {
