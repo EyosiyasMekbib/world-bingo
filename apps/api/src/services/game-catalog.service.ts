@@ -94,7 +94,10 @@ export class GameCatalogService {
     /**
      * Sync all games for a vendor from the aggregator API into the DB.
      */
-    static async syncGames(providerCode: string, vendorCode: string): Promise<number> {
+    static async syncGames(
+        providerCode: string,
+        vendorCode: string,
+    ): Promise<{ total: number; reenabled: number; autoHidden: number }> {
         const gateway = getGameProviderGateway(providerCode)
         const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
         if (!provider) throw new Error(`Provider not found: ${providerCode}`)
@@ -154,12 +157,36 @@ export class GameCatalogService {
         })
         const seen = new Set(seenCodes)
         const reenableIds = autoHidden.filter((g) => seen.has(g.gameCode)).map((g) => g.id)
+        let reenabled = 0
         if (reenableIds.length > 0) {
             await prisma.providerGame.updateMany({
                 where: { id: { in: reenableIds } },
                 data: { isActive: true, autoHidden: false },
             })
-            console.log(`[GameCatalog] Re-enabled ${reenableIds.length} previously auto-hidden games for ${providerCode}/${vendorCode}`)
+            reenabled = reenableIds.length
+            console.log(`[GameCatalog] Re-enabled ${reenabled} previously auto-hidden games for ${providerCode}/${vendorCode}`)
+        }
+
+        // Inverse self-heal: auto-hide games we still list as active but the provider
+        // no longer returns (delisted / turned off upstream) so a dead tile vanishes
+        // without a player having to hit it. Scoped to this vendor; never touches
+        // admin-disabled games (autoHidden=false). Guarded on a non-empty sync so a
+        // transient empty response can't wipe the whole vendor.
+        let autoHiddenCount = 0
+        if (seenCodes.length > 0) {
+            const delisted = await prisma.providerGame.updateMany({
+                where: {
+                    providerId: provider.id,
+                    vendorId: vendor.id,
+                    isActive: true,
+                    gameCode: { notIn: seenCodes },
+                },
+                data: { isActive: false, autoHidden: true },
+            })
+            autoHiddenCount = delisted.count
+            if (autoHiddenCount > 0) {
+                console.log(`[GameCatalog] Auto-hid ${autoHiddenCount} delisted games for ${providerCode}/${vendorCode}`)
+            }
         }
 
         // Invalidate Redis cache for this provider (games + categories)
@@ -168,13 +195,15 @@ export class GameCatalogService {
         await redis.del(`tp:categories:${providerCode}`)
 
         console.log(`[GameCatalog] Synced ${total} games for ${providerCode}/${vendorCode}`)
-        return total
+        return { total, reenabled, autoHidden: autoHiddenCount }
     }
 
     /**
      * Full sync: vendors + all games.
      */
-    static async syncAll(providerCode: string): Promise<void> {
+    static async syncAll(
+        providerCode: string,
+    ): Promise<{ total: number; reenabled: number; autoHidden: number }> {
         await GameCatalogService.syncVendors(providerCode)
 
         const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
@@ -184,13 +213,21 @@ export class GameCatalogService {
             where: { providerId: provider.id, isActive: true },
         })
 
+        const summary = { total: 0, reenabled: 0, autoHidden: 0 }
         for (const vendor of vendors) {
-            await GameCatalogService.syncGames(providerCode, vendor.code).catch((err) => {
+            const r = await GameCatalogService.syncGames(providerCode, vendor.code).catch((err) => {
                 console.error(`[GameCatalog] Failed to sync games for ${providerCode}/${vendor.code}:`, err.message)
+                return null
             })
+            if (r) {
+                summary.total += r.total
+                summary.reenabled += r.reenabled
+                summary.autoHidden += r.autoHidden
+            }
         }
 
         console.log(`[GameCatalog] Full sync complete for ${providerCode}`)
+        return summary
     }
 
     /**

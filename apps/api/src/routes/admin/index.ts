@@ -351,8 +351,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         f.post('/providers/:code/sync', async (req: any, reply) => {
             const { GameCatalogService } = await import('../../services/game-catalog.service.js')
-            await GameCatalogService.syncAll(req.params.code)
-            return { success: true }
+            const summary = await GameCatalogService.syncAll(req.params.code)
+            return { success: true, ...summary }
         })
 
         f.get('/providers/:code/vendors', async (req: any, _reply) => {

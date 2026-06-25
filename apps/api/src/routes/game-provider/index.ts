@@ -10,6 +10,25 @@ import { accountForLaunch } from './account-for-launch.js'
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
 /**
+ * True when a launch failure means THIS specific game is unavailable upstream
+ * (turned off, removed, or under maintenance) — as opposed to a transient or
+ * account-level error (network, signature, wallet, user disabled). Only these
+ * justify auto-hiding the tile; the catalog sync re-enables it automatically if
+ * the game reappears upstream.
+ */
+function isGameUnavailableUpstream(err: any): boolean {
+    // Palace agent-API: GAME_NOT_FOUND
+    if (err?.palaceCode === 2003) return true
+    // GASea surfaces statuses in the error message, e.g. `GASea error: SC_GAME_DISABLED — …`.
+    // Match game/vendor-level outages only — never user/account-level (e.g. SC_USER_DISABLED).
+    const msg = String(err?.message ?? '')
+    return (
+        /SC_(GAME|VENDOR)_(DISABLED|NOT_EXISTS|NOT_FOUND|MAINTENANCE)/i.test(msg) ||
+        /\bgame (is )?disabled\b/i.test(msg)
+    )
+}
+
+/**
  * Player-facing provider/game routes.
  * All mounted under /providers (configured in index.ts).
  * Listing endpoints (providers, games, categories) are public.
@@ -135,10 +154,11 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             } catch (err: any) {
                 const msg: string = err?.message ?? ''
 
-                // Provider reports the game is turned off on their side (e.g. GASea
-                // SC_GAME_DISABLED). Hide the dead tile from our catalog so other
-                // players stop hitting it, then return a friendly 409 instead of a 500.
-                if (/disabled/i.test(msg)) {
+                // Provider reports this game is unavailable on their side (disabled,
+                // removed, or under maintenance — GASea SC_GAME_*, Palace 2003). Hide
+                // the dead tile from our catalog so other players stop hitting it, then
+                // return a friendly 409 instead of a 500.
+                if (isGameUnavailableUpstream(err)) {
                     await prisma.providerGame
                         .updateMany({
                             where: { provider: { code: providerCode }, gameCode },
