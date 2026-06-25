@@ -302,6 +302,7 @@ const FEATURED_GAMES = [
   'soccerstriker',
   'theincredibleballoonmachine',
   'fruitblast',
+  'bg25plinko',
 ]
 
 function featuredRank(g: ProviderGame) {
