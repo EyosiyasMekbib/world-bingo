@@ -38,4 +38,9 @@ describe('deployment-config', () => {
     process.env.DEPLOYMENT_CODE = 'BAD'
     expect(() => loadDeploymentConfig()).toThrow(/DEPLOYMENT_CODE/)
   })
+
+  it('throws on an unrecognized DEPLOYMENT_ROLE', () => {
+    process.env.DEPLOYMENT_ROLE = 'huub'
+    expect(() => loadDeploymentConfig()).toThrow(/DEPLOYMENT_ROLE/)
+  })
 })

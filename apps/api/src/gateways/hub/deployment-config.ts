@@ -14,6 +14,9 @@ export interface DeploymentConfig {
 
 export function loadDeploymentConfig(): DeploymentConfig {
   const role = (process.env.DEPLOYMENT_ROLE ?? 'standalone') as DeploymentRole
+  if (role !== 'standalone' && role !== 'hub' && role !== 'spoke') {
+    throw new Error(`DEPLOYMENT_ROLE "${role}" is invalid (expected standalone | hub | spoke)`)
+  }
   if (role === 'standalone') {
     return { role, code: '', spokes: new Map(), hubUrl: '', hubSecret: '' }
   }
