@@ -75,21 +75,32 @@ describe('PalaceWalletService', () => {
         expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
     })
 
-    it('getStatus returns NOT_FOUND when trans_guid does not exist', async () => {
+    it('getStatus returns 21 when user does not exist', async () => {
+        p.user.findUnique.mockResolvedValue(null)
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.getStatus('nobody', 'any-guid')
+        expect(res).toEqual({ result: 21, status: 'USER_NOT_FOUND', data: null })
+    })
+
+    it('getStatus returns 42 when trans_guid does not exist', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getStatus('alice', 'unknown-guid')
-        expect(res.result).toBe(0)
-        expect((res.data as any).trans_status).toBe('NOT_FOUND')
+        expect(res).toEqual({ result: 42, status: 'TRANS_ID_NOT_FOUND', data: null })
     })
 
-    it('getStatus returns OK when trans_guid exists', async () => {
+    it('getStatus returns OK with account/trans_guid/trans_status when tx exists', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({ id: 'some-tx' })
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '100.00', bonusBalance: '0.00' })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getStatus('alice', 'tg-exists')
         expect(res.result).toBe(0)
+        expect(res.status).toBe('OK')
+        expect((res.data as any).trans_guid).toBe('tg-exists')
         expect((res.data as any).trans_status).toBe('OK')
     })
 })
