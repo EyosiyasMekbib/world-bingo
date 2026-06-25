@@ -97,3 +97,5 @@ pnpm --filter @world-bingo/game-logic test
 
 ### Environment Setup
 Copy `.env.example` → `.env` at repo root and `apps/api/.env.example` → `apps/api/.env`. The `JWT_SECRET` must be a 64-byte hex string and must match between API and admin app (`NUXT_JWT_SECRET`).
+
+For shared-provider multi-deployment setups, one deployment is elected the **hub** (owns the provider token + the single callback URL) and the others are **spokes** that forward provider calls through it. Set `DEPLOYMENT_ROLE`/`DEPLOYMENT_CODE` plus the hub/spoke vars — see `apps/api/.env.example`. Default `standalone` preserves single-deployment behaviour.

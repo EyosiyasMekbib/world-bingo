@@ -371,6 +371,49 @@ export class PalaceWalletService {
         return ok({ balance: Number(balanceAfter.toFixed(2)) })
     }
 
+    /** Dispatch a provider callback command to the matching wallet handler. */
+    static async dispatch(command: string | undefined, d: Record<string, any>): Promise<PalaceResponse> {
+        switch (command) {
+            case 'authenticate':
+                return PalaceWalletService.authenticate(d.account)
+            case 'balance':
+                return PalaceWalletService.getBalance(d.account)
+            case 'bet':
+                return PalaceWalletService.processBet({
+                    trans_guid: d.trans_guid,
+                    account: d.account,
+                    gplay_id: d.gplay_id,
+                    round_id: d.round_id,
+                    game_code: d.game_code,
+                    amount: d.amount,
+                })
+            case 'win':
+                return PalaceWalletService.processWin({
+                    trans_guid: d.trans_guid,
+                    account: d.account,
+                    gplay_id: d.gplay_id,
+                    round_id: d.round_id,
+                    game_code: d.game_code,
+                    amount: d.amount,
+                    type: d.type ?? 2,
+                })
+            case 'cancel':
+                return PalaceWalletService.processCancel({
+                    trans_guid: d.trans_guid,
+                    account: d.account,
+                    gplay_id: d.gplay_id,
+                    round_id: d.round_id,
+                    game_code: d.game_code,
+                    amount: d.amount ?? 0,
+                    cancle_trans_guid: d.cancel_trans_guid ?? d.cancle_trans_guid,
+                })
+            case 'status':
+                return PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? '')
+            default:
+                return { result: 1006, status: 'COMMAND_NOT_FOUND', data: null }
+        }
+    }
+
     static async getStatus(account: string, transGuid: string): Promise<PalaceResponse> {
         const providerId = await getPalaceProviderId()
         const tx = transGuid

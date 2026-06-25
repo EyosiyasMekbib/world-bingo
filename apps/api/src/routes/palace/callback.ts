@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { verifyPalaceCallbackToken } from '../../gateways/game-provider/palace-callback.middleware.js'
 import { PalaceWalletService } from '../../services/palace-wallet.service.js'
+import { deploymentConfig } from '../../gateways/hub/deployment-config.js'
+import { decideCallbackRoute } from '../../gateways/hub/route-callback.js'
+import { signBody, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hub/hub-auth.js'
 
 /**
  * Palace Casino wallet callback route.
@@ -15,6 +18,10 @@ import { PalaceWalletService } from '../../services/palace-wallet.service.js'
 // sending the request") if we don't answer in time. Cap our own work well under
 // that so we ALWAYS return a valid 200 body instead of letting the socket hang.
 const HANDLER_TIMEOUT_MS = Number(process.env.PALACE_CALLBACK_TIMEOUT_MS ?? 8000)
+
+// The spoke leg must finish with margin to spare before Palace's own client aborts,
+// so it gets a tighter budget than the overall handler.
+const SPOKE_FORWARD_TIMEOUT_MS = Number(process.env.PALACE_SPOKE_TIMEOUT_MS ?? 5000)
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -51,49 +58,67 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
           return reply.status(200).send(payload)
         }
 
-        const dispatch = (): Promise<{ result: number; status: string; data: object | null }> => {
-          switch (command) {
-            case 'authenticate':
-              return PalaceWalletService.authenticate(d.account)
-            case 'balance':
-              return PalaceWalletService.getBalance(d.account)
-            case 'bet':
-              return PalaceWalletService.processBet({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount,
-              })
-            case 'win':
-              return PalaceWalletService.processWin({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount,
-                type: d.type ?? 2,
-              })
-            case 'cancel':
-              return PalaceWalletService.processCancel({
-                trans_guid: d.trans_guid,
-                account: d.account,
-                gplay_id: d.gplay_id,
-                round_id: d.round_id,
-                game_code: d.game_code,
-                amount: d.amount ?? 0,
-                // Palace sends the correctly-spelled `cancel_trans_guid`; keep the
-                // legacy misspelling as a fallback for safety.
-                cancle_trans_guid: d.cancel_trans_guid ?? d.cancle_trans_guid,
-              })
-            case 'status':
-              return PalaceWalletService.getStatus(d.account, d.trans_guid ?? d.trans_id ?? '')
-            default:
-              return Promise.resolve({ result: 1006, status: 'COMMAND_NOT_FOUND', data: null })
+        // Hub routing: an account may belong to another deployment.
+        const cfg = deploymentConfig()
+        if (cfg.role === 'hub' && typeof d.account === 'string') {
+          const route = decideCallbackRoute(cfg, d.account)
+          if (route.kind === 'unknown') {
+            return respond({ result: 1002, status: 'USER_NOT_FOUND', data: null })
           }
+          if (route.kind === 'forward') {
+            // Strip the prefix and relay the spoke's verbatim response.
+            const forwardBody = JSON.stringify({ command, data: { ...d, account: route.account } })
+            const sig = signBody(route.spoke.secret, forwardBody)
+            try {
+              // Abort the spoke request once the tighter budget elapses, so the spoke
+              // doesn't keep processing a bet after the hub has already given up.
+              const controller = new AbortController()
+              const timer = setTimeout(() => controller.abort(), SPOKE_FORWARD_TIMEOUT_MS)
+              let res: Response
+              try {
+                res = await fetch(`${route.spoke.baseUrl}/v1/hub/spoke-callback`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    [DEPLOYMENT_HEADER]: cfg.code,
+                    [SIGNATURE_HEADER]: sig,
+                  },
+                  body: forwardBody,
+                  signal: controller.signal,
+                })
+              } finally {
+                clearTimeout(timer)
+              }
+              if (!res.ok) {
+                // Non-200 to the provider → it retries. Never fabricate success.
+                req.log.error(
+                  { spoke: route.spoke.code, baseUrl: route.spoke.baseUrl, httpStatus: res.status, command },
+                  '[Palace] spoke forward returned non-200',
+                )
+                return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
+              }
+              const relayed = (await res.json()) as { result: number; status: string; data: object | null }
+              return respond(relayed)
+            } catch (err) {
+              // Network throw, abort, or a non-JSON body — log which spoke failed and
+              // return a valid provider error instead of a thrown/hung response.
+              req.log.error(
+                { err, spoke: route.spoke.code, baseUrl: route.spoke.baseUrl, command },
+                '[Palace] spoke forward failed',
+              )
+              return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
+            }
+          }
+          // route.kind === 'local' → continue with the stripped account.
+          // Preserve the original namespaced account in logs before mutating d.
+          req.log.info(
+            { namespacedAccount: d.account, strippedAccount: route.account, command },
+            '[Palace] hub-local callback',
+          )
+          d.account = route.account
         }
+
+        const dispatch = () => PalaceWalletService.dispatch(command, d)
 
         return respond(await withTimeout(dispatch(), HANDLER_TIMEOUT_MS))
       } catch (err) {

@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma.js'
 import { GameCatalogService } from '../../services/game-catalog.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { EventService } from '../../services/event.service.js'
+import { accountForLaunch } from './account-for-launch.js'
 
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
@@ -114,7 +115,8 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
 
             // GASea requires 3–40 alphanumeric username. Derive a stable identifier
             // from the user's UUID by stripping dashes (32 hex chars, always valid).
-            const gaseaUsername = user.id.replace(/-/g, '')
+            const bareAccount = user.id.replace(/-/g, '')
+            const gaseaUsername = accountForLaunch(bareAccount)
 
             let gameUrl: string
             let token: string
@@ -211,9 +213,11 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         preValidation: [fastify.authenticate],
         handler: async (req) => {
             const { providerCode } = req.params as { providerCode: string }
-            const user = (req as any).user as { username: string }
+            const user = (req as any).user as { id: string }
             const gateway = getGameProviderGateway(providerCode)
-            await gateway.terminateSession(user.username)
+            // Must match the account the session was launched under (UUID-hex,
+            // hub-namespaced on a spoke) — not the display username.
+            await gateway.terminateSession(accountForLaunch(user.id.replace(/-/g, '')))
             return { success: true }
         },
     })
