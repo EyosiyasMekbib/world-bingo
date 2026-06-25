@@ -65,6 +65,28 @@ describe('internal provider API', () => {
     expect(res.statusCode).toBe(401)
   })
 
+  it('returns ok:false when params is missing entirely', async () => {
+    const app = await buildApp()
+    const res = await post(app, { providerCode: 'palace', method: 'getGameUrl' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: false, error: { message: 'params is required' } })
+  })
+
+  it('returns ok:false when username is missing for a user-scoped method', async () => {
+    const app = await buildApp()
+    const res = await post(app, { providerCode: 'palace', method: 'getGameUrl', params: { gameCode: 'g' } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: false, error: { message: 'params.username is required' } })
+    expect(getGameUrl).not.toHaveBeenCalled()
+  })
+
+  it('returns ok:false for an unknown method', async () => {
+    const app = await buildApp()
+    const res = await post(app, { providerCode: 'palace', method: 'noSuchMethod', params: {} })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: false, error: { message: 'unknown method: noSuchMethod' } })
+  })
+
   it('returns provider errors in the body (ok:false), not as a throw', async () => {
     getGameUrl.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'PALACE_X', palaceCode: 42 }))
     const app = await buildApp()

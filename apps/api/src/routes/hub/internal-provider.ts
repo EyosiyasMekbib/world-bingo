@@ -28,30 +28,50 @@ export const internalProviderRoute: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ error: 'unauthorized' })
     }
 
-    const { providerCode, method, params } = req.body as { providerCode: string; method: string; params: any }
-    const gateway = getGameProviderGateway(providerCode) as any
+    const verifiedDep = dep as string // guaranteed non-null past the auth gate
+
+    const { providerCode, method, params } = req.body as { providerCode?: string; method?: string; params?: any }
 
     try {
+      if (!providerCode) {
+        return reply.status(200).send({ ok: false, error: { message: 'providerCode is required' } })
+      }
+      if (!params || typeof params !== 'object') {
+        return reply.status(200).send({ ok: false, error: { message: 'params is required' } })
+      }
+
+      let gateway: any
+      try {
+        gateway = getGameProviderGateway(providerCode)
+      } catch {
+        return reply.status(200).send({ ok: false, error: { message: `unknown provider: ${providerCode}` } })
+      }
+
       let result: unknown
       switch (method) {
         case 'getGameUrl':
-          result = await gateway.getGameUrl({ ...params, username: namespaceAccount(dep!, params.username) })
+        case 'terminateSession': {
+          if (typeof params.username !== 'string' || params.username.length === 0) {
+            return reply.status(200).send({ ok: false, error: { message: 'params.username is required' } })
+          }
+          const nsUsername = namespaceAccount(verifiedDep, params.username)
+          result = method === 'getGameUrl'
+            ? await gateway.getGameUrl({ ...params, username: nsUsername })
+            : await gateway.terminateSession(nsUsername)
           break
-        case 'terminateSession':
-          result = await gateway.terminateSession(namespaceAccount(dep!, params.username))
-          break
+        }
         case 'getVendors':
         case 'getGames':
         case 'getTransactions':
         case 'getTransactionDetail':
-          result = await gateway[method](...(params?.args ?? []))
+          result = await gateway[method](...(params.args ?? []))
           break
         default:
-          return reply.status(400).send({ error: `unknown method: ${method}` })
+          return reply.status(200).send({ ok: false, error: { message: `unknown method: ${method}` } })
       }
       return reply.status(200).send({ ok: true, result })
     } catch (err: any) {
-      req.log.error({ err, providerCode, method, spoke: dep }, '[Hub] internal provider call failed')
+      req.log.error({ err, providerCode, method, spoke: verifiedDep }, '[Hub] internal provider call failed')
       return reply.status(200).send({ ok: false, error: { message: err?.message, code: err?.code, palaceCode: err?.palaceCode } })
     }
   })
