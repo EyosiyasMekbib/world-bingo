@@ -213,9 +213,11 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         preValidation: [fastify.authenticate],
         handler: async (req) => {
             const { providerCode } = req.params as { providerCode: string }
-            const user = (req as any).user as { username: string }
+            const user = (req as any).user as { id: string }
             const gateway = getGameProviderGateway(providerCode)
-            await gateway.terminateSession(user.username)
+            // Must match the account the session was launched under (UUID-hex,
+            // hub-namespaced on a spoke) — not the display username.
+            await gateway.terminateSession(accountForLaunch(user.id.replace(/-/g, '')))
             return { success: true }
         },
     })
