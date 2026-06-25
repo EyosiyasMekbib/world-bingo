@@ -5,7 +5,7 @@ import { resetDeploymentConfigForTests } from '../gateways/hub/deployment-config
 
 vi.mock('../services/palace-wallet.service.js', () => ({
   PalaceWalletService: {
-    dispatch: vi.fn(async (command: string, d: any) => ({ result: 1, status: 'OK', data: { account: d.account, balance: 12.5 } })),
+    dispatch: vi.fn(async (command: string, d: any) => ({ result: 0, status: 'OK', data: { account: d.account, balance: 12.5 } })),
   },
 }))
 
@@ -35,7 +35,7 @@ describe('spoke-callback sink', () => {
       payload: body,
     })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toMatchObject({ result: 1, status: 'OK' })
+    expect(res.json()).toMatchObject({ result: 0, status: 'OK' })
   })
 
   it('rejects a bad signature with 401', async () => {

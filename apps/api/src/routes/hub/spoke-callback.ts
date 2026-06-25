@@ -11,7 +11,7 @@ export const spokeCallbackRoute: FastifyPluginAsync = async (fastify) => {
   // Capture the raw body so the HMAC matches byte-for-byte what the hub signed.
   fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
     try {
-      done(null, { __raw: body as string, ...JSON.parse(body as string) })
+      done(null, { __rawBody: body as string, ...JSON.parse(body as string) })
     } catch (e) {
       done(e as Error, undefined)
     }
@@ -19,7 +19,7 @@ export const spokeCallbackRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/', async (req, reply) => {
     const cfg = deploymentConfig()
-    const raw = (req.body as any)?.__raw ?? ''
+    const raw = (req.body as any)?.__rawBody ?? ''
     const sig = req.headers[SIGNATURE_HEADER] as string | undefined
     const dep = req.headers[DEPLOYMENT_HEADER] as string | undefined
 
@@ -28,6 +28,12 @@ export const spokeCallbackRoute: FastifyPluginAsync = async (fastify) => {
     }
 
     const { command, data: d = {} } = req.body as { command?: string; data?: Record<string, any> }
-    return reply.status(200).send(await PalaceWalletService.dispatch(command, d))
+    req.log.info({ callingHub: dep, command }, '[Hub] spoke-callback received')
+    try {
+      return reply.status(200).send(await PalaceWalletService.dispatch(command, d))
+    } catch (err) {
+      req.log.error({ err, command, callingHub: dep }, '[Hub] spoke-callback dispatch failed')
+      return reply.status(200).send({ result: 1001, status: 'INTERNAL_SERVER_ERROR', data: null })
+    }
   })
 }
