@@ -119,17 +119,16 @@ export class GameController {
     }
 
     static async getAvailableCartelas(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
-         // Fetch all cartelas (limit 100 for now)
-         const allCartelas = await prisma.cartela.findMany({ take: 100 })
-         
-         // Fetch used cartelas in this game
-         const entries = await prisma.gameEntry.findMany({
-             where: { gameId: request.params.id },
-             select: { cartelaId: true }
-         })
-         
+         const [allCartelas, entries] = await Promise.all([
+             prisma.cartela.findMany({ take: 100 }),
+             prisma.gameEntry.findMany({
+                 where: { gameId: request.params.id },
+                 select: { cartelaId: true },
+             }),
+         ])
+
          const usedIds = new Set(entries.map(e => e.cartelaId))
-         
+
          return allCartelas.map(c => ({
              ...c,
              isTaken: usedIds.has(c.id)

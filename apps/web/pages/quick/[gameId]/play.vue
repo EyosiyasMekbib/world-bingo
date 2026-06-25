@@ -755,7 +755,11 @@ async function init() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const game = await gameStore.fetchGameDetails(gameId)
+    // Game details and wallet are independent — fetch in parallel
+    const [game] = await Promise.all([
+      gameStore.fetchGameDetails(gameId),
+      auth.fetchWallet(),
+    ])
     if (!game) { errorMsg.value = 'Game not found.'; return }
 
     // Set game status from server
@@ -788,9 +792,6 @@ async function init() {
     if (rawStatus !== 'IN_PROGRESS') {
       await gameStore.fetchAvailableCartelas(gameId)
     }
-
-    // Refresh wallet so balance is current
-    await auth.fetchWallet()
 
     // Restore countdown if still valid
     const storedStartsAt = gameStore.countdowns[gameId]
