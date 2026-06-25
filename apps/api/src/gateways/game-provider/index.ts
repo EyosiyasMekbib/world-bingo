@@ -1,6 +1,8 @@
 import type { GameProviderGateway } from './game-provider.interface.js'
 import { GaseaGateway } from './gasea.gateway.js'
 import { PalaceGateway } from './palace.gateway.js'
+import { deploymentConfig } from '../hub/deployment-config.js'
+import { RemoteGameProviderGateway } from '../hub/remote-game-provider.gateway.js'
 
 const registry = new Map<string, GameProviderGateway>()
 
@@ -18,9 +20,16 @@ export function listGameProviderGateways(): GameProviderGateway[] {
     return [...registry.values()]
 }
 
-// Register built-in providers
-registerGameProviderGateway(new GaseaGateway())
-registerGameProviderGateway(new PalaceGateway())
+// Register providers based on deployment role.
+if (deploymentConfig().role === 'spoke') {
+    // Spokes have no provider credentials — every call is forwarded to the hub.
+    registerGameProviderGateway(new RemoteGameProviderGateway('palace'))
+    registerGameProviderGateway(new RemoteGameProviderGateway('gasea'))
+} else {
+    // standalone + hub talk to providers directly.
+    registerGameProviderGateway(new GaseaGateway())
+    registerGameProviderGateway(new PalaceGateway())
+}
 
 export type { GameProviderGateway }
 export * from './game-provider.interface.js'
