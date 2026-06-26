@@ -1,0 +1,126 @@
+# ============================================================
+# Staging Compose — aradabingo (Dokploy)
+# ============================================================
+# Mirror of docker-compose.aradabingo.yml, isolated for STAGING.
+# External DB + Redis. Set DATABASE_URL / REDIS_URL in Dokploy.
+#
+# Isolation notes (why this differs from the prod brand file):
+#   - Service names suffixed `-arada-stg` so their network aliases
+#     do NOT collide with the aradabingo PROD stack (api/web/admin)
+#     or any other deployment on dokploy-network.
+#   - Inter-service traffic runs on a PRIVATE `internal` network;
+#     dokploy-network is only attached where the proxy needs reach.
+#   - Image tags suffixed `:arada-stg` so staging builds never
+#     clobber the prod images.
+#   - Monitoring (Prometheus/Grafana) intentionally omitted to keep
+#     staging lean.
+
+services:
+  api-arada-stg:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: world-bingo-api:arada-stg
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DB_MAX_RETRIES: ${DB_MAX_RETRIES:-30}
+      DB_RETRY_DELAY_SECS: ${DB_RETRY_DELAY_SECS:-2}
+      RUN_SEED: ${RUN_SEED:-false}
+      SEED_STRICT: ${SEED_STRICT:-false}
+      MIGRATION_ROLLBACK_ID: ${MIGRATION_ROLLBACK_ID:-}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64:-}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PORT: 8080
+      HOST: 0.0.0.0
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
+      GASEA_API_KEY: ${GASEA_API_KEY:-}
+      GASEA_API_SECRET: ${GASEA_API_SECRET:-}
+      GASEA_SIGNATURE_DEBUG: ${GASEA_SIGNATURE_DEBUG:-false}
+      GASEA_DEFAULT_CURRENCY: ${GASEA_DEFAULT_CURRENCY:-ETB}
+      PALACE_API_BASE_URL: ${PALACE_API_BASE_URL:-https://agent.goldslotpalase.com}
+      PALACE_API_TOKEN: ${PALACE_API_TOKEN:-}
+      PALACE_CALLBACK_TOKEN: ${PALACE_CALLBACK_TOKEN:-}
+      PALACE_CURRENCY: ${PALACE_CURRENCY:-ETB}
+      PALACE_SPOKE_TIMEOUT_MS: ${PALACE_SPOKE_TIMEOUT_MS:-5000}
+      DEPLOYMENT_ROLE: ${DEPLOYMENT_ROLE:-standalone}
+      DEPLOYMENT_CODE: ${DEPLOYMENT_CODE:-}
+      HUB_DEPLOYMENTS: ${HUB_DEPLOYMENTS:-}
+      HUB_URL: ${HUB_URL:-}
+      HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
+      WEB_BASE_URL: ${WEB_BASE_URL:-https://staging.aradabingo.bet}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+    volumes:
+      - uploads_data:/app/apps/api/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    networks:
+      - internal
+      - dokploy-network
+
+  web-arada-stg:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Browser /api, /socket.io, /v1, /uploads must proxy to THIS stack's api,
+        # not the bare `api` alias shared on dokploy-network.
+        NUXT_API_PROXY_TARGET: http://api-arada-stg:8080
+    image: world-bingo-web:arada-stg
+    restart: unless-stopped
+    ports:
+      - "3000"
+    environment:
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
+      NUXT_PUBLIC_WS_URL: /
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-arada-stg:8080}
+      NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
+      NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+    depends_on:
+      api-arada-stg:
+        condition: service_healthy
+    networks:
+      - internal
+      - dokploy-network
+
+  admin-arada-stg:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        NUXT_API_PROXY_TARGET: http://api-arada-stg:8080
+    image: world-bingo-admin:arada-stg
+    restart: unless-stopped
+    ports:
+      - "3001"
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-arada-stg:8080}
+      NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
+    depends_on:
+      api-arada-stg:
+        condition: service_healthy
+    networks:
+      - internal
+      - dokploy-network
+
+volumes:
+  uploads_data:
+
+networks:
+  internal:
+  dokploy-network:
+    external: true
