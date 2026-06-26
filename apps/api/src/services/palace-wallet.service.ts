@@ -78,9 +78,22 @@ async function lockWallet(
     tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
     userId: string,
 ): Promise<WalletRow> {
-    const rows = await tx.$queryRaw<WalletRow[]>`
+    const select = () => tx.$queryRaw<WalletRow[]>`
         SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
     `
+    let rows = await select()
+    if (!rows[0]) {
+        // An existing user can lack a wallet row (e.g. clerk/staff accounts created
+        // without one). Provision a zero-balance wallet so every command behaves the
+        // same as for a funded-but-empty user — instead of crashing here with 1001
+        // while getBalance returns 21 for the same account.
+        try {
+            await tx.wallet.create({ data: { userId, realBalance: new Decimal(0), bonusBalance: new Decimal(0) } })
+        } catch {
+            // Concurrent insert already created it — fall through to re-select & lock.
+        }
+        rows = await select()
+    }
     if (!rows[0]) throw { code: 'USER_NOT_FOUND' }
     return rows[0]
 }
@@ -116,10 +129,13 @@ export class PalaceWalletService {
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
         if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
+        // A user with no wallet row is a zero-balance user, not a missing user —
+        // mirror authenticate()/getStatus(), which already treat null as 0. Returning
+        // 21 here contradicted authenticate's "OK, balance 0" for the same account.
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-        if (!wallet) return palaceErr(21, 'USER_NOT_FOUND')
-
-        const balance = new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+        const balance = wallet
+            ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+            : new Decimal(0)
         return ok({ balance: Number(balance.toFixed(2)) })
     }
 

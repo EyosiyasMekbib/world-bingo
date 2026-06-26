@@ -103,4 +103,65 @@ describe('PalaceWalletService', () => {
         expect((res.data as any).trans_guid).toBe('tg-exists')
         expect((res.data as any).trans_status).toBe('OK')
     })
+
+    // ── walletless user (existing + active, but no wallet row) ──────────────────
+    // An active user can have no wallet row (e.g. clerk/staff accounts created
+    // without one). Before the fix the commands disagreed for the SAME account:
+    // authenticate said "OK, balance 0", getBalance said USER_NOT_FOUND (21), and
+    // bet/win threw → 1001. They must all behave like a plain zero-balance user.
+    function makeTx(walletSelects: any[]) {
+        const $queryRaw = vi.fn()
+        for (const r of walletSelects) $queryRaw.mockResolvedValueOnce(r)
+        return {
+            $queryRaw,
+            wallet: { create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}) },
+            thirdPartyTransaction: { create: vi.fn().mockResolvedValue({}) },
+            transaction: { create: vi.fn().mockResolvedValue({}) },
+        }
+    }
+
+    it('getBalance returns OK balance 0 (not 21) for an active user with no wallet row', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.wallet.findUnique.mockResolvedValue(null)
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.getBalance('manager1')
+        expect(res.result).toBe(0)
+        expect(res.status).toBe('OK')
+        expect((res.data as any).balance).toBe(0)
+    })
+
+    it('processBet returns BALANCE_NOT_ENOUGH (not 1001) for an active user with no wallet row', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        p.wallet.findUnique.mockResolvedValue(null) // catch-block re-read: still none → 0
+        p.thirdPartyTransaction.create.mockResolvedValue({})
+        // FOR UPDATE: no wallet, then the freshly-provisioned zero wallet
+        const tx = makeTx([[], [{ id: 'w1', realBalance: '0', bonusBalance: '0' }]])
+        p.$transaction.mockImplementation((cb: any) => cb(tx))
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processBet({
+            trans_guid: 'tg1', account: 'manager1', gplay_id: 'gp1',
+            round_id: 'r1', game_code: 'game1', amount: 100,
+        })
+        expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 0 } })
+        expect(tx.wallet.create).toHaveBeenCalled()
+    })
+
+    it('processWin provisions a wallet and credits an active user with no wallet row', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        const tx = makeTx([[], [{ id: 'w1', realBalance: '0', bonusBalance: '0' }]])
+        p.$transaction.mockImplementation((cb: any) => cb(tx))
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processWin({
+            trans_guid: 'tw1', account: 'manager1', gplay_id: 'gp1',
+            round_id: 'r1', game_code: 'game1', amount: 50, type: 2,
+        })
+        expect(res.result).toBe(0)
+        expect(res.status).toBe('OK')
+        expect((res.data as any).balance).toBe(50)
+        expect(tx.wallet.create).toHaveBeenCalled()
+    })
 })

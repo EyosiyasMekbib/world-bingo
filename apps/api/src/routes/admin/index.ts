@@ -167,7 +167,16 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const passwordHash = await bcrypt.hash(password, 10)
             const clerk = await prisma.user.create({
-                data: { username, passwordHash, role: UserRole.CLERK, isActive: true },
+                // Every user must own a wallet — otherwise provider wallet callbacks
+                // (balance/bet/win) return contradictory codes for the account. Mirror
+                // the register/seed creation paths, which already provision one.
+                data: {
+                    username,
+                    passwordHash,
+                    role: UserRole.CLERK,
+                    isActive: true,
+                    wallet: { create: { realBalance: 0 } },
+                },
                 select: { id: true, username: true, role: true, isActive: true, createdAt: true },
             })
             return reply.status(201).send(clerk)
