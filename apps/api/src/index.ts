@@ -13,6 +13,8 @@ import prisma from './lib/prisma'
 import { stopAllRoomCountdowns } from './services/room-timer.service'
 import { closeAllQueues } from './lib/queue'
 import { register as metricsRegistry, httpRequestsTotal } from './lib/metrics'
+import { genReqId, redactPaths } from './lib/logger.js'
+import { enterLogContext } from './lib/log-context.js'
 import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
@@ -53,15 +55,25 @@ const isProd = process.env.NODE_ENV === 'production'
 
 const server = Fastify({
     logger: isProd
-        ? true
+        ? { redact: { paths: redactPaths, censor: '[redacted]' } }
         : {
-            transport: {
-                target: 'pino-pretty',
-            },
+            transport: { target: 'pino-pretty' },
+            redact: { paths: redactPaths, censor: '[redacted]' },
         },
-    // Prevent server information leakage
+    // We honor x-request-id ourselves in genReqId, so disable Fastify's built-in
+    // header lookup (default 'request-id') to keep one source of truth.
+    requestIdHeader: false,
+    genReqId,
     disableRequestLogging: false,
     trustProxy: true, // Required when behind nginx/load balancer for correct IP in rate limiting
+})
+
+// Bind req.log (which carries reqId) for the whole request's async context, so
+// module-level code (resolveUser, the Palace gateway, the wallet dispatcher)
+// logs with the same correlation id without threading a logger everywhere.
+server.addHook('onRequest', (req, _reply, done) => {
+    enterLogContext(req.log)
+    done()
 })
 
 // Security headers
