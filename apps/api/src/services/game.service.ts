@@ -23,6 +23,14 @@ import { getQueue, QUEUE_NAMES } from '../lib/queue'
 import { TournamentService } from './tournament.service'
 import { GameSchedulerService } from './game-scheduler.service'
 import { HouseWalletService } from './house-wallet.service'
+import {
+    wbPayoutLatencySeconds,
+    wbPayoutsTotal,
+    wbGamesCompletedTotal,
+    wbGameDurationSeconds,
+    wbGameEntriesTotal,
+    walletTransactionsTotal,
+} from '../lib/metrics'
 
 export class GameService {
     /**
@@ -169,6 +177,9 @@ export class GameService {
 
         // Push balance update
         NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusAfter.toNumber())
+
+        // Metrics: count cartela reservations / game joins (post-commit, one per entry)
+        wbGameEntriesTotal.inc(joinedEntries.length)
 
         return joinedEntries
     }
@@ -391,6 +402,14 @@ export class GameService {
     }
 
     static async claimBingo(userId: string, gameId: string, cartelaId: string) {
+        // Metrics: time the payout transaction (claimBingo). Captured before the
+        // Prisma tx so latency reflects the full lock-acquire + commit window.
+        const payoutStart = Date.now()
+        // Validation rejections thrown inside the tx are normal high-frequency user
+        // paths, NOT payout failures — they must not pollute wb_game_payouts_total
+        // {status="fail"} (the PayoutFailures alert). They are counted as 'rejected'.
+        const CLAIM_REJECTIONS = new Set(['Game not active', 'Invalid entry', 'False Bingo!'])
+        let payoutSucceeded = false
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             // Lock the game row up-front so two concurrent valid claims can't both
             // pay the pot. Under READ COMMITTED a plain read lets both pass the
@@ -522,6 +541,27 @@ export class GameService {
 
             return { endedGame, balanceAfter, bonusBalAfter, isBot, prize }
         }).then(async ({ endedGame, balanceAfter, bonusBalAfter, isBot, prize }: any) => {
+            // ── Metrics (post-commit only, so a tx rollback never double-counts) ──
+            // The payout transaction committed successfully.
+            wbPayoutLatencySeconds.observe((Date.now() - payoutStart) / 1000)
+            wbPayoutsTotal.labels('success').inc()
+            payoutSucceeded = true
+
+            // A PRIZE_WIN wallet transaction is only created for non-bot winners.
+            if (!isBot) {
+                walletTransactionsTotal.labels('PRIZE_WIN', 'APPROVED').inc()
+            }
+
+            // Game completed via a winner.
+            wbGamesCompletedTotal.labels('winner').inc()
+            if (endedGame?.startedAt && endedGame?.endedAt) {
+                const durationSecs =
+                    (new Date(endedGame.endedAt).getTime() - new Date(endedGame.startedAt).getTime()) / 1000
+                if (durationSecs >= 0) {
+                    wbGameDurationSeconds.labels('winner').observe(durationSecs)
+                }
+            }
+
             // Push balance update (skip for bots — they have no real balance to show)
             if (!isBot) {
                 NotificationService.pushWalletUpdate(userId, balanceAfter.toNumber(), bonusBalAfter.toNumber())
@@ -557,6 +597,16 @@ export class GameService {
             })
 
             return endedGame
+        }).catch((err: unknown) => {
+            // Once the payout has committed (payoutSucceeded), a later throw is a
+            // cosmetic post-commit step, never a payout failure — don't re-count it.
+            // Otherwise classify: known claim rejections are user-validation paths
+            // ('rejected'); anything else is a genuine payout/transaction failure.
+            if (!payoutSucceeded) {
+                const msg = err instanceof Error ? err.message : ''
+                wbPayoutsTotal.labels(CLAIM_REJECTIONS.has(msg) ? 'rejected' : 'fail').inc()
+            }
+            throw err
         })
     }
 }

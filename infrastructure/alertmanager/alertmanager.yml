@@ -1,0 +1,49 @@
+# ============================================================
+# Alertmanager — central alert routing
+# ============================================================
+# Mounted into the wb-alertmanager service in docker-compose.observability.yml.
+# Per-brand Prometheus instances forward firing alerts here
+# (alerting target: wb-alertmanager:9093).
+#
+# Notification wiring is intentionally LEFT AS A TODO: the default route
+# drops everything into a no-op `null` receiver so the stack boots clean
+# without any external credentials. Add a real receiver below when ready.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'null'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  # routes:
+  #   # TODO: route high-severity alerts to a real channel once one is wired up.
+  #   - matchers:
+  #       - severity = "critical"
+  #     receiver: 'oncall'
+
+receivers:
+  # Default no-op receiver. Alerts are accepted, grouped, and silently dropped.
+  - name: 'null'
+
+  # ----------------------------------------------------------------------------
+  # TODO: add a real notification receiver here, then point `route.receiver`
+  # (or a sub-route above) at it. Example shape (commented out, fill in later):
+  #
+  # - name: 'oncall'
+  #   webhook_configs:
+  #     - url: 'https://example.com/your-webhook'
+  #       send_resolved: true
+  #
+  # NOTE: Telegram and other channels are intentionally NOT configured here.
+  # ----------------------------------------------------------------------------
+
+inhibit_rules:
+  # Silence warnings for an alertname/instance that already has a critical firing.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'instance']

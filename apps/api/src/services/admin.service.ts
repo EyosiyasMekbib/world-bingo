@@ -4,6 +4,7 @@ import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { Decimal } from '@prisma/client/runtime/library'
 import { HouseWalletService } from './house-wallet.service'
+import { wbWithdrawalsTotal } from '../lib/metrics'
 
 export class AdminService {
     static async getStats(params?: { from?: Date; to?: Date }) {
@@ -235,14 +236,15 @@ export class AdminService {
         }
     }
 
-    static async reviewTransaction(transactionId: string, status: PaymentStatus, note?: string) {
+    static async reviewTransaction(transactionId: string, status: PaymentStatus, note?: string, adjustedAmount?: number) {
         if (status === PaymentStatus.APPROVED) {
             // Check transaction type — deposits go through WalletService (credits wallet)
             const tx = await prisma.transaction.findUnique({ where: { id: transactionId } })
             if (!tx) throw new Error('Transaction not found')
 
             if (tx.type === TransactionType.DEPOSIT) {
-                return await WalletService.approveDeposit(transactionId)
+                // `adjustedAmount` only applies to deposits (admin corrected the amount to match the receipt)
+                return await WalletService.approveDeposit(transactionId, adjustedAmount)
             }
 
             // Withdrawal approval — just mark as APPROVED (balance was already deducted on request)
@@ -257,6 +259,10 @@ export class AdminService {
                 `Your withdrawal of ${Number(updated.amount).toFixed(2)} ETB has been transferred.`,
                 { transactionId, amount: Number(updated.amount) },
             ).catch(() => {})
+            // Metric: withdrawal settled (post-commit). Only count actual withdrawals.
+            if (tx.type === TransactionType.WITHDRAWAL) {
+                wbWithdrawalsTotal.labels('approved').inc()
+            }
             return updated
         }
 
@@ -330,6 +336,9 @@ export class AdminService {
                 `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
                 { transactionId, amount: Number(existing.amount), note },
             ).catch(() => {})
+
+            // Metric: withdrawal rejected + refunded (post-commit).
+            wbWithdrawalsTotal.labels('rejected').inc()
 
             return result.updated
         }

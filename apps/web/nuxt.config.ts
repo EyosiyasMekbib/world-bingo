@@ -16,6 +16,7 @@ export default defineNuxtConfig({
         '@pinia/nuxt',
         '@nuxt/image',
         '@vite-pwa/nuxt',
+        '@sentry/nuxt/module',
         '@nuxt/icon',
         'pinia-plugin-persistedstate/nuxt',
         ['@nuxtjs/i18n', {
@@ -55,6 +56,13 @@ export default defineNuxtConfig({
             wsUrl: 'http://localhost:8080',
             telegramBotName: '',
             telegramBotId: '',
+            // Sentry (GlitchTip) error reporting. Auto-mapped from
+            // NUXT_PUBLIC_SENTRY_DSN / NUXT_PUBLIC_SENTRY_ENVIRONMENT.
+            // Empty DSN = fully inert (see sentry.client/server.config.ts).
+            sentry: {
+                dsn: '',
+                environment: '',
+            },
         },
     },
 

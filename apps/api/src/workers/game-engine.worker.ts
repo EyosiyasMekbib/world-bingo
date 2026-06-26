@@ -14,6 +14,7 @@
 import { Worker, Job } from 'bullmq'
 import { QUEUE_NAMES } from '../lib/queue.js'
 import { startGameEngine, stopGameEngine, isEngineActive } from '../lib/game-engine.js'
+import { reportError } from '../lib/sentry.js'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -74,11 +75,13 @@ worker.on('failed', (job, err) => {
         `[GameEngineWorker] Job ${job?.id} failed for game ${job?.data.gameId}:`,
         err.message,
     )
+    reportError(err, { worker: 'game-engine' })
 })
 
 worker.on('error', (err) => {
     // Connection errors etc.
     console.error('[GameEngineWorker] Worker error:', err.message)
+    reportError(err, { worker: 'game-engine' })
 })
 
 export default worker

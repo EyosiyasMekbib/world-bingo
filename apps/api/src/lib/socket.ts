@@ -8,6 +8,7 @@ import {
     InterServerEvents,
     SocketData,
 } from '@world-bingo/shared-types'
+import { wsConnectionsActive } from './metrics'
 
 let io: Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>
 
@@ -29,9 +30,11 @@ export function initSocket(httpServer: HttpServer, redisUrl: string) {
 
     io.on('connection', (socket) => {
         console.log(`Socket connected: ${socket.id}`)
+        wsConnectionsActive.inc()
 
         socket.on('disconnect', () => {
             console.log(`Socket disconnected: ${socket.id}`)
+            wsConnectionsActive.dec()
         })
     })
 

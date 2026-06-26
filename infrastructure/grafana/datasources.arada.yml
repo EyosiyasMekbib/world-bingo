@@ -9,3 +9,13 @@ datasources:
     isDefault: true
     jsonData:
       timeInterval: "15s"
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://wb-loki:3100
+    access: proxy
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://wb-tempo:3200
+    access: proxy

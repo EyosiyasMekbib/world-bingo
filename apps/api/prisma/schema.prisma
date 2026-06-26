@@ -135,6 +135,7 @@ model Transaction {
   userId               String
   type                 TransactionType
   amount               Decimal           @db.Decimal(12, 2)
+  originalAmount       Decimal?          @db.Decimal(12, 2)
   status               PaymentStatus     @default(PENDING)
   referenceId          String?
   receiptUrl           String?

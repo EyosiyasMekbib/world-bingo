@@ -1,3 +1,9 @@
+import { initSentry, Sentry } from './lib/sentry.js'
+
+// Initialise error reporting before anything else so early failures are captured.
+// No-op when SENTRY_DSN is unset.
+initSentry()
+
 import Fastify, { type FastifyError } from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
@@ -13,6 +19,7 @@ import prisma from './lib/prisma'
 import { stopAllRoomCountdowns } from './services/room-timer.service'
 import { closeAllQueues } from './lib/queue'
 import { register as metricsRegistry, httpRequestsTotal } from './lib/metrics'
+import { registerRuntimeCollectors } from './lib/metrics-collectors.js'
 import { genReqId, redactPaths } from './lib/logger.js'
 import { enterLogContext } from './lib/log-context.js'
 import authRoutes from './routes/auth'
@@ -205,6 +212,10 @@ server.setErrorHandler<FastifyError>((error, request, reply) => {
     })
 })
 
+// Wire Sentry's Fastify error capture AFTER our custom handler so it observes
+// errors without replacing our response mapping. No-op when Sentry is disabled.
+Sentry.setupFastifyErrorHandler(server)
+
 server.decorate('authenticate', async function (request: any, reply: any) {
     try {
         await request.jwtVerify()
@@ -286,9 +297,15 @@ server.get('/metrics', {
     return reply.send(await metricsRegistry.metrics())
 })
 
-// T52 — Track HTTP request counts
+// Attach async gauge collectors (games_active, wb_bullmq_jobs) sampled per scrape.
+registerRuntimeCollectors()
+
+// T52 — Track HTTP request counts. Use the Fastify v5 matched-route TEMPLATE
+// (e.g. /games/:id), NOT the concrete URL — the raw URL contains per-game/
+// per-user ids and would make this metric's cardinality unbounded. Unmatched
+// routes (404s) have no routeOptions.url, so fall back to a constant.
 server.addHook('onResponse', async (request, reply) => {
-    const route = (request as any).routerPath ?? request.url.split('?')[0]
+    const route = request.routeOptions?.url ?? 'unknown'
     httpRequestsTotal.labels(request.method, route, String(reply.statusCode)).inc()
 })
 

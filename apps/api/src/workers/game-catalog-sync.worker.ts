@@ -6,6 +6,7 @@
  */
 
 import { Worker, Queue } from 'bullmq'
+import { reportError } from '../lib/sentry.js'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 const QUEUE_NAME = 'game-catalog-sync'
@@ -79,6 +80,7 @@ worker.on('completed', (job) => {
 
 worker.on('failed', (job, err) => {
     console.error('[CatalogSyncWorker] Job failed:', job?.id, err.message)
+    reportError(err, { worker: 'game-catalog-sync' })
 })
 
 export { worker as gameCatalogSyncWorker }

@@ -3,6 +3,7 @@ import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@w
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
+import { wbDepositsTotal } from '../lib/metrics'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -58,12 +59,12 @@ export class WalletService {
     }
 
     // Called by Admin — uses SELECT FOR UPDATE to prevent double-crediting
-    static async approveDeposit(transactionId: string) {
+    static async approveDeposit(transactionId: string, adjustedAmount?: number) {
         return await prisma.$transaction(async (tx) => {
             // Lock the transaction row first to prevent concurrent approvals from both
             // passing the PENDING_REVIEW check before either commits.
-            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string }>>`
-                SELECT id, "userId", amount, status, type FROM transactions WHERE id = ${transactionId} FOR UPDATE
+            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string; note: string | null }>>`
+                SELECT id, "userId", amount, status, type, note FROM transactions WHERE id = ${transactionId} FOR UPDATE
             `
             const transaction = transactions[0]
             if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
@@ -77,11 +78,23 @@ export class WalletService {
             const wallet = wallets[0]
             if (!wallet) throw new Error('Wallet not found')
 
+            // Determine the amount to credit. When an admin adjusts the deposit
+            // during review, `adjustedAmount` overrides the player-stated value and
+            // the original is preserved in `originalAmount` for the audit trail.
+            const statedAmount = new Decimal(transaction.amount)
+            const creditAmount = adjustedAmount != null ? new Decimal(adjustedAmount) : statedAmount
+            if (!creditAmount.isFinite() || creditAmount.lte(0)) {
+                throw new Error('Adjusted amount must be a positive number')
+            }
+            const isAdjusted = adjustedAmount != null && !creditAmount.equals(statedAmount)
+
             const realBefore = new Decimal(wallet.realBalance)
-            const realAfter = realBefore.plus(new Decimal(transaction.amount))
+            const realAfter = realBefore.plus(creditAmount)
             const bonusBefore = new Decimal(wallet.bonusBalance)
 
-            // Update transaction status with balance snapshot
+            // Update transaction status with balance snapshot. If the amount was
+            // adjusted, overwrite `amount` with the credited value and keep the
+            // player-stated figure in `originalAmount`.
             await tx.transaction.update({
                 where: { id: transactionId },
                 data: {
@@ -90,13 +103,14 @@ export class WalletService {
                     balanceAfter: realAfter,
                     bonusBalanceBefore: bonusBefore,
                     bonusBalanceAfter: bonusBefore,
+                    ...(isAdjusted ? { amount: creditAmount, originalAmount: statedAmount } : {}),
                 },
             })
 
-            // Credit realBalance
+            // Credit realBalance with the (possibly adjusted) amount
             await tx.wallet.update({
                 where: { userId: transaction.userId },
-                data: { realBalance: { increment: transaction.amount } },
+                data: { realBalance: { increment: creditAmount } },
             })
 
             // ── First Deposit Bonus ──────────────────────────────────────────
@@ -143,8 +157,8 @@ export class WalletService {
                 }
             }
 
-            return { transaction, realAfter, bonusAwarded, bonusBefore }
-        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore }) => {
+            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount }
+        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount }) => {
             const finalBonusBalance = bonusAwarded > 0
                 ? bonusBefore.plus(new Decimal(bonusAwarded)).toNumber()
                 : bonusBefore.toNumber()
@@ -156,10 +170,28 @@ export class WalletService {
                 finalBonusBalance,
             )
 
-            // Send notification
+            // Metrics: deposit approved (post-commit). The payment method is stored
+            // in `note` (the client-supplied methodCode) by initiateDeposit. Bound
+            // the label to the configured PaymentMethod catalog so an arbitrary
+            // client value can never explode Prometheus label cardinality: unknown
+            // codes collapse to 'other', a missing code to 'unknown'.
+            let methodLabel = 'unknown'
+            if (transaction.note) {
+                const known = await prisma.paymentMethod
+                    .findUnique({ where: { code: transaction.note }, select: { code: true } })
+                    .catch(() => null)
+                methodLabel = known ? transaction.note : 'other'
+            }
+            wbDepositsTotal.labels(methodLabel, 'approved').inc()
+
+            // Send notification (reflects the credited amount, which may have been adjusted)
+            const credited = creditAmount.toNumber()
             const metadata: Record<string, unknown> = {
                 transactionId: transaction.id,
-                amount: Number(transaction.amount),
+                amount: credited,
+            }
+            if (isAdjusted) {
+                metadata.originalAmount = statedAmount.toNumber()
             }
             if (bonusAwarded > 0) {
                 metadata.bonusAwarded = bonusAwarded
@@ -170,8 +202,8 @@ export class WalletService {
                 NotificationType.DEPOSIT_APPROVED,
                 'Deposit Approved ✅',
                 bonusAwarded > 0
-                    ? `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved! You also received a ${bonusAwarded.toFixed(2)} ETB first deposit bonus!`
-                    : `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB has been approved and added to your wallet.`,
+                    ? `Your deposit of ${credited.toFixed(2)} ETB has been approved! You also received a ${bonusAwarded.toFixed(2)} ETB first deposit bonus!`
+                    : `Your deposit of ${credited.toFixed(2)} ETB has been approved and added to your wallet.`,
                 metadata,
             ).catch(() => {})
 
@@ -194,7 +226,8 @@ export class WalletService {
                 }
             }
 
-            return transaction
+            // Return the transaction reflecting the credited (possibly adjusted) amount
+            return { ...transaction, amount: creditAmount, originalAmount: isAdjusted ? statedAmount : null }
         })
     }
 
