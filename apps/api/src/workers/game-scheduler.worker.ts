@@ -7,6 +7,7 @@
 
 import { Worker, Job, Queue } from 'bullmq'
 import { QUEUE_NAMES } from '../lib/queue.js'
+import { reportError } from '../lib/sentry.js'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -89,10 +90,12 @@ worker.on('completed', (job) => {
 
 worker.on('failed', (job, err) => {
     console.error(`[GameSchedulerWorker] Job ${job?.id} failed:`, err.message)
+    reportError(err, { worker: 'game-scheduler' })
 })
 
 worker.on('error', (err) => {
     console.error('[GameSchedulerWorker] Worker error:', err.message)
+    reportError(err, { worker: 'game-scheduler' })
 })
 
 export default worker

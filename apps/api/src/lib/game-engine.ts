@@ -21,6 +21,7 @@ import { drawBall, createBallPool } from '@world-bingo/game-logic'
 import { GameStatus } from '@world-bingo/shared-types'
 import { NotificationService } from '../services/notification.service'
 import { NotificationType } from '@world-bingo/shared-types'
+import { wbGamesCompletedTotal, wbGameDurationSeconds } from './metrics'
 
 /**
  * T24 — Robust Game Engine with Redlock
@@ -216,7 +217,7 @@ export async function startGameEngine(gameId: string): Promise<void> {
 async function endGameNoWinner(gameId: string): Promise<void> {
     const calledBalls = await getCalledBalls(gameId)
 
-    await prisma.game.update({
+    const endedGame = await prisma.game.update({
         where: { id: gameId },
         data: {
             status: GameStatus.COMPLETED,
@@ -225,8 +226,30 @@ async function endGameNoWinner(gameId: string): Promise<void> {
         },
     })
 
-    await updateGameState(gameId, { status: GameStatus.COMPLETED })
-    await setRoomStatus(gameId, 'COMPLETED')
+    // Metrics: game completed with no winner (post-commit).
+    wbGamesCompletedTotal.labels('no_winner').inc()
+    if (endedGame.startedAt && endedGame.endedAt) {
+        const durationSecs =
+            (new Date(endedGame.endedAt).getTime() - new Date(endedGame.startedAt).getTime()) / 1000
+        if (durationSecs >= 0) {
+            wbGameDurationSeconds.labels('no_winner').observe(durationSecs)
+        }
+    }
+
+    // Postgres is the source of truth and is already COMPLETED above. These Redis
+    // live-state writes are best-effort: a throw here must NOT propagate, or the
+    // engine job would reject, retry, reset the COMPLETED game back to IN_PROGRESS,
+    // and re-run endGameNoWinner — double-counting the no_winner metrics.
+    try {
+        await updateGameState(gameId, { status: GameStatus.COMPLETED })
+    } catch (err) {
+        console.error(`[game-engine] endGameNoWinner updateGameState failed for ${gameId}:`, err)
+    }
+    try {
+        await setRoomStatus(gameId, 'COMPLETED')
+    } catch (err) {
+        console.error(`[game-engine] endGameNoWinner setRoomStatus failed for ${gameId}:`, err)
+    }
 
     const io = getIo()
     io.to(`game:${gameId}`).emit('game:ended', { id: gameId } as any)

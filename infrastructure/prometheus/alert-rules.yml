@@ -1,0 +1,101 @@
+groups:
+  - name: world-bingo-api
+    rules:
+      - alert: ApiDown
+        expr: up{job="world-bingo-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'World Bingo API is down'
+          description: 'The world-bingo-api target has been unreachable for more than 2 minutes.'
+
+      - alert: High5xxRate
+        expr: |
+          sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High 5xx error rate'
+          description: 'More than 5% of HTTP requests returned 5xx responses over the last 5 minutes.'
+
+      - alert: EventLoopLag
+        expr: nodejs_eventloop_lag_seconds > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Node.js event loop lag is high'
+          description: 'The API event loop lag has exceeded 200ms for more than 5 minutes, indicating the process is overloaded.'
+
+  - name: world-bingo-domain
+    rules:
+      - alert: PayoutFailures
+        expr: increase(wb_game_payouts_total{status="fail"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Bingo payout failures detected'
+          description: 'One or more claimBingo payout transactions failed in the last 10 minutes.'
+
+      - alert: BullmqBacklog
+        expr: wb_bullmq_jobs{state="waiting"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'BullMQ queue backlog building up'
+          description: 'Queue {{ $labels.queue }} has more than 100 waiting jobs for over 10 minutes.'
+
+      - alert: BullmqFailures
+        expr: wb_bullmq_jobs{state="failed"} > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'BullMQ failed jobs accumulating'
+          description: 'Queue {{ $labels.queue }} has more than 50 failed jobs.'
+
+  - name: world-bingo-infra
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'PostgreSQL is down'
+          description: 'The postgres-exporter reports the database as unreachable for more than 2 minutes.'
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Redis is down'
+          description: 'The redis-exporter reports Redis as unreachable for more than 2 minutes.'
+
+      - alert: HostDiskLow
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Host disk space low'
+          description: 'Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} has less than 10% free space.'
+
+      - alert: HostHighMemory
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Host memory usage high'
+          description: 'Host {{ $labels.instance }} is using more than 90% of available memory for over 5 minutes.'

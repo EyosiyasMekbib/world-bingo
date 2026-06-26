@@ -66,4 +66,9 @@ else
 fi
 
 echo "🚀 Starting API server..."
-exec node dist/index.js
+if [ "${OTEL_ENABLED:-false}" = "true" ]; then
+	echo "🔭 OpenTelemetry auto-instrumentation enabled"
+	exec node --import @opentelemetry/auto-instrumentations-node/register dist/index.js
+else
+	exec node dist/index.js
+fi

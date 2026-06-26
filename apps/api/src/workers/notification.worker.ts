@@ -10,6 +10,7 @@ import { Worker, Job } from 'bullmq'
 import { QUEUE_NAMES } from '../lib/queue.js'
 import { NotificationService } from '../services/notification.service.js'
 import { NotificationType } from '@world-bingo/shared-types'
+import { reportError } from '../lib/sentry.js'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -46,6 +47,7 @@ worker.on('completed', (job) => {
 
 worker.on('failed', (job, err) => {
     console.error(`[NotificationWorker] Job ${job?.id} failed:`, err.message)
+    reportError(err, { worker: 'notification' })
 })
 
 export default worker

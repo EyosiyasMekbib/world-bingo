@@ -1,0 +1,185 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 }, "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "list" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(wb_game_payout_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(wb_game_payout_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "title": "Payout Latency (claimBingo)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "list" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_game_payouts_total[5m])",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Payouts Success / Fail Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "list" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_deposits_total[5m])",
+          "legendFormat": "{{method}} / {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Deposits by Method / Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "list" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_withdrawals_total[5m])",
+          "legendFormat": "withdrawals {{status}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_refunds_total[5m])",
+          "legendFormat": "refunds {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Withdrawals & Refunds Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 }, "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "list" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(wb_game_duration_seconds_bucket[15m])) by (le, outcome))",
+          "legendFormat": "p95 {{outcome}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(wb_game_duration_seconds_bucket[15m])) by (le, outcome))",
+          "legendFormat": "p50 {{outcome}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Game Duration by Outcome",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "list" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(wb_bullmq_jobs{state=\"waiting\"}) by (queue)",
+          "legendFormat": "{{queue}} waiting",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(wb_bullmq_jobs{state=\"active\"}) by (queue)",
+          "legendFormat": "{{queue}} active",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(wb_bullmq_jobs{state=\"failed\"}) by (queue)",
+          "legendFormat": "{{queue}} failed",
+          "refId": "C"
+        }
+      ],
+      "title": "BullMQ Queue Depth by Queue",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "list" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_games_completed_total[15m])",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Games Completed by Outcome",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "list" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(wb_game_entries_total[5m])",
+          "legendFormat": "entries / reservations",
+          "refId": "A"
+        }
+      ],
+      "title": "Game Entries (Cartela Reservations)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["world-bingo", "domain"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "World Bingo — Domain Metrics",
+  "uid": "wb-domain",
+  "version": 1
+}

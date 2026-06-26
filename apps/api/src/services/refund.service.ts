@@ -3,6 +3,7 @@ import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { HouseWalletService } from './house-wallet.service'
+import { wbRefundsTotal } from '../lib/metrics'
 
 /**
  * T19 — Refund Service
@@ -111,6 +112,9 @@ export class RefundService {
 
             if (!result.alreadyRefunded) {
                 NotificationService.pushWalletUpdate(userId, (result as any).realAfter, (result as any).bonusBefore)
+                // Metrics: actual refund issued (post-commit). The cancel reason is not
+                // threaded into refundGame, so we record 'cancel' per the contract.
+                wbRefundsTotal.labels('cancel').inc()
             }
 
             results.push(result)

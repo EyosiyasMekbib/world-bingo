@@ -95,6 +95,24 @@ pnpm --filter @world-bingo/game-logic test
 - BullMQ dashboard: http://localhost:8080/admin/queues
 - Prometheus metrics: http://localhost:8080/metrics
 
+### Observability
+A **central shared stack** (`docker-compose.observability.yml`, on the external `dokploy-network`)
+collects signals from every brand. Both brands PUSH into it; pull-based metric exporters live
+per-brand. Tools:
+- **GlitchTip** — error tracking (Sentry-compatible). API + both Nuxt apps report via the Sentry SDK.
+- **Loki** — log aggregation; the API ships pino logs when `LOKI_URL` is set.
+- **Tempo** — distributed traces via OpenTelemetry (OTLP) when `OTEL_ENABLED=true`.
+- **Prometheus + Grafana** — metrics scrape + dashboards (`wb-domain`, `wb-infra`); per-brand.
+- **Alertmanager** — alert routing; notification channel is an intentional TODO placeholder (no notifier wired).
+- **Uptime Kuma** — external uptime checks.
+
+Everything is **env-gated and a no-op when unset**: empty `SENTRY_DSN`, empty `LOKI_URL`, and
+`OTEL_ENABLED=false` mean the app boots and runs exactly as before. All **central service names are
+prefixed `wb-`** (e.g. `wb-loki`, `wb-tempo`, `wb-glitchtip`) because they share `dokploy-network`
+with unrelated stacks — a bare alias like `api` once cross-served. Per-brand exporters are suffixed
+`-arada` / `-betbawa`. Env vars live in the root `.env.example` (infra + GlitchTip + backend) and
+`apps/api/.env.example` (api-consumed `SENTRY_*`/`OTEL_*`/`LOKI_*`). See `docs/observability.md` for the runbook.
+
 ### Environment Setup
 Copy `.env.example` → `.env` at repo root and `apps/api/.env.example` → `apps/api/.env`. The `JWT_SECRET` must be a 64-byte hex string and must match between API and admin app (`NUXT_JWT_SECRET`).
 

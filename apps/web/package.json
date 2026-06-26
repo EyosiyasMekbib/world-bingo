@@ -16,6 +16,7 @@
     "dependencies": {
         "@nuxtjs/i18n": "^10.2.3",
         "@pinia/nuxt": "^0.11.3",
+        "@sentry/nuxt": "^8",
         "@vee-validate/zod": "^4.15.0",
         "@world-bingo/game-logic": "workspace:*",
         "@world-bingo/shared-types": "workspace:*",

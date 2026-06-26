@@ -54,6 +54,17 @@ services:
       HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://www.betbawa.bet}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      # ─── Observability (env-gated; no-op when unset) ───
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://wb-tempo:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-world-bingo-api-betbawa}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+      LOKI_URL: ${LOKI_URL:-}
+      LOKI_LABEL_APP: ${LOKI_LABEL_APP:-world-bingo-api-betbawa}
     volumes:
       - uploads_data:/app/apps/api/uploads
     healthcheck:
@@ -84,6 +95,8 @@ services:
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-betbawa:8080}
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
     depends_on:
       api-betbawa:
         condition: service_healthy
@@ -105,6 +118,8 @@ services:
       NUXT_PUBLIC_API_BASE: /api
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-betbawa:8080}
       NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
     depends_on:
       api-betbawa:
         condition: service_healthy
@@ -117,6 +132,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./infrastructure/prometheus/prometheus.betbawa.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -128,6 +144,7 @@ services:
       - api-betbawa
     networks:
       - internal
+      - dokploy-network
 
   grafana-betbawa:
     image: grafana/grafana:10.4.2
@@ -145,6 +162,48 @@ services:
     networks:
       - internal
       - dokploy-network
+
+  node-exporter-betbawa:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    networks:
+      - internal
+
+  cadvisor-betbawa:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - internal
+
+  postgres-exporter-betbawa:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: ${POSTGRES_EXPORTER_DSN:-}
+    networks:
+      - internal
+
+  redis-exporter-betbawa:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: ${REDIS_URL:-}
+    networks:
+      - internal
 
 volumes:
   uploads_data:

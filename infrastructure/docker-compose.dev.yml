@@ -52,6 +52,17 @@ services:
       UPLOAD_DIR: /app/uploads
       # Enable file-watching polling inside Docker on macOS/Windows
       CHOKIDAR_USEPOLLING: "true"
+      # ─── Observability (env-gated; no-op when unset) ───
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://wb-tempo:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-world-bingo-api}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+      LOKI_URL: ${LOKI_URL:-}
+      LOKI_LABEL_APP: ${LOKI_LABEL_APP:-world-bingo-api}
     volumes:
       # Mount API source for hot-reload via tsx watch
       - ../apps/api/src:/app/apps/api/src
@@ -86,6 +97,8 @@ services:
       NUXT_API_BASE_SERVER: http://api:8080
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-development}
       # Enable file-watching polling inside Docker on macOS/Windows
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
@@ -115,6 +128,8 @@ services:
       NUXT_PUBLIC_API_BASE: http://localhost:8080
       NUXT_API_BASE_SERVER: http://api:8080
       NUXT_JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-development}
       # Enable file-watching polling inside Docker on macOS/Windows
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
@@ -138,6 +153,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_dev_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -165,6 +181,52 @@ services:
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - prometheus
+    networks:
+      - default
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    networks:
+      - default
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - default
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: ${POSTGRES_EXPORTER_DSN:-postgresql://postgres:postgres@postgres:5432/world_bingo?sslmode=disable}
+    depends_on:
+      - postgres
+    networks:
+      - default
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      - redis
     networks:
       - default
 

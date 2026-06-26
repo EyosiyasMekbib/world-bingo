@@ -1,5 +1,6 @@
 import { Worker, Queue } from 'bullmq'
 import prisma from '../lib/prisma.js'
+import { reportError } from '../lib/sentry.js'
 
 const QUEUE_NAME = 'prune-analytics-events'
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
@@ -34,6 +35,7 @@ const worker = new Worker(
 
 worker.on('failed', (job, err) => {
     console.error(`[prune-events] Job ${job?.id} failed:`, err)
+    reportError(err, { worker: 'prune-events' })
 })
 
 async function setupRepeatingJob() {

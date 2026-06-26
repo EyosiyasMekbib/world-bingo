@@ -11,6 +11,7 @@ import { QUEUE_NAMES } from '../lib/queue.js'
 import { RefundService } from '../services/refund.service.js'
 import { NotificationService } from '../services/notification.service.js'
 import { NotificationType } from '@world-bingo/shared-types'
+import { reportError } from '../lib/sentry.js'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -61,6 +62,7 @@ worker.on('completed', (job) => {
 
 worker.on('failed', (job, err) => {
     console.error(`[RefundWorker] Job ${job?.id} failed:`, err.message)
+    reportError(err, { worker: 'refund' })
 })
 
 export default worker
