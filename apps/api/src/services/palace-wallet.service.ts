@@ -1,6 +1,8 @@
 import { Decimal } from '@prisma/client/runtime/library'
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
+import { getLogger } from '../lib/log-context.js'
+import { maskAccount } from '../lib/logger.js'
 import { TransactionType, PaymentStatus, ThirdPartyTxType, ThirdPartyTxStatus } from '@world-bingo/shared-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -69,6 +71,10 @@ async function resolveUser(account: string): Promise<{ id: string; isActive: boo
     }
 
     if (user) await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
+    getLogger().info(
+        { component: 'resolve-user', account: maskAccount(account), matched: !!user },
+        '[resolve-user] account resolution',
+    )
     return user
 }
 
@@ -373,6 +379,23 @@ export class PalaceWalletService {
 
     /** Dispatch a provider callback command to the matching wallet handler. */
     static async dispatch(command: string | undefined, d: Record<string, any>): Promise<PalaceResponse> {
+        const startedAt = Date.now()
+        const res = await PalaceWalletService.route(command, d)
+        getLogger().info(
+            {
+                component: 'palace-wallet',
+                command,
+                account: maskAccount(d?.account),
+                resultCode: res.result,
+                status: res.status,
+                latencyMs: Date.now() - startedAt,
+            },
+            '[palace-wallet] command handled',
+        )
+        return res
+    }
+
+    private static async route(command: string | undefined, d: Record<string, any>): Promise<PalaceResponse> {
         switch (command) {
             case 'authenticate':
                 return PalaceWalletService.authenticate(d.account)

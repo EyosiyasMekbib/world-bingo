@@ -103,4 +103,24 @@ describe('PalaceWalletService', () => {
         expect((res.data as any).trans_guid).toBe('tg-exists')
         expect((res.data as any).trans_status).toBe('OK')
     })
+
+    it('dispatch emits a structured outcome line with masked account + result code', async () => {
+        p.user.findUnique.mockResolvedValue(null) // unknown user → result 21
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const { runWithLogger } = await import('../lib/log-context.js')
+        const spy = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn() }
+        const res = await runWithLogger(spy as any, () =>
+            PalaceWalletService.dispatch('balance', { account: 'h00a053c60814bd4f569313abf1c3fa3d63' }),
+        )
+        expect(res.result).toBe(21)
+        expect(spy.info).toHaveBeenCalledWith(
+            expect.objectContaining({
+                component: 'palace-wallet',
+                command: 'balance',
+                account: 'h00a05…3d63',
+                resultCode: 21,
+            }),
+            expect.any(String),
+        )
+    })
 })
