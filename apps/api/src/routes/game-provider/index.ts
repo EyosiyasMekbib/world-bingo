@@ -205,13 +205,17 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             // Surface bad/empty/non-https URLs that pass as HTTP 200 but won't load client-side.
-            if (!gameUrl || !/^https:\/\//i.test(gameUrl)) {
+            const launchOk = !!gameUrl && /^https:\/\//i.test(gameUrl)
+            if (!launchOk) {
                 req.log.error(
-                    { providerCode, gameCode, userId: user.id, gameUrl },
+                    { component: 'palace-launch', providerCode, gameCode, userId: user.id, gameUrl },
                     'provider returned an unusable game url',
                 )
             } else {
-                req.log.info({ providerCode, gameCode, userId: user.id, gameUrl }, 'provider launch ok')
+                req.log.info(
+                    { component: 'palace-launch', providerCode, gameCode, userId: user.id },
+                    'provider launch ok',
+                )
             }
 
             // Store token → userId mapping in Redis for callback validation
