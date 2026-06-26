@@ -392,6 +392,18 @@ export class GameService {
 
     static async claimBingo(userId: string, gameId: string, cartelaId: string) {
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Lock the game row up-front so two concurrent valid claims can't both
+            // pay the pot. Under READ COMMITTED a plain read lets both pass the
+            // status check before either commits the winner; the row lock serializes
+            // them, and the second claim then sees a winner already set → rejected.
+            const locked = await tx.$queryRaw<Array<{ status: GameStatus; winnerId: string | null }>>`
+                SELECT status, "winnerId" FROM games WHERE id = ${gameId} FOR UPDATE
+            `
+            const lockedGame = locked[0]
+            if (!lockedGame || lockedGame.status !== GameStatus.IN_PROGRESS || lockedGame.winnerId !== null) {
+                throw new Error('Game not active')
+            }
+
             const game = await tx.game.findUnique({ where: { id: gameId } })
             if (!game || game.status !== GameStatus.IN_PROGRESS) throw new Error('Game not active')
 

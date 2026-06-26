@@ -678,6 +678,45 @@ describe('GameService.claimBingo — Edge Cases', () => {
         expect(Number(wallet!.realBalance)).toBe(1000 + 90)
     })
 
+    it('pays the pot only once when two valid winners claim simultaneously (no double-pay)', async () => {
+        // Two cartelas both completing ANY_LINE on the same balls — the routine
+        // bingo collision (human+human or human+bot) that the double-pay race needs.
+        const calledBalls = [1, 16, 31, 46, 61]
+        const game = await createGame({
+            status: GameStatus.IN_PROGRESS,
+            pattern: PatternType.ANY_LINE,
+            calledBalls,
+            ticketPrice: 100,
+            houseEdgePct: 10,
+        })
+        const u1 = await createUserWithWallet('claim_race1', '+251910400050', 1000)
+        const u2 = await createUserWithWallet('claim_race2', '+251910400051', 1000)
+        const c1 = await createCartela('RACE-C1')
+        const c2 = await createCartela('RACE-C2')
+        await prisma.gameEntry.create({ data: { gameId: game.id, userId: u1.id, cartelaId: c1.id } })
+        await prisma.gameEntry.create({ data: { gameId: game.id, userId: u2.id, cartelaId: c2.id } })
+
+        // Fire both valid claims concurrently.
+        const results = await Promise.allSettled([
+            GameService.claimBingo(u1.id, game.id, c1.id),
+            GameService.claimBingo(u2.id, game.id, c2.id),
+        ])
+
+        // Exactly one claim wins; the other is rejected once it acquires the lock.
+        const fulfilled = results.filter((r) => r.status === 'fulfilled')
+        expect(fulfilled.length).toBe(1)
+
+        // pot = 100 * 2 entries = 200; prize = 200 * (1 - 0.10) = 180 — paid ONCE,
+        // not 360. This is the assertion that fails without the game-row lock.
+        const w1 = await prisma.wallet.findUnique({ where: { userId: u1.id } })
+        const w2 = await prisma.wallet.findUnique({ where: { userId: u2.id } })
+        const totalCredited = Number(w1!.realBalance) - 1000 + (Number(w2!.realBalance) - 1000)
+        expect(totalCredited).toBe(180)
+
+        const finalGame = await prisma.game.findUnique({ where: { id: game.id } })
+        expect(finalGame!.status).toBe(GameStatus.COMPLETED)
+    })
+
     it('should create a PRIZE_WIN transaction', async () => {
         const calledBalls = [1, 16, 31, 46, 61]
         const game = await createGame({
