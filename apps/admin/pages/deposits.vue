@@ -52,6 +52,10 @@ const selectedDeclineId = ref<string | null>(null)
 const showApproveModal = ref(false)
 const selectedApproveId = ref<string | null>(null)
 const approveLoading = ref(false)
+const showAdjustModal = ref(false)
+const selectedAdjust = ref<DepositTransaction | null>(null)
+const adjustAmount = ref('')
+const adjustLoading = ref(false)
 const viewMode = ref<'table' | 'card'>('card')
 const filtersOpen = ref(false)
 
@@ -195,6 +199,35 @@ const handleDecline = async () => {
     fetchDeposits()
   } catch (e: any) {
     toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to decline', color: 'error' })
+  }
+}
+
+// ── Adjust & approve ──────────────────────────────────────────────────────────
+const adjustStated = computed(() => Number(selectedAdjust.value?.amount ?? 0))
+const adjustAmountNum = computed(() => Number(adjustAmount.value))
+const adjustValid = computed(() => Number.isFinite(adjustAmountNum.value) && adjustAmountNum.value > 0)
+const adjustChanged = computed(() => adjustValid.value && adjustAmountNum.value !== adjustStated.value)
+const adjustDelta = computed(() => adjustAmountNum.value - adjustStated.value)
+const adjustIsOver = computed(() => adjustValid.value && adjustAmountNum.value > adjustStated.value)
+
+const openAdjustModal = (d: DepositTransaction) => {
+  selectedAdjust.value = d
+  adjustAmount.value = Number(d.amount).toFixed(2)
+  showAdjustModal.value = true
+}
+
+const confirmAdjust = async () => {
+  if (!selectedAdjust.value || !adjustValid.value) return
+  adjustLoading.value = true
+  try {
+    await approveTransaction(selectedAdjust.value.id, adjustAmountNum.value)
+    toast.add({ title: 'Approved ✅', description: `Credited ${adjustAmountNum.value.toFixed(2)} ETB to player wallet`, color: 'success' })
+    showAdjustModal.value = false
+    fetchDeposits()
+  } catch (e: any) {
+    toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to adjust', color: 'error' })
+  } finally {
+    adjustLoading.value = false
   }
 }
 
@@ -349,6 +382,7 @@ const copyToClipboard = (text: string) => {
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
             <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="openApproveModal((row.original as unknown as DepositTransaction).id)">Approve</UButton>
+            <UButton size="xs" color="warning" variant="soft" icon="i-heroicons:pencil-square" @click="openAdjustModal(row.original as unknown as DepositTransaction)">Adjust</UButton>
             <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
           </div>
         </template>
@@ -419,10 +453,16 @@ const copyToClipboard = (text: string) => {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               Approve
             </button>
-            <button class="action-btn action-btn--decline" @click="openDeclineModal(d.id)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              Decline
-            </button>
+            <div class="action-row">
+              <button class="action-btn action-btn--adjust" @click="openAdjustModal(d)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Adjust
+              </button>
+              <button class="action-btn action-btn--decline" @click="openDeclineModal(d.id)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Decline
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -489,6 +529,78 @@ const copyToClipboard = (text: string) => {
       <template #footer>
         <UButton color="neutral" variant="ghost" @click="showDeclineModal = false">Cancel</UButton>
         <UButton color="error" @click="handleDecline">Confirm Decline</UButton>
+      </template>
+    </UModal>
+
+    <!-- Adjust & Approve Modal -->
+    <UModal v-model:open="showAdjustModal" title="Adjust & approve" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div v-if="selectedAdjust" class="space-y-4">
+          <p class="text-sm text-white/50">Correct the amount to match the receipt, then credit the player.</p>
+          <div class="flex gap-3">
+            <button
+              v-if="selectedAdjust.receiptUrl"
+              type="button"
+              class="adjust-receipt"
+              title="Click to enlarge"
+              @click="openReceipt(selectedAdjust.receiptUrl!)"
+            >
+              <img :src="proxyReceiptUrl(selectedAdjust.receiptUrl)" alt="Receipt" />
+              <span class="adjust-receipt__zoom">
+                <UIcon name="i-heroicons:magnifying-glass-plus" class="w-5 h-5" />
+              </span>
+            </button>
+            <div v-else class="adjust-receipt adjust-receipt--empty">
+              <UIcon name="i-heroicons:photo" class="w-6 h-6 opacity-30" />
+            </div>
+
+            <div class="flex-1 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-white/50">Player stated</span>
+                <span class="text-sm line-through text-white/40">{{ adjustStated.toFixed(2) }} ETB</span>
+              </div>
+              <div>
+                <label class="text-xs text-white/50 mb-1 block">Corrected amount</label>
+                <UInput v-model="adjustAmount" type="number" step="0.01" min="0" size="md" autofocus class="w-full">
+                  <template #trailing><span class="text-xs text-white/40">ETB</span></template>
+                </UInput>
+              </div>
+              <div
+                v-if="adjustChanged"
+                class="flex items-center gap-1.5 text-xs"
+                :class="adjustIsOver ? 'text-amber-400' : 'text-white/40'"
+              >
+                <UIcon :name="adjustIsOver ? 'i-heroicons:arrow-up' : 'i-heroicons:arrow-down'" class="w-3.5 h-3.5" />
+                {{ Math.abs(adjustDelta).toFixed(2) }} ETB {{ adjustIsOver ? 'more than' : 'less than' }} stated
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="adjustIsOver"
+            class="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300"
+          >
+            <UIcon name="i-heroicons:exclamation-triangle" class="w-4 h-4 shrink-0 mt-0.5" />
+            <span>You're crediting <strong>more</strong> than the player stated. Double-check the receipt before confirming.</span>
+          </div>
+
+          <p class="flex items-center gap-1.5 text-[11px] text-white/30">
+            <UIcon name="i-heroicons:clock" class="w-3.5 h-3.5" />
+            Adjustment is logged automatically for audit.
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" :disabled="adjustLoading" @click="showAdjustModal = false">Cancel</UButton>
+        <UButton
+          :color="adjustIsOver ? 'error' : 'success'"
+          :loading="adjustLoading"
+          :disabled="!adjustValid"
+          icon="i-heroicons:check"
+          @click="confirmAdjust"
+        >
+          Approve {{ adjustValid ? adjustAmountNum.toFixed(2) : '—' }} ETB
+        </UButton>
       </template>
     </UModal>
   </div>
@@ -573,4 +685,57 @@ const copyToClipboard = (text: string) => {
   color: #fff;
 }
 .action-btn--decline:hover { opacity: 0.88; }
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+.action-row .action-btn {
+  width: auto;
+  flex: 1;
+}
+.action-row .action-btn--adjust {
+  flex: 1.7;
+}
+
+.action-btn--adjust {
+  background: #f59e0b;
+  color: #000;
+}
+.action-btn--adjust:hover { opacity: 0.88; }
+
+/* Adjust modal receipt thumbnail */
+.adjust-receipt {
+  position: relative;
+  flex-shrink: 0;
+  width: 72px;
+  height: 92px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.adjust-receipt img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.adjust-receipt__zoom {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.adjust-receipt:hover .adjust-receipt__zoom { opacity: 1; }
+.adjust-receipt--empty { cursor: default; }
 </style>

@@ -225,7 +225,8 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any>(`/admin/withdrawals${query ? `?${query}` : ''}`)
         },
-        approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
+        approveTransaction: (id: string, amount?: number) =>
+            apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: amount != null ? { amount } : {} }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
         getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {

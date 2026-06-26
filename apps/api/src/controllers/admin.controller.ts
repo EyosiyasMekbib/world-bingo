@@ -64,9 +64,20 @@ export class AdminController {
         return result
     }
 
-    static async approveTransaction(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    static async approveTransaction(request: FastifyRequest<{ Params: { id: string }, Body: { amount?: number } }>, reply: FastifyReply) {
         const { id } = request.params
-        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.APPROVED)
+        const rawAmount = request.body?.amount
+        let adjustedAmount: number | undefined
+        if (rawAmount !== undefined && rawAmount !== null) {
+            const parsed = Number(rawAmount)
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                reply.status(400).send({ error: 'Invalid adjusted amount' })
+                return
+            }
+            // Normalise to 2 decimal places (currency)
+            adjustedAmount = Math.round(parsed * 100) / 100
+        }
+        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.APPROVED, undefined, adjustedAmount)
         return transaction
     }
 
