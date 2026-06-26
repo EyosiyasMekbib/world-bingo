@@ -3,7 +3,7 @@
     <!-- Logo + Header -->
     <div class="auth-hero">
       <NuxtLink to="/">
-        <img src="/logo.png" alt="Arada Bingo" class="auth-logo-img" />
+        <BrandLogo :height="56" />
       </NuxtLink>
       <p class="auth-subtitle">Sign in to continue playing</p>
     </div>
@@ -252,11 +252,6 @@ form { display: flex; flex-direction: column; gap: 16px; }
   align-items: center;
   gap: 1rem;
   text-align: center;
-}
-
-.auth-logo-img {
-  height: 8vh;
-  object-fit: contain;
 }
 
 .auth-subtitle {
