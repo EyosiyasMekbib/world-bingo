@@ -1,5 +1,12 @@
 import { resolve } from 'path'
 
+// Internal Docker hostname of THIS deployment's API service. Baked at build time
+// (routeRules proxies are static). Defaults to `http://api:8080` for the generic
+// deployment; spokes whose api service is renamed (e.g. `api-betbawa`) MUST pass
+// --build-arg NUXT_API_PROXY_TARGET so their browser traffic does not fall through
+// to another stack's `api` alias on the shared dokploy-network.
+const API_PROXY_TARGET = process.env.NUXT_API_PROXY_TARGET || 'http://api:8080'
+
 export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
@@ -64,11 +71,11 @@ export default defineNuxtConfig({
                 'cache-control': 'public, max-age=31536000, immutable',
             },
         },
-        '/api/**': { proxy: 'http://api:8080/**' },
-        '/socket.io/': { proxy: 'http://api:8080/socket.io/' },
-        '/v1/**': { proxy: 'http://api:8080/v1/**' },
+        '/api/**': { proxy: `${API_PROXY_TARGET}/**` },
+        '/socket.io/': { proxy: `${API_PROXY_TARGET}/socket.io/` },
+        '/v1/**': { proxy: `${API_PROXY_TARGET}/v1/**` },
         // Serve brand logo/favicon (and any uploaded asset) through the API.
-        '/uploads/**': { proxy: 'http://api:8080/uploads/**' }
+        '/uploads/**': { proxy: `${API_PROXY_TARGET}/uploads/**` }
     },
 
     pwa: {

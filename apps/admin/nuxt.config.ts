@@ -1,5 +1,11 @@
 import { resolve } from 'path'
 
+// Internal Docker hostname of THIS deployment's API service. Baked at build time
+// (routeRules proxies are static). Defaults to `http://api:8080`; spokes whose api
+// service is renamed (e.g. `api-betbawa`) MUST pass --build-arg NUXT_API_PROXY_TARGET
+// so admin traffic does not fall through to another stack's `api` alias on dokploy-network.
+const API_PROXY_TARGET = process.env.NUXT_API_PROXY_TARGET || 'http://api:8080'
+
 export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
@@ -55,9 +61,9 @@ export default defineNuxtConfig({
     },
 
     routeRules: {
-        '/api/**': { proxy: 'http://api:8080/**' },
-        '/socket.io/**': { proxy: 'http://api:8080/socket.io/**' },
-        '/uploads/**': { proxy: 'http://api:8080/uploads/**' },
+        '/api/**': { proxy: `${API_PROXY_TARGET}/**` },
+        '/socket.io/**': { proxy: `${API_PROXY_TARGET}/socket.io/**` },
+        '/uploads/**': { proxy: `${API_PROXY_TARGET}/uploads/**` },
     },
 
     vite: {
