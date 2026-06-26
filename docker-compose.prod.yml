@@ -50,6 +50,19 @@ services:
       HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      # ─── Observability (all inert when unset) ───
+      # Set per-brand in Dokploy: SENTRY_DSN, OTEL_SERVICE_NAME (e.g.
+      # world-bingo-api-arada), LOKI_LABEL_APP. Central stack hosts wb-tempo/wb-loki.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://wb-tempo:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-world-bingo-api}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+      LOKI_URL: ${LOKI_URL:-}
+      LOKI_LABEL_APP: ${LOKI_LABEL_APP:-world-bingo-api}
     volumes:
       - uploads_data:/app/apps/api/uploads
     healthcheck:
@@ -75,6 +88,10 @@ services:
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      # Browser error tracking (inert when DSN empty). NOTE: baked into the client
+      # bundle at BUILD time — set it before the image build, then redeploy.
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
     depends_on:
       api:
         condition: service_healthy
@@ -93,6 +110,9 @@ services:
       NUXT_PUBLIC_API_BASE: /api
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
       NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
+      # Browser error tracking (build-time; inert when empty)
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
     depends_on:
       api:
         condition: service_healthy
@@ -104,6 +124,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The shared prometheus.yml references rule_files: alert-rules.yml — mount it so
+      # the rules load (and prometheus doesn't warn about a missing rule file).
+      - ./infrastructure/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
