@@ -27,6 +27,10 @@ COPY apps/admin            ./apps/admin
 RUN pnpm --filter @world-bingo/shared-types build 2>/dev/null || true
 
 # Build Nuxt admin app
+# NUXT_API_PROXY_TARGET is baked into the static routeRules proxies at build time.
+# Defaults to http://api:8080; spokes pass a suffixed host (e.g. http://api-betbawa:8080).
+ARG NUXT_API_PROXY_TARGET=http://api:8080
+ENV NUXT_API_PROXY_TARGET=$NUXT_API_PROXY_TARGET
 WORKDIR /app/apps/admin
 RUN pnpm run build
 

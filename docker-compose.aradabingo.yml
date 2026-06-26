@@ -70,6 +70,10 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Browser /api, /socket.io, /v1, /uploads must proxy to THIS stack's api,
+        # not the bare `api` alias shared on dokploy-network.
+        NUXT_API_PROXY_TARGET: http://api-arada:8080
     image: world-bingo-web:arada
     restart: unless-stopped
     ports:
@@ -91,6 +95,8 @@ services:
     build:
       context: .
       dockerfile: apps/admin/Dockerfile
+      args:
+        NUXT_API_PROXY_TARGET: http://api-arada:8080
     image: world-bingo-admin:arada
     restart: unless-stopped
     ports:
