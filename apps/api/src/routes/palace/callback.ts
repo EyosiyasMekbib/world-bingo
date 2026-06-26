@@ -77,6 +77,7 @@ export const palaceCallbackRoute: FastifyPluginAsync = async (fastify) => {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
+                    'x-request-id': String(req.id),
                     [DEPLOYMENT_HEADER]: cfg.code,
                     [SIGNATURE_HEADER]: sig,
                   },
