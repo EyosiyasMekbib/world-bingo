@@ -1,5 +1,6 @@
 import prisma from '../../lib/prisma.js'
 import { parseNamespacedAccount } from '../hub/namespace.js'
+import { getLogger } from '../../lib/log-context.js'
 import type {
     GameProviderGateway,
     GameListResult,
@@ -40,6 +41,7 @@ export class PalaceApiError extends Error {
 }
 
 async function request<T>(path: string, body: object): Promise<T> {
+    const startedAt = Date.now()
     let res: Response
     try {
         res = await fetch(`${BASE_URL}${path}`, {
@@ -83,6 +85,10 @@ async function request<T>(path: string, body: object): Promise<T> {
     }
 
     if (json.code !== 0) {
+        getLogger().warn(
+            { component: 'palace-gateway', path, palaceCode: json.code, latencyMs: Date.now() - startedAt },
+            '[palace-gateway] upstream rejected request',
+        )
         throw new PalaceApiError({
             message: json.message || `Palace rejected the request (code ${json.code})`,
             statusCode: 502,
@@ -99,6 +105,10 @@ async function request<T>(path: string, body: object): Promise<T> {
             details: { path },
         })
     }
+    getLogger().info(
+        { component: 'palace-gateway', path, palaceCode: json.code, latencyMs: Date.now() - startedAt },
+        '[palace-gateway] upstream call ok',
+    )
     return json.data as T
 }
 
