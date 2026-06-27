@@ -108,7 +108,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
         </button>
 
         <NuxtLink to="/" class="brand-link">
-          <img src="/logo.png" alt="World Bingo" class="brand-logo" />
+          <BrandLogo :height="28" />
         </NuxtLink>
       </div>
 
@@ -245,12 +245,6 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   align-items: center;
   gap: 10px;
   text-decoration: none;
-}
-.brand-logo {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  flex-shrink: 0;
 }
 .brand-text {
   display: flex;
