@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { useBrand } from '~/composables/useBrand'
+
 definePageMeta({
   layout: false
 })
+
+const brand = useBrand()
 
 const { login } = useAdminAuth()
 const toast = useToast()
@@ -41,10 +45,11 @@ const handleLogin = async () => {
       <!-- Brand mark -->
       <div class="login-brand">
         <div class="login-logo-ring">
-          <img src="/logo.png" alt="World Bingo" class="login-logo" />
+          <img v-if="brand.logoUrl" :src="brand.logoUrl" :alt="brand.displayName" class="login-logo" />
+          <span v-else class="login-logo-initial">{{ brand.displayName[0] }}</span>
         </div>
         <div class="login-brand-text">
-          <span class="login-brand-name">World Bingo</span>
+          <span class="login-brand-name">{{ brand.displayName }}</span>
           <span class="login-brand-role">Admin Console</span>
         </div>
       </div>
@@ -218,6 +223,13 @@ const handleLogin = async () => {
   width: 38px;
   height: 38px;
   object-fit: contain;
+}
+
+.login-logo-initial {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brand-primary);
+  line-height: 1;
 }
 
 .login-brand-text {
