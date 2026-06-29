@@ -1,5 +1,7 @@
 import prisma from '../../lib/prisma.js'
+import redis from '../../lib/redis.js'
 import { parseNamespacedAccount } from '../hub/namespace.js'
+import { deploymentConfig } from '../hub/deployment-config.js'
 import { getLogger } from '../../lib/log-context.js'
 import type {
     GameProviderGateway,
@@ -289,6 +291,25 @@ export class PalaceGateway implements GameProviderGateway {
             })
         }
 
+        // A launch forwarded from a SPOKE arrives namespaced with that spoke's
+        // 3-char deployment code (e.g. "btb<uuid-hex>"). That player exists only in
+        // the spoke's own DB — never the hub's — so we must NOT resolve a local user
+        // (the hub-local path below would 404 with PALACE_USER_NOT_FOUND). Provision
+        // and cache the Palace user_code keyed by the namespaced account string
+        // itself (the value Palace echoes back in callbacks), using Redis so no DB
+        // schema change is needed.
+        const cfg = deploymentConfig()
+        if (
+            cfg.role === 'hub' &&
+            username.length === 35 &&
+            /^[0-9a-f]{32}$/i.test(username.slice(3))
+        ) {
+            const prefix = username.slice(0, 3)
+            if (prefix !== cfg.code && cfg.spokes.has(prefix)) {
+                return this.getSpokeUserCode(username)
+            }
+        }
+
         // Strip hub namespace prefix (3 chars) if present so callbacks from a
         // namespaced account (e.g. "h00<uuid-hex>") resolve to the bare UUID-hex.
         let bare = username
@@ -330,6 +351,23 @@ export class PalaceGateway implements GameProviderGateway {
             if (conflict) return conflict.externalUserCode
         }
         return String(data.user_code)
+    }
+
+    /**
+     * Resolve the Palace user_code for a spoke-forwarded, namespaced account. The
+     * player has no row in the hub DB, so the code is keyed by the account string in
+     * Redis. The key is persistent (no TTL): Palace user_codes are stable and
+     * re-`/v4/user/create` is not assumed idempotent.
+     */
+    private async getSpokeUserCode(account: string): Promise<string> {
+        const cacheKey = `palace:usercode:${account}`
+        const cached = await redis.get(cacheKey)
+        if (cached) return cached
+
+        const data = await request<{ user_code: number }>('/v4/user/create', { name: account })
+        const code = String(data.user_code)
+        await redis.set(cacheKey, code)
+        return code
     }
 
     private async resolveProviderId(gameCode: string): Promise<number> {
