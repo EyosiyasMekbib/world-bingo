@@ -980,8 +980,28 @@ export class ThirdPartyWalletService {
             return ok(params.traceId, params.username, new Decimal(existing.balanceAfter))
         }
 
+        // Validate betAmount matches the original bet/bet_debit for this round.
+        // bet_debit ↔ bet_credit are paired by roundId (no betId in that flow),
+        // so look up the round's debit. GASea cert: a credit whose betAmount
+        // disagrees with the round's debit must return SC_BET_AMOUNT_NOT_MATCH.
+        const priorDebit = params.roundId ? await prisma.thirdPartyTransaction.findFirst({
+            where: {
+                providerId: await getProviderId(),
+                userId: user.id,
+                roundId: params.roundId,
+                type: { in: [ThirdPartyTxType.BET, ThirdPartyTxType.BET_DEBIT] },
+                status: ThirdPartyTxStatus.COMPLETED,
+            },
+            orderBy: { createdAt: 'asc' },
+        }) : null
+        if (priorDebit && params.betAmount > 0) {
+            const expectedBetAmt = priorDebit.betAmount!.abs()
+            if (!expectedBetAmt.equals(new Decimal(params.betAmount))) {
+                return err(params.traceId, 'SC_BET_AMOUNT_NOT_MATCH')
+            }
+        }
+
         try {
-            // Validate betAmount matches the original bet_debit for this round
             // Credit amount = remaining balance from game room + any winnings
             const creditAmount = new Decimal(params.amount ?? 0).plus(new Decimal(params.jackpotAmount ?? 0))
 
