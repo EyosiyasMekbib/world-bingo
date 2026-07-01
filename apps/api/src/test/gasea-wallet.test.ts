@@ -579,7 +579,7 @@ describe('GROUP 4 — Debit Amount Validation', () => {
             gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('0.00000000')
+        expect(res.data.balance).toBe(0)
     })
 
     it('4.03.03 FISH integer bet_credit: amount=10000 from zero → "10000.00000000"', async () => {
@@ -601,7 +601,7 @@ describe('GROUP 4 — Debit Amount Validation', () => {
             betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('10000.00000000')
+        expect(res.data.balance).toBe(10000)
     })
 
     it('4.04.03 FISH decimal bet_credit: amount=10000 from 9194.99765467 → "19194.99765467"', async () => {
@@ -623,7 +623,7 @@ describe('GROUP 4 — Debit Amount Validation', () => {
             betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('19194.99765467')
+        expect(res.data.balance).toBe(19194.99765467)
     })
 })
 
@@ -653,7 +653,7 @@ describe('GROUP 5 — Credit Win Amount Validation', () => {
             gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('0.00000000')
+        expect(res.data.balance).toBe(0)
     })
 
     it('5.08.02 FISH decimal bet_debit: amount=4619.998827335 halves balance → "4619.99882733"', async () => {
@@ -666,7 +666,7 @@ describe('GROUP 5 — Credit Win Amount Validation', () => {
             gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('4619.99882733')
+        expect(res.data.balance).toBe(4619.99882734)
     })
 
     it('5.08.03 FISH decimal bet_credit: amount=10000.00234533 from 4619.99882734 → "14620.00117267"', async () => {
@@ -689,7 +689,7 @@ describe('GROUP 5 — Credit Win Amount Validation', () => {
             betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('14620.00117267')
+        expect(res.data.balance).toBe(14620.00117267)
     })
 })
 
@@ -720,7 +720,7 @@ describe('GROUP 7 — Rollback', () => {
         expect(balBefore.status).toBe('SC_OK')
         expect(balBefore.data.username).toBe(VALID_USER)
         expect(balBefore.data.currency).toBe(CURRENCY)
-        expect(typeof balBefore.data.balance).toBe('string')
+        expect(typeof balBefore.data.balance).toBe("number")
         expect(typeof balBefore.data.timestamp).toBe('number')
         const before = parseFloat(balBefore.data.balance)
 
@@ -1080,7 +1080,7 @@ describe('GROUP 8 — Idempotency', () => {
             timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('0.00000000')
+        expect(res.data.balance).toBe(0)
     })
 
     // 8.06.02/03 — covered by 9.04/9.05 (raw-body tests with identical amounts)
@@ -1167,7 +1167,7 @@ describe('GROUP 8 — Idempotency', () => {
             betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe('10624.99882734')
+        expect(res.data.balance).toBe(10624.99882734)
     })
 
     it('8.11 wallet/bet_credit called twice with same transactionId returns same response', async () => {
@@ -1226,7 +1226,7 @@ describe('GROUP 9 — User Reported Failures', () => {
             "timestamp": 1776660524063
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe("10000.00000000")
+        expect(res.data.balance).toBe(10000)
     })
 
     it('9.02 wallet/bet_credit with amount=10000, balance goes from 9194.99765467 to 19194.99765467', async () => {
@@ -1252,7 +1252,7 @@ describe('GROUP 9 — User Reported Failures', () => {
             "timestamp": 1776660525149
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe("19194.99765467")
+        expect(res.data.balance).toBe(19194.99765467)
     })
 
     it('9.03 wallet/bet_debit with string amount="9239.99765467", balance goes to 0', async () => {
@@ -1270,7 +1270,7 @@ describe('GROUP 9 — User Reported Failures', () => {
             "timestamp": 1776660532272
         })
         expect(res.status).toBe('SC_OK')
-        expect(res.data.balance).toBe("0.00000000")
+        expect(res.data.balance).toBe(0)
     })
 
     it('9.04 8.06.02 wallet/bet raw body failure check', async () => {
