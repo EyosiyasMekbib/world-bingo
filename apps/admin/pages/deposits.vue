@@ -10,6 +10,30 @@ interface DepositTransaction {
   senderName?: string | null
   senderAccount?: string | null
   user: { username: string; phone: string; serial?: number }
+  depositVerification?: {
+    status: string
+    decision: string | null
+    decisionReasons: string[]
+    settledAmount: number | null
+    receiverName: string | null
+    receiptStatus: string | null
+    payerName: string | null
+  } | null
+}
+
+function verifyBadge(d: DepositTransaction): { label: string; color: string } {
+  const v = d.depositVerification
+  if (!v) return { label: 'Manual', color: 'neutral' }
+  switch (v.status) {
+    case 'AUTO_CREDITED':
+      return { label: 'Auto-verified', color: 'success' }
+    case 'MANUAL_REQUIRED':
+      return { label: `Review: ${v.decisionReasons[0] ?? 'mismatch'}`, color: 'warning' }
+    case 'UNAVAILABLE':
+      return { label: `Unavailable: ${v.decisionReasons[0] ?? ''}`, color: 'error' }
+    default:
+      return { label: 'Verifying…', color: 'neutral' }
+  }
 }
 
 const { getPendingDeposits, approveTransaction, declineTransaction } = useAdminApi()
@@ -39,6 +63,7 @@ const columns = [
   { accessorKey: 'senderName', header: 'Sender' },
   { accessorKey: 'createdAt', header: 'Time' },
   { accessorKey: 'receipt', header: 'Receipt' },
+  { accessorKey: 'verification', header: 'Verification' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'actions', header: 'Actions' }
 ]
@@ -376,6 +401,11 @@ const copyToClipboard = (text: string) => {
           >View</UButton>
           <span v-else class="text-zinc-600 text-xs">No receipt</span>
         </template>
+        <template #verification-cell="{ row }">
+          <UBadge :color="(verifyBadge(row.original as unknown as DepositTransaction).color as any)" variant="soft">
+            {{ verifyBadge(row.original as unknown as DepositTransaction).label }}
+          </UBadge>
+        </template>
         <template #status-cell="{ row }">
           <UBadge color="warning" variant="soft">{{ (row.original as unknown as DepositTransaction).status }}</UBadge>
         </template>
@@ -425,12 +455,25 @@ const copyToClipboard = (text: string) => {
               <h3 class="font-bold text-zinc-100">{{ d.user.username }}</h3>
             </div>
           </div>
-          <UBadge
-            :color="d.status === 'APPROVED' ? 'success' : d.status === 'DECLINED' ? 'error' : 'neutral'"
-            variant="soft" size="xs"
-          >
-            {{ d.status }}
-          </UBadge>
+          <div class="flex flex-col items-end gap-1">
+            <UBadge
+              :color="d.status === 'APPROVED' ? 'success' : d.status === 'DECLINED' ? 'error' : 'neutral'"
+              variant="soft" size="xs"
+            >
+              {{ d.status }}
+            </UBadge>
+            <UBadge :color="(verifyBadge(d).color as any)" variant="soft" size="xs">
+              {{ verifyBadge(d).label }}
+            </UBadge>
+          </div>
+        </div>
+
+        <div
+          v-if="d.depositVerification?.settledAmount != null"
+          class="text-[11px] text-white/40 mb-3 border border-white/5 rounded px-2 py-1"
+        >
+          Receipt: {{ Number(d.depositVerification.settledAmount).toFixed(2) }} ETB ·
+          {{ d.depositVerification.receiverName }} · {{ d.depositVerification.receiptStatus }}
         </div>
 
         <div class="space-y-2 mb-4">

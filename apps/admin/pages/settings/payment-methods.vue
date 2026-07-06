@@ -12,6 +12,7 @@ type PaymentMethod = {
   instructions: string | null
   icon: string | null
   enabled: boolean
+  autoVerify: boolean
   sortOrder: number
 }
 
@@ -31,6 +32,7 @@ const form = reactive({
   instructions: '',
   icon: '',
   enabled: true,
+  autoVerify: false,
   sortOrder: 0,
 })
 
@@ -60,6 +62,7 @@ const openAdd = () => {
   form.instructions = ''
   form.icon = ''
   form.enabled = true
+  form.autoVerify = false
   form.sortOrder = 0
   modalOpen.value = true
 }
@@ -74,6 +77,7 @@ const openEdit = (m: PaymentMethod) => {
   form.instructions = m.instructions ?? ''
   form.icon = m.icon ?? ''
   form.enabled = m.enabled
+  form.autoVerify = m.autoVerify ?? false
   form.sortOrder = m.sortOrder
   modalOpen.value = true
 }
@@ -94,6 +98,7 @@ const saveMethod = async () => {
       instructions: form.instructions || null,
       icon: form.icon || null,
       enabled: form.enabled,
+      autoVerify: form.autoVerify,
       sortOrder: form.sortOrder,
     }
     if (editingId.value) {
@@ -358,6 +363,16 @@ async function fetchAll() {
               <div class="flex items-center h-9">
                 <USwitch v-model="form.enabled" color="primary" />
               </div>
+            </div>
+          </div>
+
+          <div v-if="form.type === 'DEPOSIT'" class="space-y-1">
+            <label class="text-xs font-semibold text-white/60 uppercase tracking-wider">Auto-verify deposits</label>
+            <div class="flex items-center gap-3 h-9">
+              <USwitch v-model="form.autoVerify" color="primary" />
+              <span class="text-[11px] text-white/40">
+                Auto-check the telebirr receipt for this account and auto-credit clean matches (under the cap).
+              </span>
             </div>
           </div>
         </div>
