@@ -303,8 +303,31 @@ enum DepositVerificationSource {
 - **Fail-safe default:** any exception, timeout, unexpected format, or ambiguous parse →
   `UNAVAILABLE`/`MANUAL`. The engine cannot reject or lose money; the human path is
   always the floor.
-- **Rate limits (429):** single-concurrency worker + Redis token-bucket spacing between
-  outbound calls + BullMQ exponential backoff. Sustained 429 → `UNAVAILABLE` → manual.
+- **Rate limits (429).** The ethiotelecom endpoint throttles per-IP (observed: 429 with
+  a JSON body `{"success":false,"message":"Rate limit exceeded..."}`). Four Redis-backed
+  mechanisms, all effective across the multiple API instances that share the queue:
+  1. **Static floor** — BullMQ worker `limiter: { max, duration }` caps *aggregate*
+     outbound rate (not per-process), env-tunable, conservative default. Bursts drain at
+     a safe rate instead of hammering the endpoint.
+  2. **Dynamic backoff** — on a 429, the handler calls `await worker.rateLimit(ms)` then
+     throws `Worker.RateLimitError()`, pausing the whole queue for the window and
+     re-queuing the job **without consuming a retry attempt**. Honors `Retry-After` when
+     present, else a default cooldown. The system self-throttles to the real budget.
+  3. **Retry classification** — 429 / transient network errors are retryable (N attempts,
+     exponential backoff). `NOT_FOUND` / parse failures are terminal (no wasted retries) →
+     straight to manual. Request budget is spent only on requests that can succeed.
+  4. **Concurrency 1 + dedup** — one in-flight request per worker; the `DepositVerification`
+     row prevents re-verifying the same transaction. The existing "deposit age > 15 min"
+     admin badge surfaces anything verification hasn't cleared, so humans absorb overflow.
+
+  Sustained throttling beyond the retry budget → `UNAVAILABLE` → manual. Rate limiting can
+  only reduce the automation rate, never break a deposit.
+
+  **Strategic follow-up (out of scope, noted):** the public receipt page is inherently
+  rate-limited and can change without notice. The durable fix is telebirr's official
+  merchant/transaction-query API (developer.ethiotelecom.et). The `DepositVerifier`
+  interface is designed so a `TelebirrApiVerifier` can replace the scraping verifier later
+  with no change to the worker or decision engine.
 - **TLS:** a host-scoped agent with relaxed verification **only** for
   `transactioninfo.ethiotelecom.et` (never global), plus a request timeout and a capped
   response body.
