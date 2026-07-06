@@ -28,10 +28,17 @@ export async function fetchReceiptHtml(
   transactionId: string,
   opts: { timeoutMs?: number; baseUrl?: string } = {},
 ): Promise<{ ok: true; html: string } | { ok: false; reason: FetchReason }> {
-  const timeoutMs = opts.timeoutMs ?? 8000
+  const timeoutMs = opts.timeoutMs ?? 15000
   const url = (opts.baseUrl ?? DEFAULT_BASE) + encodeURIComponent(transactionId)
 
   return new Promise((resolve) => {
+    let settled = false
+    const done = (r: { ok: true; html: string } | { ok: false; reason: FetchReason }) => {
+      if (settled) return
+      settled = true
+      resolve(r)
+    }
+
     const req = https.get(
       url,
       {
@@ -45,7 +52,8 @@ export async function fetchReceiptHtml(
           size += c.length
           if (size > 2_000_000) {
             req.destroy()
-            resolve({ ok: false, reason: 'UNREACHABLE' })
+            console.warn(`[deposit-verify] fetch ${transactionId}: response too large (>2MB)`)
+            done({ ok: false, reason: 'UNREACHABLE' })
             return
           }
           chunks.push(c)
@@ -57,15 +65,27 @@ export async function fetchReceiptHtml(
             String(res.headers['content-type'] ?? ''),
             body,
           )
-          if (c.kind === 'html') resolve({ ok: true, html: c.html })
-          else resolve({ ok: false, reason: c.reason })
+          if (c.kind === 'html') {
+            done({ ok: true, html: c.html })
+          } else {
+            console.warn(
+              `[deposit-verify] fetch ${transactionId}: status=${res.statusCode} type=${res.headers['content-type']} -> ${c.reason} body="${body.slice(0, 160).replace(/\s+/g, ' ')}"`,
+            )
+            done({ ok: false, reason: c.reason })
+          }
         })
       },
     )
     req.setTimeout(timeoutMs, () => {
       req.destroy()
-      resolve({ ok: false, reason: 'UNREACHABLE' })
+      console.warn(`[deposit-verify] fetch ${transactionId}: TIMEOUT after ${timeoutMs}ms (${url})`)
+      done({ ok: false, reason: 'UNREACHABLE' })
     })
-    req.on('error', () => resolve({ ok: false, reason: 'UNREACHABLE' }))
+    req.on('error', (err: NodeJS.ErrnoException) => {
+      console.warn(
+        `[deposit-verify] fetch ${transactionId}: ERROR code=${err.code ?? '?'} msg="${err.message}" (${url})`,
+      )
+      done({ ok: false, reason: 'UNREACHABLE' })
+    })
   })
 }
