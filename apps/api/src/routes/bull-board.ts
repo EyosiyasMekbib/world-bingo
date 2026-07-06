@@ -27,6 +27,7 @@ export async function registerBullBoard(fastify: FastifyInstance): Promise<void>
             new BullMQAdapter(getQueue(QUEUE_NAMES.NOTIFICATION)),
             new BullMQAdapter(getQueue(QUEUE_NAMES.GAME_ENGINE)),
             new BullMQAdapter(getQueue(QUEUE_NAMES.WITHDRAWAL)),
+            new BullMQAdapter(getQueue(QUEUE_NAMES.DEPOSIT_VERIFICATION)),
         ],
         serverAdapter,
     })
