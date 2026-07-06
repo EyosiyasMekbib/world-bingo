@@ -21,6 +21,8 @@ const gameSettings = reactive({
   min_withdrawal_amount: 100,
   max_deposit_amount: 50000,
   max_withdrawal_amount: 10000,
+  deposit_auto_verify_enabled: false,
+  deposit_auto_verify_max_amount: 0,
 })
 
 const templates = ref<{ id: string; title: string; active: boolean }[]>([])
@@ -40,6 +42,8 @@ const fetchAll = async () => {
     gameSettings.min_withdrawal_amount = gs.min_withdrawal_amount ?? 100
     gameSettings.max_deposit_amount = gs.max_deposit_amount ?? 50000
     gameSettings.max_withdrawal_amount = gs.max_withdrawal_amount ?? 10000
+    gameSettings.deposit_auto_verify_enabled = gs.deposit_auto_verify_enabled ?? false
+    gameSettings.deposit_auto_verify_max_amount = gs.deposit_auto_verify_max_amount ?? 0
     templates.value = Array.isArray(tmpl) ? tmpl.filter((t: any) => t.active) : []
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load settings', color: 'error' })
@@ -72,6 +76,8 @@ const saveGameSettings = async () => {
       min_withdrawal_amount: gameSettings.min_withdrawal_amount,
       max_deposit_amount: gameSettings.max_deposit_amount,
       max_withdrawal_amount: gameSettings.max_withdrawal_amount,
+      deposit_auto_verify_enabled: gameSettings.deposit_auto_verify_enabled,
+      deposit_auto_verify_max_amount: gameSettings.deposit_auto_verify_max_amount,
     }) as any
     gameSettings.ball_interval_secs = result.ball_interval_secs
     gameSettings.bot_max_spend_etb = result.bot_max_spend_etb
@@ -81,6 +87,8 @@ const saveGameSettings = async () => {
     gameSettings.min_withdrawal_amount = result.min_withdrawal_amount ?? 100
     gameSettings.max_deposit_amount = result.max_deposit_amount ?? 50000
     gameSettings.max_withdrawal_amount = result.max_withdrawal_amount ?? 10000
+    gameSettings.deposit_auto_verify_enabled = result.deposit_auto_verify_enabled ?? false
+    gameSettings.deposit_auto_verify_max_amount = result.deposit_auto_verify_max_amount ?? 0
     toast.add({ title: 'Saved ✅', description: 'Game settings updated successfully', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to save game settings', color: 'error' })
@@ -263,6 +271,37 @@ onMounted(fetchAll)
                   class="w-36"
                 />
                 <span class="text-sm text-white/40 font-medium">ETB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deposit Auto-Verification -->
+          <div class="flex items-start gap-4 mt-5 pt-5 border-t border-white/8">
+            <div class="p-3 rounded-xl border border-purple-500/20 shrink-0" style="background:var(--surface-overlay);">
+              <UIcon name="i-heroicons:shield-check" class="w-6 h-6 text-purple-400" />
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="text-sm font-bold text-white">Telebirr Deposit Auto-Verification</p>
+                  <p class="text-xs text-white/40 mt-1 font-medium leading-relaxed">Fetch the official telebirr receipt by transaction ID and auto-credit clean matches. Only methods with "Auto-verify" enabled are checked. Leave the cap at 0 for shadow mode (verifies + tags, but routes everything to manual review).</p>
+                </div>
+                <USwitch v-model="gameSettings.deposit_auto_verify_enabled" color="primary" />
+              </div>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="text-xs text-white/40 font-medium">Auto-credit cap</span>
+                <UInput
+                  v-model.number="gameSettings.deposit_auto_verify_max_amount"
+                  type="number"
+                  min="0"
+                  class="w-36"
+                  :disabled="!gameSettings.deposit_auto_verify_enabled"
+                />
+                <span class="text-sm text-white/40 font-medium">ETB</span>
+                <span
+                  v-if="gameSettings.deposit_auto_verify_enabled && gameSettings.deposit_auto_verify_max_amount === 0"
+                  class="text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
+                >Shadow mode</span>
               </div>
             </div>
           </div>
