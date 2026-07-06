@@ -45,6 +45,7 @@
         "fastify-type-provider-zod": "^4.0.2",
         "ioredis": "^5.4.0",
         "jsonwebtoken": "^9.0.3",
+        "node-html-parser": "^9.0.0",
         "pino": "^9.0.0",
         "pino-loki": "^2",
         "prom-client": "^15.1.3",
