@@ -78,6 +78,7 @@ const paymentMethodCreateSchema = z.object({
     instructions: z.string().nullish(),
     icon: z.string().nullish(),
     enabled: z.boolean().default(true),
+    autoVerify: z.boolean().default(false),
     sortOrder: z.number().int().default(0),
 })
 
@@ -90,6 +91,7 @@ const paymentMethodUpdateSchema = z.object({
     instructions: z.string().nullish(),
     icon: z.string().nullish(),
     enabled: z.boolean().optional(),
+    autoVerify: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
 })
 
@@ -437,7 +439,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 const d = parsed.data
                 const method = await prisma.paymentMethod.create({
-                    data: { code: d.code, name: d.name, type: d.type as import('@prisma/client').PaymentMethodType, merchantName: d.merchantName ?? null, merchantAccount: d.merchantAccount ?? null, instructions: d.instructions ?? null, icon: d.icon ?? null, enabled: d.enabled, sortOrder: d.sortOrder },
+                    data: { code: d.code, name: d.name, type: d.type as import('@prisma/client').PaymentMethodType, merchantName: d.merchantName ?? null, merchantAccount: d.merchantAccount ?? null, instructions: d.instructions ?? null, icon: d.icon ?? null, enabled: d.enabled, autoVerify: d.autoVerify, sortOrder: d.sortOrder },
                 })
                 return reply.status(201).send(method)
             } catch (err: any) {

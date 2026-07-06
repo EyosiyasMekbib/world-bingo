@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
 import { wbDepositsTotal } from '../lib/metrics'
+import { DepositVerificationService } from './deposit-verification.service'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -55,6 +56,9 @@ export class WalletService {
                 ...(data.methodCode ? { note: data.methodCode } : {}),
             },
         })
+        // Best-effort: kick off async auto-verification. Swallows its own errors so a
+        // queue hiccup can never break deposit submission — the deposit still goes to manual.
+        await DepositVerificationService.enqueue(transaction.id)
         return transaction
     }
 

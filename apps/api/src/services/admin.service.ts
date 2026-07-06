@@ -222,6 +222,7 @@ export class AdminService {
                     user: {
                         select: { id: true, serial: true, username: true, phone: true },
                     },
+                    depositVerification: true,
                 },
                 orderBy: { createdAt: 'desc' },
                 skip,

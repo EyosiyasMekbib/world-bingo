@@ -14,6 +14,10 @@ const DEFAULTS: Record<string, string> = {
     min_withdrawal_amount: '100',
     max_deposit_amount: '50000',
     max_withdrawal_amount: '10000',
+    deposit_auto_verify_enabled: 'false',
+    deposit_auto_verify_max_amount: '0',
+    deposit_auto_verify_max_age_hours: '0',
+    deposit_auto_verify_require_payer_match: 'false',
 }
 
 /**
@@ -71,7 +75,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.put('/game', {
         preValidation: [fastify.requireAdmin],
     }, async (req: any, _reply) => {
-        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number; max_deposit_amount?: number; max_withdrawal_amount?: number }
+        const body = req.body as { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number; max_deposit_amount?: number; max_withdrawal_amount?: number; deposit_auto_verify_enabled?: boolean; deposit_auto_verify_max_amount?: number; deposit_auto_verify_max_age_hours?: number; deposit_auto_verify_require_payer_match?: boolean }
         const updates: Record<string, string> = {}
         if (body.ball_interval_secs != null) {
             updates.ball_interval_secs = String(Math.max(1, Math.min(30, Number(body.ball_interval_secs))))
@@ -97,6 +101,18 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         if (body.max_withdrawal_amount != null) {
             updates.max_withdrawal_amount = String(Math.max(1, Number(body.max_withdrawal_amount)))
         }
+        if (body.deposit_auto_verify_enabled != null) {
+            updates.deposit_auto_verify_enabled = body.deposit_auto_verify_enabled ? 'true' : 'false'
+        }
+        if (body.deposit_auto_verify_max_amount != null) {
+            updates.deposit_auto_verify_max_amount = String(Math.max(0, Number(body.deposit_auto_verify_max_amount)))
+        }
+        if (body.deposit_auto_verify_max_age_hours != null) {
+            updates.deposit_auto_verify_max_age_hours = String(Math.max(0, Number(body.deposit_auto_verify_max_age_hours)))
+        }
+        if (body.deposit_auto_verify_require_payer_match != null) {
+            updates.deposit_auto_verify_require_payer_match = body.deposit_auto_verify_require_payer_match ? 'true' : 'false'
+        }
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({
                 where: { key },
@@ -105,7 +121,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             })
         }
         const saved = await prisma.siteSetting.findMany({
-            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount', 'max_deposit_amount', 'max_withdrawal_amount'] } },
+            where: { key: { in: ['ball_interval_secs', 'bot_max_spend_etb', 'first_deposit_bonus_amount', 'featured_template_id', 'min_deposit_amount', 'min_withdrawal_amount', 'max_deposit_amount', 'max_withdrawal_amount', 'deposit_auto_verify_enabled', 'deposit_auto_verify_max_amount', 'deposit_auto_verify_max_age_hours', 'deposit_auto_verify_require_payer_match'] } },
         })
         const savedMap = Object.fromEntries(saved.map((r) => [r.key, r.value]))
         return {
@@ -117,6 +133,10 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             min_withdrawal_amount: Number(savedMap.min_withdrawal_amount ?? 100),
             max_deposit_amount: Number(savedMap.max_deposit_amount ?? 50000),
             max_withdrawal_amount: Number(savedMap.max_withdrawal_amount ?? 10000),
+            deposit_auto_verify_enabled: (savedMap.deposit_auto_verify_enabled ?? 'false') === 'true',
+            deposit_auto_verify_max_amount: Number(savedMap.deposit_auto_verify_max_amount ?? 0),
+            deposit_auto_verify_max_age_hours: Number(savedMap.deposit_auto_verify_max_age_hours ?? 0),
+            deposit_auto_verify_require_payer_match: (savedMap.deposit_auto_verify_require_payer_match ?? 'false') === 'true',
         }
     })
 
