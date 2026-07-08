@@ -211,12 +211,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: rgba(3, 12, 34, 0.96);
-  border-bottom: 1px solid var(--surface-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Fully brand-colored: the navbar background IS the active brand colour,
+     so it re-themes with the brand. All chrome on it uses --text-on-brand
+     for contrast. */
+  background: linear-gradient(180deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 86%, #000));
+  border-bottom: 1px solid color-mix(in srgb, var(--text-on-brand) 22%, transparent);
+  box-shadow: 0 10px 28px -18px color-mix(in srgb, var(--brand-primary) 85%, transparent);
   flex-shrink: 0;
 }
+
+/* Brand-bar chrome: dark-on-brand contrast for everything in the header. */
+.admin-header :deep(.brand-wordmark) { color: var(--text-on-brand); }
 
 .header-left {
   display: flex;
@@ -233,12 +238,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   border-radius: 6px;
   background: none;
   border: none;
-  color: rgba(255,255,255,0.55);
+  color: color-mix(in srgb, var(--text-on-brand) 68%, transparent);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.burger-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
-.burger-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.burger-btn:hover { background: color-mix(in srgb, var(--text-on-brand) 12%, transparent); color: var(--text-on-brand); }
+.burger-btn:focus-visible { outline: 2px solid var(--text-on-brand); outline-offset: 2px; }
 
 .brand-link {
   display: flex;
@@ -279,8 +284,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   padding: 0 10px;
   border-radius: 5px;
   background: none;
-  border: 1px solid var(--surface-border);
-  color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, var(--text-on-brand) 26%, transparent);
+  color: color-mix(in srgb, var(--text-on-brand) 82%, transparent);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -288,7 +293,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   font-family: var(--font-ui);
   transition: background 0.12s ease, color 0.12s ease;
 }
-.locale-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+.locale-btn:hover { background: color-mix(in srgb, var(--text-on-brand) 12%, transparent); color: var(--text-on-brand); }
 
 .user-chip {
   display: flex;
@@ -297,11 +302,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   height: 30px;
   padding: 0 10px;
   border-radius: 5px;
-  background: var(--surface-raised);
-  border: 1px solid var(--surface-border);
+  background: color-mix(in srgb, var(--text-on-brand) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-on-brand) 20%, transparent);
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-on-brand);
 }
 
 .signout-btn {
@@ -313,12 +318,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   border-radius: 5px;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-on-brand) 62%, transparent);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.signout-btn:hover { background: rgba(248,113,113,0.08); color: #f87171; }
-.signout-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.signout-btn:hover { background: color-mix(in srgb, var(--text-on-brand) 14%, transparent); color: var(--text-on-brand); }
+.signout-btn:focus-visible { outline: 2px solid var(--text-on-brand); outline-offset: 2px; }
 
 /* ── Body ────────────────────────────────────────────────────────────── */
 .admin-body {

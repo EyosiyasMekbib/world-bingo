@@ -18,6 +18,11 @@ export default defineNuxtConfig({
         '@sentry/nuxt/module',
     ],
 
+    sentry: {
+        serverConfigFile: resolve(__dirname, 'sentry.server.config.ts'),
+        clientConfigFile: resolve(__dirname, 'sentry.client.config.ts'),
+    },
+
     icon: {
         serverBundle: 'remote',
         localApiEndpoint: '/_nuxt_icon',
@@ -78,6 +83,11 @@ export default defineNuxtConfig({
             alias: {
                 '@world-bingo/ui': resolve(__dirname, '../../packages/ui/src'),
                 '@world-bingo/shared-types': resolve(__dirname, '../../packages/shared-types/src/index.ts'),
+                // @sentry/nuxt generates a virtual module that imports these with a
+                // bare `/` prefix, which vite-node resolves from the filesystem root
+                // instead of the app root. Redirect to the correct absolute paths.
+                '/sentry.server.config.ts': resolve(__dirname, 'sentry.server.config.ts'),
+                '/sentry.client.config.ts': resolve(__dirname, 'sentry.client.config.ts'),
             },
         },
     },
