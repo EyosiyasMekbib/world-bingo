@@ -10,7 +10,12 @@ export interface ParsedReceipt {
   payerNumberMasked: string | null
 }
 
-export type VerifyUnavailableReason = 'NOT_FOUND' | 'RATE_LIMITED' | 'UNREACHABLE' | 'PARSE_FAILED'
+export type VerifyUnavailableReason =
+  | 'NOT_FOUND'
+  | 'RATE_LIMITED'
+  | 'UNREACHABLE'
+  | 'PARSE_FAILED'
+  | 'PIN_MISMATCH'
 
 export interface VerifyUnavailable {
   unavailable: VerifyUnavailableReason
