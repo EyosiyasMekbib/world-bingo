@@ -54,6 +54,12 @@ services:
       HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      # ─── Deposit receipt verification egress (no-op when unset) ───
+      # Optional external proxy for the server-side (unattended) receipt fetch,
+      # e.g. an Ethiopian VPS SOCKS tunnel. Pins REQUIRED whenever a proxy is set —
+      # see receipt-fetcher.ts. Left empty in the browser-fetch (clerk) flow.
+      DEPOSIT_VERIFY_PROXY: ${DEPOSIT_VERIFY_PROXY:-}
+      DEPOSIT_VERIFY_SPKI_PINS: ${DEPOSIT_VERIFY_SPKI_PINS:-}
       # ─── Observability (env-gated; no-op when unset) ───
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}

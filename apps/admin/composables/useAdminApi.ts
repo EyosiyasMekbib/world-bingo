@@ -229,6 +229,13 @@ export const useAdminApi = () => {
             apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: amount != null ? { amount } : {} }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        // Send receipt HTML (fetched by the clerk's in-Ethiopia browser) to the API,
+        // which parses + matches + (within cap) credits it. Returns the verdict.
+        verifyReceipt: (id: string, html: string) =>
+            apiFetch<{ status: string; reasons: string[]; parsed: Record<string, any> | null }>(
+                `/admin/transactions/${id}/verify-receipt`,
+                { method: 'POST', body: { html } },
+            ),
         getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))

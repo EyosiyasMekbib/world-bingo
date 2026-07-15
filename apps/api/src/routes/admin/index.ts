@@ -106,6 +106,23 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.get('/withdrawals', AdminController.getWithdrawals)
         f.post('/transactions/:id/approve', AdminController.approveTransaction)
         f.post('/transactions/:id/decline', AdminController.declineTransaction)
+
+        // On-demand receipt verification. The clerk's browser (egressing from
+        // Ethiopia) fetches the telebirr receipt the API server can't reach, and
+        // POSTs the raw HTML here; we run the same parse→match→credit pipeline as
+        // the background worker. Crediting honours the auto-verify toggle + cap.
+        f.post('/transactions/:id/verify-receipt', async (req: any, reply) => {
+            const parsed = z.object({ html: z.string().min(1).max(5_000_000) }).safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'html is required' })
+            const { DepositVerificationService } = await import(
+                '../../services/deposit-verification.service'
+            )
+            const result = await DepositVerificationService.verifyFromHtml(
+                req.params.id,
+                parsed.data.html,
+            )
+            return reply.send(result)
+        })
         f.get('/stats', AdminController.getStats)
 
         f.post('/players/:id/adjust-balance', async (req: any, reply) => {

@@ -28,6 +28,12 @@ export function isUnavailable(r: ParsedReceipt | VerifyUnavailable): r is Verify
 export interface DepositVerifier {
   code: string
   verify(transactionId: string): Promise<ParsedReceipt | VerifyUnavailable>
+  /**
+   * Parse already-fetched receipt markup (e.g. supplied by an in-Ethiopia
+   * approver's browser) WITHOUT performing the network fetch. Same parse path
+   * `verify` uses on the bytes it fetches itself.
+   */
+  parse(html: string): ParsedReceipt | VerifyUnavailable
 }
 
 export interface ActiveAccount {

@@ -36,7 +36,7 @@ function verifyBadge(d: DepositTransaction): { label: string; color: string } {
   }
 }
 
-const { getPendingDeposits, approveTransaction, declineTransaction } = useAdminApi()
+const { getPendingDeposits, approveTransaction, declineTransaction, verifyReceipt } = useAdminApi()
 const toast = useToast()
 
 const formatUserId = (serial?: number) => {
@@ -186,6 +186,107 @@ const resetFilters = () => {
 watch([page, filterStatus], fetchDeposits)
 onMounted(fetchDeposits)
 
+// ── On-demand receipt verification ────────────────────────────────────────────
+// The clerk's browser (egressing from Ethiopia) fetches the telebirr receipt the
+// API server can't reach and POSTs the HTML to /verify-receipt, which runs the
+// same parse → match → credit-within-cap pipeline as the background worker.
+type CheckPhase = 'fetching' | 'verifying' | 'done' | 'error'
+const checkStates = reactive<Record<string, { phase: CheckPhase; label?: string; detail?: string }>>({})
+const checkAllRunning = ref(false)
+const checkProgress = reactive({ done: 0, total: 0 })
+
+const RECEIPT_BASE = 'https://transactioninfo.ethiotelecom.et/receipt/'
+const receiptRefOf = (d: DepositTransaction) => d.paymentTransactionId?.trim() || null
+
+// The SINGLE swap-point for HOW receipt HTML is obtained from the clerk's
+// in-Ethiopia browser. First tries a direct fetch (works only if telebirr sends
+// CORS headers); otherwise asks an optional browser-extension bridge. Finalised
+// once the CORS test result is known — if direct fetch works, the bridge is dead code.
+async function fetchReceiptHtml(ref: string): Promise<string> {
+  const url = RECEIPT_BASE + encodeURIComponent(ref)
+  try {
+    const res = await fetch(url, { credentials: 'omit', redirect: 'follow' })
+    if (res.ok) {
+      const text = await res.text()
+      if (text && text.length > 200) return text
+    }
+  } catch { /* CORS / network → try the extension bridge below */ }
+  const viaExt = await fetchViaExtension(url)
+  if (viaExt) return viaExt
+  throw new Error('NO_RECEIPT_ACCESS')
+}
+
+// Bridge to an optional content-script extension: postMessage out, await a reply.
+// Resolves null if nothing answers (no extension installed) within the timeout.
+function fetchViaExtension(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2)
+    let settled = false
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data
+      if (!d || d.type !== 'WB_RECEIPT_RESULT' || d.id !== id) return
+      settled = true
+      window.removeEventListener('message', onMsg)
+      resolve(typeof d.html === 'string' ? d.html : null)
+    }
+    window.addEventListener('message', onMsg)
+    window.postMessage({ type: 'WB_FETCH_RECEIPT', id, url }, '*')
+    setTimeout(() => { if (!settled) { window.removeEventListener('message', onMsg); resolve(null) } }, 8000)
+  })
+}
+
+async function checkOne(d: DepositTransaction): Promise<void> {
+  const ref = receiptRefOf(d)
+  if (!ref) { checkStates[d.id] = { phase: 'error', label: 'No ref ID' }; return }
+  checkStates[d.id] = { phase: 'fetching' }
+  try {
+    const html = await fetchReceiptHtml(ref)
+    checkStates[d.id] = { phase: 'verifying' }
+    const res = await verifyReceipt(d.id, html)
+    const label =
+      res.status === 'AUTO_CREDITED' ? 'Auto-verified'
+      : res.status === 'UNAVAILABLE' ? `Unavailable: ${res.reasons?.[0] ?? ''}`
+      : res.status === 'MANUAL_REQUIRED' ? `Review: ${res.reasons?.[0] ?? ''}`
+      : (res.reasons?.[0] ?? res.status)
+    checkStates[d.id] = { phase: 'done', label }
+    if (res.status === 'AUTO_CREDITED') {
+      toast.add({ title: 'Auto-credited', description: `${d.user?.username ?? d.id} • ${d.amount} ETB`, color: 'success' })
+    }
+  } catch (e: any) {
+    const detail = e?.message === 'NO_RECEIPT_ACCESS'
+      ? 'Receipt unreachable from this browser (needs Ethiopia network / helper extension)'
+      : (e?.message ?? 'Fetch failed')
+    checkStates[d.id] = { phase: 'error', label: 'Failed', detail }
+  }
+}
+
+async function checkDeposit(d: DepositTransaction): Promise<void> {
+  await checkOne(d)
+  await fetchDeposits() // refetch so the persisted verdict/badge is authoritative
+}
+
+async function checkAll(): Promise<void> {
+  if (checkAllRunning.value) return
+  const targets = pendingDeposits.value.filter(d => d.status === 'PENDING_REVIEW' && receiptRefOf(d))
+  if (!targets.length) { toast.add({ title: 'Nothing to check', description: 'No pending deposits with a reference ID', color: 'neutral' }); return }
+  checkAllRunning.value = true
+  Object.assign(checkProgress, { done: 0, total: targets.length })
+  // Small concurrency pool so we don't hammer telebirr or trip the rate limiter.
+  let idx = 0
+  const worker = async () => {
+    while (idx < targets.length) {
+      await checkOne(targets[idx++])
+      checkProgress.done++
+    }
+  }
+  try {
+    await Promise.all(Array.from({ length: Math.min(3, targets.length) }, worker))
+  } finally {
+    checkAllRunning.value = false
+    await fetchDeposits()
+  }
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 const openApproveModal = (id: string) => {
   selectedApproveId.value = id
@@ -312,6 +413,16 @@ const copyToClipboard = (text: string) => {
           <span v-if="!activeChips.length" class="text-[11px] text-white/20">None</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+          <button
+            class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 hover:border-emerald-500/50"
+            :disabled="checkAllRunning"
+            title="Fetch each pending receipt from this (Ethiopia) browser and auto-verify"
+            @click="checkAll"
+          >
+            <svg v-if="checkAllRunning" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+            {{ checkAllRunning ? `Checking ${checkProgress.done}/${checkProgress.total}` : 'Check All' }}
+          </button>
           <button class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-medium text-white/50 hover:text-white border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all" @click="exportCSV">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export
@@ -339,6 +450,20 @@ const copyToClipboard = (text: string) => {
         <UInput v-model="filterMaxAmount" type="number" placeholder="Max ETB" size="sm" class="w-24" @input="onSearch" />
         <USelect v-model="filterStatus" :items="statusOptions" value-key="value" size="sm" class="w-36" @change="page = 1; fetchDeposits()" />
         <UButton color="neutral" variant="ghost" size="sm" icon="i-heroicons:x-mark" @click="resetFilters">Reset</UButton>
+      </div>
+    </div>
+
+    <!-- Check-All progress -->
+    <div v-if="checkAllRunning || checkProgress.done > 0" class="space-y-1">
+      <div class="flex justify-between text-[11px] text-white/40">
+        <span>Verifying receipts…</span>
+        <span>{{ checkProgress.done }}/{{ checkProgress.total }}</span>
+      </div>
+      <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div
+          class="h-full bg-emerald-500 transition-all duration-300"
+          :style="{ width: `${checkProgress.total ? (checkProgress.done / checkProgress.total) * 100 : 0}%` }"
+        />
       </div>
     </div>
 
@@ -411,6 +536,12 @@ const copyToClipboard = (text: string) => {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-2">
+            <UButton
+              size="xs" color="primary" variant="soft" icon="i-heroicons:magnifying-glass-circle"
+              :loading="checkStates[(row.original as unknown as DepositTransaction).id]?.phase === 'fetching' || checkStates[(row.original as unknown as DepositTransaction).id]?.phase === 'verifying'"
+              :disabled="!receiptRefOf(row.original as unknown as DepositTransaction)"
+              @click="checkDeposit(row.original as unknown as DepositTransaction)"
+            >Check</UButton>
             <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="openApproveModal((row.original as unknown as DepositTransaction).id)">Approve</UButton>
             <UButton size="xs" color="warning" variant="soft" icon="i-heroicons:pencil-square" @click="openAdjustModal(row.original as unknown as DepositTransaction)">Adjust</UButton>
             <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
@@ -476,6 +607,13 @@ const copyToClipboard = (text: string) => {
           {{ d.depositVerification.receiverName }} · {{ d.depositVerification.receiptStatus }}
         </div>
 
+        <div
+          v-if="checkStates[d.id]?.detail"
+          class="text-[11px] text-red-300/80 mb-3 border border-red-500/20 bg-red-500/5 rounded px-2 py-1"
+        >
+          {{ checkStates[d.id]?.detail }}
+        </div>
+
         <div class="space-y-2 mb-4">
           <div class="flex justify-between items-center">
             <span class="text-xs text-white/30">Amount</span>
@@ -492,6 +630,15 @@ const copyToClipboard = (text: string) => {
             <span class="text-[10px] text-white/20">{{ new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
           </div>
           <div v-if="d.status === 'PENDING_REVIEW'" class="action-btns">
+            <button
+              class="action-btn action-btn--check"
+              :disabled="!receiptRefOf(d) || checkStates[d.id]?.phase === 'fetching' || checkStates[d.id]?.phase === 'verifying'"
+              @click="checkDeposit(d)"
+            >
+              <svg v-if="checkStates[d.id]?.phase === 'fetching' || checkStates[d.id]?.phase === 'verifying'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+              {{ checkStates[d.id]?.phase === 'fetching' ? 'Fetching…' : checkStates[d.id]?.phase === 'verifying' ? 'Verifying…' : 'Check' }}
+            </button>
             <button class="action-btn action-btn--approve" @click="openApproveModal(d.id)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               Approve
@@ -716,6 +863,14 @@ const copyToClipboard = (text: string) => {
 }
 
 .action-btn:active { transform: scale(0.97); }
+
+.action-btn--check {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+.action-btn--check:hover:not(:disabled) { background: rgba(99, 102, 241, 0.25); }
+.action-btn--check:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .action-btn--approve {
   background: #22c55e;
