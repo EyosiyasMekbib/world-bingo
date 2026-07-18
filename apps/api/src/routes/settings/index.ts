@@ -17,7 +17,7 @@ const DEFAULTS: Record<string, string> = {
     deposit_auto_verify_enabled: 'false',
     deposit_auto_verify_max_amount: '0',
     deposit_auto_verify_max_age_hours: '0',
-    deposit_auto_verify_require_payer_match: 'false',
+    deposit_auto_verify_require_payer_match: 'true',
 }
 
 /**
@@ -136,7 +136,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
             deposit_auto_verify_enabled: (savedMap.deposit_auto_verify_enabled ?? 'false') === 'true',
             deposit_auto_verify_max_amount: Number(savedMap.deposit_auto_verify_max_amount ?? 0),
             deposit_auto_verify_max_age_hours: Number(savedMap.deposit_auto_verify_max_age_hours ?? 0),
-            deposit_auto_verify_require_payer_match: (savedMap.deposit_auto_verify_require_payer_match ?? 'false') === 'true',
+            deposit_auto_verify_require_payer_match: (savedMap.deposit_auto_verify_require_payer_match ?? 'true') === 'true',
         }
     })
 

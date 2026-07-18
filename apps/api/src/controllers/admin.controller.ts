@@ -77,14 +77,20 @@ export class AdminController {
             // Normalise to 2 decimal places (currency)
             adjustedAmount = Math.round(parsed * 100) / 100
         }
-        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.APPROVED, undefined, adjustedAmount)
+        const transaction = await AdminService.reviewTransaction(
+            id,
+            PaymentStatus.APPROVED,
+            undefined,
+            adjustedAmount,
+            request.user.id,
+        )
         return transaction
     }
 
     static async declineTransaction(request: FastifyRequest<{ Params: { id: string }, Body: { note?: string } }>, reply: FastifyReply) {
         const { id } = request.params
         const { note } = request.body
-        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.REJECTED, note)
+        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.REJECTED, note, undefined, request.user.id)
         return transaction
     }
 

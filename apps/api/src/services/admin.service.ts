@@ -237,22 +237,39 @@ export class AdminService {
         }
     }
 
-    static async reviewTransaction(transactionId: string, status: PaymentStatus, note?: string, adjustedAmount?: number) {
+    static async reviewTransaction(
+        transactionId: string,
+        status: PaymentStatus,
+        note?: string,
+        adjustedAmount?: number,
+        reviewerId?: string,
+    ) {
         if (status === PaymentStatus.APPROVED) {
             // Check transaction type — deposits go through WalletService (credits wallet)
             const tx = await prisma.transaction.findUnique({ where: { id: transactionId } })
             if (!tx) throw new Error('Transaction not found')
 
-            if (tx.type === TransactionType.DEPOSIT) {
-                // `adjustedAmount` only applies to deposits (admin corrected the amount to match the receipt)
-                return await WalletService.approveDeposit(transactionId, adjustedAmount)
+            // Separation of duties: a reviewer may never approve their own transaction.
+            if (reviewerId && reviewerId === tx.userId) {
+                throw new Error('You cannot approve your own transaction')
             }
 
-            // Withdrawal approval — just mark as APPROVED (balance was already deducted on request)
-            const updated = await prisma.transaction.update({
-                where: { id: transactionId },
-                data: { status: PaymentStatus.APPROVED, note },
+            if (tx.type === TransactionType.DEPOSIT) {
+                // `adjustedAmount` only applies to deposits (admin corrected the amount to match the receipt)
+                return await WalletService.approveDeposit(transactionId, adjustedAmount, reviewerId)
+            }
+
+            // Withdrawal approval — mark APPROVED only if still pending (idempotent, no
+            // REJECTED→APPROVED flip, no double-approve). updateMany with a status
+            // predicate is atomic: exactly one concurrent caller gets count === 1.
+            const claim = await prisma.transaction.updateMany({
+                where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
+                data: { status: PaymentStatus.APPROVED, note, reviewedById: reviewerId },
             })
+            if (claim.count === 0) {
+                throw new Error('Transaction is not pending review')
+            }
+            const updated = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } })
             await NotificationService.create(
                 updated.userId,
                 NotificationType.WITHDRAWAL_PROCESSED,
@@ -281,11 +298,18 @@ export class AdminService {
             // 3. Create a REFUND compensation transaction for the audit trail
             // All in one DB transaction to prevent partial state on crash.
             const result = await prisma.$transaction(async (tx) => {
-                // Mark withdrawal rejected
-                const updated = await tx.transaction.update({
-                    where: { id: transactionId },
-                    data: { status: PaymentStatus.REJECTED, note },
+                // Atomically claim the withdrawal: flip PENDING_REVIEW→REJECTED only if
+                // still pending. Two concurrent rejects (double-click) serialize on this
+                // row; the loser sees count === 0 and aborts BEFORE crediting, so the
+                // wallet can never be double-refunded (fixes the TOCTOU).
+                const claim = await tx.transaction.updateMany({
+                    where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
+                    data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
                 })
+                if (claim.count === 0) {
+                    throw new Error('Transaction is not pending review')
+                }
+                const updated = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } })
 
                 // Lock wallet row before reading balance
                 const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
@@ -347,7 +371,7 @@ export class AdminService {
         // DEPOSIT rejection — no wallet change (balance was never credited)
         const transaction = await prisma.transaction.update({
             where: { id: transactionId },
-            data: { status: PaymentStatus.REJECTED, note },
+            data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
         })
 
         await NotificationService.create(

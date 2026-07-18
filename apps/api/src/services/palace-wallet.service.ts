@@ -36,6 +36,19 @@ const PROVIDER_CODE = 'palace'
 export const CURRENCY = process.env.PALACE_CURRENCY ?? 'ETB'
 const USER_CACHE_TTL = 3600
 
+// ─── Win-credit guards (see fix R1) ─────────────────────────────────────────────
+// Palace does not sign callback bodies, so a leaked callback token lets an attacker
+// POST an arbitrary `win` amount. We cannot fully validate the outcome without a
+// provider signature (that + reconciliation is tracked separately), but we CAN:
+//   1. tie every win to a real prior BET for the same round (blocks standalone forges), and
+//   2. reject absurd wins via configurable caps (blocks the impossible without
+//      breaking legitimate high-multiple jackpots).
+// Caps default to generous ceilings; set the env vars lower to tighten. Set the
+// require-bet flag to reject (rather than only flag) wins with no matching bet.
+const MAX_WIN_AMOUNT = Number(process.env.PALACE_MAX_WIN_AMOUNT ?? 1_000_000)
+const MAX_WIN_MULTIPLE = Number(process.env.PALACE_MAX_WIN_MULTIPLE ?? 20_000)
+const REQUIRE_BET_FOR_WIN = process.env.PALACE_REQUIRE_BET_FOR_WIN === 'true'
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let _providerId: string | null = null
@@ -243,12 +256,58 @@ export class PalaceWalletService {
         const existing = await findExisting(params.trans_guid)
         if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
 
+        const winAmount = new Decimal(params.amount).abs()
+
+        // ── R1 guard: tie the win to a real prior bet and reject absurd amounts ──
+        const providerIdForCheck = await getPalaceProviderId()
+        const priorBets = await prisma.thirdPartyTransaction.aggregate({
+            where: {
+                providerId: providerIdForCheck,
+                userId: user.id,
+                roundId: params.round_id,
+                type: ThirdPartyTxType.BET,
+                status: ThirdPartyTxStatus.COMPLETED,
+            },
+            _sum: { betAmount: true },
+            _count: true,
+        })
+        const roundStake = new Decimal(priorBets._sum.betAmount ?? 0)
+        const hasBet = priorBets._count > 0
+
+        const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
+        const overMultiple =
+            MAX_WIN_MULTIPLE > 0 && roundStake.greaterThan(0) && winAmount.greaterThan(roundStake.times(MAX_WIN_MULTIPLE))
+
+        if (!hasBet || overAbsolute || overMultiple) {
+            getLogger().warn(
+                {
+                    component: 'palace-fraud-flag',
+                    account: maskAccount(params.account),
+                    round: params.round_id,
+                    game: params.game_code,
+                    winAmount: winAmount.toNumber(),
+                    roundStake: roundStake.toNumber(),
+                    hasBet,
+                    overAbsolute,
+                    overMultiple,
+                    transGuid: params.trans_guid,
+                },
+                '[palace-fraud-flag] win failed validation guard',
+            )
+            // Absurd amounts are always rejected. A missing prior bet is rejected only
+            // when REQUIRE_BET_FOR_WIN is enabled, so operators can turn it on once
+            // they have confirmed bet-recording is reliable, without risking payout
+            // desync in the meantime.
+            if (overAbsolute || overMultiple || (!hasBet && REQUIRE_BET_FOR_WIN)) {
+                return palaceErr(42, 'TRANS_ID_NOT_FOUND')
+            }
+        }
+
         const balanceAfter = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
-            const winAmount = new Decimal(params.amount).abs()
             const newReal = realBefore.plus(winAmount)
             const newTotal = newReal.plus(bonusBefore)
 
@@ -313,31 +372,60 @@ export class PalaceWalletService {
 
         const providerId = await getPalaceProviderId()
 
-        // Original bet reference may be absent (or sent under an unexpected key) —
-        // fall back to the cancel amount rather than crashing on an incomplete key.
-        const originalBet = params.cancle_trans_guid
-            ? await prisma.thirdPartyTransaction.findUnique({
-                  where: { providerId_transactionId: { providerId, transactionId: params.cancle_trans_guid } },
-              })
-            : null
-
+        // ── R5 guard: only ever refund a bet we actually recorded and debited. ──
+        // The old code credited `params.amount` (attacker-controlled) when the original
+        // bet could not be found, minting money; and never marked the bet rolled-back,
+        // so fresh cancel guids could refund the same stake repeatedly. Now: require a
+        // real prior BET, refund exactly its recorded stake, and settle it once.
         const balanceAfter = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
 
-            // Per palace docs, a cancel is always a BetCancel(16): "the amount will be
-            // returned" — i.e. always credit the cancel amount back to the user. Prefer
-            // the original transaction's amount when we can find it, else the cancel amount.
-            const delta = originalBet
-                ? new Decimal(originalBet.betAmount ?? originalBet.amount).abs()
-                : new Decimal(params.amount).abs()
+            // Re-read the original bet under the wallet lock so two concurrent cancels
+            // cannot both refund it (TOCTOU-safe).
+            const originalBet = params.cancle_trans_guid
+                ? await tx.thirdPartyTransaction.findUnique({
+                      where: { providerId_transactionId: { providerId, transactionId: params.cancle_trans_guid } },
+                  })
+                : null
+
+            const refundable =
+                !!originalBet &&
+                originalBet.type === ThirdPartyTxType.BET &&
+                originalBet.status === ThirdPartyTxStatus.COMPLETED
+
+            // No verified debit to reverse → credit nothing. Record a zero-amount
+            // rollback row so retries short-circuit via findExisting, and never mint.
+            const delta = refundable ? new Decimal(originalBet!.betAmount ?? originalBet!.amount).abs() : new Decimal(0)
+
+            if (!refundable) {
+                getLogger().warn(
+                    {
+                        component: 'palace-fraud-flag',
+                        account: maskAccount(params.account),
+                        round: params.round_id,
+                        cancelRef: params.cancle_trans_guid,
+                        found: !!originalBet,
+                        status: originalBet?.status,
+                        requestedAmount: new Decimal(params.amount).abs().toNumber(),
+                    },
+                    '[palace-fraud-flag] cancel with no matching completed bet — not crediting',
+                )
+            }
 
             const newReal = realBefore.plus(delta)
             const newTotal = newReal.plus(bonusBefore)
 
-            await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+            if (delta.greaterThan(0)) {
+                await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                // Settle the original bet so it cannot be cancelled again.
+                await tx.thirdPartyTransaction.update({
+                    where: { id: originalBet!.id },
+                    data: { status: ThirdPartyTxStatus.ROLLED_BACK },
+                })
+            }
 
             await tx.thirdPartyTransaction.create({
                 data: {
@@ -356,20 +444,22 @@ export class PalaceWalletService {
                 },
             })
 
-            await tx.transaction.create({
-                data: {
-                    userId: user.id,
-                    type: TransactionType.TP_ROLLBACK,
-                    amount: delta,
-                    status: PaymentStatus.APPROVED,
-                    note: `Palace cancel: ${params.game_code} round ${params.round_id}`,
-                    referenceId: cancelTxId,
-                    balanceBefore: totalBefore,
-                    balanceAfter: newTotal,
-                    bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
-                },
-            })
+            if (delta.greaterThan(0)) {
+                await tx.transaction.create({
+                    data: {
+                        userId: user.id,
+                        type: TransactionType.TP_ROLLBACK,
+                        amount: delta,
+                        status: PaymentStatus.APPROVED,
+                        note: `Palace cancel: ${params.game_code} round ${params.round_id}`,
+                        referenceId: cancelTxId,
+                        balanceBefore: totalBefore,
+                        balanceAfter: newTotal,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusBefore,
+                    },
+                })
+            }
 
             return newTotal
         })

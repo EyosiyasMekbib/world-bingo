@@ -63,7 +63,7 @@ export class WalletService {
     }
 
     // Called by Admin — uses SELECT FOR UPDATE to prevent double-crediting
-    static async approveDeposit(transactionId: string, adjustedAmount?: number) {
+    static async approveDeposit(transactionId: string, adjustedAmount?: number, reviewerId?: string) {
         return await prisma.$transaction(async (tx) => {
             // Lock the transaction row first to prevent concurrent approvals from both
             // passing the PENDING_REVIEW check before either commits.
@@ -73,6 +73,12 @@ export class WalletService {
             const transaction = transactions[0]
             if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
                 throw new Error('Invalid transaction')
+            }
+
+            // Separation of duties (defense-in-depth; also enforced in reviewTransaction):
+            // a reviewer may never credit a deposit into their own account.
+            if (reviewerId && reviewerId === transaction.userId) {
+                throw new Error('You cannot approve your own deposit')
             }
 
             // Lock the wallet row before reading and updating
@@ -103,6 +109,7 @@ export class WalletService {
                 where: { id: transactionId },
                 data: {
                     status: PaymentStatus.APPROVED,
+                    reviewedById: reviewerId,
                     balanceBefore: realBefore,
                     balanceAfter: realAfter,
                     bonusBalanceBefore: bonusBefore,
@@ -267,6 +274,20 @@ export class WalletService {
             const wallet = wallets[0]
             if (!wallet || new Decimal(wallet.realBalance).lessThan(new Decimal(data.amount))) {
                 throw new Error('Insufficient balance — only your real balance is withdrawable')
+            }
+
+            // Authoritative single-pending guard INSIDE the wallet lock. Concurrent
+            // requests for the same user serialize on the FOR UPDATE row above, so the
+            // second caller sees the first's pending row here (the pre-check at the top
+            // is only a fast-path for UX and is not race-safe on its own).
+            const stillPending = await tx.transaction.findFirst({
+                where: { userId, type: TransactionType.WITHDRAWAL, status: PaymentStatus.PENDING_REVIEW },
+            })
+            if (stillPending) {
+                throw Object.assign(
+                    new Error('You already have a pending withdrawal request. Please wait for it to be processed before submitting a new one.'),
+                    { statusCode: 409 },
+                )
             }
 
             const realBefore = new Decimal(wallet.realBalance)

@@ -203,22 +203,44 @@ export class GameService {
             })
             if (entries.length === 0) throw new Error('No entries found for this game')
 
-            const refundAmount = new Decimal(game.ticketPrice).times(entries.length)
-
-            // Refund wallet — refunds always go to realBalance
+            // Lock wallet before reading/crediting
             const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
                 SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
             if (!wallet) throw new Error('Wallet not found')
 
+            // Refund to the SAME buckets the stake was taken from. joinGame spends
+            // bonusBalance first, so refunding everything to realBalance would launder
+            // non-withdrawable bonus into withdrawable cash. Derive the split from the
+            // GAME_ENTRY snapshot rather than assuming real-only.
+            const entryTxns = await tx.transaction.findMany({
+                where: { userId, type: TransactionType.GAME_ENTRY, referenceId: gameId },
+            })
+            let realRefund = new Decimal(0)
+            let bonusRefund = new Decimal(0)
+            for (const t of entryTxns) {
+                realRefund = realRefund.plus(new Decimal(t.balanceBefore ?? 0).minus(new Decimal(t.balanceAfter ?? 0)))
+                bonusRefund = bonusRefund.plus(
+                    new Decimal(t.bonusBalanceBefore ?? 0).minus(new Decimal(t.bonusBalanceAfter ?? 0)),
+                )
+            }
+            let refundAmount = realRefund.plus(bonusRefund)
+            if (refundAmount.lessThanOrEqualTo(0)) {
+                // Legacy fallback (no snapshot): refund ticketPrice × count to realBalance.
+                realRefund = new Decimal(game.ticketPrice).times(entries.length)
+                bonusRefund = new Decimal(0)
+                refundAmount = realRefund
+            }
+
             const realBefore = new Decimal(wallet.realBalance)
-            const realAfter = realBefore.plus(refundAmount)
             const bonusBefore = new Decimal(wallet.bonusBalance)
+            const realAfter = realBefore.plus(realRefund)
+            const bonusAfter = bonusBefore.plus(bonusRefund)
 
             await tx.wallet.update({
                 where: { userId },
-                data: { realBalance: { increment: refundAmount } }
+                data: { realBalance: realAfter, bonusBalance: bonusAfter },
             })
 
             // Record refund transaction
@@ -232,7 +254,7 @@ export class GameService {
                     balanceBefore: realBefore,
                     balanceAfter: realAfter,
                     bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
+                    bonusBalanceAfter: bonusAfter,
                 }
             })
 
@@ -241,10 +263,10 @@ export class GameService {
                 where: { gameId, userId }
             })
 
-            return { refundAmount, game, realAfter, bonusBefore }
+            return { refundAmount, game, realAfter, bonusAfter }
         })
 
-        const { refundAmount, game, realAfter, bonusBefore } = txResult as { refundAmount: Decimal, game: any, realAfter: Decimal, bonusBefore: Decimal }
+        const { refundAmount, game, realAfter, bonusAfter } = txResult as { refundAmount: Decimal, game: any, realAfter: Decimal, bonusAfter: Decimal }
 
         // ── Room state update ───────────────────────────────────────────────
         const [playerCount] = await Promise.all([
@@ -257,7 +279,7 @@ export class GameService {
         ;(io.to('lobby') as any).emit('lobby:player-count', { gameId, playerCount })
 
         // Push balance update
-        NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
+        NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusAfter.toNumber())
 
         return { refundAmount, playerCount }
     }
@@ -334,20 +356,29 @@ export class GameService {
             throw new Error('Game is already finished or cancelled')
         }
 
+        // Atomically claim the cancel BEFORE any refund. This must be race-safe against
+        // claimBingo, which locks the game row FOR UPDATE and pays the winner. The
+        // conditional updateMany only transitions a game that has NOT already been won
+        // (PAYOUT), completed, or cancelled; if a winning claim commits first this
+        // matches 0 rows and we abort WITHOUT refunding — otherwise a winner would keep
+        // the prize AND every player (incl. the winner) would also be refunded.
+        const claim = await prisma.game.updateMany({
+            where: { id: gameId, status: { notIn: [GameStatus.COMPLETED, GameStatus.CANCELLED, GameStatus.PAYOUT] } },
+            data: { status: GameStatus.CANCELLED, endedAt: new Date() },
+        })
+        if (claim.count === 0) {
+            // Raced with a winning claim or a concurrent cancel — do not refund.
+            return
+        }
+
         // Stop the room countdown timer
         stopRoomCountdown(gameId)
 
         // Stop the game engine on this instance if running
         stopGameEngine(gameId)
 
-        // Transition to REFUNDING phase in Redis before DB write
+        // Reflect the refunding phase in Redis (DB is already authoritative CANCELLED)
         await setRoomStatus(gameId, 'REFUNDING').catch(() => { })
-
-        // Mark cancelled in Postgres
-        await prisma.game.update({
-            where: { id: gameId },
-            data: { status: GameStatus.CANCELLED, endedAt: new Date() },
-        })
 
         // Clear both Redis state namespaces
         await Promise.allSettled([clearGameState(gameId), clearRoomState(gameId)])

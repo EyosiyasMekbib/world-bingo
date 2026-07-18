@@ -32,7 +32,9 @@ export class DepositVerificationService {
       getSetting('deposit_auto_verify_enabled', 'false'),
       getSetting('deposit_auto_verify_max_amount', '0'),
       getSetting('deposit_auto_verify_max_age_hours', '0'),
-      getSetting('deposit_auto_verify_require_payer_match', 'false'),
+      // Default ON: an auto-credit must bind the receipt's payer to the depositing
+      // player, so a shared/forwarded receipt cannot seed another account.
+      getSetting('deposit_auto_verify_require_payer_match', 'true'),
     ])
     return {
       enabled: enabled === 'true',

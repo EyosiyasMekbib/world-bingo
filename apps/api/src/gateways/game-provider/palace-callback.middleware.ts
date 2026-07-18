@@ -13,6 +13,21 @@ function getCallbackToken(): string {
     return _token
 }
 
+// Optional IP allowlist. Palace signs no callback body, so the static Callback-Token
+// is the only secret — if it leaks, an attacker can POST forged wins. Restricting the
+// source IPs is cheap defense-in-depth. Set PALACE_CALLBACK_IP_ALLOWLIST to a
+// comma-separated list of Palace's egress IPs to enable; empty = allow all (unchanged).
+let _ipAllowlist: string[] | null = null
+function getIpAllowlist(): string[] {
+    if (_ipAllowlist === null) {
+        _ipAllowlist = (process.env.PALACE_CALLBACK_IP_ALLOWLIST ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+    }
+    return _ipAllowlist
+}
+
 function palaceError(result: number, status: string) {
     return { result, status, data: null }
 }
@@ -28,6 +43,13 @@ export async function verifyPalaceCallbackToken(
     request: FastifyRequest,
     reply: FastifyReply,
 ): Promise<void> {
+    // IP allowlist (if configured) is checked before the token.
+    const allowlist = getIpAllowlist()
+    if (allowlist.length > 0 && !allowlist.includes(request.ip)) {
+        request.log.warn('[Palace] Callback from non-allowlisted IP %s on %s', request.ip, request.url)
+        return reply.status(200).send(palaceError(1009, 'TOKEN_INVALID'))
+    }
+
     const received = request.headers['callback-token']
 
     if (!received || typeof received !== 'string') {

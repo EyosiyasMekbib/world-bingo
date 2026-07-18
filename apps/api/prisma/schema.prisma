@@ -147,6 +147,7 @@ model Transaction {
   paymentTransactionId String?           @unique
   senderName           String?
   senderAccount        String?
+  reviewedById         String?           // admin/clerk who approved or rejected (audit + separation-of-duties)
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   depositVerification  DepositVerification?
   createdAt            DateTime          @default(now())
@@ -155,6 +156,7 @@ model Transaction {
   @@index([type, status])
   @@index([userId, type])
   @@index([createdAt])
+  @@index([reviewedById])
   @@map("transactions")
 }
 
