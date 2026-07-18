@@ -259,6 +259,14 @@ export class AdminService {
                 return await WalletService.approveDeposit(transactionId, adjustedAmount, reviewerId)
             }
 
+            // Containment: never pay out a withdrawal for a frozen/under-review account.
+            // Freezing (isActive=false) a flagged account therefore holds any balance
+            // sitting in its wallet — the pending withdrawal cannot be approved.
+            const holder = await prisma.user.findUnique({ where: { id: tx.userId }, select: { isActive: true } })
+            if (holder && !holder.isActive) {
+                throw new Error('Account is under review — withdrawal cannot be approved until it is reinstated')
+            }
+
             // Withdrawal approval — mark APPROVED only if still pending (idempotent, no
             // REJECTED→APPROVED flip, no double-approve). updateMany with a status
             // predicate is atomic: exactly one concurrent caller gets count === 1.

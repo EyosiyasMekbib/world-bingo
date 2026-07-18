@@ -243,6 +243,18 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
+        // Frozen/suspended accounts cannot withdraw. isActive=false is the fraud-freeze
+        // switch used for containment; enforce it here so a freeze actually blocks the
+        // withdrawal of any balance sitting in a flagged wallet.
+        const account = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } })
+        if (!account) throw new Error('User not found')
+        if (!account.isActive) {
+            throw Object.assign(
+                new Error('This account is under review. Withdrawals are temporarily disabled — please contact support.'),
+                { statusCode: 403 },
+            )
+        }
+
         const pendingWithdrawal = await prisma.transaction.findFirst({
             where: { userId, type: TransactionType.WITHDRAWAL, status: PaymentStatus.PENDING_REVIEW },
         })
