@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Deposit Receipt Helper",
+  "version": "1.0.0",
+  "description": "Fetches telebirr receipts for deposit verification from the admin dashboard (bypasses page CORS; runs from the clerk's Ethiopian network).",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "receipt-helper@aradabingo.bet",
+      "strict_min_version": "121.0"
+    },
+    "gecko_android": {}
+  },
+  "host_permissions": [
+    "https://transactioninfo.ethiotelecom.et/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://admin.aradabingo.bet/*",
+        "http://localhost:3001/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
