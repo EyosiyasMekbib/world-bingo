@@ -421,8 +421,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.put('/featured-games', async (req: any, reply) => {
             const parsed = featuredGamesSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            // This package compiles with `strict: false`, so zod infers every field
+            // as optional — restate the shape; the service rejects empty names.
+            const items = (parsed.data.items ?? []).map((item) => ({
+                nameKey: item.nameKey ?? '',
+                label: item.label ?? '',
+            }))
             try {
-                return { items: await FeaturedGameService.replace(parsed.data.items) }
+                return { items: await FeaturedGameService.replace(items) }
             } catch (err: any) {
                 return reply.status(400).send({ error: err.message })
             }
