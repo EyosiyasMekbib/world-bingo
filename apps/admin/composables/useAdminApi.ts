@@ -1,3 +1,12 @@
+// One pin in the lobby priority list. `matches` is how many catalog rows the
+// pin resolves to right now — 0 means the game is not in the catalog.
+export type FeaturedGameItem = {
+    nameKey: string
+    label: string
+    position: number
+    matches: number
+}
+
 export const useAdminApi = () => {
     const { apiFetch } = useAdminAuth()
 
@@ -362,13 +371,17 @@ export const useAdminApi = () => {
             apiFetch<any[]>(`/admin/providers/${code}/vendors`),
         updateVendorStatus: (providerCode: string, vendorCode: string, isActive: boolean) =>
             apiFetch(`/admin/providers/${providerCode}/vendors/${vendorCode}/status`, { method: 'PATCH', body: { isActive } }),
-        getProviderGames: (code: string, params?: { page?: number; limit?: number }) => {
+        getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
+            if (params?.search) qs.set('search', params.search)
             const query = qs.toString()
             return apiFetch<any>(`/admin/providers/${code}/games${query ? `?${query}` : ''}`)
         },
+        getFeaturedGames: () => apiFetch<{ items: FeaturedGameItem[] }>('/admin/featured-games'),
+        saveFeaturedGames: (items: Array<{ nameKey: string; label: string }>) =>
+            apiFetch<{ items: FeaturedGameItem[] }>('/admin/featured-games', { method: 'PUT', body: { items } }),
         updateGameStatus: (providerCode: string, gameCode: string, isActive: boolean) =>
             apiFetch(`/admin/providers/${providerCode}/games/${gameCode}/status`, { method: 'PATCH', body: { isActive } }),
         getProviderTransactions: (code: string, params?: { page?: number; limit?: number }) => {
