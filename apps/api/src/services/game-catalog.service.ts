@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getGameProviderGateway } from '../gateways/game-provider/index.js'
+import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from './featured-game.service.js'
 import { PatternType } from '@world-bingo/shared-types'
 
 const CURRENCY = process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB'
@@ -189,6 +190,10 @@ export class GameCatalogService {
             }
         }
 
+        // Games this sync just created have no curated rank yet — re-project the
+        // admin's list so a newly listed title lands in its pinned position.
+        await FeaturedGameService.applyRanks()
+
         // Invalidate Redis cache for this provider (games + categories)
         const keys = await redis.keys(`tp:games:${providerCode}:*`)
         if (keys.length > 0) await redis.del(...keys)
@@ -271,7 +276,7 @@ export class GameCatalogService {
         const [games, totalItems] = await Promise.all([
             prisma.providerGame.findMany({
                 where,
-                orderBy: [{ sortOrder: 'asc' }, { gameName: 'asc' }],
+                orderBy: PROVIDER_GAME_ORDER_BY,
                 take: pageSize,
                 skip: (page - 1) * pageSize,
                 include: { vendor: { select: { code: true, name: true } } },
@@ -386,11 +391,7 @@ export class GameCatalogService {
                     { vendor: { is: { name: { contains: normalized, mode: 'insensitive' } } } },
                 ],
             },
-            orderBy: [
-                { provider: { name: 'asc' } },
-                { sortOrder: 'asc' },
-                { gameName: 'asc' },
-            ],
+            orderBy: [{ provider: { name: 'asc' } }, ...PROVIDER_GAME_ORDER_BY],
             select: {
                 id: true,
                 gameCode: true,

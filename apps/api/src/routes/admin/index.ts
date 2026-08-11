@@ -10,6 +10,7 @@ import { GameSchedulerService } from '../../services/game-scheduler.service'
 import { HouseWalletService } from '../../services/house-wallet.service'
 import { CashbackService } from '../../services/cashback.service'
 import { NotificationService } from '../../services/notification.service'
+import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -93,6 +94,13 @@ const paymentMethodUpdateSchema = z.object({
     enabled: z.boolean().optional(),
     autoVerify: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
+})
+
+// The lobby priority list, sent whole — array order is the priority order.
+const featuredGamesSchema = z.object({
+    items: z
+        .array(z.object({ nameKey: z.string().min(1).max(120), label: z.string().min(1).max(120) }))
+        .max(200),
 })
 
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
@@ -393,11 +401,37 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             if (!provider) return _reply.status(404).send({ error: 'Provider not found' })
             const page = Math.max(1, Number(req.query.page ?? 1))
             const limit = Math.min(100, Number(req.query.limit ?? 50))
+            const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
+            const where = {
+                providerId: provider.id,
+                ...(search ? { gameName: { contains: search, mode: 'insensitive' as const } } : {}),
+            }
             const [data, total] = await Promise.all([
-                prisma.providerGame.findMany({ where: { providerId: provider.id }, skip: (page - 1) * limit, take: limit, orderBy: [{ sortOrder: 'asc' }, { gameName: 'asc' }] }),
-                prisma.providerGame.count({ where: { providerId: provider.id } }),
+                prisma.providerGame.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: PROVIDER_GAME_ORDER_BY }),
+                prisma.providerGame.count({ where }),
             ])
             return { data, total, page, limit }
+        })
+
+        // ── Featured games (lobby priority order) ─────────────────────────────
+        // One global list, ordered; a pin matches provider games by normalized
+        // name so it covers every provider carrying the title.
+        f.get('/featured-games', async () => ({ items: await FeaturedGameService.list() }))
+
+        f.put('/featured-games', async (req: any, reply) => {
+            const parsed = featuredGamesSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            // This package compiles with `strict: false`, so zod infers every field
+            // as optional — restate the shape; the service rejects empty names.
+            const items = (parsed.data.items ?? []).map((item) => ({
+                nameKey: item.nameKey ?? '',
+                label: item.label ?? '',
+            }))
+            try {
+                return { items: await FeaturedGameService.replace(items) }
+            } catch (err: any) {
+                return reply.status(400).send({ error: err.message })
+            }
         })
 
         f.patch('/providers/:code/games/:gameCode/status', async (req: any, reply) => {

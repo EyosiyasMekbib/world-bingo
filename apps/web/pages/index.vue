@@ -282,40 +282,8 @@ function hasImage(g: ProviderGame) {
   return !!(g.imageSquare || g.imageLandscape)
 }
 
-// Popular crash/instant games pinned to the top of the All Games grid (in this order).
-// 'keno' is the AtlasV game marketed as "Fast Keno" — its synced gameName is just "Keno".
-const FEATURED_GAMES = [
-  'aviator',
-  'keno',
-  'chickenroad',
-  'aviatrix',
-  'jetx',
-  'chickenroad2',
-  'plinko',
-  'crashkick',
-  'chicknroad2',
-  'chicknroad',
-  'flyx',
-  'flyxcashturbo',
-  'plinkopop',
-  'minepop',
-  'dicepop',
-  'bigbuttonbash',
-  'soccerstriker',
-  'theincredibleballoonmachine',
-  'fruitblast',
-  'bg25plinko',
-]
-
-function featuredRank(g: ProviderGame) {
-  const name = (g.gameName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const i = FEATURED_GAMES.indexOf(name)
-  return i === -1 ? Number.MAX_SAFE_INTEGER : i
-}
-
-function sortFeatured(games: ProviderGame[]) {
-  return [...games].sort((a, b) => featuredRank(a) - featuredRank(b))
-}
+// Which games lead the grid is curated in the admin panel (Featured Games) and
+// applied by the API, so the order here is whatever the API returned.
 
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
@@ -352,11 +320,11 @@ const gridGames = computed<LobbyCard[]>(() => {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
     // Featured games first, then remaining provider games; bingo rooms at the bottom
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
   } else {
     cards = (categoryGamesMap.value[cat] ?? []).filter(hasImage).map(providerToCard)
   }
