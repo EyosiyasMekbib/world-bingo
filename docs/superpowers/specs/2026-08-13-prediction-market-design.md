@@ -8,35 +8,49 @@
 ## Summary
 
 A binary order-book prediction market. Players buy shares in one of two outcomes at a limit
-price they set. A share pays **1.00 ETB if its outcome wins** and 0 otherwise. Orders match
+price they set. A share pays **100 ETB if its outcome wins** and 0 otherwise. Orders match
 against players who bought the opposing outcome — never against the house.
 
-First markets are the **ETFC Fight Night** card on **27 August 2026** at the Adwa Museum,
-Addis Ababa:
+Because a share is worth 100 ETB, **the price in birr is the probability**: 35 ETB per Sedo
+share means the market thinks Sedo wins 35% of the time. No conversion for the player to do.
 
-| Bout | Discipline | Outcomes |
-|---|---|---|
-| Sedo vs Johnny (main event) | MMA, Heavyweight | Sedo / Johnny |
-| Boyka vs Endris | MMA, Heavyweight | Boyka / Endris |
-| Esubalew vs Biniyam | Boxing, Lightweight | Esubalew / Biniyam |
+First markets are the **ETFC Fight Night** card, **27 August 2026, 16:00**, Adwa Museum,
+Addis Ababa. ETFC is a third-party event — the platform does not run it and has no result
+feed, so markets resolve by admin action with a dispute window before payout.
 
-ETFC is a third-party event. The platform does not run it and has no result feed, so
-markets resolve by admin action with a dispute window before payout.
+### The card — 11 bouts
+
+| # | Bout | Discipline | Class |
+|---|---|---|---|
+| 1 | Sedo "The Beast" vs Johnny "Jiu-Jitsu" — **main event** | MMA | Heavyweight, 5 rds |
+| 2 | Boyka vs Endris | MMA | Heavyweight, 3 rds |
+| 3 | Nikatehkina vs Robel "Sky-Limit" | MMA | 75 kg, 3 rds |
+| 4 | Titan vs Coach Kal | MMA | 75 kg, 3 rds |
+| 5 | Abrhamalem vs Tyson "Haymanot Desalegn" | Boxing | 63.5 kg, 6 rds |
+| 6 | Surafel Cheri vs Desalegn | Boxing | 54 kg, 6 rds |
+| 7 | Esubalew vs Biniyam | Boxing | Lightweight, 6 rds |
+| 8 | Abenezer vs Mesfin Biru | Boxing | 71 kg, 6 rds |
+| 9 | Rebik Sani vs Sky Okony | Muay Thai | 67 kg, 5 rds |
+| 10 | Frezer vs Habtamu | Muay Thai | 63 kg, 5 rds |
+| 11 | Zahara vs Yabsira | Muay Thai | 54 kg, 5 rds |
+
+All 11 are seeded as `DRAFT`. Publishing is a deliberate admin action, so the operator can
+open the main event first and release the undercard as interest appears.
 
 ## The mechanism
 
-Someone wants Sedo at **0.35**. Someone else wants Johnny at **0.65**. Together that is
-exactly **1.00 ETB**, so the system takes 1.00 from the pair and issues one share to each.
-When the fight is called, the winning side's shares pay 1.00 each; the losing side's pay 0.
+Someone wants Sedo at **35 ETB**. Someone else wants Johnny at **65 ETB**. Together that is
+exactly **100 ETB**, so the system takes 100 from the pair and issues one share to each.
+When the fight is called, the winning side's shares pay 100 each; the losing side's pay 0.
 
-Buying Johnny at 0.65 *is* offering Sedo at 0.35, so both sides live in one book quoted in
+Buying Johnny at 65 *is* offering Sedo at 35, so both sides live in one book quoted in
 outcome-A price, matched on price-time priority.
 
 Two properties this design guarantees, and that the tests assert:
 
 - **Zero house position.** The house is never a counterparty. It cannot lose money on a
   market regardless of the result.
-- **Provable solvency.** Every share pair is backed by exactly 1.00 ETB of escrowed player
+- **Provable solvency.** Every share pair is backed by exactly 100 ETB of escrowed player
   money. Total payout obligation equals total escrow, always. The book cannot promise more
   than it holds.
 
@@ -51,28 +65,28 @@ no short side, and no exit pricing. Selling out early is the next version.
 | Decision | Choice | Reason |
 |---|---|---|
 | Mechanism | Binary order book, buy-only | Zero house risk, real price discovery, half the engine of a full CLOB |
-| Share face value | 1.00 ETB | Price reads directly as probability |
-| Price range | 0.01 – 0.99, tick 0.01 | 1.00 would be a free share; 0.00 a free option |
+| Share value | 100 ETB | Price in birr reads directly as a percentage |
+| Price range | 1 – 99 ETB, tick 1 ETB | 100 would be a free share; 0 a free option. 1 birr steps = 1% granularity |
 | Early exit | Not in v1 | Removes sells, inventory, and exit pricing from the build |
 | Draw / no-contest | Market voids, everyone refunded | Standard for combat sports; keeps matching binary |
 | House fee | 15% of **profit** on winning positions | Favourites stay tradeable at every price |
 | Resolution | Admin resolves + dispute window | Third-party event, no result feed |
-| Liquidity | Concentration — few markets, one card | Three books, not fifty; the only cold-start fix that costs nothing |
+| Market count | All 11 bouts, seeded as drafts | Operator controls how many books are live at once |
 
 ### Why the fee is on profit, not gross payout
 
-At 15% of gross, a share bought at 0.90 returns 0.85 — the player is right about the fight
-and still down. Every price above 0.85 becomes unwinnable, which silently caps the book
+At 15% of gross, a share bought at 90 ETB returns 85 — the player is right about the fight
+and still down 5 birr. Every price above 85 becomes unwinnable, silently capping the book
 below where main-event favourites actually trade. On profit, the same position pays 98.50
-on a 90.00 cost and works at every price.
+against a 90.00 cost and works at every price.
 
-Profit on a winning position is always positive: cost basis per share is at most 0.99 and
-payout is exactly 1.00. The implementation still clamps at zero.
+Profit on a winning position is always positive: cost basis per share is at most 99 and
+payout is exactly 100. The implementation still clamps at zero.
 
 ### Explicitly out of scope
 
 Selling before resolution, market orders (limit only), three-way markets, parlays,
-user-created markets, automated resolution, and market making incentives.
+user-created markets, automated resolution, and market-making incentives.
 
 ## Architecture
 
@@ -97,6 +111,10 @@ The bingo `Game` model is not reused — it is coupled to cartelas, ball draws, 
 leader-elected engine.
 
 ## Data Model
+
+`shareValue` lives on the market rather than as a global constant so a future card can run
+a different denomination without a migration. Every payout and escrow calculation reads it
+from the market, never from a hardcoded 100.
 
 ```prisma
 enum PredictionMarketStatus {
@@ -131,9 +149,10 @@ model PredictionMarket {
   status           PredictionMarketStatus @default(DRAFT)
   closesAt         DateTime
   resolvesAt       DateTime?
+  shareValue       Decimal                @default(100) @db.Decimal(12, 2)
   feePct           Decimal                @default(15) @db.Decimal(5, 2)
   minOrderShares   Int                    @default(1)
-  maxOrderShares   Int                    @default(100000)
+  maxOrderShares   Int                    @default(10000)
   totalShares      Int                    @default(0)   // matched share pairs
   totalVolume      Decimal                @default(0) @db.Decimal(14, 2) // ETB escrowed
   winningOutcomeId String?
@@ -159,7 +178,7 @@ model PredictionOutcome {
   marketId  String
   label     String               // "Sedo"
   sortOrder Int                  // 0 or 1
-  lastPrice Decimal?             @db.Decimal(4, 2)
+  lastPrice Decimal?             @db.Decimal(12, 2)
   market    PredictionMarket     @relation(fields: [marketId], references: [id], onDelete: Cascade)
   orders    PredictionOrder[]
   positions PredictionPosition[]
@@ -173,7 +192,7 @@ model PredictionOrder {
   marketId       String
   outcomeId      String
   userId         String
-  limitPrice     Decimal               @db.Decimal(4, 2)  // 0.01 .. 0.99
+  limitPrice     Decimal               @db.Decimal(12, 2)  // 1.00 .. shareValue-1
   quantity       Int
   filledQuantity Int                   @default(0)
   reservedReal   Decimal               @default(0) @db.Decimal(12, 2)
@@ -192,17 +211,17 @@ model PredictionOrder {
 }
 
 model PredictionFill {
-  id            String           @id @default(uuid())
-  marketId      String
-  quantity      Int
-  takerOrderId  String
-  makerOrderId  String
+  id             String           @id @default(uuid())
+  marketId       String
+  quantity       Int
+  takerOrderId   String
+  makerOrderId   String
   takerOutcomeId String
   makerOutcomeId String
-  takerPrice    Decimal          @db.Decimal(4, 2)
-  makerPrice    Decimal          @db.Decimal(4, 2)   // takerPrice + makerPrice == 1.00
-  createdAt     DateTime         @default(now())
-  market        PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  takerPrice     Decimal          @db.Decimal(12, 2)
+  makerPrice     Decimal          @db.Decimal(12, 2)   // takerPrice + makerPrice == shareValue
+  createdAt      DateTime         @default(now())
+  market         PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
   @@index([marketId, createdAt])
   @@map("prediction_fills")
@@ -258,8 +277,8 @@ One transaction, wallet locked as in `game.service.ts:88`:
 
 1. `SELECT ... FROM wallets WHERE "userId" = $1 FOR UPDATE`
 2. Re-read the market inside the transaction; require `status = 'OPEN'` and `now < closesAt`
-3. Validate `0.01 <= limitPrice <= 0.99`, price is a whole number of ticks, and
-   `minOrderShares <= quantity <= maxOrderShares`
+3. Validate `1 <= limitPrice <= shareValue - 1`, that the price is a whole number of 1 ETB
+   ticks, and that `minOrderShares <= quantity <= maxOrderShares`
 4. Reserve `limitPrice × quantity`, drawn **bonus first, then real**, recorded as
    `reservedReal` / `reservedBonus` on the order. Throw `Insufficient funds` if short.
 5. Insert the order, write a `PREDICTION_ORDER_HOLD` `Transaction`
@@ -272,48 +291,48 @@ Matching then runs (below). Any reserve the fills did not consume is released im
 ### Matching
 
 Runs under a Redlock on `lock:prediction:match:<marketId>` so only one order is matched
-against a market's book at a time. Volume here is one event with a few thousand orders — a
+against a market's book at a time. Volume is one event with a few thousand orders — a
 DB-backed engine under a per-market lock is the right trade against an in-memory book that
 would need its own recovery story.
 
 For an incoming (taker) order on outcome X at price `p_t`:
 
 1. Select resting orders on the **opposite** outcome with
-   `status IN ('OPEN','PARTIALLY_FILLED')` and `limitPrice >= 1.00 - p_t`, ordered by
+   `status IN ('OPEN','PARTIALLY_FILLED')` and `limitPrice >= shareValue - p_t`, ordered by
    `limitPrice DESC, createdAt ASC`. Skip orders belonging to the taker — no self-matching.
 2. For each, fill `min(taker remaining, maker remaining)` shares:
    - maker pays its own `limitPrice` (`p_m`)
-   - taker pays `1.00 - p_m`, which is `<= p_t` — **the taker gets the price improvement**
-   - the pair contributes exactly `1.00` per share to escrow
+   - taker pays `shareValue - p_m`, which is `<= p_t` — **the taker gets the price improvement**
+   - the pair contributes exactly `shareValue` per share to escrow
 3. Write a `PredictionFill`; update `filledQuantity` and status on both orders.
 4. Upsert both `PredictionPosition` rows: `shares += qty`, and add the consumed reserve to
    `costBasisReal` / `costBasisBonus` **in the same proportion it was reserved**, so a
    position always remembers how much of it was bonus-funded.
-5. Release the taker's price improvement (`p_t - (1.00 - p_m)` per share) back to the
+5. Release the taker's price improvement (`p_t - (shareValue - p_m)` per share) back to the
    wallet in the original real/bonus proportion, as `PREDICTION_ORDER_RELEASE`.
 6. Increment `market.totalShares`, `market.totalVolume`; set `lastPrice` on both outcomes.
 7. Stop when the taker is filled or no resting order satisfies the price condition.
 
 Ordering resting orders by `limitPrice DESC` serves the most aggressive counterparty first,
-which is also the cheapest fill for the taker — standard price-time priority, expressed in
+which is also the cheapest fill for the taker — standard price-time priority expressed in
 complementary prices.
 
 ### Cancelling
 
 Releases `reserved × (unfilled / quantity)`, proportionally across real and bonus, and sets
 the order `CANCELLED`. Only the owner can cancel, only while `OPEN`/`PARTIALLY_FILLED`, and
-only while the market is `OPEN`. Filled shares are not affected — those are positions now.
+only while the market is `OPEN`. Filled shares are untouched — those are positions now.
 
 ### Settlement
 
 In the worker, under a Redlock on `lock:prediction:settle:<marketId>`.
 
 1. Require `status = 'RESOLVING'` and `now >= disputeUntil`.
-2. Cancel and fully refund every remaining open order (unmatched money was never at risk).
+2. Cancel and fully refund every remaining open order — unmatched money was never at risk.
 3. Page winning positions in batches of 200, each its own transaction filtered on
    `status = 'OPEN'` so a retry cannot double-pay:
    ```
-   gross  = shares × 1.00
+   gross  = shares × shareValue
    basis  = costBasisReal + costBasisBonus
    profit = max(gross − basis, 0)
    fee    = round2(profit × feePct / 100)
@@ -327,9 +346,9 @@ In the worker, under a Redlock on `lock:prediction:settle:<marketId>`.
 6. Market → `SETTLED`. Notifications after commit.
 
 **Solvency invariant, asserted by test:** for any market,
-`Σ costBasis over all positions == totalShares × 1.00`, and gross payout to the winning
-side is exactly `totalShares × 1.00`. Losers' escrow funds winners exactly; the fee is
-carved from winners' profit, never from principal the book does not hold.
+`Σ costBasis over all positions == totalShares × shareValue`, and gross payout to the
+winning side is exactly `totalShares × shareValue`. Losers' escrow funds winners exactly;
+the fee is carved from winners' profit, never from principal the book does not hold.
 
 ### Void — draw, no-contest, or cancelled bout
 
@@ -338,8 +357,7 @@ and fully refund every open order. No fee, no `HouseTransaction`. Positions → 
 market → `VOIDED` with `voidReason`. Batched and idempotent on status, same as settlement.
 
 Returning bonus as bonus is the anti-laundering rule from `game.service.ts:214` — refunding
-a bonus-funded position to real balance would turn promotional credit into withdrawable
-cash.
+a bonus-funded position to real balance would turn promotional credit into withdrawable cash.
 
 ## Lifecycle
 
@@ -356,13 +374,14 @@ cash.
 
 Dispute window: `SiteSetting` `prediction_dispute_minutes`, default `30`, stamped onto
 `disputeUntil` at resolve time so changing the setting never moves a scheduled payout.
-`feePct` is likewise snapshotted onto the market at creation.
+`feePct` and `shareValue` are likewise snapshotted onto the market at creation.
 
 ### Immutability after open
 
-Once `OPEN`, `question`, `feePct`, and the outcome labels are frozen; only `description`,
-`imageUrl`, and *extending* `closesAt` remain editable. Changing an outcome label while
-money is escrowed against it is indistinguishable from rigging the market.
+Once `OPEN`, `question`, `feePct`, `shareValue`, and the outcome labels are frozen; only
+`description`, `imageUrl`, and *extending* `closesAt` remain editable. Changing an outcome
+label or the share value while money is escrowed against it is indistinguishable from
+rigging the market.
 
 ## API
 
@@ -378,8 +397,8 @@ money is escrowed against it is indistinguishable from rigging the market.
 | GET | `/prediction/orders` | own orders, filterable by status |
 | GET | `/prediction/positions` | own positions with market/outcome |
 
-Book depth aggregates open orders by `(outcomeId, limitPrice)` into
-`{ price, shares }` levels, best price first.
+Book depth aggregates open orders by `(outcomeId, limitPrice)` into `{ price, shares }`
+levels, best price first.
 
 ### Admin — `routes/admin/prediction/index.ts`, all behind `server.requireAdmin`
 
@@ -395,7 +414,7 @@ Every state-changing admin action writes an `AuditLog` with
 | Condition | Status |
 |---|---|
 | order on a non-`OPEN` market or past `closesAt` | 409 |
-| price outside 0.01–0.99 or off-tick; quantity out of bounds | 400 |
+| price out of range or off-tick; quantity out of bounds | 400 |
 | insufficient balance | `Insufficient funds`, mapped to 400 as today |
 | cancelling an order that is not yours | 403 |
 | cancelling a `FILLED`/`CANCELLED` order | 409 |
@@ -413,7 +432,8 @@ Every state-changing admin action writes an `AuditLog` with
 | `prediction:status` | `{ marketId, status, winningOutcomeId?, disputeUntil? }` |
 | `prediction:settled` | `{ marketId, winningOutcomeId, totalShares, totalFee }` |
 
-Book emits coalesce to at most one per second per market.
+Book emits coalesce to at most one per second per market. Trade emits are not coalesced —
+every fill is a discrete event.
 
 ## Background Work
 
@@ -433,24 +453,27 @@ re-enqueues `settle-market` for markets stuck in `RESOLVING`.
 
 ### Web — `apps/web/pages/predictions/`
 
-`index.vue` lists the card — one row per bout showing both fighters and their current
-prices as percentages. `[id].vue` is the market: both sides with live book depth, an order
-ticket (pick outcome, price, quantity, see cost and payout-if-right), the player's open
-orders with cancel, and their position.
+`index.vue` lists the card grouped by discipline — one row per bout showing both fighters
+and their current prices. `[id].vue` is the market: both sides with live book depth, an
+order ticket (pick a fighter, set price and quantity, see total cost and payout-if-right),
+the player's open orders with cancel, and their position.
 
-The ticket must state plainly that an order **rests until someone takes the other side**
-and can be cancelled until it fills — an unfilled order is the normal case in a young book
-and must not read as a failure. It must also state that positions are **held to the result**;
+Prices display as **birr with the percentage alongside** — "35 ETB (35%)" — since at a
+100 ETB share the two are the same number and showing both teaches the mechanism for free.
+
+The ticket must state plainly that an order **rests until someone takes the other side** and
+can be cancelled until it fills — an unfilled order is the normal case in a young book and
+must not read as a failure. It must also state that positions are **held to the result**;
 there is no cash-out in this version.
 
-Prices display as percentages (0.35 → 35%) and cost in ETB. Strings in `en` and `am`.
+Strings in `en` and `am`.
 
 ### Admin — `apps/admin/pages/predictions/`
 
 `index.vue` (all markets, all statuses), `new.vue` (create: event name, question, two
-outcome labels, `closesAt`, fee/size overrides), `[id].vue` (book depth both sides, fills,
-positions, per-outcome payout obligation, and the lifecycle actions legal for the current
-status).
+outcome labels, `closesAt`, share value / fee / size overrides), `[id].vue` (book depth both
+sides, fills, positions, per-outcome payout obligation, and the lifecycle actions legal for
+the current status).
 
 Resolve and void require typed confirmation of the outcome label or the word `VOID`.
 While `RESOLVING`, show the dispute countdown with unresolve available until it expires.
@@ -465,16 +488,16 @@ While `RESOLVING`, show the dispute countdown with unresolve available until it 
 Vitest with mocked Prisma, following `test/tournament.service.test.ts`.
 
 **Matching engine** (pure logic, exhaustively tested)
-- complementary match only when `p_taker + p_maker >= 1.00`
-- maker pays its limit; taker pays `1.00 - p_maker` and gets the improvement
-- every fill contributes exactly 1.00 per share to escrow
+- complementary match only when `p_taker + p_maker >= shareValue`
+- maker pays its limit; taker pays `shareValue - p_maker` and keeps the improvement
+- every fill contributes exactly `shareValue` per share to escrow
 - price-time priority: higher maker price first, older first at equal price
 - partial fills across multiple makers; taker remainder rests
 - self-match is skipped
 - no match when the book is empty or all prices are too low
 
 **Escrow / solvency**
-- `Σ costBasis == totalShares × 1.00` after arbitrary fill sequences
+- `Σ costBasis == totalShares × shareValue` after arbitrary fill sequences
 - gross payout to the winning side equals total escrow
 - cancel releases exactly the unfilled reserve, never more
 
@@ -486,8 +509,8 @@ Vitest with mocked Prisma, following `test/tournament.service.test.ts`.
 
 **Fee**
 - `fee == 15% of (gross − basis)`, clamped at zero
-- a position bought at 0.90 is still profitable after fee
-- `feePct` comes from the market snapshot, not the current setting
+- a position bought at 90 ETB is still profitable after fee
+- `feePct` and `shareValue` come from the market snapshot, not live settings
 
 **Idempotency**
 - settling twice pays once; voiding twice refunds once
@@ -495,7 +518,7 @@ Vitest with mocked Prisma, following `test/tournament.service.test.ts`.
 
 **Guards**
 - an order at `closesAt + 1ms` is rejected
-- off-tick prices (0.355) and out-of-range prices (0.00, 1.00) are rejected
+- off-tick prices (35.50) and out-of-range prices (0, 100) are rejected
 - cancelling someone else's order is rejected
 - resolving a non-`CLOSED` market is rejected
 - unresolve after `disputeUntil` is rejected
@@ -503,15 +526,18 @@ Vitest with mocked Prisma, following `test/tournament.service.test.ts`.
 
 ## Risks
 
-**Empty books.** With no house market maker, a market with no counterparty simply has no
-price. Concentration on three bouts is the mitigation; the UI stating plainly that an order
-rests until matched is the rest of it. If the book stays empty in the days before the card,
-the operator's options are fewer markets or seeding orders manually — the latter is a house
+**Empty books across 11 markets.** With no house market maker, a market with no
+counterparty has no price. Eleven bouts split attention roughly four ways versus the three
+originally scoped, and the Muay Thai undercard between locally-unknown fighters is the most
+exposed. Mitigation is operational: all 11 seed as drafts, and the admin publishes
+selectively, opening the main event first. If books stay empty near the card, the remaining
+options are publishing fewer markets or seeding orders manually — the latter is a house
 position and is deliberately not built.
 
 **Insider resolution.** An admin who resolves markets can also trade them. The audit log,
-dispute window, and positions view are mitigations, not a fix. Deciding whether staff may
-hold positions is worth settling before go-live.
+dispute window, and positions view are mitigations, not a fix. Whether staff may hold
+positions is worth settling before go-live; a code-level block on admin accounts placing
+orders is the clean version and is not in this scope.
 
 **Deadline.** The card is 27 August 2026. The matching engine and settlement are the
 irreducible core; the admin UI can be thin and the player UI can ship without niceties, but
