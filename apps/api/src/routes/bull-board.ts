@@ -32,8 +32,23 @@ export async function registerBullBoard(fastify: FastifyInstance): Promise<void>
         serverAdapter,
     })
 
-    // Mount the bull-board plugin behind admin auth
-    await fastify.register(serverAdapter.registerPlugin() as any, {
-        prefix: '/admin/queues',
+    // Mount the bull-board plugin behind admin auth.
+    //
+    // This MUST attach its own guard. registerBullBoard() is called on the ROOT
+    // server instance, not inside the `adminRoutes` plugin, so Fastify's
+    // encapsulation means the admin auth hooks registered there never reach these
+    // routes. Before this scope existed, /admin/queues was fully public — job
+    // payloads for the REFUND, WITHDRAWAL and DEPOSIT_VERIFICATION queues (user
+    // ids, payment details) plus retry/promote/remove controls.
+    //
+    // The hook goes on an encapsulated child scope so it covers every route the
+    // dashboard registers under the prefix — the UI fetches its data from
+    // sub-paths, so guarding only the HTML entry point would still leak everything.
+    await fastify.register(async (scoped) => {
+        scoped.addHook('onRequest', scoped.requireAdmin)
+
+        await scoped.register(serverAdapter.registerPlugin() as any, {
+            prefix: '/admin/queues',
+        })
     })
 }

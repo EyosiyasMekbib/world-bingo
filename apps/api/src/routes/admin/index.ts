@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
+import crmRoutes from './crm'
 import { AdminService } from '../../services/admin.service'
 import { GameService } from '../../services/game.service'
 import { BotService } from '../../services/bot.service'
@@ -165,6 +166,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         // ── Analytics ─────────────────────────────────────────────────────────
         await f.register(analyticsRoutes, { prefix: '/analytics' })
 
+        // ── Player CRM (segments, metrics, CSV export) ────────────────────────
+        await f.register(crmRoutes, { prefix: '/crm' })
+
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {
             return prisma.user.findMany({
@@ -203,7 +207,6 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── User management ───────────────────────────────────────────────────
         f.get('/users', AdminController.getUsers)
-        f.patch('/users/:id/status', AdminController.updateUserStatus)
 
         // ── Game management ───────────────────────────────────────────────────
         f.get('/games', AdminController.getGames)
@@ -498,6 +501,17 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 throw err
             }
         })
+    })
+
+    // ── Super-admin-only routes ───────────────────────────────────────────────
+    // Role changes mint privilege, so they are not an ADMIN-level operation. An
+    // ADMIN who can create other ADMINs can manufacture the second pair of eyes
+    // for any approval flow. AdminService.updateUserRole additionally refuses to
+    // assign SUPER_ADMIN at all — this guard is the outer layer, not the only one.
+    await fastify.register(async (f) => {
+        f.addHook('preValidation', f.requireSuperAdmin)
+
+        f.patch('/users/:id/status', AdminController.updateUserStatus)
     })
 }
 

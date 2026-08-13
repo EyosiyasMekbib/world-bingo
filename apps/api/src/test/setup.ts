@@ -25,6 +25,13 @@ afterAll(async () => {
 })
 
 async function cleanDb() {
+    // CRM tables first. campaign_deliveries holds an onDelete: Restrict FK to
+    // users, so leaving a row here would make the users.deleteMany() below fail
+    // and cascade confusing failures through every later suite.
+    await prisma.campaignDelivery.deleteMany()
+    await prisma.campaign.deleteMany()
+    await prisma.segment.deleteMany()
+    await prisma.playerMetrics.deleteMany()
     await prisma.cashbackPromotion.deleteMany()
     await prisma.siteSetting.deleteMany()
     await prisma.houseTransaction.deleteMany()

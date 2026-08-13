@@ -27,6 +27,7 @@ import {
 import type { CreateTournamentDto, TournamentDto, TournamentEntryDto, TournamentLeaderboardEntry } from '@world-bingo/shared-types'
 import { NotificationService } from './notification.service'
 import { Decimal } from '@prisma/client/runtime/library'
+import { reportError } from '../lib/sentry.js'
 
 export class TournamentService {
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -465,12 +466,31 @@ export class TournamentService {
             throw new Error('Cannot cancel a completed tournament')
         }
 
-        await prisma.tournament.update({
-            where: { id: tournamentId },
+        // Move to CANCELLED. Predicated on status so a concurrent completion is
+        // never overwritten, and so endedAt is not bumped on a repeat call.
+        //
+        // Deliberately NO early return when this matches nothing. It is tempting
+        // to treat "someone else already claimed it" as "nothing to do", but the
+        // status flip and the refunds are not atomic: if the process dies between
+        // them, the tournament is CANCELLED with entrants unpaid, and every retry
+        // would bail out here — stranding their money permanently. Re-running the
+        // refund loop is safe because double-payment is prevented per-entrant by
+        // the idempotency guard inside the transaction below, not by this claim.
+        await prisma.tournament.updateMany({
+            where: {
+                id: tournamentId,
+                status: { notIn: [TournamentStatus.CANCELLED, TournamentStatus.COMPLETED] },
+            },
             data: { status: TournamentStatus.CANCELLED, endedAt: new Date() },
         })
 
-        // Refund all entry fees (refunds go to realBalance)
+        // Refund all entry fees, to the buckets they were actually taken from.
+        //
+        // register() deducts bonus-first, so refunding everything to realBalance
+        // converted non-withdrawable promotional credit into withdrawable cash at
+        // 100% — join with bonus, cancel, withdraw. The real/bonus split is
+        // recoverable from the GAME_ENTRY transaction register() wrote, which
+        // snapshots both balances. Same approach as RefundService.refundGame.
         if (Number(tournament.entryFee) > 0) {
             await Promise.all(
                 tournament.entries.map((entry: any) =>
@@ -479,28 +499,86 @@ export class TournamentService {
                             SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${entry.userId} FOR UPDATE
                         `
                         const wallet = wallets[0]
-                        const realBefore = wallet ? new Decimal(wallet.realBalance) : new Decimal(0)
-                        const bonusBefore = wallet ? new Decimal(wallet.bonusBalance) : new Decimal(0)
-                        const realAfter = realBefore.plus(new Decimal(tournament.entryFee))
+                        if (!wallet) throw new Error(`Wallet not found for user ${entry.userId}`)
+
+                        // Idempotency check AFTER the lock — belt and braces with
+                        // the status claim above, and covers a partially-completed
+                        // earlier run.
+                        const existing = await tx.transaction.findFirst({
+                            where: {
+                                userId: entry.userId,
+                                type: TransactionType.REFUND,
+                                referenceId: tournamentId,
+                            },
+                        })
+                        if (existing) return
+
+                        const entryTxns = await tx.transaction.findMany({
+                            where: {
+                                userId: entry.userId,
+                                type: TransactionType.GAME_ENTRY,
+                                referenceId: tournamentId,
+                            },
+                        })
+                        let realRefund = new Decimal(0)
+                        let bonusRefund = new Decimal(0)
+                        for (const t of entryTxns) {
+                            realRefund = realRefund.plus(
+                                new Decimal(t.balanceBefore ?? 0).minus(new Decimal(t.balanceAfter ?? 0)),
+                            )
+                            bonusRefund = bonusRefund.plus(
+                                new Decimal(t.bonusBalanceBefore ?? 0).minus(
+                                    new Decimal(t.bonusBalanceAfter ?? 0),
+                                ),
+                            )
+                        }
+
+                        // Legacy fallback: entries created before the snapshot was
+                        // written have nothing to derive from — preserve the prior
+                        // behaviour of refunding the entry fee to real balance.
+                        let refundAmount = realRefund.plus(bonusRefund)
+                        if (refundAmount.lessThanOrEqualTo(0)) {
+                            realRefund = new Decimal(tournament.entryFee)
+                            bonusRefund = new Decimal(0)
+                            refundAmount = realRefund
+                        }
+
+                        const realBefore = new Decimal(wallet.realBalance)
+                        const bonusBefore = new Decimal(wallet.bonusBalance)
+                        const realAfter = realBefore.plus(realRefund)
+                        const bonusAfter = bonusBefore.plus(bonusRefund)
 
                         await tx.wallet.update({
                             where: { userId: entry.userId },
-                            data: { realBalance: { increment: tournament.entryFee } },
+                            data: { realBalance: realAfter, bonusBalance: bonusAfter },
                         })
                         await tx.transaction.create({
                             data: {
                                 userId: entry.userId,
                                 type: TransactionType.REFUND,
-                                amount: tournament.entryFee,
+                                amount: refundAmount,
                                 status: PaymentStatus.APPROVED,
                                 referenceId: tournamentId,
                                 balanceBefore: realBefore,
                                 balanceAfter: realAfter,
                                 bonusBalanceBefore: bonusBefore,
-                                bonusBalanceAfter: bonusBefore,
+                                bonusBalanceAfter: bonusAfter,
                             },
                         })
-                    }).catch(() => {}),
+                    }).catch((err: unknown) => {
+                        // One entrant's failure must not abort the rest — but it
+                        // must not vanish either. This was `.catch(() => {})`.
+                        console.error(
+                            `[TournamentService] Refund failed for user ${entry.userId} in tournament ${tournamentId}:`,
+                            err,
+                        )
+                        reportError(err, {
+                            service: 'tournament',
+                            action: 'cancel-refund',
+                            tournamentId,
+                            userId: entry.userId,
+                        })
+                    }),
                 ),
             )
         }

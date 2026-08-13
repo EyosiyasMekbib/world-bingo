@@ -474,6 +474,16 @@ export class AdminService {
      * T43 — Update user role (promote to admin, demote to player, etc.)
      */
     static async updateUserRole(userId: string, role: UserRole) {
+        // SUPER_ADMIN is never assignable through the API — it is provisioned by
+        // seed/DB only. Guarding just the target's CURRENT role (below) left an
+        // escalation open: any ADMIN could promote an account they control to
+        // SUPER_ADMIN, use it to satisfy every separation-of-duties check, then
+        // demote it again. With no audit table, the only trace was users.updatedAt,
+        // which the demotion overwrote.
+        if (role === UserRole.SUPER_ADMIN) {
+            throw new Error('Cannot assign the SUPER_ADMIN role')
+        }
+
         const user = await prisma.user.findUnique({ where: { id: userId } })
         if (!user) throw new Error('User not found')
         if (user.role === UserRole.SUPER_ADMIN) throw new Error('Cannot change role of SUPER_ADMIN')

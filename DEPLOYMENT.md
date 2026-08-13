@@ -63,6 +63,11 @@ DB_MAX_RETRIES=30
 DB_RETRY_DELAY_SECS=2
 RUN_SEED=false
 SEED_STRICT=false
+# Required whenever RUN_SEED=true outside development — the seed refuses to create
+# a SUPER_ADMIN with a default password. Optional overrides for the account identity.
+SEED_SUPER_ADMIN_PASSWORD=
+SEED_SUPER_ADMIN_USERNAME=
+SEED_SUPER_ADMIN_PHONE=
 # Optional: only set when you intentionally need to re-run a migration
 MIGRATION_ROLLBACK_ID=
 
@@ -80,6 +85,22 @@ NUXT_JWT_SECRET=your_super_secret_jwt_string_matching_api
 - Seed is disabled by default (`RUN_SEED=false`) to avoid accidental data resets on every restart.
 - If you need bootstrap data once, set `RUN_SEED=true` for a single deploy, then set it back to `false`.
 - `MIGRATION_ROLLBACK_ID` should be left empty unless you are intentionally reapplying a previously resolved migration.
+
+#### SUPER_ADMIN provisioning (read before seeding)
+`SUPER_ADMIN` is the most privileged role on the platform, and since roles can no longer be
+escalated through the API it **cannot be re-created by an `ADMIN`** — it exists only via seed or
+direct DB access. Treat it accordingly:
+
+- The seed creates a `SUPER_ADMIN` **only when none exists**. Outside development it **fails loudly**
+  unless `SEED_SUPER_ADMIN_PASSWORD` is set — it will not fall back to a default password.
+- The password is never written to logs. Set it via the environment, from a password manager.
+- The seeded wallet is funded only in development. In any other environment it is created at 0,
+  because the balance is written with no matching `Transaction` row and would be unaudited money.
+- **Rotate immediately after the first login**, and confirm the account's phone number is one you
+  control — it is the account recovery path.
+- Historical note: earlier revisions of `prisma/seed.ts` created `kira / password123` and printed
+  those credentials to stdout. Any environment seeded before that change should be audited for a
+  `SUPER_ADMIN` still using the default password, and rotated.
 
 ### 6. Troubleshooting
 - **WebSocket Connection Issues**: If games are failing to connect to WebSockets, ensure Traefik (Dokploy's router) allows WebSocket upgrades. Usually, Dokploy handles this automatically when proxying Nuxt 3. If issues persist, verify that the browser is attempting to connect to `/socket.io/` on the main domain (e.g., `https://bingo.example.com/socket.io/...`), which Nuxt will then forward to the internal API.

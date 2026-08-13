@@ -111,60 +111,6 @@ export const useAdminApi = () => {
             }>(`/admin/analytics/conversion-kpis${query ? `?${query}` : ''}`)
         },
 
-        getGameRetentionScorecard: (params?: { from?: string; to?: string }) => {
-            const qs = new URLSearchParams()
-            if (params?.from) qs.set('from', params.from)
-            if (params?.to) qs.set('to', params.to)
-            const query = qs.toString()
-            return apiFetch<{
-                rows: Array<{
-                    gameKey: string
-                    gameLabel: string
-                    gameType: 'bingo' | 'provider'
-                    firstGameCohort: number
-                    returnRate7d: number
-                    lift: number
-                    nextDayReturn: number
-                    replayRate: number
-                    sessionsPerPlayer: number
-                    avgNetPnl: number | null
-                    lowSample: boolean
-                }>
-                baselineReturn7dPct: number
-            }>(`/admin/analytics/game-retention${query ? `?${query}` : ''}`)
-        },
-
-        getAnalyticsGamePnl: (params?: { from?: string; to?: string }) => {
-            const qs = new URLSearchParams()
-            if (params?.from) qs.set('from', params.from)
-            if (params?.to) qs.set('to', params.to)
-            const query = qs.toString()
-            return apiFetch<Array<{
-                gameId: string
-                title: string
-                ticketPrice: number
-                houseEdgePct: number
-                endedAt: string | null
-                playerCount: number
-                grossRevenue: number
-                totalPrizes: number
-                netPnl: number
-                expectedHouse: number
-                shortfall: number
-            }>>(`/admin/analytics/game-pnl${query ? `?${query}` : ''}`)
-        },
-
-        getProviderBrowseFunnel: (params?: { from?: string; to?: string }) => {
-            const qs = new URLSearchParams()
-            if (params?.from) qs.set('from', params.from)
-            if (params?.to) qs.set('to', params.to)
-            const query = qs.toString()
-            return apiFetch<{
-                stages: Array<{ name: string; count: number; dropOffPct: number }>
-                hasEnoughData: boolean
-            }>(`/admin/analytics/provider-browse-funnel${query ? `?${query}` : ''}`)
-        },
-
         getPendingDeposits: (params?: {
             status?: string
             search?: string
@@ -225,17 +171,9 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any>(`/admin/withdrawals${query ? `?${query}` : ''}`)
         },
-        approveTransaction: (id: string, amount?: number) =>
-            apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: amount != null ? { amount } : {} }),
+        approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
-        // Send receipt HTML (fetched by the clerk's in-Ethiopia browser) to the API,
-        // which parses + matches + (within cap) credits it. Returns the verdict.
-        verifyReceipt: (id: string, html: string) =>
-            apiFetch<{ status: string; reasons: string[]; parsed: Record<string, any> | null }>(
-                `/admin/transactions/${id}/verify-receipt`,
-                { method: 'POST', body: { html } },
-            ),
         getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
@@ -257,6 +195,134 @@ export const useAdminApi = () => {
         startGame: (id: string) => apiFetch(`/admin/games/${id}/start`, { method: 'POST' }),
         updateUserRole: (id: string, role: string) =>
             apiFetch(`/admin/users/${id}/status`, { method: 'PATCH', body: { role } }),
+
+        getGameRetentionScorecard: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                rows: Array<{
+                    gameKey: string
+                    gameLabel: string
+                    gameType: 'bingo' | 'provider'
+                    firstGameCohort: number
+                    returnRate7d: number
+                    lift: number
+                    nextDayReturn: number
+                    replayRate: number
+                    sessionsPerPlayer: number
+                    avgNetPnl: number | null
+                    lowSample: boolean
+                }>
+                baselineReturn7dPct: number
+            }>(`/admin/analytics/game-retention${query ? `?${query}` : ''}`)
+        },
+
+        // ── Player CRM ────────────────────────────────────────────────────────
+        getCrmFields: () =>
+            apiFetch<{
+                fields: Array<{
+                    key: string
+                    label: string
+                    type: 'money' | 'int' | 'days' | 'date' | 'presence'
+                    operators: string[]
+                    min: number | null
+                    max: number | null
+                }>
+                operators: Array<{ op: string; arity: 0 | 1 | 2 }>
+            }>('/admin/crm/fields'),
+
+        getCrmFreshness: () =>
+            apiFetch<{ refreshedAt: string | null; rowCount: number }>('/admin/crm/metrics/freshness'),
+
+        refreshCrmMetrics: (full = false) =>
+            apiFetch(`/admin/crm/metrics/refresh${full ? '?full=true' : ''}`, { method: 'POST' }),
+
+        getSegments: () =>
+            apiFetch<Array<{
+                id: string
+                name: string
+                description: string | null
+                rules: unknown
+                isPreset: boolean
+                cachedCount: number | null
+                countedAt: string | null
+                summary: string
+            }>>('/admin/crm/segments'),
+
+        getSegment: (id: string) => apiFetch<any>(`/admin/crm/segments/${id}`),
+
+        createSegment: (body: { name: string; description?: string | null; rules: unknown }) =>
+            apiFetch('/admin/crm/segments', { method: 'POST', body }),
+
+        updateSegment: (id: string, body: Record<string, unknown>) =>
+            apiFetch(`/admin/crm/segments/${id}`, { method: 'PATCH', body }),
+
+        deleteSegment: (id: string) =>
+            apiFetch(`/admin/crm/segments/${id}`, { method: 'DELETE' }),
+
+        seedSegmentPresets: () =>
+            apiFetch<{ created: number; skipped: number; available: number }>(
+                '/admin/crm/segments/presets',
+                { method: 'POST' },
+            ),
+
+        countSegmentRules: (rules: unknown) =>
+            apiFetch<{ count: number }>('/admin/crm/segments/count', {
+                method: 'POST',
+                body: { rules },
+            }),
+
+        // ── Campaigns ─────────────────────────────────────────────────────────
+        getCampaigns: () =>
+            apiFetch<Array<{
+                id: string
+                name: string
+                status: string
+                actions: any
+                segment: { name: string } | null
+                maxRecipients: number
+                maxTotalBonus: string
+                maxPerPlayer: string
+                snapshotSize: number | null
+                sentCount: number
+                skippedCount: number
+                failedCount: number
+                grantedTotal: string
+                createdByUsername: string | null
+                approvedByUsername: string | null
+                createdAt: string
+            }>>('/admin/crm/campaigns'),
+
+        getCampaign: (id: string) => apiFetch<any>(`/admin/crm/campaigns/${id}`),
+
+        createCampaign: (body: {
+            name: string
+            segmentId: string
+            actions: { message?: { title: string; body: string }; bonus?: { amount: number } }
+            maxRecipients?: number
+            maxTotalBonus?: number
+            maxPerPlayer?: number
+        }) => apiFetch<any>('/admin/crm/campaigns', { method: 'POST', body }),
+
+        submitCampaign: (id: string) =>
+            apiFetch(`/admin/crm/campaigns/${id}/submit`, { method: 'POST' }),
+
+        approveCampaign: (id: string, note?: string) =>
+            apiFetch(`/admin/crm/campaigns/${id}/approve`, { method: 'POST', body: { note } }),
+
+        launchCampaign: (id: string) =>
+            apiFetch<{ queued: number }>(`/admin/crm/campaigns/${id}/launch`, { method: 'POST' }),
+
+        stopCampaign: (id: string) =>
+            apiFetch<{ stopped: boolean }>(`/admin/crm/campaigns/${id}/stop`, { method: 'POST' }),
+
+        previewSegmentRules: (rules: unknown, page = 1, limit = 25) =>
+            apiFetch<{
+                rows: Array<Record<string, any>>
+                pagination: { page: number; limit: number; total: number; totalPages: number }
+            }>('/admin/crm/segments/preview', { method: 'POST', body: { rules, page, limit } }),
 
         // ── Game Templates ──────────────────────────────────────────────────
         getGameTemplates: () => apiFetch<any[]>('/admin/game-templates'),
@@ -284,8 +350,8 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string; min_deposit_amount: number; min_withdrawal_amount: number; max_deposit_amount: number; max_withdrawal_amount: number; deposit_auto_verify_enabled: boolean; deposit_auto_verify_max_amount: number }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string | null; min_deposit_amount?: number; min_withdrawal_amount?: number; max_deposit_amount?: number; max_withdrawal_amount?: number; deposit_auto_verify_enabled?: boolean; deposit_auto_verify_max_amount?: number }) =>
+        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string; min_deposit_amount: number; min_withdrawal_amount: number }>('/settings/game'),
+        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
 
         // ── House Wallet ──────────────────────────────────────────────────────
@@ -398,24 +464,6 @@ export const useAdminApi = () => {
         }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
-
-        // ── Branding ──────────────────────────────────────────────────────────
-        getBrand: () => apiFetch('/brand', { method: 'GET' }),
-
-        updateBrand: (payload: Record<string, unknown>) =>
-            apiFetch('/brand', { method: 'PUT', body: payload }),
-
-        uploadBrandLogo: (file: File) => {
-            const form = new FormData()
-            form.append('file', file)
-            return apiFetch('/brand/logo', { method: 'POST', body: form }) as Promise<{ url: string }>
-        },
-
-        uploadBrandFavicon: (file: File) => {
-            const form = new FormData()
-            form.append('file', file)
-            return apiFetch('/brand/favicon', { method: 'POST', body: form }) as Promise<{ url: string }>
-        },
     }
 }
 

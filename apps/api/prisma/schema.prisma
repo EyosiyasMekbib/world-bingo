@@ -36,6 +36,8 @@ model User {
   referralRewards ReferralReward[]
   tournamentEntries TournamentEntry[]
   cashbackDisbursements CashbackDisbursement[]
+  playerMetrics  PlayerMetrics?
+  campaignDeliveries CampaignDelivery[]
 
   @@index([role])
   @@index([referralCode])
@@ -192,6 +194,7 @@ enum TransactionType {
   TP_WIN
   TP_ROLLBACK
   TP_ADJUSTMENT
+  CAMPAIGN_BONUS
 }
 
 enum PaymentStatus {
@@ -251,6 +254,7 @@ enum NotificationType {
   TOURNAMENT_WON
   TOURNAMENT_ELIMINATED
   CASHBACK_AWARDED
+  CAMPAIGN_MESSAGE
 }
 
 model ReferralReward {
@@ -661,4 +665,223 @@ enum DepositVerificationStatus {
 
 enum DepositVerificationSource {
   RECEIPT_FETCH
+}
+
+// ─── Player CRM ───────────────────────────────────────────────────────────────
+
+/// One row per user, rebuilt from source rows by PlayerMetricsService.
+/// Every value is an ABSOLUTE RECOMPUTE, never an increment, so a retry or two
+/// overlapping refresh runs converge on the same answer instead of drifting.
+model PlayerMetrics {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Deposits / withdrawals — counted only at PaymentStatus.APPROVED, so receipts
+  // sitting in PENDING_REVIEW never inflate a VIP segment.
+  lifetimeDeposits    Decimal   @default(0) @db.Decimal(14, 2)
+  depositCount        Int       @default(0)
+  firstDepositAt      DateTime?
+  lastDepositAt       DateTime?
+  lifetimeWithdrawals Decimal   @default(0) @db.Decimal(14, 2)
+  withdrawalCount     Int       @default(0)
+  lastWithdrawalAt    DateTime?
+
+  // Bingo play
+  gamesPlayed    Int       @default(0)
+  cartelasBought Int       @default(0)
+  firstPlayedAt  DateTime?
+  lastPlayedAt   DateTime?
+  totalStaked    Decimal   @default(0) @db.Decimal(14, 2)
+  totalWon       Decimal   @default(0) @db.Decimal(14, 2)
+  netLoss        Decimal   @default(0) @db.Decimal(14, 2)
+
+  // Third-party providers (Palace / GASea)
+  tpStaked       Decimal   @default(0) @db.Decimal(14, 2)
+  tpWon          Decimal   @default(0) @db.Decimal(14, 2)
+  lastTpPlayedAt DateTime?
+
+  bonusReceived Decimal @default(0) @db.Decimal(14, 2)
+  referralCount Int     @default(0)
+
+  // Precomputed recency. Stored as ints so "churned = daysSinceLastPlay > 30"
+  // is an index scan rather than a per-row date subtraction.
+  daysSinceLastDeposit Int?
+  daysSinceLastPlay    Int?
+  tenureDays           Int  @default(0)
+
+  // Denormalized from User + Wallet so segment queries and CSV export never join.
+  // serial and username are here for exactly that reason: they are what the
+  // players screen displays, and without them every preview would join `users`,
+  // which is the cost this table exists to avoid.
+  realBalance  Decimal  @default(0) @db.Decimal(20, 8)
+  bonusBalance Decimal  @default(0) @db.Decimal(20, 8)
+  isActive     Boolean  @default(true)
+  registeredAt DateTime
+  serial       Int?
+  username     String?
+  phone        String?
+  telegramId   String?
+
+  refreshedAt DateTime @default(now())
+
+  @@index([lastPlayedAt])
+  @@index([lastDepositAt])
+  @@index([lifetimeDeposits])
+  @@index([netLoss])
+  @@index([daysSinceLastPlay])
+  @@index([daysSinceLastDeposit])
+  @@map("player_metrics")
+}
+
+/// A saved audience definition. Presets are seeded rows, not code, so "preset"
+/// and "custom" are the same thing and clone-and-tweak works on day one.
+model Segment {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  rules       Json
+  isPreset    Boolean    @default(false)
+  cachedCount Int?
+  countedAt   DateTime?
+  createdById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  campaigns   Campaign[]
+
+  @@map("segments")
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Campaign {
+  id        String         @id @default(uuid())
+  name      String
+  segmentId String
+  segment   Segment        @relation(fields: [segmentId], references: [id])
+  actions   Json
+  status    CampaignStatus @default(DRAFT)
+
+  /// Identity that survives cloning. Delivery uniqueness keys on this, not on id,
+  /// so cloning a stopped campaign and relaunching cannot re-pay people who were
+  /// already paid by the original.
+  rootId String
+
+  /// The rules AS APPROVED, plus the instant they were evaluated against. The
+  /// drain compiles from these, never from the live Segment row — otherwise
+  /// editing the segment after approval silently retargets a running campaign,
+  /// and maxRecipients caps only HOW MANY, never WHICH.
+  segmentRulesSnapshot Json
+  asOf                 DateTime
+
+  // Caps are NOT NULL. A nullable maxRecipients becomes `LIMIT NULL` in Postgres,
+  // which means NO LIMIT — the cap would silently delete itself.
+  maxRecipients Int     @default(1000)
+  maxTotalBonus Decimal @default(0) @db.Decimal(14, 2)
+  maxPerPlayer  Decimal @default(0) @db.Decimal(12, 2)
+
+  // Authorship + approval. Four-eyes is checked against BOTH createdById and
+  // lastEditedById: comparing only the original author lets someone edit a
+  // colleague's draft and then approve it themselves.
+  createdById    String?
+  lastEditedById String?
+  approvedById   String?
+  /// Usernames captured at write time. Clerk deletion hard-deletes the user row,
+  /// which would otherwise turn every actor id into an unresolvable UUID exactly
+  /// when someone is auditing who authorised a payment.
+  createdByUsername  String?
+  approvedByUsername String?
+  approvalNote       String?
+  approvedAt         DateTime?
+  /// sha256 over {segment rules, actions, caps} at approval time, re-verified
+  /// under the campaign row lock before any money moves — so editing an
+  /// approved campaign cannot smuggle a larger amount past its approver.
+  approvalHash   String?
+
+  snapshotSize Int?
+  queuedCount  Int     @default(0)
+  sentCount    Int     @default(0)
+  skippedCount Int     @default(0)
+  failedCount  Int     @default(0)
+  grantedTotal Decimal @default(0) @db.Decimal(14, 2)
+
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  lastProgressAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  deliveries CampaignDelivery[]
+
+  @@index([status])
+  @@map("campaigns")
+}
+
+enum CampaignDeliveryStatus {
+  QUEUED
+  SENT
+  SKIPPED
+  FAILED
+}
+
+/// One row per player per campaign, materialised at launch so the recipient list
+/// is frozen and every terminal state is an UPDATE of an existing row. That makes
+/// "who was in this campaign and what happened to them" a single query, and a
+/// stuck QUEUED row the alarm for a lost job.
+model CampaignDelivery {
+  id         String                 @id @default(uuid())
+  campaignId String
+  campaign   Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// Copied from Campaign.rootId. Uniqueness keys on this so a clone of a stopped
+  /// campaign cannot re-deliver to someone the original already paid.
+  rootId     String
+  userId     String
+  // Restrict, not Cascade: deleting a user must not erase the record of money
+  // paid to them, or the reconciliation invariants silently pass.
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status     CampaignDeliveryStatus @default(QUEUED)
+
+  notificationId String?
+  transactionId  String?
+  bonusAmount    Decimal? @db.Decimal(12, 2)
+  skipReason     String?
+  error          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The idempotency guarantee: a retried worker cannot pay the same player twice,
+  /// and neither can a clone of the same campaign lineage.
+  @@unique([rootId, userId])
+  @@index([campaignId, status])
+  @@map("campaign_deliveries")
+}
+
+/// Append-only record of privileged actions.
+///
+/// This platform has no audit trail at all, which is why a rogue role change or a
+/// PII export currently leaves no durable trace. The CSV export is what forces the
+/// issue: a file of player phone numbers leaves the building and the only evidence
+/// is a log line inside a retention window.
+model AuditLog {
+  id       String   @id @default(uuid())
+  action   String
+  actorId  String?
+  /// Denormalized: the actor row can be hard-deleted.
+  actorName String?
+  /// What was acted on, e.g. "segment:<id>" or "campaign:<id>".
+  target   String?
+  detail   Json?
+  createdAt DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
 }

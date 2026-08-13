@@ -41,6 +41,8 @@ const allNavGroups = [
       { label: 'Clerks',          icon: 'i-heroicons:identification',         to: '/clerks',                   adminOnly: true },
       { label: 'Providers',       icon: 'i-heroicons:globe-alt',              to: '/providers',                adminOnly: true },
       { label: 'Cashback',        icon: 'i-heroicons:gift',                   to: '/cashback',                 adminOnly: true },
+      { label: 'Segments',        icon: 'i-heroicons:funnel',                 to: '/crm',                      adminOnly: true },
+      { label: 'Campaigns',       icon: 'i-heroicons:megaphone',              to: '/campaigns',            adminOnly: true },
       { label: 'Payment Methods', icon: 'i-heroicons:credit-card',            to: '/settings/payment-methods', adminOnly: true },
       { label: 'Settings',         icon: 'i-heroicons:adjustments-horizontal', to: '/settings/features',        adminOnly: true },
       { label: 'Branding',        icon: 'i-heroicons:paint-brush',            to: '/settings/branding',        adminOnly: true },

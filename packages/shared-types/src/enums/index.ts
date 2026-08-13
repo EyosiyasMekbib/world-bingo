@@ -23,6 +23,7 @@ export enum TransactionType {
     TP_WIN = 'TP_WIN',
     TP_ROLLBACK = 'TP_ROLLBACK',
     TP_ADJUSTMENT = 'TP_ADJUSTMENT',
+    CAMPAIGN_BONUS = 'CAMPAIGN_BONUS',
 }
 
 export enum GameProviderStatus {
@@ -81,6 +82,7 @@ export enum NotificationType {
     TOURNAMENT_WON = 'TOURNAMENT_WON',
     TOURNAMENT_ELIMINATED = 'TOURNAMENT_ELIMINATED',
     CASHBACK_AWARDED = 'CASHBACK_AWARDED',
+    CAMPAIGN_MESSAGE = 'CAMPAIGN_MESSAGE',
 }
 
 export enum TournamentStatus {
