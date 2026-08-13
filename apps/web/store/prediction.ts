@@ -2,8 +2,10 @@ import { defineStore } from 'pinia'
 import { toWholeBirr } from '@world-bingo/shared-types'
 import type {
   PredictionBookPayload,
+  PredictionHistoryPoint,
   PredictionMarketBook,
   PredictionMarketDto,
+  PredictionPriceHistory,
   PredictionOrderDto,
   PredictionOutcomeDto,
   PredictionPositionDto,
@@ -319,6 +321,8 @@ interface PredictionState {
   positions: PredictionPositionRow[]
   positionsLoading: boolean
   trades: PredictionTradeTick[]
+  history: PredictionPriceHistory | null
+  historyLoading: boolean
   placing: boolean
   cancellingId: string | null
   orderError: PredictionErrorCode | null
@@ -338,6 +342,8 @@ export const usePredictionStore = defineStore('prediction', {
     positions: [],
     positionsLoading: false,
     trades: [],
+    history: null,
+    historyLoading: false,
     placing: false,
     cancellingId: null,
     orderError: null,
@@ -408,6 +414,25 @@ export const usePredictionStore = defineStore('prediction', {
         if (this.market?.id === marketId) this.market.book = book
       } catch {
         // Depth is a read model; the next socket emit or reload corrects it.
+      }
+    },
+
+    /** The price trajectory for the chart. Live trades extend it via applyTrade. */
+    async fetchHistory(marketId: string) {
+      const config = useRuntimeConfig()
+      this.historyLoading = true
+      try {
+        const history = await $fetch<PredictionPriceHistory>(
+          `${config.public.apiBase}/prediction/markets/${marketId}/history`,
+        )
+        // Guard against a stale response landing after the user moved markets.
+        if (this.market?.id === marketId || this.history?.marketId === marketId) {
+          this.history = history
+        }
+      } catch {
+        // A missing chart is not fatal; the empty state covers it.
+      } finally {
+        this.historyLoading = false
       }
     },
 
@@ -550,6 +575,20 @@ export const usePredictionStore = defineStore('prediction', {
 
       const outcome = this.market.outcomes.find((entry) => entry.id === payload.outcomeId)
       if (outcome) outcome.lastPrice = payload.price
+
+      // Extend the chart in real time. The line tracks the reference outcome, so
+      // a trade on the OTHER side is mirrored across the share value — exactly
+      // how the backend derives the series — keeping the live line consistent
+      // with a reload. Bounded so a long session cannot grow it without limit.
+      if (this.history) {
+        const share = Number(this.history.shareValue)
+        const price =
+          payload.outcomeId === this.history.outcomeId
+            ? payload.price
+            : (share - Number(payload.price)).toString()
+        const point: PredictionHistoryPoint = { t: payload.at, price, shares: payload.quantity }
+        this.history.points = [...this.history.points, point].slice(-600)
+      }
     },
 
     /** `prediction:status` — a lifecycle transition. */
@@ -578,6 +617,7 @@ export const usePredictionStore = defineStore('prediction', {
       this.orders = []
       this.positions = []
       this.trades = []
+      this.history = null
       this.orderError = null
       this.lastResult = null
     },

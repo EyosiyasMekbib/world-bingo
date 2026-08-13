@@ -22,12 +22,36 @@ import type {
     PredictionFillDto,
     PredictionMarketBook,
     PredictionOutcomeBook,
+    PredictionPriceHistory,
 } from '@world-bingo/shared-types'
 
 /** An order still has unfilled shares resting in the book in exactly these states. */
 const RESTING_STATUSES: PredictionOrderStatus[] = ['OPEN', 'PARTIALLY_FILLED']
 
 const DEFAULT_FILL_LIMIT = 50
+
+/**
+ * Ceiling on price-history points. Beyond this the series is evenly thinned so
+ * the payload stays bounded no matter how much a market trades; the shape of the
+ * line survives because the sampling is uniform and the endpoints are pinned.
+ */
+const MAX_HISTORY_POINTS = 500
+
+/**
+ * Even down-sampling that always keeps the first and last element, so the line
+ * still spans the true time range. Returns the input untouched at or below the
+ * cap. Not money math — it only ever selects existing points, never averages
+ * prices, so no Decimal is combined or rounded here.
+ */
+function downsample<T>(items: T[], cap: number): T[] {
+    if (items.length <= cap) return items
+    const out: T[] = []
+    const step = (items.length - 1) / (cap - 1)
+    for (let i = 0; i < cap; i++) {
+        out.push(items[Math.round(i * step)]!)
+    }
+    return out
+}
 const MAX_FILL_LIMIT = 200
 
 export class PredictionBookService {
@@ -113,6 +137,75 @@ export class PredictionBookService {
             makerPrice: fill.makerPrice.toString(),
             createdAt: fill.createdAt.toISOString(),
         }))
+    }
+
+    /**
+     * The price trajectory for a probability-over-time chart.
+     *
+     * One point per fill, time-ascending. The line tracks the FIRST outcome
+     * (`sortOrder` 0); the market is binary, so the second outcome is always
+     * `shareValue - price` and drawing it would be a redundant mirror. For each
+     * fill, that outcome's price is whichever side of the trade it was on:
+     * `takerPrice` when it was the taker, `makerPrice` otherwise — and the two
+     * always sum to `shareValue`, so exactly one of them is the reference price.
+     *
+     * A market with no fills returns an empty series. That is a real state (no
+     * one has traded yet), rendered as an empty plot rather than treated as an
+     * error. Beyond `MAX_HISTORY_POINTS` the series is evenly downsampled so a
+     * runaway-volume market cannot ship an unbounded payload; the first and last
+     * points are always kept so the line still spans the true time range.
+     */
+    static async getPriceHistory(marketId: string): Promise<PredictionPriceHistory> {
+        const market = await prisma.predictionMarket.findUnique({
+            where: { id: marketId },
+            select: {
+                id: true,
+                shareValue: true,
+                outcomes: {
+                    select: { id: true, label: true },
+                    orderBy: { sortOrder: 'asc' },
+                    take: 1,
+                },
+            },
+        })
+
+        if (!market) throw new Error('Market not found')
+
+        const reference = market.outcomes[0]
+        if (!reference) throw new Error('Market has no outcomes')
+
+        const fills = await prisma.predictionFill.findMany({
+            where: { marketId },
+            select: {
+                createdAt: true,
+                quantity: true,
+                takerOutcomeId: true,
+                takerPrice: true,
+                makerPrice: true,
+            },
+            // Ascending so the client plots left-to-right without re-sorting; id
+            // breaks ties for fills written in the same transaction.
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        })
+
+        const points = downsample(fills, MAX_HISTORY_POINTS).map((fill) => ({
+            t: fill.createdAt.toISOString(),
+            // The reference outcome's price at this fill. Whichever side it took,
+            // its price + the counterparty's price is exactly one share.
+            price: (fill.takerOutcomeId === reference.id
+                ? fill.takerPrice
+                : fill.makerPrice
+            ).toString(),
+            shares: fill.quantity,
+        }))
+
+        return {
+            marketId: market.id,
+            outcomeId: reference.id,
+            outcomeLabel: reference.label,
+            shareValue: market.shareValue.toString(),
+            points,
+        }
     }
 
     /**

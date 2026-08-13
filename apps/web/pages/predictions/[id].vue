@@ -402,7 +402,11 @@ async function load() {
   }
   quantity.value = minShares.value
 
-  await Promise.all([store.fetchMyOrders(marketId.value), store.fetchMyPositions(marketId.value)])
+  await Promise.all([
+    store.fetchHistory(marketId.value),
+    store.fetchMyOrders(marketId.value),
+    store.fetchMyPositions(marketId.value),
+  ])
 }
 
 onMounted(async () => {
@@ -489,6 +493,16 @@ useHead({ title: pageTitle })
         {{ t('prediction.voidedNotice') }}
         <span v-if="market.voidReason"> · {{ market.voidReason }}</span>
       </div>
+
+      <!-- ── Probability over time ── -->
+      <PredictionPriceChart
+        v-if="store.history"
+        class="pm-chart"
+        :points="store.history.points"
+        :outcome-label="store.history.outcomeLabel"
+        :share-value="Number(store.history.shareValue)"
+        :loading="store.historyLoading"
+      />
 
       <!-- ── Both sides of the book ── -->
       <section class="pm-sides">
@@ -857,6 +871,9 @@ useHead({ title: pageTitle })
 }
 
 /* ── Sides ── */
+.pm-chart {
+  margin-bottom: 0.9rem;
+}
 .pm-sides {
   display: grid;
   grid-template-columns: 1fr 1fr;

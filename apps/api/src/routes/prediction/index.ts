@@ -405,6 +405,39 @@ const predictionRoutes: FastifyPluginAsync = async (fastify) => {
         },
     )
 
+    // ── GET /markets/:id/history ─────────────────────────────────────────────
+    fastify.get(
+        '/markets/:id/history',
+        {
+            schema: {
+                tags: TAGS,
+                summary: 'Price history for the probability chart',
+                description:
+                    'One point per trade for the first outcome, time-ascending. Price is a decimal string; the market being binary, the other outcome is shareValue − price. Empty until the first trade.',
+                params: ID_PARAMS,
+            },
+        },
+        async (request, reply) => {
+            const { id } = request.params as { id: string }
+            try {
+                // Same visibility rule as the book: an unpublished market's
+                // history is not public, and getPriceHistory would return an
+                // empty series rather than 404 on its own.
+                const market = await prisma.predictionMarket.findUnique({
+                    where: { id },
+                    select: { status: true },
+                })
+                if (!market || market.status === PredictionMarketStatus.DRAFT) {
+                    throw httpError('Market not found', 404)
+                }
+
+                return reply.send(await PredictionBookService.getPriceHistory(id))
+            } catch (err) {
+                return fail(reply, err)
+            }
+        },
+    )
+
     // ── POST /orders ─────────────────────────────────────────────────────────
     fastify.post(
         '/orders',
