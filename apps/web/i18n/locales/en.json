@@ -265,5 +265,19 @@
       "orderGone": "That order is no longer there.",
       "failed": "Something went wrong. Please try again."
     }
+  },
+  "providers": {
+    "all": "All Games",
+    "bingo": "Bingo",
+    "slots": "Slots",
+    "live": "Live Casino",
+    "table": "Table Games",
+    "crash": "Crash",
+    "loading": "Loading games…",
+    "noGames": "No games available in this category.",
+    "launching": "Launching…",
+    "play": "Play",
+    "backToLobby": "Back to Lobby",
+    "loadMore": "Load More"
   }
 }

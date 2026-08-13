@@ -20,6 +20,13 @@ export default defineNuxtConfig({
         '@nuxt/icon',
         'pinia-plugin-persistedstate/nuxt',
         ['@nuxtjs/i18n', {
+            // Both stated explicitly. They match the module defaults, but the repo
+            // previously carried a second, unread `apps/web/locales/` directory that
+            // features kept adding strings to — the `providers.*` keys sat there
+            // unrendered from the day they were written. Pinning the path means the
+            // live directory is readable from this file instead of inferred.
+            restructureDir: 'i18n',
+            langDir: 'locales',
             locales: [
                 { code: 'en', name: 'English', file: 'en.json' },
                 { code: 'am', name: 'አማርኛ', file: 'am.json' },
