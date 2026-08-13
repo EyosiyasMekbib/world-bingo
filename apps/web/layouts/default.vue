@@ -5,7 +5,8 @@ const auth = useAuthStore()
 const router = useRouter()
 const { connect } = useSocket()
 const { locale, setLocale } = useI18n()
-const { referralsEnabled } = useFeatureFlags()
+const { referralsEnabled, flags } = useFeatureFlags()
+const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -115,6 +116,7 @@ function submitSearch() {
         <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
         <NuxtLink to="/games/mini" class="ab-nav-link" active-class="ab-nav-active">Aviator</NuxtLink>
         <NuxtLink to="/games" class="ab-nav-link" exact-active-class="ab-nav-active">Games</NuxtLink>
+        <NuxtLink v-if="predictionsEnabled" to="/predictions" class="ab-nav-link" active-class="ab-nav-active">Fights</NuxtLink>
         <NuxtLink to="/games/live" class="ab-nav-link" active-class="ab-nav-active">
           Virtual Sport<span class="ab-new">NEW</span>
         </NuxtLink>
@@ -161,6 +163,10 @@ function submitSearch() {
         <NuxtLink to="/games" class="ab-mtab" exact-active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
           <span>Games</span>
+        </NuxtLink>
+        <NuxtLink v-if="predictionsEnabled" to="/predictions" class="ab-mtab" active-class="ab-mtab-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 4 9l2.5 2.5M9 4 7 6M14.5 14.5 12 12M17 20l2.5-2.5L17 15M15 20l2-2M4 20l7.5-7.5M14 4l6 6" /></svg>
+          <span>Fights</span>
         </NuxtLink>
         <NuxtLink to="/games/live" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
