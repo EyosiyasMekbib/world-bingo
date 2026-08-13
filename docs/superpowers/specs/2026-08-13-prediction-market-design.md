@@ -1,65 +1,102 @@
-# Prediction Market — Design
+# Prediction Market — Design (Order Book)
 
 **Date:** 2026-08-13
 **Branch:** `feat/prediction-market`
 **Status:** Approved for implementation
+**Supersedes:** the parimutuel design committed in `a5a0f4b`
 
 ## Summary
 
-A parimutuel prediction market on real-world events (football, politics, crypto,
-entertainment). Players stake wallet funds on one of N mutually-exclusive outcomes. All
-stakes on a market form a single pool; when the market resolves, the house takes a rake
-snapshot off the top and the remainder is split pro-rata among the players who backed the
-winning outcome.
+A binary order-book prediction market. Players buy shares in one of two outcomes at a limit
+price they set. A share pays **1.00 ETB if its outcome wins** and 0 otherwise. Orders match
+against players who bought the opposing outcome — never against the house.
 
-The house carries **no position risk**. It cannot lose money on a market — its take is a
-fixed percentage of a pot funded entirely by players. This is the reason parimutuel was
-chosen over fixed odds or an order book.
+First markets are the **ETFC Fight Night** card on **27 August 2026** at the Adwa Museum,
+Addis Ababa:
+
+| Bout | Discipline | Outcomes |
+|---|---|---|
+| Sedo vs Johnny (main event) | MMA, Heavyweight | Sedo / Johnny |
+| Boyka vs Endris | MMA, Heavyweight | Boyka / Endris |
+| Esubalew vs Biniyam | Boxing, Lightweight | Esubalew / Biniyam |
+
+ETFC is a third-party event. The platform does not run it and has no result feed, so
+markets resolve by admin action with a dispute window before payout.
+
+## The mechanism
+
+Someone wants Sedo at **0.35**. Someone else wants Johnny at **0.65**. Together that is
+exactly **1.00 ETB**, so the system takes 1.00 from the pair and issues one share to each.
+When the fight is called, the winning side's shares pay 1.00 each; the losing side's pay 0.
+
+Buying Johnny at 0.65 *is* offering Sedo at 0.35, so both sides live in one book quoted in
+outcome-A price, matched on price-time priority.
+
+Two properties this design guarantees, and that the tests assert:
+
+- **Zero house position.** The house is never a counterparty. It cannot lose money on a
+  market regardless of the result.
+- **Provable solvency.** Every share pair is backed by exactly 1.00 ETB of escrowed player
+  money. Total payout obligation equals total escrow, always. The book cannot promise more
+  than it holds.
+
+### No early exit
+
+v1 has **no sell orders and no cash-out**. A position is held until the market resolves.
+This is what keeps the engine small: with buy-only orders there is no inventory to unwind,
+no short side, and no exit pricing. Selling out early is the next version.
 
 ## Decisions
 
 | Decision | Choice | Reason |
 |---|---|---|
-| Subject | Admin-created real-world events | Broadest audience |
-| Mechanism | Parimutuel pool | Zero house risk, no matching engine, reuses existing pot/rake patterns |
-| Market shape | N mutually-exclusive outcomes (N ≥ 2) | One schema covers Yes/No, 1X2, and multi-team markets |
-| Resolution | Admin resolves + dispute window before payout | Recoverable from a misclick, no third-party feed dependency |
-| Default rake | 10% | Matches `Tournament.houseEdgePct` — one house number across the platform |
-| Degenerate pools | Full refund, rake 0 | Player-fair, no confiscation |
+| Mechanism | Binary order book, buy-only | Zero house risk, real price discovery, half the engine of a full CLOB |
+| Share face value | 1.00 ETB | Price reads directly as probability |
+| Price range | 0.01 – 0.99, tick 0.01 | 1.00 would be a free share; 0.00 a free option |
+| Early exit | Not in v1 | Removes sells, inventory, and exit pricing from the build |
+| Draw / no-contest | Market voids, everyone refunded | Standard for combat sports; keeps matching binary |
+| House fee | 15% of **profit** on winning positions | Favourites stay tradeable at every price |
+| Resolution | Admin resolves + dispute window | Third-party event, no result feed |
+| Liquidity | Concentration — few markets, one card | Three books, not fifty; the only cold-start fix that costs nothing |
+
+### Why the fee is on profit, not gross payout
+
+At 15% of gross, a share bought at 0.90 returns 0.85 — the player is right about the fight
+and still down. Every price above 0.85 becomes unwinnable, which silently caps the book
+below where main-event favourites actually trade. On profit, the same position pays 98.50
+on a 90.00 cost and works at every price.
+
+Profit on a winning position is always positive: cost basis per share is at most 0.99 and
+payout is exactly 1.00. The implementation still clamps at zero.
 
 ### Explicitly out of scope
 
-Parlay/combo bets, selling out of a position before resolution, user-created markets,
-automated resolution from an external data feed, and market comments. Each is a separate
-project on top of these rails.
+Selling before resolution, market orders (limit only), three-way markets, parlays,
+user-created markets, automated resolution, and market making incentives.
 
 ## Architecture
-
-A standalone module beside the existing tournament and jackpot features. The bingo `Game`
-model is **not** reused — it is coupled to cartelas, ball draws, and the leader-elected
-game engine, and every prediction market stored as a `Game` would be a row the engine has
-to learn to skip.
 
 ```
 apps/api/src/
   services/prediction/
     market.service.ts       lifecycle + admin CRUD
-    bet.service.ts          stake placement, player reads
-    settlement.service.ts   payout math, settle, void, refunds
-    index.ts                re-exports
+    order.service.ts        placement, cancellation, reserve accounting
+    matching.service.ts     the engine — pure matching logic + fill application
+    settlement.service.ts   payout, fee, void, refunds
+    book.service.ts         aggregated depth + last price reads
   routes/prediction/index.ts        player API
   routes/admin/prediction/index.ts  admin API
   workers/prediction.worker.ts      auto-close + delayed settle
-  gateways/prediction.gateway.ts    socket pool broadcasts
-packages/shared-types/src/prediction/   Zod contracts + socket payloads
-apps/web/pages/predictions/             player UI
-apps/admin/pages/predictions/           admin UI
+  gateways/prediction.gateway.ts    book / trade / status broadcasts
+packages/shared-types/src/prediction/
+apps/web/pages/predictions/
+apps/admin/pages/predictions/
 ```
 
-## Data Model
+The bingo `Game` model is not reused — it is coupled to cartelas, ball draws, and the
+leader-elected engine.
 
-New Prisma models. Money columns follow the existing convention: `Decimal(12,2)` for
-per-user amounts, `Decimal(14,2)` for pools, `Decimal(5,2)` for percentages.
+## Data Model
 
 ```prisma
 enum PredictionMarketStatus {
@@ -71,16 +108,15 @@ enum PredictionMarketStatus {
   VOIDED
 }
 
-enum PredictionCategory {
-  SPORTS
-  POLITICS
-  ENTERTAINMENT
-  CRYPTO
-  OTHER
+enum PredictionOrderStatus {
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
 }
 
-enum PredictionBetStatus {
-  PLACED
+enum PredictionPositionStatus {
+  OPEN
   WON
   LOST
   REFUNDED
@@ -88,18 +124,18 @@ enum PredictionBetStatus {
 
 model PredictionMarket {
   id               String                 @id @default(uuid())
-  question         String
+  eventName        String                 // "ETFC Fight Night"
+  question         String                 // "Sedo vs Johnny — who wins?"
   description      String?
-  category         PredictionCategory     @default(OTHER)
   imageUrl         String?
   status           PredictionMarketStatus @default(DRAFT)
   closesAt         DateTime
   resolvesAt       DateTime?
-  rakePct          Decimal                @default(10) @db.Decimal(5, 2)
-  minStake         Decimal                @default(10) @db.Decimal(12, 2)
-  maxStake         Decimal                @default(10000) @db.Decimal(12, 2)
-  totalPool        Decimal                @default(0) @db.Decimal(14, 2)
-  betCount         Int                    @default(0)
+  feePct           Decimal                @default(15) @db.Decimal(5, 2)
+  minOrderShares   Int                    @default(1)
+  maxOrderShares   Int                    @default(100000)
+  totalShares      Int                    @default(0)   // matched share pairs
+  totalVolume      Decimal                @default(0) @db.Decimal(14, 2) // ETB escrowed
   winningOutcomeId String?
   resolvedById     String?
   resolvedAt       DateTime?
@@ -110,328 +146,376 @@ model PredictionMarket {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   outcomes         PredictionOutcome[]
-  bets             PredictionBet[]
+  orders           PredictionOrder[]
+  fills            PredictionFill[]
+  positions        PredictionPosition[]
 
   @@index([status, closesAt])
-  @@index([category, status])
   @@map("prediction_markets")
 }
 
 model PredictionOutcome {
-  id         String           @id @default(uuid())
-  marketId   String
-  label      String
-  sortOrder  Int
-  poolAmount Decimal          @default(0) @db.Decimal(14, 2)
-  betCount   Int              @default(0)
-  market     PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  bets       PredictionBet[]
+  id        String               @id @default(uuid())
+  marketId  String
+  label     String               // "Sedo"
+  sortOrder Int                  // 0 or 1
+  lastPrice Decimal?             @db.Decimal(4, 2)
+  market    PredictionMarket     @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  orders    PredictionOrder[]
+  positions PredictionPosition[]
 
   @@unique([marketId, sortOrder])
-  @@index([marketId])
   @@map("prediction_outcomes")
 }
 
-model PredictionBet {
-  id        String              @id @default(uuid())
-  marketId  String
-  outcomeId String
-  userId    String
-  stake     Decimal             @db.Decimal(12, 2)
-  realPart  Decimal             @default(0) @db.Decimal(12, 2)
-  bonusPart Decimal             @default(0) @db.Decimal(12, 2)
-  status    PredictionBetStatus @default(PLACED)
-  payout    Decimal             @default(0) @db.Decimal(14, 2)
-  settledAt DateTime?
-  createdAt DateTime            @default(now())
-  market    PredictionMarket    @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  outcome   PredictionOutcome   @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+model PredictionOrder {
+  id             String                @id @default(uuid())
+  marketId       String
+  outcomeId      String
+  userId         String
+  limitPrice     Decimal               @db.Decimal(4, 2)  // 0.01 .. 0.99
+  quantity       Int
+  filledQuantity Int                   @default(0)
+  reservedReal   Decimal               @default(0) @db.Decimal(12, 2)
+  reservedBonus  Decimal               @default(0) @db.Decimal(12, 2)
+  status         PredictionOrderStatus @default(OPEN)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  market         PredictionMarket      @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcome        PredictionOutcome     @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // the matching hot path: resting orders on one side, best price first, oldest first
+  @@index([marketId, outcomeId, status, limitPrice, createdAt])
   @@index([userId, status])
-  @@index([marketId, outcomeId])
+  @@map("prediction_orders")
+}
+
+model PredictionFill {
+  id            String           @id @default(uuid())
+  marketId      String
+  quantity      Int
+  takerOrderId  String
+  makerOrderId  String
+  takerOutcomeId String
+  makerOutcomeId String
+  takerPrice    Decimal          @db.Decimal(4, 2)
+  makerPrice    Decimal          @db.Decimal(4, 2)   // takerPrice + makerPrice == 1.00
+  createdAt     DateTime         @default(now())
+  market        PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, createdAt])
+  @@map("prediction_fills")
+}
+
+model PredictionPosition {
+  id             String                   @id @default(uuid())
+  marketId       String
+  outcomeId      String
+  userId         String
+  shares         Int                      @default(0)
+  costBasisReal  Decimal                  @default(0) @db.Decimal(12, 2)
+  costBasisBonus Decimal                  @default(0) @db.Decimal(12, 2)
+  status         PredictionPositionStatus @default(OPEN)
+  payout         Decimal                  @default(0) @db.Decimal(12, 2)
+  feePaid        Decimal                  @default(0) @db.Decimal(12, 2)
+  settledAt      DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  market         PredictionMarket         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcome        PredictionOutcome        @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, outcomeId, userId])
+  @@index([userId, status])
   @@index([marketId, status])
-  @@map("prediction_bets")
+  @@map("prediction_positions")
 }
 ```
 
-Relations added to `User`: `predictionBets PredictionBet[]`.
+`User` gains `predictionOrders`, `predictionPositions`.
 
 ### Enum additions
 
-`TransactionType` gains `PREDICTION_BET`, `PREDICTION_WIN`, `PREDICTION_REFUND`.
+`TransactionType` += `PREDICTION_ORDER_HOLD`, `PREDICTION_ORDER_RELEASE`, `PREDICTION_WIN`,
+`PREDICTION_REFUND`.
 
-These are **separate from `GAME_ENTRY`/`PRIZE_WIN` by design**. The GGR query in
-`analytics.service.ts:575` and the cashback loss calculation in `cashback.service.ts:124`
-both filter on `GAME_ENTRY`; reusing it would silently fold prediction turnover into bingo
-revenue and make prediction losses eligible for bingo cashback.
+Kept distinct from `GAME_ENTRY`/`PRIZE_WIN` because the GGR query at
+`analytics.service.ts:575` and the cashback loss calculation at `cashback.service.ts:124`
+filter on `GAME_ENTRY`; reusing it would fold prediction turnover into bingo revenue and
+make prediction losses earn bingo cashback.
 
-`HouseTransactionType` gains `PREDICTION_RAKE`.
-
-`NotificationType` gains `PREDICTION_SETTLED` and `PREDICTION_VOIDED`.
-
-### Why `realPart` / `bonusPart` are stored per bet
-
-Stakes draw down bonus balance first, then real — the rule already used at
-`game.service.ts:102`. A void must return bonus money **as bonus money**; refunding a
-bonus-funded stake to real balance turns a promotional credit into withdrawable cash. The
-existing refund path reconstructs this split by re-reading the original transaction
-(`game.service.ts:214`); storing it on the bet row makes it a direct read instead.
-
-### Denormalized counters
-
-`totalPool`, `betCount`, and `PredictionOutcome.poolAmount` exist for cheap list/detail
-reads and live odds. They are **never** used to compute payouts — settlement re-aggregates
-from `PredictionBet` rows, so a drifted counter can misprice a *display*, never a payout.
+`HouseTransactionType` += `PREDICTION_FEE`.
+`NotificationType` += `PREDICTION_SETTLED`, `PREDICTION_VOIDED`.
 
 ## Money Flow
 
-### Placing a bet
+All amounts are `Prisma.Decimal`. No floating point anywhere in this feature.
 
-Single Prisma transaction, mirroring `game.service.ts:88`:
+### Placing an order
 
-1. `SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = $1 FOR UPDATE`
-2. Re-read the market **inside** the transaction; abort unless `status = 'OPEN'` and
-   `now < closesAt`. A bet racing the close job must lose this check.
-3. Validate `minStake <= stake <= maxStake`.
-4. Deduct bonus first, then real. Throw `Insufficient funds` if the combined balance is
-   short (same message as `game.service.ts:99`).
-5. Insert `PredictionBet` with the funding split.
-6. Increment `outcome.poolAmount`, `outcome.betCount`, `market.totalPool`,
-   `market.betCount`.
-7. Insert `Transaction` (`PREDICTION_BET`, `referenceId = marketId`) with
-   `balanceBefore`/`balanceAfter` and `bonusBalanceBefore`/`bonusBalanceAfter`.
+One transaction, wallet locked as in `game.service.ts:88`:
 
-After commit, emit `prediction:pools` to the market room.
+1. `SELECT ... FROM wallets WHERE "userId" = $1 FOR UPDATE`
+2. Re-read the market inside the transaction; require `status = 'OPEN'` and `now < closesAt`
+3. Validate `0.01 <= limitPrice <= 0.99`, price is a whole number of ticks, and
+   `minOrderShares <= quantity <= maxOrderShares`
+4. Reserve `limitPrice × quantity`, drawn **bonus first, then real**, recorded as
+   `reservedReal` / `reservedBonus` on the order. Throw `Insufficient funds` if short.
+5. Insert the order, write a `PREDICTION_ORDER_HOLD` `Transaction`
 
-### Payout formula
+The money leaves the wallet at order time, not at fill time. A resting order is always
+fully funded, so matching can never fail for lack of funds.
 
-Computed at settlement by aggregating `PredictionBet` rows, not from the counters:
+Matching then runs (below). Any reserve the fills did not consume is released immediately.
 
-```
-grossPool = Σ stake over all PLACED bets on the market
-winPool   = Σ stake over all PLACED bets on the winning outcome
-rake      = floor2(grossPool × rakePct / 100)
-netPool   = grossPool − rake
-payout_i  = floor2(stake_i × netPool / winPool)
-dust      = netPool − Σ payout_i
-```
+### Matching
 
-`floor2` truncates toward zero at 2 decimal places. Dust (always ≥ 0, always < one cent
-per winner) is credited to the house wallet in the same `HouseTransaction` as the rake.
+Runs under a Redlock on `lock:prediction:match:<marketId>` so only one order is matched
+against a market's book at a time. Volume here is one event with a few thousand orders — a
+DB-backed engine under a per-market lock is the right trade against an in-memory book that
+would need its own recovery story.
 
-**Invariant, asserted by test:** `Σ payout_i + rake + dust == grossPool`, exactly, in
-`Decimal` arithmetic. No floating point anywhere in this path — use `Prisma.Decimal`
-throughout.
+For an incoming (taker) order on outcome X at price `p_t`:
+
+1. Select resting orders on the **opposite** outcome with
+   `status IN ('OPEN','PARTIALLY_FILLED')` and `limitPrice >= 1.00 - p_t`, ordered by
+   `limitPrice DESC, createdAt ASC`. Skip orders belonging to the taker — no self-matching.
+2. For each, fill `min(taker remaining, maker remaining)` shares:
+   - maker pays its own `limitPrice` (`p_m`)
+   - taker pays `1.00 - p_m`, which is `<= p_t` — **the taker gets the price improvement**
+   - the pair contributes exactly `1.00` per share to escrow
+3. Write a `PredictionFill`; update `filledQuantity` and status on both orders.
+4. Upsert both `PredictionPosition` rows: `shares += qty`, and add the consumed reserve to
+   `costBasisReal` / `costBasisBonus` **in the same proportion it was reserved**, so a
+   position always remembers how much of it was bonus-funded.
+5. Release the taker's price improvement (`p_t - (1.00 - p_m)` per share) back to the
+   wallet in the original real/bonus proportion, as `PREDICTION_ORDER_RELEASE`.
+6. Increment `market.totalShares`, `market.totalVolume`; set `lastPrice` on both outcomes.
+7. Stop when the taker is filled or no resting order satisfies the price condition.
+
+Ordering resting orders by `limitPrice DESC` serves the most aggressive counterparty first,
+which is also the cheapest fill for the taker — standard price-time priority, expressed in
+complementary prices.
+
+### Cancelling
+
+Releases `reserved × (unfilled / quantity)`, proportionally across real and bonus, and sets
+the order `CANCELLED`. Only the owner can cancel, only while `OPEN`/`PARTIALLY_FILLED`, and
+only while the market is `OPEN`. Filled shares are not affected — those are positions now.
 
 ### Settlement
 
-Runs in the `prediction` BullMQ worker, guarded by Redlock on
-`lock:prediction:settle:<marketId>` in the same style as the game engine.
+In the worker, under a Redlock on `lock:prediction:settle:<marketId>`.
 
-1. Load the market; abort unless `status = 'RESOLVING'` and `now >= disputeUntil`.
-2. Aggregate `grossPool` and `winPool` from `PLACED` bets.
-3. If `winPool == 0` (nobody backed the winner) **or** every bet sits on a single outcome,
-   divert to the void path — full refund, rake 0.
-4. Otherwise credit the house `rake + dust` once, writing one `HouseTransaction`
-   (`PREDICTION_RAKE`).
-5. Page through winning bets in batches of 200. Each batch is its own transaction and
-   only touches bets still `PLACED`: lock the wallet, credit `payout` to **real** balance,
-   write a `PREDICTION_WIN` `Transaction`, flip the bet to `WON`.
-6. Bulk-update remaining `PLACED` bets on losing outcomes to `LOST`.
-7. Set `status = 'SETTLED'`, `settledAt = now`.
-8. Enqueue notifications after commit.
+1. Require `status = 'RESOLVING'` and `now >= disputeUntil`.
+2. Cancel and fully refund every remaining open order (unmatched money was never at risk).
+3. Page winning positions in batches of 200, each its own transaction filtered on
+   `status = 'OPEN'` so a retry cannot double-pay:
+   ```
+   gross  = shares × 1.00
+   basis  = costBasisReal + costBasisBonus
+   profit = max(gross − basis, 0)
+   fee    = round2(profit × feePct / 100)
+   net    = gross − fee
+   ```
+   Credit `net` to **real** balance, write `PREDICTION_WIN`, set the position `WON` with
+   `payout` and `feePaid`.
+4. Bulk-set losing positions to `LOST`, payout 0.
+5. Credit the summed fees to the house as one `HouseTransaction` (`PREDICTION_FEE`),
+   guarded against an existing row for the market.
+6. Market → `SETTLED`. Notifications after commit.
 
-**Idempotency.** Every batch filters on `status = 'PLACED'`, so a crash-and-retry resumes
-rather than double-paying. The house credit is guarded by a check for an existing
-`PREDICTION_RAKE` `HouseTransaction` referencing the market.
+**Solvency invariant, asserted by test:** for any market,
+`Σ costBasis over all positions == totalShares × 1.00`, and gross payout to the winning
+side is exactly `totalShares × 1.00`. Losers' escrow funds winners exactly; the fee is
+carved from winners' profit, never from principal the book does not hold.
 
-### Void / refund
+### Void — draw, no-contest, or cancelled bout
 
-Refunds return `realPart` to real balance and `bonusPart` to bonus balance, batched and
-idempotent on `status = 'PLACED'`, each writing a `PREDICTION_REFUND` `Transaction`. The
-house takes nothing — no `HouseTransaction` is written on a void. Market ends `VOIDED`
-with `voidReason` set.
+Refund every position at cost basis, `costBasisReal` → real and `costBasisBonus` → bonus,
+and fully refund every open order. No fee, no `HouseTransaction`. Positions → `REFUNDED`,
+market → `VOIDED` with `voidReason`. Batched and idempotent on status, same as settlement.
+
+Returning bonus as bonus is the anti-laundering rule from `game.service.ts:214` — refunding
+a bonus-funded position to real balance would turn promotional credit into withdrawable
+cash.
 
 ## Lifecycle
 
-| From → To | Trigger | Notes |
-|---|---|---|
-| `DRAFT → OPEN` | admin publishes | requires ≥ 2 outcomes and `closesAt` in the future |
-| `OPEN → CLOSED` | worker at `closesAt`, or admin closes early | idempotent; also enforced lazily inside bet placement |
-| `CLOSED → RESOLVING` | admin resolves | sets `winningOutcomeId`, `resolvedById`, `resolvedAt`, `disputeUntil = now + window`; enqueues a delayed settle job; writes `AuditLog` |
-| `RESOLVING → CLOSED` | admin reverses within the window | clears resolution fields, removes the delayed job, writes `AuditLog` |
-| `RESOLVING → SETTLED` | settle job after `disputeUntil` | terminal |
-| `DRAFT/OPEN/CLOSED/RESOLVING → VOIDED` | admin voids, or auto-void on a degenerate pool | refunds every `PLACED` bet |
+| From → To | Trigger |
+|---|---|
+| `DRAFT → OPEN` | admin publishes; requires exactly 2 outcomes and `closesAt` in the future |
+| `OPEN → CLOSED` | worker at `closesAt`, or admin closes early; idempotent |
+| `CLOSED → RESOLVING` | admin resolves; sets `disputeUntil = now + window`, enqueues delayed settle, writes `AuditLog` |
+| `RESOLVING → CLOSED` | admin reverses inside the window; removes the delayed job |
+| `RESOLVING → SETTLED` | settle job after `disputeUntil` |
+| any non-terminal → `VOIDED` | admin voids, or a draw / no-contest |
 
-`SETTLED` and `VOIDED` are terminal — no transition out of either.
+`SETTLED` and `VOIDED` are terminal. Orders can only be placed while `OPEN`.
 
-Dispute window length: `SiteSetting` key `prediction_dispute_minutes`, default `30`. Read
-at resolve time and stamped onto `disputeUntil`, so changing the setting never moves an
-already-scheduled payout.
+Dispute window: `SiteSetting` `prediction_dispute_minutes`, default `30`, stamped onto
+`disputeUntil` at resolve time so changing the setting never moves a scheduled payout.
+`feePct` is likewise snapshotted onto the market at creation.
 
 ### Immutability after open
 
-Once a market is `OPEN`, `question`, `rakePct`, and the outcome set (labels, count) are
-frozen. Only `description`, `imageUrl`, and *extending* `closesAt` remain editable.
-Rewriting outcomes while money sits in the pool is indistinguishable from rigging the
-market; the audit log must be able to demonstrate it never happened.
-
-`rakePct` is snapshotted onto the market at creation from the `SiteSetting` default, so
-changing the platform default never alters a live pot.
+Once `OPEN`, `question`, `feePct`, and the outcome labels are frozen; only `description`,
+`imageUrl`, and *extending* `closesAt` remain editable. Changing an outcome label while
+money is escrowed against it is indistinguishable from rigging the market.
 
 ## API
 
-### Player — `apps/api/src/routes/prediction/index.ts`
+### Player — `routes/prediction/index.ts`
 
-All under the `feature_prediction_market` flag. `authenticate` on everything except the
-two read endpoints.
-
-| Method | Path | Body / Query | Returns |
-|---|---|---|---|
-| GET | `/prediction/markets` | `?status=&category=&limit=&cursor=` | markets with outcomes, pools, implied odds |
-| GET | `/prediction/markets/:id` | — | single market + outcomes |
-| POST | `/prediction/markets/:id/bets` | `{ outcomeId, stake }` | created bet + updated pools |
-| GET | `/prediction/bets` | `?status=&limit=&cursor=` | caller's bets with market/outcome |
-
-Implied odds are derived, never stored: `odds_j = netPool / outcome_j.poolAmount`, with
-`null` when `poolAmount` is 0.
-
-### Admin — `apps/api/src/routes/admin/prediction/index.ts`
-
-All behind `server.requireAdmin`, matching `routes/tournament/index.ts:83`.
-
-| Method | Path | Body |
+| Method | Path | Body / Query |
 |---|---|---|
-| GET | `/admin/prediction/markets` | `?status=&category=&limit=&cursor=` |
-| POST | `/admin/prediction/markets` | `{ question, description?, category, imageUrl?, closesAt, resolvesAt?, rakePct?, minStake?, maxStake?, outcomes: [{ label, sortOrder }] }` |
-| PATCH | `/admin/prediction/markets/:id` | editable subset, enforced by status |
-| POST | `/admin/prediction/markets/:id/publish` | — |
-| POST | `/admin/prediction/markets/:id/close` | — |
-| POST | `/admin/prediction/markets/:id/resolve` | `{ outcomeId }` |
-| POST | `/admin/prediction/markets/:id/unresolve` | — |
-| POST | `/admin/prediction/markets/:id/void` | `{ reason }` |
-| GET | `/admin/prediction/markets/:id/bets` | `?limit=&cursor=` — exposure view |
+| GET | `/prediction/markets` | `?status=&limit=&cursor=` |
+| GET | `/prediction/markets/:id` | includes book depth + last price |
+| GET | `/prediction/markets/:id/book` | aggregated depth per outcome |
+| POST | `/prediction/orders` | `{ marketId, outcomeId, limitPrice, quantity }` |
+| DELETE | `/prediction/orders/:id` | cancel own order |
+| GET | `/prediction/orders` | own orders, filterable by status |
+| GET | `/prediction/positions` | own positions with market/outcome |
 
-Every state-changing admin action writes an `AuditLog` row with
+Book depth aggregates open orders by `(outcomeId, limitPrice)` into
+`{ price, shares }` levels, best price first.
+
+### Admin — `routes/admin/prediction/index.ts`, all behind `server.requireAdmin`
+
+`GET /markets` · `POST /markets` · `PATCH /markets/:id` · `POST /markets/:id/publish` ·
+`/close` · `/resolve` `{ outcomeId }` · `/unresolve` · `/void` `{ reason }` ·
+`GET /markets/:id/book` · `GET /markets/:id/positions` · `GET /markets/:id/orders`
+
+Every state-changing admin action writes an `AuditLog` with
 `target = "prediction_market:<id>"`.
 
 ### Errors
 
-| Condition | Response |
+| Condition | Status |
 |---|---|
-| bet on a non-`OPEN` market or past `closesAt` | 409 |
-| stake outside `[minStake, maxStake]` | 400 |
-| insufficient balance | thrown as `Insufficient funds`, mapped to 400 as today |
-| resolve a market not in `CLOSED` | 409 |
-| unresolve outside the dispute window | 409 |
-| mutate a frozen field on an `OPEN` market | 409 |
+| order on a non-`OPEN` market or past `closesAt` | 409 |
+| price outside 0.01–0.99 or off-tick; quantity out of bounds | 400 |
+| insufficient balance | `Insufficient funds`, mapped to 400 as today |
+| cancelling an order that is not yours | 403 |
+| cancelling a `FILLED`/`CANCELLED` order | 409 |
+| illegal lifecycle transition, or editing a frozen field | 409 |
 | feature flag off | 404 |
 
 ## Realtime
 
-`apps/api/src/gateways/prediction.gateway.ts`, alongside `game.gateway.ts`. Room
-`prediction:<marketId>`, joined from the market detail page.
+`gateways/prediction.gateway.ts`, room `prediction:<marketId>`.
 
 | Event | Payload |
 |---|---|
-| `prediction:pools` | `{ marketId, totalPool, betCount, outcomes: [{ id, poolAmount, betCount, odds }] }` |
+| `prediction:book` | `{ marketId, outcomes: [{ outcomeId, lastPrice, levels: [{ price, shares }] }] }` |
+| `prediction:trade` | `{ marketId, outcomeId, price, quantity, at }` |
 | `prediction:status` | `{ marketId, status, winningOutcomeId?, disputeUntil? }` |
-| `prediction:settled` | `{ marketId, winningOutcomeId, totalPool, rake }` |
+| `prediction:settled` | `{ marketId, winningOutcomeId, totalShares, totalFee }` |
 
-Pool emits are coalesced to at most one per second per market so a hot market cannot flood
-the Redis adapter.
+Book emits coalesce to at most one per second per market.
 
 ## Background Work
 
-`QUEUE_NAMES.PREDICTION = 'prediction'` added to `lib/queue.ts`. One worker,
-`workers/prediction.worker.ts`, imported from `index.ts` next to the existing workers.
+`QUEUE_NAMES.PREDICTION = 'prediction'`, worker `workers/prediction.worker.ts` imported
+from `index.ts` beside the existing workers.
 
 | Job | Schedule | Effect |
 |---|---|---|
-| `close-due-markets` | repeatable, every 30s | `OPEN → CLOSED` for markets past `closesAt` |
-| `settle-market` | delayed, enqueued at resolve time with `jobId = settle:<marketId>` | runs settlement |
+| `close-due-markets` | repeatable, 30s | `OPEN → CLOSED` past `closesAt` |
+| `settle-market` | delayed, `jobId = settle:<marketId>` | runs settlement |
 | `void-market` | on demand | runs the refund path |
 
-Deterministic `jobId` lets `unresolve` remove the pending settle job by id.
-
-On server boot the worker re-enqueues `settle-market` for any market stuck in `RESOLVING`,
-matching the existing stuck-game recovery.
-
-## Shared Contracts
-
-`packages/shared-types/src/prediction/` exporting Zod schemas and inferred types for the
-market, outcome, bet, all request bodies, and the three socket payloads. Re-exported from
-`src/index.ts` alongside `./crm`.
+The deterministic job id lets `unresolve` remove the pending settle job. On boot the worker
+re-enqueues `settle-market` for markets stuck in `RESOLVING`.
 
 ## Frontend
 
 ### Web — `apps/web/pages/predictions/`
 
-`index.vue` (market list, category filter) and `[id].vue` (detail, outcome selection, bet
-slip, live pools). A `stores/prediction.ts` Pinia store holds markets and the socket
-subscription. Strings in both `en` and `am`.
+`index.vue` lists the card — one row per bout showing both fighters and their current
+prices as percentages. `[id].vue` is the market: both sides with live book depth, an order
+ticket (pick outcome, price, quantity, see cost and payout-if-right), the player's open
+orders with cancel, and their position.
 
-The bet slip must display the payout estimate as **live and non-binding** — the number
-moves as money arrives, and the UI has to say so rather than implying a locked quote.
+The ticket must state plainly that an order **rests until someone takes the other side**
+and can be cancelled until it fills — an unfilled order is the normal case in a young book
+and must not read as a failure. It must also state that positions are **held to the result**;
+there is no cash-out in this version.
+
+Prices display as percentages (0.35 → 35%) and cost in ETB. Strings in `en` and `am`.
 
 ### Admin — `apps/admin/pages/predictions/`
 
-`index.vue` (table across all statuses), `new.vue` (create with dynamic outcome rows), and
-`[id].vue` (detail, exposure per outcome, resolve/void actions). Resolve and void both
-require typed confirmation of the outcome label — they move real money and a misclick is
-expensive even with the dispute window.
+`index.vue` (all markets, all statuses), `new.vue` (create: event name, question, two
+outcome labels, `closesAt`, fee/size overrides), `[id].vue` (book depth both sides, fills,
+positions, per-outcome payout obligation, and the lifecycle actions legal for the current
+status).
+
+Resolve and void require typed confirmation of the outcome label or the word `VOID`.
+While `RESOLVING`, show the dispute countdown with unresolve available until it expires.
 
 ## Feature Flag
 
 `feature_prediction_market`, default `'false'`, added to the defaults map in
-`routes/settings/index.ts:6`. Off means player and admin routes 404 and the nav entry is
-hidden. Lets the feature merge to main dark and be enabled per brand.
+`routes/settings/index.ts:6`. Off means the routes 404 and the nav entry hides.
 
 ## Testing
 
 Vitest with mocked Prisma, following `test/tournament.service.test.ts`.
 
-**Settlement math**
-- `Σ payout_i + rake + dust == grossPool` exactly, across several stake distributions
-- uneven splits (three winners on a 100.00 pool) produce no lost or invented cents
-- `rakePct` snapshot is used, not the current `SiteSetting`
+**Matching engine** (pure logic, exhaustively tested)
+- complementary match only when `p_taker + p_maker >= 1.00`
+- maker pays its limit; taker pays `1.00 - p_maker` and gets the improvement
+- every fill contributes exactly 1.00 per share to escrow
+- price-time priority: higher maker price first, older first at equal price
+- partial fills across multiple makers; taker remainder rests
+- self-match is skipped
+- no match when the book is empty or all prices are too low
 
-**Degenerate pools**
-- zero bets on the winning outcome → every bet `REFUNDED`, no `HouseTransaction`
-- all bets on one outcome → same
-- an empty market resolves without error
+**Escrow / solvency**
+- `Σ costBasis == totalShares × 1.00` after arbitrary fill sequences
+- gross payout to the winning side equals total escrow
+- cancel releases exactly the unfilled reserve, never more
 
 **Funding split**
-- bonus drains before real
-- void returns `bonusPart` to bonus and `realPart` to real
+- reserve draws bonus before real
+- price improvement and cancellation release in the original proportion
+- void returns `costBasisBonus` to bonus and `costBasisReal` to real
 - a win credits real balance only
 
+**Fee**
+- `fee == 15% of (gross − basis)`, clamped at zero
+- a position bought at 0.90 is still profitable after fee
+- `feePct` comes from the market snapshot, not the current setting
+
 **Idempotency**
-- settling twice pays once
-- refunding twice refunds once
+- settling twice pays once; voiding twice refunds once
 - a batch failure mid-settlement resumes without double-paying
 
 **Guards**
-- a bet at `closesAt + 1ms` is rejected
-- resolving a market that is not `CLOSED` is rejected
+- an order at `closesAt + 1ms` is rejected
+- off-tick prices (0.355) and out-of-range prices (0.00, 1.00) are rejected
+- cancelling someone else's order is rejected
+- resolving a non-`CLOSED` market is rejected
 - unresolve after `disputeUntil` is rejected
-- editing outcomes on an `OPEN` market is rejected
-- non-admin cannot reach admin routes
 - routes 404 with the flag off
 
 ## Risks
 
-**Insider resolution.** An admin who can resolve markets can also bet on them. Mitigated
-here by the audit log, the dispute window, and the exposure view; not eliminated. A
-policy-level ban on staff betting, or a code-level block on admin accounts placing bets,
-is worth deciding before this is enabled in production.
+**Empty books.** With no house market maker, a market with no counterparty simply has no
+price. Concentration on three bouts is the mitigation; the UI stating plainly that an order
+rests until matched is the rest of it. If the book stays empty in the days before the card,
+the operator's options are fewer markets or seeding orders manually — the latter is a house
+position and is deliberately not built.
 
-**Thin pools.** A market with little money produces wild implied odds and a poor
-experience. `minStake` and market curation are the only levers in this version; seeding
-liquidity would require the house to take a position, which this design deliberately
-avoids.
+**Insider resolution.** An admin who resolves markets can also trade them. The audit log,
+dispute window, and positions view are mitigations, not a fix. Deciding whether staff may
+hold positions is worth settling before go-live.
 
-**Regulatory.** Betting on real-world events is a different product from bingo and may
-carry different licensing obligations in each operating market. Out of scope for the
-implementation; flagged for the operator.
+**Deadline.** The card is 27 August 2026. The matching engine and settlement are the
+irreducible core; the admin UI can be thin and the player UI can ship without niceties, but
+the escrow and payout paths cannot be rushed.
+
+**Regulatory.** Betting on third-party combat sports is a different product from bingo and
+may carry different licensing obligations. Flagged for the operator.
