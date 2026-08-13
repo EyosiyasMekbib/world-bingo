@@ -12,8 +12,9 @@
     },
     "scripts": {
         "typecheck": "vue-tsc --noEmit",
+        "lint": "eslint .",
         "test": "vitest run",
-        "dev": "echo 'UI package — consumed directly by Nuxt apps via workspace link'"
+        "dev": "echo 'UI package \u2014 consumed directly by Nuxt apps via workspace link'"
     },
     "dependencies": {
         "@world-bingo/shared-types": "workspace:*",
