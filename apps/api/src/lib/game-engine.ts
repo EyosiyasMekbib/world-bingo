@@ -204,7 +204,9 @@ export async function startGameEngine(gameId: string): Promise<void> {
         if (renewTimer) clearInterval(renewTimer)
         activeEngines.delete(gameId)
         try {
-            await lock.release()
+            // redlock@4's Lock carries `unlock`/`extend`; `release` is on the
+            // client only, so calling it here never actually freed the key.
+            await lock.unlock()
         } catch {
             // Lock may have expired — fine
         }

@@ -17,6 +17,7 @@
         "test:coverage": "vitest run --coverage",
         "db:migrate": "prisma migrate dev --env-file ../../.env",
         "db:seed": "tsx --env-file ../../.env prisma/seed.ts",
+        "db:seed:etfc": "tsx --env-file ../../.env prisma/seed-etfc.ts",
         "db:studio": "prisma studio --env-file ../../.env"
     },
     "dependencies": {

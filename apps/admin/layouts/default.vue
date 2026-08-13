@@ -1,7 +1,23 @@
 <script setup lang="ts">
-const { user, logout, isClerk } = useAdminAuth()
+const { user, logout, isClerk, apiFetch } = useAdminAuth()
 const { locale, setLocale } = useI18n()
 const toggleLocale = () => setLocale(locale.value === 'en' ? 'am' : 'en')
+
+/**
+ * Flag-gated nav entries. A feature that is off 404s its API routes, so the link
+ * has to disappear with it rather than lead to a dead page. Fetched once and
+ * cached in shared state; anything not yet loaded stays hidden, which is the
+ * safe direction for a flag whose shipped default is off.
+ */
+const featureFlags = useState<Record<string, boolean>>('admin_feature_flags', () => ({}))
+
+onMounted(async () => {
+  try {
+    featureFlags.value = await apiFetch<Record<string, boolean>>('/settings/features')
+  } catch {
+    // Leave the flags empty — gated entries stay hidden.
+  }
+})
 
 const allNavGroups = [
   {
@@ -31,6 +47,7 @@ const allNavGroups = [
       { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',   to: '/settings/game-templates',  adminOnly: true },
       { label: 'Featured Games', icon: 'i-heroicons:star',          to: '/featured-games',           adminOnly: true },
       { label: 'Tournaments',    icon: 'i-heroicons:trophy',        to: '/tournaments',              adminOnly: true },
+      { label: 'Predictions',    icon: 'i-heroicons:scale',         to: '/predictions',              adminOnly: true, flag: 'feature_prediction_market' },
     ],
   },
   {
@@ -53,8 +70,12 @@ const allNavGroups = [
 ]
 
 const navGroups = computed(() => {
-  if (!isClerk.value) return allNavGroups.map(g => ({ ...g, items: g.items }))
-  return allNavGroups
+  const enabled = allNavGroups.map(g => ({
+    ...g,
+    items: g.items.filter((item: any) => !item.flag || featureFlags.value[item.flag]),
+  }))
+  if (!isClerk.value) return enabled.filter(g => g.items.length > 0)
+  return enabled
     .map(g => ({ ...g, items: g.items.filter((item: any) => !item.adminOnly) }))
     .filter(g => g.items.length > 0)
 })

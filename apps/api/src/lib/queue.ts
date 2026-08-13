@@ -36,6 +36,7 @@ export const QUEUE_NAMES = {
     DEPOSIT_VERIFICATION: 'deposit-verification',
     PLAYER_METRICS: 'player-metrics',
     CRM_CAMPAIGN: 'crm-campaign',
+    PREDICTION: 'prediction',
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

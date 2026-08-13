@@ -8,36 +8,38 @@ datasource db {
 }
 
 model User {
-  id               String          @id @default(uuid())
-  serial           Int             @default(autoincrement()) @unique
-  username         String?         @unique
-  phone            String?         @unique
-  passwordHash     String?
-  telegramId       String?         @unique
-  telegramUsername String?
-  firstName        String?
-  lastName         String?
-  photoUrl         String?
-  role             UserRole        @default(PLAYER)
-  isActive         Boolean         @default(true)
-  avatarUrl        String?
-  referralCode     String?         @unique
-  referredById     String?
-  botTotalSpent    Decimal         @default(0) @db.Decimal(12, 2)
-  wallet         Wallet?
-  transactions   Transaction[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  entries        GameEntry[]
-  refreshTokens  RefreshToken[]
-  notifications  Notification[]
-  referredBy     User?           @relation("Referrals", fields: [referredById], references: [id])
-  referrals      User[]          @relation("Referrals")
-  referralRewards ReferralReward[]
-  tournamentEntries TournamentEntry[]
+  id                    String                 @id @default(uuid())
+  serial                Int                    @unique @default(autoincrement())
+  username              String?                @unique
+  phone                 String?                @unique
+  passwordHash          String?
+  telegramId            String?                @unique
+  telegramUsername      String?
+  firstName             String?
+  lastName              String?
+  photoUrl              String?
+  role                  UserRole               @default(PLAYER)
+  isActive              Boolean                @default(true)
+  avatarUrl             String?
+  referralCode          String?                @unique
+  referredById          String?
+  botTotalSpent         Decimal                @default(0) @db.Decimal(12, 2)
+  wallet                Wallet?
+  transactions          Transaction[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  entries               GameEntry[]
+  refreshTokens         RefreshToken[]
+  notifications         Notification[]
+  referredBy            User?                  @relation("Referrals", fields: [referredById], references: [id])
+  referrals             User[]                 @relation("Referrals")
+  referralRewards       ReferralReward[]
+  tournamentEntries     TournamentEntry[]
   cashbackDisbursements CashbackDisbursement[]
-  playerMetrics  PlayerMetrics?
-  campaignDeliveries CampaignDelivery[]
+  playerMetrics         PlayerMetrics?
+  campaignDeliveries    CampaignDelivery[]
+  predictionOrders      PredictionOrder[]
+  predictionPositions   PredictionPosition[]
 
   @@index([role])
   @@index([referralCode])
@@ -57,22 +59,22 @@ model Wallet {
 }
 
 model Game {
-  id             String       @id @default(uuid())
-  title          String
-  status         GameStatus   @default(WAITING)
-  ticketPrice    Decimal      @db.Decimal(10, 2)
-  maxPlayers     Int
-  minPlayers     Int          @default(2)
-  houseEdgePct   Decimal      @default(10) @db.Decimal(5, 2)
-  pattern        PatternType
-  calledBalls    Int[]
-  entries        GameEntry[]
-  createdAt      DateTime     @default(now())
-  startedAt      DateTime?
-  endedAt        DateTime?
-  winnerId       String?
-  templateId     String?
-  template       GameTemplate? @relation(fields: [templateId], references: [id])
+  id           String        @id @default(uuid())
+  title        String
+  status       GameStatus    @default(WAITING)
+  ticketPrice  Decimal       @db.Decimal(10, 2)
+  maxPlayers   Int
+  minPlayers   Int           @default(2)
+  houseEdgePct Decimal       @default(10) @db.Decimal(5, 2)
+  pattern      PatternType
+  calledBalls  Int[]
+  entries      GameEntry[]
+  createdAt    DateTime      @default(now())
+  startedAt    DateTime?
+  endedAt      DateTime?
+  winnerId     String?
+  templateId   String?
+  template     GameTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([status])
   @@index([status, createdAt])
@@ -85,23 +87,23 @@ model Game {
 // exists per active template at all times. When minPlayers join, a 60-second
 // countdown auto-starts the game — no manual admin start needed.
 model GameTemplate {
-  id             String      @id @default(uuid())
-  title          String                              // e.g. "Quick 10 ETB"
-  ticketPrice    Decimal     @db.Decimal(10, 2)
-  maxPlayers     Int
-  minPlayers     Int         @default(2)
-  houseEdgePct   Decimal     @default(10) @db.Decimal(5, 2)
-  pattern        PatternType
-  active         Boolean     @default(true)          // toggle template on/off
-  countdownSecs  Int         @default(60)            // seconds to wait after minPlayers join
-  botEnabled     Boolean     @default(false)         // master on/off for bots on this template
-  botCount       Int         @default(0)             // max number of bot players to inject per game
-  botFillToMin   Boolean     @default(true)          // if true, bots fill to minPlayers (botCount is the ceiling)
-  botMaxSpend    Decimal?    @db.Decimal(10, 2)      // per-template override for max ETB a single bot can spend
-  botWinRate     Int         @default(100)           // % chance a bot claims bingo when its cartela wins (0–100)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  games          Game[]
+  id            String      @id @default(uuid())
+  title         String // e.g. "Quick 10 ETB"
+  ticketPrice   Decimal     @db.Decimal(10, 2)
+  maxPlayers    Int
+  minPlayers    Int         @default(2)
+  houseEdgePct  Decimal     @default(10) @db.Decimal(5, 2)
+  pattern       PatternType
+  active        Boolean     @default(true) // toggle template on/off
+  countdownSecs Int         @default(60) // seconds to wait after minPlayers join
+  botEnabled    Boolean     @default(false) // master on/off for bots on this template
+  botCount      Int         @default(0) // max number of bot players to inject per game
+  botFillToMin  Boolean     @default(true) // if true, bots fill to minPlayers (botCount is the ceiling)
+  botMaxSpend   Decimal?    @db.Decimal(10, 2) // per-template override for max ETB a single bot can spend
+  botWinRate    Int         @default(100) // % chance a bot claims bingo when its cartela wins (0–100)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  games         Game[]
 
   @@map("game_templates")
 }
@@ -133,26 +135,26 @@ model GameEntry {
 }
 
 model Transaction {
-  id                   String            @id @default(uuid())
+  id                   String               @id @default(uuid())
   userId               String
   type                 TransactionType
-  amount               Decimal           @db.Decimal(12, 2)
-  originalAmount       Decimal?          @db.Decimal(12, 2)
-  status               PaymentStatus     @default(PENDING)
+  amount               Decimal              @db.Decimal(12, 2)
+  originalAmount       Decimal?             @db.Decimal(12, 2)
+  status               PaymentStatus        @default(PENDING)
   referenceId          String?
   receiptUrl           String?
   note                 String?
-  balanceBefore        Decimal?          @db.Decimal(12, 2)
-  balanceAfter         Decimal?          @db.Decimal(12, 2)
-  bonusBalanceBefore   Decimal?          @db.Decimal(12, 2)
-  bonusBalanceAfter    Decimal?          @db.Decimal(12, 2)
-  paymentTransactionId String?           @unique
+  balanceBefore        Decimal?             @db.Decimal(12, 2)
+  balanceAfter         Decimal?             @db.Decimal(12, 2)
+  bonusBalanceBefore   Decimal?             @db.Decimal(12, 2)
+  bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
+  paymentTransactionId String?              @unique
   senderName           String?
   senderAccount        String?
-  reviewedById         String?           // admin/clerk who approved or rejected (audit + separation-of-duties)
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedById         String? // admin/clerk who approved or rejected (audit + separation-of-duties)
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   depositVerification  DepositVerification?
-  createdAt            DateTime          @default(now())
+  createdAt            DateTime             @default(now())
 
   @@index([userId])
   @@index([type, status])
@@ -195,6 +197,10 @@ enum TransactionType {
   TP_ROLLBACK
   TP_ADJUSTMENT
   CAMPAIGN_BONUS
+  PREDICTION_ORDER_HOLD
+  PREDICTION_ORDER_RELEASE
+  PREDICTION_WIN
+  PREDICTION_REFUND
 }
 
 enum PaymentStatus {
@@ -255,17 +261,19 @@ enum NotificationType {
   TOURNAMENT_ELIMINATED
   CASHBACK_AWARDED
   CAMPAIGN_MESSAGE
+  PREDICTION_SETTLED
+  PREDICTION_VOIDED
 }
 
 model ReferralReward {
-  id          String   @id @default(uuid())
-  referrerId  String
-  refereeId   String   @unique   // one reward per referred user
-  amount      Decimal  @db.Decimal(12, 2)
-  paid        Boolean  @default(false)
-  paidAt      DateTime?
-  createdAt   DateTime @default(now())
-  referrer    User     @relation(fields: [referrerId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid())
+  referrerId String
+  refereeId  String    @unique // one reward per referred user
+  amount     Decimal   @db.Decimal(12, 2)
+  paid       Boolean   @default(false)
+  paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+  referrer   User      @relation(fields: [referrerId], references: [id], onDelete: Cascade)
 
   @@index([referrerId])
   @@map("referral_rewards")
@@ -273,12 +281,12 @@ model ReferralReward {
 
 // ─── Progressive Jackpot (T59) ────────────────────────────────────────────────
 model Jackpot {
-  id          String        @id @default(uuid())
-  amount      Decimal       @default(0) @db.Decimal(14, 2)
-  lastWonAt   DateTime?
-  lastWonBy   String?       // userId of last winner
-  updatedAt   DateTime      @updatedAt
-  wins        JackpotWin[]
+  id        String       @id @default(uuid())
+  amount    Decimal      @default(0) @db.Decimal(14, 2)
+  lastWonAt DateTime?
+  lastWonBy String? // userId of last winner
+  updatedAt DateTime     @updatedAt
+  wins      JackpotWin[]
 
   @@map("jackpot")
 }
@@ -289,7 +297,7 @@ model JackpotWin {
   userId    String
   gameId    String
   amount    Decimal  @db.Decimal(14, 2)
-  ballCount Int      // number of balls called when won
+  ballCount Int // number of balls called when won
   createdAt DateTime @default(now())
   jackpot   Jackpot  @relation(fields: [jackpotId], references: [id])
 
@@ -299,9 +307,9 @@ model JackpotWin {
 
 // ─── Tournament Mode (T60) ─────────────────────────────────────────────────────
 enum TournamentStatus {
-  REGISTRATION  // open for sign-ups
-  IN_PROGRESS   // rounds are running
-  COMPLETED     // final winner determined
+  REGISTRATION // open for sign-ups
+  IN_PROGRESS // rounds are running
+  COMPLETED // final winner determined
   CANCELLED
 }
 
@@ -317,20 +325,20 @@ enum CashbackFrequency {
 }
 
 model Tournament {
-  id              String           @id @default(uuid())
+  id              String            @id @default(uuid())
   title           String
-  status          TournamentStatus @default(REGISTRATION)
-  entryFee        Decimal          @db.Decimal(10, 2)
-  maxPlayers      Int              @default(32)
-  currentPlayers  Int              @default(0)
-  prizePool       Decimal          @default(0) @db.Decimal(14, 2)
-  houseEdgePct    Decimal          @default(10) @db.Decimal(5, 2)
+  status          TournamentStatus  @default(REGISTRATION)
+  entryFee        Decimal           @db.Decimal(10, 2)
+  maxPlayers      Int               @default(32)
+  currentPlayers  Int               @default(0)
+  prizePool       Decimal           @default(0) @db.Decimal(14, 2)
+  houseEdgePct    Decimal           @default(10) @db.Decimal(5, 2)
   winnerId        String?
-  rounds          Int              @default(1)  // total rounds played
+  rounds          Int               @default(1) // total rounds played
   scheduledAt     DateTime?
   startedAt       DateTime?
   endedAt         DateTime?
-  createdAt       DateTime         @default(now())
+  createdAt       DateTime          @default(now())
   entries         TournamentEntry[]
   tournamentGames TournamentGame[]
 
@@ -340,16 +348,16 @@ model Tournament {
 }
 
 model TournamentEntry {
-  id             String     @id @default(uuid())
-  tournamentId   String
-  userId         String
-  round          Int        @default(1)   // last round they participated in
-  eliminated     Boolean    @default(false)
-  eliminatedAt   DateTime?
-  score          Int        @default(0)   // # of games won in this tournament
-  joinedAt       DateTime   @default(now())
-  tournament     Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  round        Int        @default(1) // last round they participated in
+  eliminated   Boolean    @default(false)
+  eliminatedAt DateTime?
+  score        Int        @default(0) // # of games won in this tournament
+  joinedAt     DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
   @@index([tournamentId, eliminated])
@@ -359,7 +367,7 @@ model TournamentEntry {
 model TournamentGame {
   id           String     @id @default(uuid())
   tournamentId String
-  gameId       String     @unique  // each game belongs to at most one tournament
+  gameId       String     @unique // each game belongs to at most one tournament
   round        Int
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
@@ -369,31 +377,31 @@ model TournamentGame {
 
 // ─── Cashback Promotions ──────────────────────────────────────────────────────
 model CashbackPromotion {
-  id             String                 @id @default(uuid())
-  name           String
-  lossThreshold  Decimal                @db.Decimal(12, 2)   // net real-balance loss required to qualify
-  refundType     CashbackRefundType                          // PERCENTAGE or FIXED
-  refundValue    Decimal                @db.Decimal(10, 2)   // e.g. 10.00 = 10% OR 50.00 = 50 ETB flat
-  frequency      CashbackFrequency                          // evaluation window: DAILY | WEEKLY | MONTHLY
-  startsAt       DateTime
-  endsAt         DateTime
-  isActive       Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  disbursements  CashbackDisbursement[]
+  id            String                 @id @default(uuid())
+  name          String
+  lossThreshold Decimal                @db.Decimal(12, 2) // net real-balance loss required to qualify
+  refundType    CashbackRefundType // PERCENTAGE or FIXED
+  refundValue   Decimal                @db.Decimal(10, 2) // e.g. 10.00 = 10% OR 50.00 = 50 ETB flat
+  frequency     CashbackFrequency // evaluation window: DAILY | WEEKLY | MONTHLY
+  startsAt      DateTime
+  endsAt        DateTime
+  isActive      Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  disbursements CashbackDisbursement[]
 
   @@map("cashback_promotions")
 }
 
 model CashbackDisbursement {
-  id           String            @id @default(uuid())
-  promotionId  String
-  userId       String
-  amount       Decimal           @db.Decimal(12, 2)
-  periodStart  DateTime
-  periodEnd    DateTime
-  createdAt    DateTime          @default(now())
-  promotion    CashbackPromotion @relation(fields: [promotionId], references: [id])
-  user         User              @relation(fields: [userId], references: [id])
+  id          String            @id @default(uuid())
+  promotionId String
+  userId      String
+  amount      Decimal           @db.Decimal(12, 2)
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime          @default(now())
+  promotion   CashbackPromotion @relation(fields: [promotionId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
 
   @@unique([promotionId, userId, periodStart])
   @@index([promotionId, periodStart])
@@ -404,8 +412,8 @@ model CashbackDisbursement {
 // A simple key-value store for admin-togglable features.
 // Seeded with defaults; the admin panel can flip them on/off.
 model SiteSetting {
-  key       String   @id            // e.g. "feature_referrals", "feature_tournaments"
-  value     String                  // "true" / "false" or any string value
+  key       String   @id // e.g. "feature_referrals", "feature_tournaments"
+  value     String // "true" / "false" or any string value
   updatedAt DateTime @updatedAt
 
   @@map("site_settings")
@@ -434,15 +442,15 @@ enum PaymentMethodType {
 
 model PaymentMethod {
   id              String            @id @default(uuid())
-  code            String            @unique              // e.g. "telebirr", "cbe", "awash"
-  name            String                                 // display name, e.g. "TeleBirr"
+  code            String            @unique // e.g. "telebirr", "cbe", "awash"
+  name            String // display name, e.g. "TeleBirr"
   type            PaymentMethodType
-  merchantAccount String?                                // account/phone number for deposit methods
-  merchantName    String?                                // recipient name shown before account number (e.g. "John Doe")
-  instructions    String?                                // shown to users during deposit flow
-  icon            String?                                // emoji or icon identifier, e.g. "📱"
+  merchantAccount String? // account/phone number for deposit methods
+  merchantName    String? // recipient name shown before account number (e.g. "John Doe")
+  instructions    String? // shown to users during deposit flow
+  icon            String? // emoji or icon identifier, e.g. "📱"
   enabled         Boolean           @default(true)
-  autoVerify      Boolean           @default(false)     // opt this method into deposit auto-verification
+  autoVerify      Boolean           @default(false) // opt this method into deposit auto-verification
   sortOrder       Int               @default(0)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -481,6 +489,7 @@ enum HouseTransactionType {
   COMMISSION
   BOT_PRIZE_WIN
   REFUND_ISSUED
+  PREDICTION_FEE
 }
 
 // ─── Third-Party Game Providers ───────────────────────────────────────────────
@@ -509,16 +518,16 @@ enum ThirdPartyTxStatus {
 // One row per aggregator (GASea is the first; more can be added).
 // Credentials (apiKey, apiSecret) are stored in env vars only — not in this table.
 model GameProvider {
-  id           String             @id @default(uuid())
-  code         String             @unique              // e.g. "gasea"
-  name         String                                  // e.g. "GASea"
-  status       GameProviderStatus @default(ACTIVE)
-  apiBaseUrl   String                                  // e.g. "https://api.gasea.com/v3"
-  currency     String             @default("ETB")
-  isPrimary    Boolean            @default(false)
-  config       Json?                                   // provider-specific config blob
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id           String                @id @default(uuid())
+  code         String                @unique // e.g. "gasea"
+  name         String // e.g. "GASea"
+  status       GameProviderStatus    @default(ACTIVE)
+  apiBaseUrl   String // e.g. "https://api.gasea.com/v3"
+  currency     String                @default("ETB")
+  isPrimary    Boolean               @default(false)
+  config       Json? // provider-specific config blob
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
   vendors      GameVendor[]
   games        ProviderGame[]
   userAccounts ProviderUserAccount[]
@@ -528,14 +537,14 @@ model GameProvider {
 
 // Game studios / sub-brands within a provider (e.g. Pragmatic Play, PG Soft).
 model GameVendor {
-  id           String       @id @default(uuid())
+  id           String         @id @default(uuid())
   providerId   String
-  code         String                              // e.g. "PP"
-  name         String                              // e.g. "Pragmatic Play"
-  categoryCode String?                             // e.g. "SLOTS,LIVE"
-  isActive     Boolean      @default(true)
+  code         String // e.g. "PP"
+  name         String // e.g. "Pragmatic Play"
+  categoryCode String? // e.g. "SLOTS,LIVE"
+  isActive     Boolean        @default(true)
   lastSyncedAt DateTime?
-  provider     GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  provider     GameProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
   games        ProviderGame[]
 
   @@unique([providerId, code])
@@ -548,18 +557,18 @@ model ProviderGame {
   id             String       @id @default(uuid())
   providerId     String
   vendorId       String
-  gameCode       String                              // e.g. "PP_1302" — unique within provider
+  gameCode       String // e.g. "PP_1302" — unique within provider
   gameName       String
-  categoryCode   String                              // e.g. "SLOTS", "LIVE", "TABLE"
+  categoryCode   String // e.g. "SLOTS", "LIVE", "TABLE"
   imageSquare    String?
   imageLandscape String?
-  languageCodes  String[]                            // e.g. ["en", "am"]
-  platformCodes  String[]                            // e.g. ["H5", "WEB"]
-  currencyCodes  String[]                            // e.g. ["ETB", "USD"]
+  languageCodes  String[] // e.g. ["en", "am"]
+  platformCodes  String[] // e.g. ["H5", "WEB"]
+  currencyCodes  String[] // e.g. ["ETB", "USD"]
   isActive       Boolean      @default(true)
-  autoHidden     Boolean      @default(false)   // hidden by us after an upstream "disabled" launch; re-enabled on next sync
+  autoHidden     Boolean      @default(false) // hidden by us after an upstream "disabled" launch; re-enabled on next sync
   sortOrder      Int          @default(0)
-  featuredRank   Int?                           // curated lobby rank projected from FeaturedGame; null = unpinned
+  featuredRank   Int? // curated lobby rank projected from FeaturedGame; null = unpinned
   provider       GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   vendor         GameVendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
@@ -578,9 +587,9 @@ model ProviderGame {
 // happens in the database rather than in the browser.
 model FeaturedGame {
   id        String   @id @default(uuid())
-  nameKey   String   @unique                      // lower(gameName), non-alphanumerics stripped
-  label     String                                // display name captured when the game was pinned
-  position  Int                                   // 0-based rank; contiguous after every save
+  nameKey   String   @unique // lower(gameName), non-alphanumerics stripped
+  label     String // display name captured when the game was pinned
+  position  Int // 0-based rank; contiguous after every save
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -592,7 +601,7 @@ model ProviderUserAccount {
   id               String       @id @default(uuid())
   providerId       String
   userId           String
-  externalUserCode String                               // Palace's numeric user_code as string
+  externalUserCode String // Palace's numeric user_code as string
   createdAt        DateTime     @default(now())
   provider         GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
@@ -607,8 +616,8 @@ model ThirdPartyTransaction {
   id                    String             @id @default(uuid())
   providerId            String
   userId                String
-  transactionId         String                          // GASea's transactionId — idempotency key
-  externalTransactionId String?                         // vendor-level transaction ID
+  transactionId         String // GASea's transactionId — idempotency key
+  externalTransactionId String? // vendor-level transaction ID
   betId                 String?
   roundId               String?
   gameCode              String?
@@ -616,7 +625,7 @@ model ThirdPartyTransaction {
   status                ThirdPartyTxStatus @default(COMPLETED)
   betAmount             Decimal?           @db.Decimal(20, 8)
   winAmount             Decimal?           @db.Decimal(20, 8)
-  amount                Decimal            @db.Decimal(20, 8)  // net (positive = credit, negative = debit)
+  amount                Decimal            @db.Decimal(20, 8) // net (positive = credit, negative = debit)
   balanceBefore         Decimal            @db.Decimal(20, 8)
   balanceAfter          Decimal            @db.Decimal(20, 8)
   rawRequest            Json?
@@ -810,9 +819,9 @@ model Campaign {
   // Authorship + approval. Four-eyes is checked against BOTH createdById and
   // lastEditedById: comparing only the original author lets someone edit a
   // colleague's draft and then approve it themselves.
-  createdById    String?
-  lastEditedById String?
-  approvedById   String?
+  createdById        String?
+  lastEditedById     String?
+  approvedById       String?
   /// Usernames captured at write time. Clerk deletion hard-deletes the user row,
   /// which would otherwise turn every actor id into an unresolvable UUID exactly
   /// when someone is auditing who authorised a payment.
@@ -823,7 +832,7 @@ model Campaign {
   /// sha256 over {segment rules, actions, caps} at approval time, re-verified
   /// under the campaign row lock before any money moves — so editing an
   /// approved campaign cannot smuggle a larger amount past its approver.
-  approvalHash   String?
+  approvalHash       String?
 
   snapshotSize Int?
   queuedCount  Int     @default(0)
@@ -891,17 +900,168 @@ model CampaignDelivery {
 /// issue: a file of player phone numbers leaves the building and the only evidence
 /// is a log line inside a retention window.
 model AuditLog {
-  id       String   @id @default(uuid())
-  action   String
-  actorId  String?
+  id        String   @id @default(uuid())
+  action    String
+  actorId   String?
   /// Denormalized: the actor row can be hard-deleted.
   actorName String?
   /// What was acted on, e.g. "segment:<id>" or "campaign:<id>".
-  target   String?
-  detail   Json?
+  target    String?
+  detail    Json?
   createdAt DateTime @default(now())
 
   @@index([action, createdAt])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+// ─── Prediction Market (binary order book) ───────────────────────────────────
+
+enum PredictionMarketStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  RESOLVING
+  SETTLED
+  VOIDED
+}
+
+enum PredictionOrderStatus {
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+}
+
+enum PredictionPositionStatus {
+  OPEN
+  WON
+  LOST
+  REFUNDED
+}
+
+/// A binary market on a third-party event. `shareValue` lives here rather than as a
+/// global constant so a future card can run a different denomination without a
+/// migration — every escrow and payout reads it from the market, never from a
+/// hardcoded 100. `feePct` is likewise snapshotted at creation so changing the
+/// setting can never move money already escrowed.
+model PredictionMarket {
+  id               String                 @id @default(uuid())
+  eventName        String
+  question         String
+  description      String?
+  imageUrl         String?
+  status           PredictionMarketStatus @default(DRAFT)
+  closesAt         DateTime
+  resolvesAt       DateTime?
+  shareValue       Decimal                @default(100) @db.Decimal(12, 2)
+  feePct           Decimal                @default(15) @db.Decimal(5, 2)
+  minOrderShares   Int                    @default(1)
+  maxOrderShares   Int                    @default(10000)
+  /// Matched share pairs.
+  totalShares      Int                    @default(0)
+  /// ETB escrowed.
+  totalVolume      Decimal                @default(0) @db.Decimal(14, 2)
+  winningOutcomeId String?
+  resolvedById     String?
+  resolvedAt       DateTime?
+  disputeUntil     DateTime?
+  settledAt        DateTime?
+  voidReason       String?
+  createdById      String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  outcomes         PredictionOutcome[]
+  orders           PredictionOrder[]
+  fills            PredictionFill[]
+  positions        PredictionPosition[]
+
+  @@index([status, closesAt])
+  @@map("prediction_markets")
+}
+
+model PredictionOutcome {
+  id        String               @id @default(uuid())
+  marketId  String
+  label     String
+  sortOrder Int
+  lastPrice Decimal?             @db.Decimal(12, 2)
+  market    PredictionMarket     @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  orders    PredictionOrder[]
+  positions PredictionPosition[]
+
+  @@unique([marketId, sortOrder])
+  @@map("prediction_outcomes")
+}
+
+/// Buy-only limit order. The reserve leaves the wallet at placement, split into
+/// `reservedReal`/`reservedBonus`, so a resting order is always fully funded and
+/// matching can never fail for lack of money.
+model PredictionOrder {
+  id             String                @id @default(uuid())
+  marketId       String
+  outcomeId      String
+  userId         String
+  /// 1.00 .. shareValue - 1, in whole 1 ETB ticks.
+  limitPrice     Decimal               @db.Decimal(12, 2)
+  quantity       Int
+  filledQuantity Int                   @default(0)
+  reservedReal   Decimal               @default(0) @db.Decimal(12, 2)
+  reservedBonus  Decimal               @default(0) @db.Decimal(12, 2)
+  status         PredictionOrderStatus @default(OPEN)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  market         PredictionMarket      @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcome        PredictionOutcome     @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // the matching hot path: resting orders on one side, best price first, oldest first
+  @@index([marketId, outcomeId, status, limitPrice, createdAt])
+  @@index([userId, status])
+  @@map("prediction_orders")
+}
+
+model PredictionFill {
+  id             String           @id @default(uuid())
+  marketId       String
+  quantity       Int
+  takerOrderId   String
+  makerOrderId   String
+  takerOutcomeId String
+  makerOutcomeId String
+  takerPrice     Decimal          @db.Decimal(12, 2)
+  /// takerPrice + makerPrice == shareValue
+  makerPrice     Decimal          @db.Decimal(12, 2)
+  createdAt      DateTime         @default(now())
+  market         PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, createdAt])
+  @@map("prediction_fills")
+}
+
+/// Cost basis is carried split so a void refunds bonus as bonus and real as real —
+/// refunding a bonus-funded position to real balance would turn promotional credit
+/// into withdrawable cash.
+model PredictionPosition {
+  id             String                   @id @default(uuid())
+  marketId       String
+  outcomeId      String
+  userId         String
+  shares         Int                      @default(0)
+  costBasisReal  Decimal                  @default(0) @db.Decimal(12, 2)
+  costBasisBonus Decimal                  @default(0) @db.Decimal(12, 2)
+  status         PredictionPositionStatus @default(OPEN)
+  payout         Decimal                  @default(0) @db.Decimal(12, 2)
+  feePaid        Decimal                  @default(0) @db.Decimal(12, 2)
+  settledAt      DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  market         PredictionMarket         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcome        PredictionOutcome        @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, outcomeId, userId])
+  @@index([userId, status])
+  @@index([marketId, status])
+  @@map("prediction_positions")
 }

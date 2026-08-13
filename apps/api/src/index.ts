@@ -41,8 +41,11 @@ import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
 import eventsRoutes from './routes/events/index.js'
+import predictionRoutes from './routes/prediction/index.js'
+import adminPredictionRoutes from './routes/admin/prediction/index.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
+import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 
 // Import workers so they auto-start with the server process
@@ -55,6 +58,7 @@ import './workers/prune-events.worker.js'
 import './workers/deposit-verification.worker.js'
 import './workers/player-metrics.worker.js'
 import './workers/crm-campaign.worker.js'
+import './workers/prediction.worker.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
@@ -283,6 +287,8 @@ if (deploymentConfig().role === 'hub') {
 }
 await server.register(gameProviderRoutes, { prefix: '/providers' })
 await server.register(eventsRoutes)
+await server.register(predictionRoutes, { prefix: '/prediction' })
+await server.register(adminPredictionRoutes, { prefix: '/admin/prediction' })
 
 // T49 — BullMQ Dashboard at /admin/queues
 await registerBullBoard(server)
@@ -357,6 +363,9 @@ try {
     await server.ready()
     const io = initSocket(server.server, process.env.REDIS_URL || 'redis://localhost:6379')
     registerGameHandlers(io)
+    // Without this nothing can join `prediction:<marketId>`, so every book,
+    // trade and status broadcast would be emitted into an empty room.
+    registerPredictionHandlers(io)
 
     await server.listen({ port, host })
 
