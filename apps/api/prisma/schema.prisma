@@ -559,13 +559,33 @@ model ProviderGame {
   isActive       Boolean      @default(true)
   autoHidden     Boolean      @default(false)   // hidden by us after an upstream "disabled" launch; re-enabled on next sync
   sortOrder      Int          @default(0)
+  featuredRank   Int?                           // curated lobby rank projected from FeaturedGame; null = unpinned
   provider       GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   vendor         GameVendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([providerId, gameCode])
   @@index([categoryCode])
   @@index([isActive, categoryCode])
+  @@index([featuredRank])
   @@map("provider_games")
+}
+
+// ─── Curated lobby priority ──────────────────────────────────────────────────
+// Admin-managed ordering for the player lobby. A pin matches provider games by
+// normalized game name, so one list covers every provider carrying the same
+// title and a newly synced provider inherits the order. The list is projected
+// onto ProviderGame.featuredRank so ordering — and therefore pagination —
+// happens in the database rather than in the browser.
+model FeaturedGame {
+  id        String   @id @default(uuid())
+  nameKey   String   @unique                      // lower(gameName), non-alphanumerics stripped
+  label     String                                // display name captured when the game was pinned
+  position  Int                                   // 0-based rank; contiguous after every save
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([position])
+  @@map("featured_games")
 }
 
 model ProviderUserAccount {

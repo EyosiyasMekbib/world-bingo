@@ -71,6 +71,9 @@ export default defineNuxtConfig({
         '/api/**': { proxy: `${API_PROXY_TARGET}/**` },
         '/socket.io/**': { proxy: `${API_PROXY_TARGET}/socket.io/**` },
         '/uploads/**': { proxy: `${API_PROXY_TARGET}/uploads/**` },
+        // Serve the Firefox-Android receipt-helper extension with the install
+        // MIME type so Firefox shows an "Add" prompt instead of downloading it.
+        '/receipt-helper.xpi': { headers: { 'content-type': 'application/x-xpinstall' } },
     },
 
     vite: {

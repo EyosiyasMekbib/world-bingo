@@ -282,38 +282,8 @@ function hasImage(g: ProviderGame) {
   return !!(g.imageSquare || g.imageLandscape)
 }
 
-// Popular crash/instant games pinned to the top of the All Games grid (in this order)
-const FEATURED_GAMES = [
-  'aviator',
-  'chickenroad',
-  'aviatrix',
-  'jetx',
-  'chickenroad2',
-  'plinko',
-  'crashkick',
-  'chicknroad2',
-  'chicknroad',
-  'flyx',
-  'flyxcashturbo',
-  'plinkopop',
-  'minepop',
-  'dicepop',
-  'bigbuttonbash',
-  'soccerstriker',
-  'theincredibleballoonmachine',
-  'fruitblast',
-  'bg25plinko',
-]
-
-function featuredRank(g: ProviderGame) {
-  const name = (g.gameName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const i = FEATURED_GAMES.indexOf(name)
-  return i === -1 ? Number.MAX_SAFE_INTEGER : i
-}
-
-function sortFeatured(games: ProviderGame[]) {
-  return [...games].sort((a, b) => featuredRank(a) - featuredRank(b))
-}
+// Which games lead the grid is curated in the admin panel (Featured Games) and
+// applied by the API, so the order here is whatever the API returned.
 
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
@@ -350,11 +320,11 @@ const gridGames = computed<LobbyCard[]>(() => {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
     // Featured games first, then remaining provider games; bingo rooms at the bottom
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
-    cards = [...sortFeatured(allProviderGames.value.filter(hasImage)).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
   } else {
     cards = (categoryGamesMap.value[cat] ?? []).filter(hasImage).map(providerToCard)
   }
@@ -416,6 +386,32 @@ function handleJoinGame(gameId?: string) {
   navigateTo(`/quick/${gameId}`)
 }
 
+/* ── Infinite scroll ───────────────────────────────────────────────────────
+   The ALL tab starts with the ~60-game lobby bootstrap page, which is a sliver
+   of the full catalog (1000+ games across providers). Paging in the rest via
+   providerStore.loadMore() as the user scrolls is what makes "All Games"
+   actually show all games, without shipping the whole catalog on first paint. */
+const feedSentinel = ref<HTMLElement | null>(null)
+let feedObserver: IntersectionObserver | null = null
+
+function setupFeedObserver() {
+  if (!feedSentinel.value) return
+  feedObserver = new IntersectionObserver(
+    (entries) => {
+      if (
+        entries[0].isIntersecting &&
+        selectedCategory.value === 'ALL' &&
+        providerStore.hasMore &&
+        !providerStore.loading
+      ) {
+        providerStore.loadMore()
+      }
+    },
+    { rootMargin: '800px' },
+  )
+  feedObserver.observe(feedSentinel.value)
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────────────── */
 onMounted(async () => {
   track('lobby_view')
@@ -459,6 +455,9 @@ onMounted(async () => {
   }
   lobbyInitialLoading.value = false
 
+  await nextTick()
+  setupFeedObserver()
+
   // Secondary: per-category pools that feed the featured pins. Non-blocking and
   // deferred to idle so the initial fan-out doesn't contend with the user's
   // first scroll — the grid is already shown; these progressively enrich it.
@@ -497,6 +496,7 @@ watch(
 )
 
 onUnmounted(() => {
+  feedObserver?.disconnect()
   if (slideTimer) clearInterval(slideTimer)
   const socket = connect()
   socket?.emit('lobby:unsubscribe')
@@ -686,6 +686,11 @@ onUnmounted(() => {
             </div>
           </button>
         </template>
+      </div>
+
+      <div ref="feedSentinel" class="feed-sentinel" />
+      <div v-if="providerStore.loading && selectedCategory === 'ALL' && gridGames.length" class="load-more">
+        <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
       </div>
     </section>
 
@@ -1260,6 +1265,12 @@ onUnmounted(() => {
   padding: 64px 0;
   font-size: 14px;
 }
+
+.feed-sentinel { height: 1px; }
+.load-more { display: flex; justify-content: center; padding: 24px; color: var(--brand-primary); }
+.load-more svg { width: 24px; height: 24px; }
+.spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Skeleton mirrors the real game card so the grid settles in place once
    data lands. A single brand-tinted sheen sweeps across each card, with a

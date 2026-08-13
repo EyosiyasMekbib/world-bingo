@@ -29,6 +29,7 @@ const allNavGroups = [
     items: [
       { label: 'Active Games',   icon: 'i-heroicons:puzzle-piece',  to: '/games',                    adminOnly: true },
       { label: 'Game Templates', icon: 'i-heroicons:cog-6-tooth',   to: '/settings/game-templates',  adminOnly: true },
+      { label: 'Featured Games', icon: 'i-heroicons:star',          to: '/featured-games',           adminOnly: true },
       { label: 'Tournaments',    icon: 'i-heroicons:trophy',        to: '/tournaments',              adminOnly: true },
     ],
   },
