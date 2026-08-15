@@ -43,3 +43,10 @@ blob-report/
 playwright/.cache/
 .worktrees/
 .worktrees/
+
+# Timestamped .env backups (contain DATABASE_URL credentials)
+.env.bak-*
+**/.env.bak-*
+
+# Runtime upload storage
+apps/api/uploads/

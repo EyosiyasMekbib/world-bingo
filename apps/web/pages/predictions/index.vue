@@ -70,6 +70,33 @@ interface CardGroup {
   markets: PredictionMarketSummary[]
 }
 
+/**
+ * A bout row is self-describing: the outcomes ARE the fighters, so the question
+ * ("Sedo vs Johnny — who wins?") only repeats them. A novelty market is not —
+ * its outcomes are "Yes" and "No", which mean nothing without the question. Show
+ * the question exactly when the outcome labels do not already appear in it.
+ */
+function cardQuestion(market: PredictionMarketSummary): string | null {
+  const outcomes = sortedOutcomes(market)
+  const q = market.question.toLowerCase()
+  const selfDescribing = outcomes.every((o) => o.label && q.includes(o.label.toLowerCase()))
+  return selfDescribing ? null : market.question
+}
+
+/**
+ * The detail line takes the first clause only.
+ *
+ * A bout description is short ("Heavyweight, 3 rounds"). A novelty description
+ * carries its whole resolution rule, which belongs on the market page, not
+ * dumped into a card row — so cut at the first sentence and cap the length.
+ */
+function shortDetail(description: string | null | undefined): string {
+  const detail = boutMetaOf(description).detail
+  if (!detail) return ''
+  const firstSentence = detail.split(/\.\s/)[0] ?? detail
+  return firstSentence.length > 64 ? `${firstSentence.slice(0, 61).trimEnd()}…` : firstSentence
+}
+
 const groups = computed<CardGroup[]>(() => {
   const byDiscipline = new Map<DisciplineKey, PredictionMarketSummary[]>()
 
@@ -183,6 +210,8 @@ useHead({ title: 'Predictions — World Bingo' })
           <span class="pm-closes">{{ closesIn(market.closesAt) }}</span>
         </div>
 
+        <h3 v-if="cardQuestion(market)" class="pm-question">{{ cardQuestion(market) }}</h3>
+
         <div class="pm-fighters">
           <div v-for="outcome in sortedOutcomes(market)" :key="outcome.id" class="pm-fighter">
             <span class="pm-fighter-name">{{ outcome.label }}</span>
@@ -194,13 +223,14 @@ useHead({ title: 'Predictions — World Bingo' })
         </div>
 
         <div class="pm-bout-foot">
-          <span v-if="boutMetaOf(market.description).detail" class="pm-detail">
-            {{ boutMetaOf(market.description).detail }}
+          <span v-if="shortDetail(market.description)" class="pm-detail">
+            {{ shortDetail(market.description) }}
           </span>
           <span class="pm-cta">{{ t('prediction.viewMarket') }} →</span>
         </div>
       </NuxtLink>
     </section>
+
   </div>
 </template>
 
@@ -212,6 +242,26 @@ useHead({ title: 'Predictions — World Bingo' })
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+/* Question heading — only on markets whose outcomes do not name themselves. */
+.pm-question {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+/* Question heading — only on markets whose outcomes do not name themselves. */
+.pm-question {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
 }
 
 /* ── Header ── */
