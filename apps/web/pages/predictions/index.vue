@@ -21,6 +21,7 @@ import {
   type DisciplineKey,
   type PredictionMarketSummary,
 } from '~/store/prediction'
+import { mockSettledMarkets, mockSettledTotals } from '~/utils/mockSettledMarkets'
 
 const { t } = useI18n()
 const store = usePredictionStore()
@@ -70,6 +71,28 @@ interface CardGroup {
   markets: PredictionMarketSummary[]
 }
 
+// ── Past results (LOCAL MOCK) ───────────────────────────────────────────────
+// Not real, never persisted, and compiled out of any production build — see
+// utils/mockSettledMarkets.ts. Present so this section can be reviewed against
+// realistic density rather than an empty page.
+const settled = computed(() => mockSettledMarkets())
+const settledTotals = computed(() => mockSettledTotals())
+
+/** Compact money: 1_284_600 -> '1.28M'. Keeps the strip readable at a glance. */
+function compactEtb(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`
+  return String(value)
+}
+
+function daysAgoLabel(days: number): string {
+  if (days < 1) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days} days ago`
+  const months = Math.round(days / 30)
+  return months === 1 ? 'a month ago' : `${months} months ago`
+}
+
 /**
  * A bout row is self-describing: the outcomes ARE the fighters, so the question
  * ("Sedo vs Johnny — who wins?") only repeats them. A novelty market is not —
@@ -95,6 +118,17 @@ function shortDetail(description: string | null | undefined): string {
   if (!detail) return ''
   const firstSentence = detail.split(/\.\s/)[0] ?? detail
   return firstSentence.length > 64 ? `${firstSentence.slice(0, 61).trimEnd()}…` : firstSentence
+}
+
+/** A sparkline path for a settled market's price history, in a 100x28 box. */
+function sparkline(path: number[]): string {
+  if (path.length < 2) return ''
+  const w = 100
+  const h = 28
+  const step = w / (path.length - 1)
+  return path
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)} ${(h - (p / 100) * h).toFixed(1)}`)
+    .join(' ')
 }
 
 const groups = computed<CardGroup[]>(() => {
@@ -231,6 +265,43 @@ useHead({ title: 'Predictions — World Bingo' })
       </NuxtLink>
     </section>
 
+    <!-- ── Past results ── -->
+    <section v-if="settled.length" class="pm-past">
+      <div class="pm-past-head">
+        <h2 class="pm-group-title">Past results</h2>
+        <div class="pm-past-totals">
+          <span><strong>{{ compactEtb(settledTotals.volume) }}</strong> ETB traded</span>
+          <span><strong>{{ settledTotals.traders.toLocaleString() }}</strong> traders</span>
+          <span><strong>{{ settledTotals.count }}</strong> markets settled</span>
+        </div>
+      </div>
+
+      <article v-for="m in settled" :key="m.id" class="pm-past-row">
+        <div class="pm-past-main">
+          <div class="pm-past-top">
+            <span class="pm-past-event">{{ m.eventName }}</span>
+            <span class="pm-past-when">{{ daysAgoLabel(m.settledDaysAgo) }}</span>
+          </div>
+          <h3 class="pm-past-q">{{ m.question }}</h3>
+          <div class="pm-past-winner">
+            <span class="pm-past-check" aria-hidden="true">✓</span>
+            <span class="pm-past-winner-name">{{ m.outcomes[m.winner] }}</span>
+            <span class="pm-past-paid">paid 100 ETB a share</span>
+          </div>
+        </div>
+
+        <div class="pm-past-side">
+          <svg class="pm-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+            <path :d="sparkline(m.path)" fill="none" />
+          </svg>
+          <div class="pm-past-stats">
+            <span><strong>{{ compactEtb(m.volume) }}</strong> ETB</span>
+            <span>{{ m.traders }} traders</span>
+            <span class="pm-past-top-payout">top win {{ compactEtb(m.topPayout) }}</span>
+          </div>
+        </div>
+      </article>
+    </section>
   </div>
 </template>
 
@@ -254,14 +325,130 @@ useHead({ title: 'Predictions — World Bingo' })
   color: var(--text-primary);
 }
 
-/* Question heading — only on markets whose outcomes do not name themselves. */
-.pm-question {
-  margin: 0 0 0.5rem;
+/* ── Past results ── */
+.pm-past {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pm-past-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pm-past-totals {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.pm-past-totals strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.pm-past-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.85rem 1rem;
+}
+.pm-past-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.pm-past-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pm-past-event {
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+.pm-past-q {
+  margin: 0;
   font-family: var(--font-ui);
   font-size: 0.95rem;
   font-weight: 700;
-  line-height: 1.35;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm-past-winner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+.pm-past-check {
+  color: var(--status-success);
+  font-weight: 800;
+}
+.pm-past-winner-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.pm-past-paid {
+  color: var(--text-secondary);
+}
+.pm-past-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+.pm-spark {
+  width: 96px;
+  height: 28px;
+}
+.pm-spark path {
+  stroke: var(--brand-primary);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.pm-past-stats {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.pm-past-stats strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.pm-past-top-payout {
+  color: var(--status-success);
+}
+@media (max-width: 560px) {
+  .pm-past-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pm-past-side {
+    align-items: flex-start;
+  }
+  .pm-past-q {
+    white-space: normal;
+  }
 }
 
 /* ── Header ── */
