@@ -63,6 +63,11 @@ export default defineNuxtConfig({
             wsUrl: 'http://localhost:8080',
             telegramBotName: '',
             telegramBotId: '',
+            // Renders the mock "Past results" section on the fight card.
+            // STAGING ONLY — see utils/mockSettledMarkets.ts. The data is not
+            // real, so this must stay unset on any production deployment.
+            // Mapped from NUXT_PUBLIC_SHOW_MOCK_HISTORY.
+            showMockHistory: false,
             // Sentry (GlitchTip) error reporting. Auto-mapped from
             // NUXT_PUBLIC_SENTRY_DSN / NUXT_PUBLIC_SENTRY_ENVIRONMENT.
             // Empty DSN = fully inert (see sentry.client/server.config.ts).

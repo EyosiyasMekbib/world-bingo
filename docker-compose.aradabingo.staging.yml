@@ -89,6 +89,10 @@ services:
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-arada-stg:8080}
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      # Mock "Past results" on the fight card. STAGING ONLY — the markets,
+      # volumes and winners are invented. Deliberately absent from every
+      # production compose file; see apps/web/utils/mockSettledMarkets.ts.
+      NUXT_PUBLIC_SHOW_MOCK_HISTORY: ${NUXT_PUBLIC_SHOW_MOCK_HISTORY:-true}
     depends_on:
       api-arada-stg:
         condition: service_healthy

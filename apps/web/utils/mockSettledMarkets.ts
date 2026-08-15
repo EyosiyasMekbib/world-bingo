@@ -8,14 +8,23 @@
  * winners never won anything. It exists so the past-results section can be
  * designed and reviewed against realistic density instead of an empty page.
  *
- * It is gated on `import.meta.dev`, which Vite replaces with a literal at build
- * time — so in any production build the guard is `if (false)`, the array is
- * unreachable, and the bundler drops this data entirely. That is deliberate:
- * invented trading history rendered to real bettors would be fabricated social
- * proof, and a compile-time guard is the only kind that cannot be forgotten.
+ * It renders in local dev, and in a deployed environment ONLY when
+ * `NUXT_PUBLIC_SHOW_MOCK_HISTORY=true` is set for that deployment. Staging sets
+ * it; production must not.
  *
- * If this ever needs to ship to real users, it does not. Generate the section
- * from settled markets the API actually returns.
+ * NOTE THE TRADE THIS MAKES. The original guard was `import.meta.dev` alone,
+ * which Vite folds to a literal so the data was physically dropped from every
+ * built bundle — a guarantee nobody could undo by accident. Showing the section
+ * on a deployed staging box makes that impossible: staging builds exactly like
+ * production, so the data must survive the build, and what keeps it off
+ * production is now a deployment variable rather than the compiler.
+ *
+ * That means production safety now depends on NOT setting one env var. It
+ * defaults to false, it is named so its purpose is obvious in a compose file,
+ * and it is absent from every production compose file in this repo. Before the
+ * first real-money card, delete this file and the section that renders it:
+ * invented trading history in front of real bettors is fabricated social proof,
+ * and an env var is a much weaker promise than a compiler.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -133,13 +142,28 @@ const MARKETS: MockSettledMarket[] = [
 ]
 
 /**
- * The mock set — empty in any non-dev build.
+ * Whether the mock section should render at all.
  *
- * The guard is first so the whole array is dead code once `import.meta.dev` is
- * folded to `false`.
+ * True in local dev, or when the deployment explicitly opts in via
+ * `NUXT_PUBLIC_SHOW_MOCK_HISTORY=true`. Anything else — including an unset
+ * variable, which is what production looks like — is false.
+ *
+ * `useRuntimeConfig()` throws outside a Nuxt context, so a failure to read it
+ * is treated as "not enabled": the safe direction is always off.
  */
+export function mockHistoryEnabled(): boolean {
+    if (import.meta.dev) return true
+    try {
+        const flag = useRuntimeConfig().public.showMockHistory
+        return flag === true || flag === 'true'
+    } catch {
+        return false
+    }
+}
+
+/** The mock set — empty unless explicitly enabled. */
 export function mockSettledMarkets(): MockSettledMarket[] {
-    if (!import.meta.dev) return []
+    if (!mockHistoryEnabled()) return []
     return MARKETS
 }
 
