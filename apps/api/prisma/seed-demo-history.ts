@@ -43,44 +43,75 @@ const DEMO_EVENT_TAG = '[DEMO]'
 // ─── Guard ───────────────────────────────────────────────────────────────────
 
 /**
- * Refuse to run anywhere that is not obviously a local development database.
+ * Decide whether this database may be seeded with invented traders.
  *
- * Three independent conditions, all required. A single env var would be one
- * typo away from seeding invented traders into a real book.
+ * Two ways through, and one thing that is never allowed:
+ *
+ * 1. **Local development** — a local host, a dev-looking database name, and
+ *    NODE_ENV that is not production. No opt-in needed; this is the normal case.
+ * 2. **An explicitly opted-in deployment** — `ALLOW_DEMO_SEED=true`. This is how
+ *    staging runs it. It is a separate variable from everything else precisely
+ *    so it cannot be switched on as a side effect of some other config change,
+ *    and it is absent from every production compose file in this repo.
+ *
+ * Never, under any circumstance: a database or host whose name contains "prod".
+ * That check runs before the opt-in and ignores it, because the one mistake
+ * worth engineering against is a staging box whose DATABASE_URL was pasted from
+ * production — at which point the opt-in is set and pointed at the real book.
  */
-function assertLocalOnly(): void {
+function assertSeedAllowed(): void {
     const env = process.env.NODE_ENV ?? 'development'
     const url = process.env.DATABASE_URL ?? ''
-
-    const problems: string[] = []
-
-    if (env === 'production') {
-        problems.push(`NODE_ENV is "${env}"`)
-    }
+    const optIn = process.env.ALLOW_DEMO_SEED === 'true'
 
     let host = ''
+    let parseable = true
     try {
         host = new URL(url).hostname
     } catch {
-        problems.push('DATABASE_URL is unparseable')
+        parseable = false
     }
-    if (host && !['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(host)) {
-        problems.push(`DATABASE_URL points at "${host}", which is not local`)
-    }
-
-    // A local database can still be the wrong one. Require the name to look like
-    // a dev database rather than, say, a production dump restored for debugging.
     const dbName = url.split('/').pop()?.split('?')[0] ?? ''
-    if (dbName && !/dev|test|local|demo/i.test(dbName)) {
-        problems.push(`database "${dbName}" is not named like a dev database`)
-    }
 
-    if (problems.length > 0) {
+    const die = (reason: string, hint: string): never => {
         console.error('\n  REFUSING TO RUN — this script invents users and trades.\n')
-        for (const p of problems) console.error(`    · ${p}`)
-        console.error('\n  It is for a local development database only.\n')
+        console.error(`    · ${reason}`)
+        console.error(`\n  ${hint}\n`)
         process.exit(1)
     }
+
+    if (!parseable) {
+        die('DATABASE_URL is unparseable', 'Set a valid DATABASE_URL.')
+    }
+
+    // Absolute: no opt-in overrides this.
+    if (/prod/i.test(dbName) || /prod/i.test(host)) {
+        die(
+            `the target looks like production (host "${host}", database "${dbName}")`,
+            'Invented trading history must never touch a production database.',
+        )
+    }
+
+    const isLocalHost = ['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(host)
+    const looksLikeDevDb = /dev|test|local|demo|staging|stg/i.test(dbName)
+
+    if (isLocalHost && env !== 'production' && looksLikeDevDb) {
+        return // local development — the ordinary path
+    }
+
+    if (optIn) {
+        console.warn(
+            `\n  ⚠  ALLOW_DEMO_SEED=true — seeding INVENTED users and trades into` +
+            `\n     host "${host}", database "${dbName}".` +
+            `\n     This data is not real. Never do this on a database real players use.\n`,
+        )
+        return
+    }
+
+    die(
+        `host "${host}" / database "${dbName}" is not a local dev database, and ALLOW_DEMO_SEED is not set`,
+        'Set ALLOW_DEMO_SEED=true to seed a deployed staging database on purpose.',
+    )
 }
 
 // ─── Cast ────────────────────────────────────────────────────────────────────
@@ -321,7 +352,7 @@ async function purge(): Promise<void> {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-    assertLocalOnly()
+    assertSeedAllowed()
 
     if (process.argv.includes('--purge')) {
         await purge()
@@ -350,8 +381,18 @@ async function main() {
 }
 
 main()
-    .catch((err) => {
+    .then(async () => {
+        await prisma.$disconnect()
+        // Exit explicitly. This script imports the prediction services, which
+        // pull in lib/queue.ts and open BullMQ's Redis connections at module
+        // load; those keep the event loop alive forever, so the process would
+        // otherwise hang after finishing. Harmless when run by hand, fatal if
+        // this is ever wired into the container entrypoint — a seed that never
+        // returns blocks the API from starting.
+        process.exit(0)
+    })
+    .catch(async (err) => {
         console.error(err)
+        await prisma.$disconnect()
         process.exit(1)
     })
-    .finally(() => prisma.$disconnect())

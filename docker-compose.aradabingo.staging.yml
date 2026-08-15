@@ -30,6 +30,11 @@ services:
       DB_MAX_RETRIES: ${DB_MAX_RETRIES:-30}
       DB_RETRY_DELAY_SECS: ${DB_RETRY_DELAY_SECS:-2}
       RUN_SEED: ${RUN_SEED:-false}
+      # Lets prisma/seed-demo-history.ts run against this deployed database.
+      # It seeds INVENTED users and trades for demo purposes, so it is opt-in,
+      # absent from every production compose file, and refused outright against
+      # any host or database whose name contains "prod".
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-true}
       SEED_STRICT: ${SEED_STRICT:-false}
       MIGRATION_ROLLBACK_ID: ${MIGRATION_ROLLBACK_ID:-}
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
