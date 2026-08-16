@@ -186,6 +186,14 @@ export const useAdminApi = () => {
             apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: { amount } }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        // The clerk's browser fetches the telebirr receipt the API server can't
+        // reach and POSTs the raw HTML here for the parse→match→credit pipeline.
+        verifyReceipt: (id: string, html: string) =>
+            apiFetch<{
+                status: 'PENDING' | 'AUTO_CREDITED' | 'MANUAL_REQUIRED' | 'UNAVAILABLE'
+                reasons: string[]
+                parsed: Record<string, unknown> | null
+            }>(`/admin/transactions/${id}/verify-receipt`, { method: 'POST', body: { html } }),
         getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
