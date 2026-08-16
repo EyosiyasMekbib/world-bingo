@@ -180,7 +180,10 @@ export const useAdminApi = () => {
             const query = qs.toString()
             return apiFetch<any>(`/admin/withdrawals${query ? `?${query}` : ''}`)
         },
-        approveTransaction: (id: string) => apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST' }),
+        // `amount` is the admin-corrected deposit value (Adjust & approve). Omitted,
+        // the API credits the player-stated amount.
+        approveTransaction: (id: string, amount?: number) =>
+            apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: { amount } }),
         declineTransaction: (id: string, note?: string) =>
             apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
         getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) => {
