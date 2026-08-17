@@ -14,6 +14,10 @@ const { connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
 const { track } = useAnalytics()
+const { flags } = useFeatureFlags()
+
+/** Gates the fight-markets hero slide and the lobby entry point. */
+const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
 
 const showAuthPrompt = ref(false)
 
@@ -107,10 +111,31 @@ interface HeroSlide {
   watermark: string
   gradient: string
   accent: string
-  action: 'games' | 'rooms' | 'deposit'
+  action: 'games' | 'rooms' | 'deposit' | 'predictions'
 }
 
-const heroSlides: HeroSlide[] = [
+/**
+ * The fight-markets slide. Only ever shown when
+ * `feature_prediction_market` is on — advertising a tab that 404s would be
+ * worse than not advertising it at all.
+ *
+ * Deliberately not amber: every other surface on this page is the brand colour,
+ * so a distinct crimson is what makes this read as a new thing rather than as
+ * another bonus banner.
+ */
+const PREDICTION_SLIDE: HeroSlide = {
+  id: 'predictions',
+  badge: 'ETFC Fight Night',
+  title: 'Back A Fighter —\n100 ETB A Share',
+  sub: 'Buy a share in who you think wins. The price you pay is the odds, and you trade against other players — never the house.',
+  cta: 'Open Fight Markets',
+  watermark: 'VS',
+  gradient: 'linear-gradient(105deg,#2a0a12 0%,#4a0f1e 45%,#6d1528 100%)',
+  accent: '#fb7185',
+  action: 'predictions',
+}
+
+const BASE_SLIDES: HeroSlide[] = [
   {
     id: 'aviator',
     badge: 'High Flyer',
@@ -146,8 +171,30 @@ const heroSlides: HeroSlide[] = [
   },
 ]
 
+/**
+ * The fight slide leads when the feature is live — it is the newest thing on the
+ * platform and the only one with a deadline, so it earns the first impression
+ * over an evergreen bonus offer.
+ */
+const heroSlides = computed<HeroSlide[]>(() =>
+  predictionsEnabled.value ? [PREDICTION_SLIDE, ...BASE_SLIDES] : BASE_SLIDES,
+)
+
 const currentSlide = ref(0)
-const activeSlide = computed(() => heroSlides[currentSlide.value])
+
+/**
+ * The slide list changes length when the flag resolves, and the flag arrives
+ * after first paint. Without this the index can point past the end of the array
+ * and `activeSlide` reads undefined, which blanks the whole hero.
+ */
+watch(
+  () => heroSlides.value.length,
+  (len) => {
+    if (currentSlide.value >= len) currentSlide.value = 0
+  },
+)
+
+const activeSlide = computed(() => heroSlides.value[currentSlide.value] ?? heroSlides.value[0])
 let slideTimer: ReturnType<typeof setInterval> | null = null
 
 function goToSlide(idx: number) {
@@ -156,14 +203,14 @@ function goToSlide(idx: number) {
   startSlideTimer()
 }
 function prevSlide() {
-  goToSlide((currentSlide.value - 1 + heroSlides.length) % heroSlides.length)
+  goToSlide((currentSlide.value - 1 + heroSlides.value.length) % heroSlides.value.length)
 }
 function nextSlide() {
-  goToSlide((currentSlide.value + 1) % heroSlides.length)
+  goToSlide((currentSlide.value + 1) % heroSlides.value.length)
 }
 function startSlideTimer() {
   slideTimer = setInterval(() => {
-    currentSlide.value = (currentSlide.value + 1) % heroSlides.length
+    currentSlide.value = (currentSlide.value + 1) % heroSlides.value.length
   }, 6000)
 }
 
@@ -179,7 +226,10 @@ function onTouchEnd(e: TouchEvent) {
 }
 
 function heroAction(action: HeroSlide['action']) {
-  if (action === 'rooms') {
+  if (action === 'predictions') {
+    track('hero_predictions_click')
+    navigateTo('/predictions')
+  } else if (action === 'rooms') {
     document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
     selectCategory('BINGO')
   } else if (action === 'deposit') {
@@ -546,6 +596,29 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <!-- ═══════════════ FIGHT MARKETS ═══════════════
+         A second, persistent entry point. The hero slide rotates away after a
+         few seconds; this one does not, so a player who scrolls past the
+         carousel can still find the feature. Hidden entirely when the flag is
+         off — no dead link to a 404. -->
+    <section v-if="predictionsEnabled" class="max-wrap">
+      <NuxtLink to="/predictions" class="pred-strip" @click="track('lobby_predictions_click')">
+        <div class="pred-strip-main">
+          <span class="pred-strip-kicker">ETFC Fight Night · 27 August</span>
+          <h2 class="pred-strip-title">Fight Markets</h2>
+          <p class="pred-strip-sub">
+            Back a fighter at the price you think is right. A share pays 100 ETB if they win.
+          </p>
+        </div>
+        <span class="pred-strip-cta">
+          Open
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
+      </NuxtLink>
+    </section>
+
     <!-- ═══════════════ WINNERS ═══════════════ -->
     <section class="max-wrap winners">
       <div class="win-tabs" role="tablist">
@@ -878,6 +951,70 @@ onUnmounted(() => {
 }
 
 /* ── WINNERS ───────────────────────────────────────────────────────────── */
+/* ── Fight markets strip ──
+   Crimson rather than the page's amber, so it reads as a different product and
+   not a third bonus banner. Border-led rather than a filled card — the hero
+   directly above is already a heavy block, and two solid slabs stacked read as
+   noise. */
+.pred-strip {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(251, 113, 133, 0.28);
+  background:
+    linear-gradient(105deg, rgba(42, 10, 18, 0.9) 0%, rgba(74, 15, 30, 0.75) 55%, rgba(109, 21, 40, 0.6) 100%);
+  transition:
+    border-color 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pred-strip:hover { border-color: rgba(251, 113, 133, 0.55); }
+.pred-strip:active { transform: scale(0.994); transition-duration: 90ms; }
+.pred-strip:focus-visible { outline: 2px solid #fb7185; outline-offset: 3px; }
+.pred-strip-main { min-width: 0; }
+.pred-strip-kicker {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fb7185;
+}
+.pred-strip-title {
+  margin: 4px 0 2px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+}
+.pred-strip-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+  max-width: 56ch;
+}
+.pred-strip-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+}
+.pred-strip-cta svg { width: 16px; height: 16px; }
+@media (max-width: 560px) {
+  .pred-strip { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pred-strip:active { transform: none; }
+}
+
 .winners { margin-top: 34px; }
 
 .win-tabs {

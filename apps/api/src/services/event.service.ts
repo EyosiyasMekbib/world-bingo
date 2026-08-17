@@ -12,6 +12,11 @@ export const ALLOWED_EVENTS = [
     'provider_game_view',
     'provider_game_launched',
     'provider_session_ended',
+    // Which lobby surface sends players into the fight markets — the hero slide
+    // or the lobby card. Worth separating: it is the only way to tell whether
+    // the banner is doing the work or the tab is.
+    'hero_predictions_click',
+    'lobby_predictions_click',
 ] as const
 
 export type AllowedEventName = (typeof ALLOWED_EVENTS)[number]

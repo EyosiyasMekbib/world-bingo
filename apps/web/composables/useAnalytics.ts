@@ -10,6 +10,11 @@ const ALLOWED = new Set([
     'identify',
     'provider_game_view',
     'provider_session_ended',
+    // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.
+    // A name missing from either list is dropped silently, so an event that
+    // looks wired up records nothing.
+    'hero_predictions_click',
+    'lobby_predictions_click',
 ])
 
 interface RawEvent {
