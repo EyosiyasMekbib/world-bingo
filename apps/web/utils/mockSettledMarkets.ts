@@ -154,7 +154,11 @@ const MARKETS: MockSettledMarket[] = [
 export function mockHistoryEnabled(): boolean {
     if (import.meta.dev) return true
     try {
-        const flag = useRuntimeConfig().public.showMockHistory
+        // Nuxt coerces NUXT_PUBLIC_* to the type of the config default, so this
+        // arrives as a real boolean. Widened to unknown so the string form is
+        // still accepted if the value ever reaches us unconverted — without
+        // asserting a type the config does not actually have.
+        const flag: unknown = useRuntimeConfig().public.showMockHistory
         return flag === true || flag === 'true'
     } catch {
         return false
