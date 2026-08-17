@@ -5,6 +5,7 @@ import {
     PredictionOrderStatus,
     Prisma,
     TransactionType,
+    UserRole,
 } from '@prisma/client'
 import { priceSchema, toWholeBirr } from '@world-bingo/shared-types'
 import prisma from '../../lib/prisma.js'
@@ -173,6 +174,27 @@ export class PredictionOrderService {
         const result = await withMarketLock(marketId, () =>
             prisma.$transaction(
                 async (tx) => {
+                    // ── 0. Staff may not trade ───────────────────────────────────
+                    // The same people who resolve a market can otherwise take a
+                    // position in it, and resolution is a judgement call on a video
+                    // for the novelty markets. An audit log proves what an admin
+                    // decided; it cannot prove they had no stake in the outcome.
+                    // Refusing the order is the only version of that guarantee that
+                    // does not depend on trust.
+                    //
+                    // Enforced here rather than in the route so every caller is
+                    // covered, and stated as "only PLAYER may trade" rather than a
+                    // list of banned roles — a role added later is then blocked by
+                    // default instead of silently permitted.
+                    const trader = await tx.user.findUnique({
+                        where: { id: userId },
+                        select: { role: true },
+                    })
+                    if (!trader) throw httpError('User not found', 404)
+                    if (trader.role !== UserRole.PLAYER) {
+                        throw httpError('Staff accounts cannot trade prediction markets', 403)
+                    }
+
                     // ── 1. Lock the taker's wallet ───────────────────────────────
                     // The only wallet touched by a placement. Makers were funded when
                     // they placed; matching moves their reserve into a position.

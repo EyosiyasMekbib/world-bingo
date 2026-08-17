@@ -205,6 +205,7 @@ function createStore() {
     // ── The store ────────────────────────────────────────────────────────────
 
     const tables: Record<string, Row[]> = {
+        user: [],
         wallet: [],
         transaction: [],
         predictionMarket: [],
@@ -215,6 +216,7 @@ function createStore() {
     }
 
     const defaults: Record<string, Row> = {
+        user: { role: 'PLAYER' },
         wallet: { realBalance: dec(0), bonusBalance: dec(0) },
         transaction: {},
         predictionMarket: {
@@ -505,7 +507,10 @@ function seedMarket(overrides: Record<string, any> = {}): Seeded {
     return { marketId: market.id, outcomeA: outcomeA.id, outcomeB: outcomeB.id }
 }
 
-function seedUser(userId: string, real: number, bonus = 0): string {
+function seedUser(userId: string, real: number, bonus = 0, role = 'PLAYER'): string {
+    // A user row as well as a wallet: placeOrder reads the role to refuse staff
+    // accounts, so a wallet with no user behind it is not a valid fixture.
+    db.tables.user.push({ id: userId, role })
     db.tables.wallet.push({
         id: `wallet-${userId}`,
         userId,
@@ -558,6 +563,50 @@ beforeEach(() => {
     db.reset()
     lockMode.faithful = false
     vi.clearAllMocks()
+})
+
+// ── Staff may not trade ───────────────────────────────────────────────────────
+
+describe('placeOrder — staff accounts cannot trade', () => {
+    // The people who resolve markets must not be able to hold a position in
+    // one. An audit log records what an admin decided; only refusing the order
+    // shows they had nothing riding on it.
+    for (const role of ['ADMIN', 'SUPER_ADMIN', 'CLERK']) {
+        it(`refuses a ${role} with 403 and moves no money`, async () => {
+            const { marketId, outcomeA } = seedMarket()
+            seedUser('staffer', 1000, 0, role)
+
+            await expect(
+                PredictionOrderService.placeOrder('staffer', {
+                    marketId,
+                    outcomeId: outcomeA,
+                    limitPrice: 35,
+                    quantity: 10,
+                }),
+            ).rejects.toMatchObject({ statusCode: 403 })
+
+            // The guard runs before the wallet is touched, so a refused order
+            // must leave the balance and the book exactly as they were.
+            expect(walletOf('staffer')).toEqual({ real: '1000', bonus: '0' })
+            expect(db.tables.predictionOrder).toHaveLength(0)
+            expect(db.tables.transaction).toHaveLength(0)
+        })
+    }
+
+    it('still allows a PLAYER', async () => {
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('alice', 1000)
+
+        const { order } = await PredictionOrderService.placeOrder('alice', {
+            marketId,
+            outcomeId: outcomeA,
+            limitPrice: 35,
+            quantity: 10,
+        })
+
+        expect(order.status).toBe('OPEN')
+        expect(walletOf('alice')).toEqual({ real: '650', bonus: '0' })
+    })
 })
 
 // ── Reserve ───────────────────────────────────────────────────────────────────
