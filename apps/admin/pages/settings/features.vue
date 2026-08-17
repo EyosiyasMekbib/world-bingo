@@ -10,6 +10,7 @@ const features = reactive({
   feature_referrals: false,
   feature_tournaments: false,
   feature_third_party_games: false,
+  feature_prediction_market: false,
 })
 
 const gameSettings = reactive({
@@ -34,6 +35,7 @@ const fetchAll = async () => {
     features.feature_referrals = flags.feature_referrals ?? false
     features.feature_tournaments = flags.feature_tournaments ?? false
     features.feature_third_party_games = flags.feature_third_party_games ?? false
+    features.feature_prediction_market = flags.feature_prediction_market ?? false
     gameSettings.ball_interval_secs = gs.ball_interval_secs ?? 3
     gameSettings.bot_max_spend_etb = gs.bot_max_spend_etb ?? 500
     gameSettings.first_deposit_bonus_amount = gs.first_deposit_bonus_amount ?? 0
@@ -396,6 +398,25 @@ onMounted(fetchAll)
               </div>
             </div>
             <USwitch v-model="features.feature_third_party_games" color="primary" />
+          </div>
+
+          <!-- Prediction Market -->
+          <div
+            class="flex items-center justify-between rounded-2xl border border-(--surface-border) p-5 hover:border-yellow-500/30 transition-all shadow-md"
+            style="background: var(--surface-raised);"
+          >
+            <div class="flex items-center gap-4">
+              <div class="p-2.5 rounded-xl border border-yellow-500/20" style="background:var(--surface-overlay);">
+                <UIcon name="i-heroicons:scale" class="w-5 h-5 text-yellow-500" />
+              </div>
+              <div>
+                <p class="text-sm font-bold text-white">Prediction Market</p>
+                <p class="text-xs text-white/40 mt-1 font-medium">
+                  Show the Fights tab and let players trade fight markets. Real money — publish a market before turning this on, or the page is empty.
+                </p>
+              </div>
+            </div>
+            <USwitch v-model="features.feature_prediction_market" color="primary" />
           </div>
         </div>
 
