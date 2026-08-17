@@ -11,7 +11,9 @@
         <button
           style="margin-top:1rem;padding:0.5rem 1rem;background:#f59e0b;color:#000;border:none;border-radius:8px;font-weight:700;cursor:pointer"
           @click="clearError()"
-        >Clear Error</button>
+        >
+Clear Error
+</button>
       </div>
     </template>
   </NuxtErrorBoundary>

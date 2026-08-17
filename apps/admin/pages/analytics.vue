@@ -219,7 +219,7 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── KPI cards ───────────────────────────────────────────── -->
-      <div class="kpi-grid" v-if="engagement && gamesHealth">
+      <div v-if="engagement && gamesHealth" class="kpi-grid">
         <div class="card kpi">
           <span class="kpi-value">{{ engagement.oneAndDonePct }}%</span>
           <span class="kpi-label">One-and-done players</span>
@@ -239,7 +239,7 @@ function exportGamePnlCsv() {
       </div>
 
       <!-- ── Win experience ──────────────────────────────────────── -->
-      <section class="card" v-if="engagement">
+      <section v-if="engagement" class="card">
         <h2 class="card-title">Win experience vs retention <span class="card-hint">players with ≥3 games</span></h2>
         <div class="winexp-grid">
           <div class="winexp-cell">
@@ -270,7 +270,7 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── Conversion KPIs (Layer 2) ─────────────────────────── -->
-      <div class="kpi-grid" v-if="conversionKpis">
+      <div v-if="conversionKpis" class="kpi-grid">
         <div class="card kpi">
           <span class="kpi-value">{{ conversionKpis.totalVisitors.toLocaleString() }}</span>
           <span class="kpi-label">Visitors ({{ conversionKpis.anonVisitors.toLocaleString() }} anon)</span>
@@ -290,7 +290,7 @@ function exportGamePnlCsv() {
       </div>
 
       <!-- ── Browse funnel (Layer 2) ────────────────────────────── -->
-      <section class="card" v-if="browseFunnel">
+      <section v-if="browseFunnel" class="card">
         <h2 class="card-title">Visitor conversion funnel <span class="card-hint">incl. anonymous visitors</span></h2>
         <div class="funnel">
           <div v-for="stage in browseFunnel.stages" :key="stage.name" class="funnel-row">
@@ -310,7 +310,7 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── Deposit funnel (Layer 2) ───────────────────────────── -->
-      <section class="card" v-if="depositFunnel">
+      <section v-if="depositFunnel" class="card">
         <h2 class="card-title">Deposit funnel</h2>
         <div class="funnel">
           <div v-for="stage in depositFunnel.stages" :key="stage.name" class="funnel-row">
@@ -338,7 +338,7 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── Game Retention Scorecard ────────────────────────────── -->
-      <section class="card" v-if="gameRetention">
+      <section v-if="gameRetention" class="card">
         <h2 class="card-title">
           Which games retain new players?
           <span class="card-hint">
@@ -351,17 +351,17 @@ function exportGamePnlCsv() {
               <tr>
                 <th class="sc-name">Game</th>
                 <th class="sc-type">Type</th>
-                <th class="sc-num" @click="toggleSort('firstGameCohort')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="toggleSort('firstGameCohort')">
                   Cohort <span v-if="retentionSortKey === 'firstGameCohort'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
                 </th>
-                <th class="sc-num" @click="toggleSort('returnRate7d')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="toggleSort('returnRate7d')">
                   Return 7d <span v-if="retentionSortKey === 'returnRate7d'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
                 </th>
-                <th class="sc-num" @click="toggleSort('lift')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="toggleSort('lift')">
                   Lift <span v-if="retentionSortKey === 'lift'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
                 </th>
                 <th class="sc-num">Next-day</th>
-                <th class="sc-num" @click="toggleSort('replayRate')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="toggleSort('replayRate')">
                   Replay <span v-if="retentionSortKey === 'replayRate'">{{ retentionSortDir === 'desc' ? '↓' : '↑' }}</span>
                 </th>
                 <th class="sc-num">Plays/player</th>
@@ -429,14 +429,14 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── Game P&L ─────────────────────────────────────────────── -->
-      <section class="card" v-if="gamePnl">
+      <section v-if="gamePnl" class="card">
         <div class="pnl-head">
           <div>
             <h2 class="card-title" style="margin-bottom:2px;">Which games are costing us money?</h2>
             <p class="pnl-sub">Top 50 completed games sorted by net P&amp;L — lowest first. Net = entries collected − prizes paid to real players.</p>
           </div>
           <button class="pnl-export-btn" @click="exportGamePnlCsv">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             Export CSV
           </button>
         </div>
@@ -445,24 +445,24 @@ function exportGamePnlCsv() {
             <thead>
               <tr>
                 <th class="sc-name">Game</th>
-                <th class="sc-num" @click="togglePnlSort('playerCount')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('playerCount')">
                   Players <span v-if="pnlSortKey === 'playerCount'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
                 <th class="sc-num">Ticket</th>
                 <th class="sc-num">Edge %</th>
-                <th class="sc-num" @click="togglePnlSort('grossRevenue')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('grossRevenue')">
                   Revenue <span v-if="pnlSortKey === 'grossRevenue'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
-                <th class="sc-num" @click="togglePnlSort('totalPrizes')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('totalPrizes')">
                   Prizes Paid <span v-if="pnlSortKey === 'totalPrizes'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
-                <th class="sc-num" @click="togglePnlSort('expectedHouse')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('expectedHouse')">
                   Expected <span v-if="pnlSortKey === 'expectedHouse'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
-                <th class="sc-num" @click="togglePnlSort('netPnl')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('netPnl')">
                   Net P&amp;L <span v-if="pnlSortKey === 'netPnl'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
-                <th class="sc-num" @click="togglePnlSort('shortfall')" style="cursor:pointer">
+                <th class="sc-num" style="cursor:pointer" @click="togglePnlSort('shortfall')">
                   Shortfall <span v-if="pnlSortKey === 'shortfall'">{{ pnlSortDir === 'asc' ? '↑' : '↓' }}</span>
                 </th>
                 <th class="sc-num">Ended</th>
@@ -498,7 +498,7 @@ function exportGamePnlCsv() {
       </section>
 
       <!-- ── Retention matrix ────────────────────────────────────── -->
-      <section class="card" v-if="retention">
+      <section v-if="retention" class="card">
         <h2 class="card-title">Weekly retention cohorts <span class="card-hint">% of signup cohort playing in week N</span></h2>
         <div class="retention-scroll">
           <table class="retention-table">

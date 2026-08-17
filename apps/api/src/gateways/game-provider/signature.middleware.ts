@@ -66,7 +66,7 @@ export async function verifyGaseaSignature(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  let signature = request.headers['x-signature']
+  const signature = request.headers['x-signature']
 
   if (!signature || typeof signature !== 'string') {
     request.log.warn('[GASea] Missing X-Signature header on %s', request.url)

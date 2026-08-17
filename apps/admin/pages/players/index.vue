@@ -104,7 +104,7 @@ function copySerial(val: string | number) {
                     title="Copy Player ID"
                     @click="copySerial(p.serial)"
                   >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
                   </button>
                 </div>
               </td>
@@ -120,7 +120,7 @@ function copySerial(val: string | number) {
                     title="Copy phone"
                     @click="copySerial(p.phone)"
                   >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
                   </button>
                 </div>
               </td>
@@ -145,8 +145,8 @@ function copySerial(val: string | number) {
     <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-4">
       <span class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</span>
       <div class="flex gap-2">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" label="Prev" />
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" label="Next" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" label="Prev" @click="page--" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" label="Next" @click="page++" />
       </div>
     </div>
   </div>

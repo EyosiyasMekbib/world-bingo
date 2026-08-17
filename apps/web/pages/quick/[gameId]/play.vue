@@ -49,8 +49,7 @@
 
     <!-- ── Main Content ────────────────────────────────────────────────── -->
     <template v-if="!loading && !errorMsg && gameStore.currentGame">
-
-      <!-- Game Header (always visible) -->
+<!-- Game Header (always visible) -->
       <div class="game-header">
         <div class="header-left">
           <h2 class="game-title">{{ gameStore.currentGame.title }}</h2>
@@ -67,16 +66,16 @@
           </div>
         </div>
         <div class="header-right">
-          <button class="audio-btn" :class="{ 'audio-off': !audioEnabled }" @click="toggleAudio" :title="audioEnabled ? 'Mute' : 'Enable Audio'">
+          <button class="audio-btn" :class="{ 'audio-off': !audioEnabled }" :title="audioEnabled ? 'Mute' : 'Enable Audio'" @click="toggleAudio">
             <svg v-if="audioEnabled" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
             </svg>
             <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <line x1="23" y1="9" x2="17" y2="15"/>
-              <line x1="17" y1="9" x2="23" y2="15"/>
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
             </svg>
           </button>
         </div>
@@ -86,9 +85,9 @@
       <Transition name="audio-hint">
         <div v-if="showAudioHint" class="audio-hint-toast" @click="toggleAudio">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-            <line x1="23" y1="9" x2="17" y2="15"/>
-            <line x1="17" y1="9" x2="23" y2="15"/>
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
           </svg>
           Tap to enable audio
         </div>
@@ -98,8 +97,7 @@
       <!-- PHASE 1: JOIN — select cartelas and pay                       -->
       <!-- ══════════════════════════════════════════════════════════════ -->
       <div v-if="phase === 'join'" class="join-phase">
-
-        <!-- Error banner -->
+<!-- Error banner -->
         <Transition name="err-slide">
           <div v-if="joinError" class="join-error-banner">
             <span>⚠️ {{ joinError }}</span>
@@ -163,8 +161,7 @@
       <!-- PHASE 2: WAITING — lobby timer, player count, 60s countdown  -->
       <!-- ══════════════════════════════════════════════════════════════ -->
       <div v-else-if="phase === 'waiting'" class="waiting-phase">
-
-        <!-- Players joined progress bar -->
+<!-- Players joined progress bar -->
         <div class="players-progress-wrap">
           <div class="players-progress-label">
             <span>Players Joined</span>
@@ -301,7 +298,9 @@
                   called: gameStore.calledBalls.includes(ci * 15 + n),
                   'last-called': gameStore.lastCalledBall === ci * 15 + n,
                 }"
-              >{{ ci * 15 + n }}</div>
+              >
+{{ ci * 15 + n }}
+</div>
             </div>
           </div>
         </div>
@@ -358,8 +357,7 @@
           </div>
         </div>
       </template>
-
-    </template>
+</template>
   </div>
 </template>
 

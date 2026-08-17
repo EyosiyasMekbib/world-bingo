@@ -139,8 +139,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
 
 <template>
   <div class="corr-page">
-
-    <!-- Header -->
+<!-- Header -->
     <div class="corr-header">
       <div>
         <h1 class="corr-title">Corrections</h1>
@@ -150,8 +149,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
 
     <!-- ── Create correction form ─────────────────────────────────────────── -->
     <div class="corr-form-card">
-
-      <!-- Player ID row -->
+<!-- Player ID row -->
       <div class="corr-field">
         <label class="corr-label">Player ID <span class="corr-req">*</span></label>
         <div class="corr-player-wrap">
@@ -163,7 +161,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
               @input="onPlayerInput"
             />
             <button v-if="selectedPlayer" class="corr-clear-btn" @click="clearPlayer">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>
           <!-- Dropdown results -->
@@ -210,7 +208,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
               :class="direction === 'up' ? 'corr-dir-btn--up-active' : ''"
               @click="direction = 'up'"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15" /></svg>
               Up
             </button>
             <button
@@ -218,7 +216,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
               :class="direction === 'down' ? 'corr-dir-btn--down-active' : ''"
               @click="direction = 'down'"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
               Down
             </button>
           </div>
@@ -227,12 +225,16 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
               class="corr-bal-btn"
               :class="balanceType === 'real' ? 'corr-bal-btn--active' : ''"
               @click="balanceType = 'real'"
-            >Real</button>
+            >
+Real
+</button>
             <button
               class="corr-bal-btn"
               :class="balanceType === 'bonus' ? 'corr-bal-btn--active' : ''"
               @click="balanceType = 'bonus'"
-            >Bonus</button>
+            >
+Bonus
+</button>
           </div>
           <div class="corr-balance-display">
             <span class="corr-balance-label">Balance:</span>
@@ -262,8 +264,8 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
         :disabled="submitting || !selectedPlayer || !correctionAmount || !description.trim()"
         @click="submitCorrection"
       >
-        <svg v-if="submitting" class="corr-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-18 0"/></svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg v-if="submitting" class="corr-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-18 0" /></svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12" /></svg>
         Apply Correction
       </button>
     </div>
@@ -280,7 +282,9 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
             v-if="filterFrom || filterTo || filterSerial"
             class="corr-filter-reset"
             @click="filterFrom = ''; filterTo = ''; filterSerial = ''; historyPage = 1"
-          >Reset</button>
+          >
+Reset
+</button>
         </div>
       </div>
 
@@ -303,12 +307,12 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
           <tbody>
             <tr v-if="historyLoading">
               <td colspan="9" class="corr-empty">
-                <svg class="corr-spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-18 0"/></svg>
+                <svg class="corr-spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 11-18 0" /></svg>
               </td>
             </tr>
             <tr v-else-if="!history.length">
               <td colspan="9" class="corr-empty">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;margin-bottom:8px"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;margin-bottom:8px"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
                 <div>No Data Yet</div>
               </td>
             </tr>
@@ -317,7 +321,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
                 <div class="corr-id-cell">
                   <span class="corr-serial">#{{ formatSerial(row.user?.serial) }}</span>
                   <button class="corr-copy-btn" title="Copy ID" @click="copyToClipboard(String(row.user?.serial ?? ''))">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
                   </button>
                 </div>
               </td>
@@ -368,8 +372,7 @@ const formatSerial = (s?: number) => s ? String(s).padStart(5, '0') : '—'
         </div>
       </div>
     </div>
-
-  </div>
+</div>
 </template>
 
 <style scoped>

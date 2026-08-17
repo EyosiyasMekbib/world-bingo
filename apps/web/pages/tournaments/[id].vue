@@ -43,7 +43,7 @@
           <span class="stat-label">Rounds Played</span>
           <span class="stat-value">{{ tournament.rounds }}</span>
         </div>
-        <div class="stat-item" v-if="tournament.scheduledAt">
+        <div v-if="tournament.scheduledAt" class="stat-item">
           <span class="stat-label">Scheduled</span>
           <span class="stat-value">{{ formatDate(tournament.scheduledAt) }}</span>
         </div>

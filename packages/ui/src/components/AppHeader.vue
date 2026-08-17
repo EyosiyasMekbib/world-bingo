@@ -1,6 +1,6 @@
 <template>
   <header class="app-header">
-    <button class="app-header__menu-btn" @click="emit('menu')" aria-label="Open menu">
+    <button class="app-header__menu-btn" aria-label="Open menu" @click="emit('menu')">
       <span class="app-header__hamburger"></span>
     </button>
 
@@ -9,7 +9,7 @@
     </div>
 
     <div class="app-header__actions">
-      <button class="app-header__icon-btn" @click="emit('notifications')" aria-label="Notifications">
+      <button class="app-header__icon-btn" aria-label="Notifications" @click="emit('notifications')">
         <span>🔔</span>
         <span v-if="(unreadCount ?? 0) > 0" class="app-header__badge">{{ unreadCount }}</span>
       </button>

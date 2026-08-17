@@ -271,8 +271,7 @@ useHead({
         </template>
       </template>
     </div>
-
-  </div>
+</div>
 </template>
 
 <style scoped>

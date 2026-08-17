@@ -199,14 +199,14 @@ const copyToClipboard = (text: string) => {
           >
             {{ chip.label }}
             <button class="opacity-60 hover:opacity-100 transition-opacity" @click="chip.clear">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </span>
           <span v-if="!activeChips.length" class="text-[11px] text-white/20">None</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-medium text-white/50 hover:text-white border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all" @click="exportCSV">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             Export
           </button>
           <button
@@ -216,7 +216,7 @@ const copyToClipboard = (text: string) => {
               : 'text-white/70 hover:text-white border border-white/15 hover:border-amber-500/50 bg-white/5 hover:bg-amber-500/10'"
             @click="filtersOpen = !filtersOpen"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
             Filter
           </button>
         </div>
@@ -293,12 +293,18 @@ const copyToClipboard = (text: string) => {
             v-if="(row.original as unknown as WithdrawalTransaction).status === 'PENDING_REVIEW'"
             class="flex items-center gap-2"
           >
-            <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check"
+            <UButton
+size="xs" color="success" variant="soft" icon="i-heroicons:check"
               @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'approve')"
-            >Mark Transferred</UButton>
-            <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
+            >
+Mark Transferred
+</UButton>
+            <UButton
+size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
               @click="confirmAction((row.original as unknown as WithdrawalTransaction).id, 'reject')"
-            >Reject</UButton>
+            >
+Reject
+</UButton>
           </div>
           <span v-else class="text-zinc-600 text-xs">Processed</span>
         </template>

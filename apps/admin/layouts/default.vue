@@ -116,8 +116,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 
 <template>
   <div class="admin-shell">
-
-    <!-- ── Header ──────────────────────────────────────────────────── -->
+<!-- ── Header ──────────────────────────────────────────────────── -->
     <header class="admin-header">
       <div class="header-left">
         <button
@@ -153,8 +152,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
     </header>
 
     <div class="admin-body">
-
-      <!-- ── Sidebar overlay (mobile) ─────────────────────────────── -->
+<!-- ── Sidebar overlay (mobile) ─────────────────────────────── -->
       <Transition name="fade">
         <div
           v-if="mobileOpen"
@@ -174,8 +172,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       >
         <nav class="sidebar-nav">
           <template v-for="(group, gi) in navGroups" :key="gi">
-
-            <!-- Group separator with label -->
+<!-- Group separator with label -->
             <div v-if="group.label" class="nav-group-label">
               <span>{{ group.label }}</span>
               <div class="nav-group-rule"></div>
@@ -209,8 +206,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       <main class="admin-main">
         <slot />
       </main>
-
-    </div>
+</div>
   </div>
 </template>
 

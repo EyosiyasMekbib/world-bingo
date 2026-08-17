@@ -215,8 +215,7 @@ const ggrPct = computed(() => {
 
 <template>
   <div class="dashboard">
-
-    <!-- Header -->
+<!-- Header -->
     <div class="db-header">
       <div>
         <h1 class="db-title">Dashboard</h1>
@@ -227,8 +226,8 @@ const ggrPct = computed(() => {
       </div>
       <button class="db-refresh" :class="{ 'db-refresh--spinning': manualLoading }" @click="refresh">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" :class="{ 'spin-anim': manualLoading }">
-          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
         </svg>
       </button>
     </div>
@@ -237,18 +236,19 @@ const ggrPct = computed(() => {
     <div class="db-filter-trigger-row">
       <button class="db-filter-btn" @click="openFilter">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
         </svg>
         {{ activeLabel }}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px">
-          <polyline points="6 9 12 15 18 9"/>
+          <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
       <div class="db-date-range-pill">{{ dateLabel }}</div>
     </div>
 
     <!-- Interval bottom-sheet modal -->
-    <ClientOnly><Teleport to="body">
+    <ClientOnly>
+<Teleport to="body">
       <Transition name="sheet-backdrop">
         <div v-if="filterOpen" class="sheet-backdrop" @click.self="filterOpen = false" />
       </Transition>
@@ -258,7 +258,7 @@ const ggrPct = computed(() => {
             <span class="sheet-title">Interval</span>
             <button class="sheet-close" @click="filterOpen = false">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
@@ -298,7 +298,8 @@ const ggrPct = computed(() => {
           <button class="sheet-apply" @click="applyFilter">Apply</button>
         </div>
       </Transition>
-    </Teleport></ClientOnly>
+    </Teleport>
+</ClientOnly>
 
     <!-- Error banner -->
     <div v-if="fetchError" class="db-error-banner">
@@ -512,8 +513,7 @@ const ggrPct = computed(() => {
         </div>
       </div>
     </div>
-
-  </div>
+</div>
 </template>
 
 <style scoped>

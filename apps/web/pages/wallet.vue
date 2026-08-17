@@ -101,8 +101,7 @@ function formatRelativeTime(dateStr: string): string {
 <template>
   <div class="wallet-page">
     <div class="wallet-inner">
-
-      <!-- ── Header ───────────────────────────────────────────────── -->
+<!-- ── Header ───────────────────────────────────────────────── -->
       <div class="page-header">
         <h1 class="page-title">My Wallet</h1>
         <button
@@ -255,8 +254,7 @@ function formatRelativeTime(dateStr: string): string {
           </NuxtLink>
         </div>
       </div>
-
-    </div>
+</div>
 
     <!-- ── Modals ──────────────────────────────────────────────────── -->
     <DepositModal

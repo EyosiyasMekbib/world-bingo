@@ -132,8 +132,7 @@ const columns = [
     <div class="rounded-2xl border border-(--surface-border) p-6 shadow-xl overflow-x-auto" style="background:var(--surface-raised);">
       <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-5">Platform-Wide Lifetime Flow</p>
       <div class="flex items-center gap-3 min-w-max">
-
-        <button class="text-center group" @click="filterByType('DEPOSIT')">
+<button class="text-center group" @click="filterByType('DEPOSIT')">
           <p class="text-[10px] text-white/40 uppercase tracking-widest mb-1">Deposited</p>
           <p class="text-xl font-bold text-green-400 group-hover:text-green-300 transition-colors tabular-nums">
             {{ fmt(summary.totalDeposited) }}
@@ -180,8 +179,7 @@ const columns = [
           </p>
           <p class="text-[10px] text-white/30">ETB</p>
         </button>
-
-      </div>
+</div>
     </div>
 
     <!-- ── Filters ───────────────────────────────────────────────────────── -->
@@ -226,8 +224,7 @@ const columns = [
     <!-- ── Unified Ledger ─────────────────────────────────────────────────── -->
     <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
       <UTable :columns="columns" :data="rows" :loading="loading">
-
-        <template #createdAt-cell="{ row }">
+<template #createdAt-cell="{ row }">
           <span class="text-white/50 text-xs font-mono">
             {{ new Date(row.original.createdAt).toLocaleString() }}
           </span>
@@ -240,14 +237,16 @@ const columns = [
         </template>
 
         <template #direction-cell="{ row }">
-          <span :class="row.original.direction === 'IN' ? 'text-green-400' : 'text-red-400'"
+          <span
+:class="row.original.direction === 'IN' ? 'text-green-400' : 'text-red-400'"
             class="text-xs font-bold">
             {{ row.original.direction === 'IN' ? '▲ IN' : '▼ OUT' }}
           </span>
         </template>
 
         <template #amount-cell="{ row }">
-          <span class="font-bold font-mono tabular-nums"
+          <span
+class="font-bold font-mono tabular-nums"
             :class="row.original.direction === 'IN' ? 'text-green-400' : 'text-red-400'">
             {{ row.original.direction === 'IN' ? '+' : '-' }}{{ Number(row.original.amount).toFixed(2) }} ETB
           </span>
@@ -284,8 +283,7 @@ const columns = [
           </span>
           <span v-else class="text-white/20">—</span>
         </template>
-
-      </UTable>
+</UTable>
 
       <div v-if="rows.length === 0 && !loading" class="py-16 text-center text-white/30">
         <UIcon name="i-heroicons:arrows-right-left" class="w-10 h-10 mx-auto mb-3 opacity-20" />

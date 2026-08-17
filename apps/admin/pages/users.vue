@@ -151,7 +151,7 @@ const copyToClipboard = (text: string) => {
     <!-- Toolbar Filters -->
     <div class="space-y-2">
       <button class="sm:hidden flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors" @click="filtersOpen = !filtersOpen">
-        <svg class="w-4 h-4 transition-transform" :class="filtersOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        <svg class="w-4 h-4 transition-transform" :class="filtersOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg>
         Filters
       </button>
       <div class="hidden sm:flex items-center gap-3 flex-wrap bg-white/5 p-3 rounded-2xl border border-white/5 shadow-inner" :class="{ '!flex': filtersOpen }">
@@ -307,8 +307,8 @@ const copyToClipboard = (text: string) => {
     <div v-if="totalPages > 1" class="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t border-(--surface-border) mt-6">
       <span class="text-sm text-white/40">Page {{ page }} of {{ totalPages }}</span>
       <div class="flex gap-2">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" @click="page--" label="Prev" />
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" @click="page++" label="Next" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-left" :disabled="page <= 1" label="Prev" @click="page--" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons:chevron-right" :disabled="page >= totalPages" label="Next" @click="page++" />
       </div>
     </div>
 
@@ -327,7 +327,8 @@ const copyToClipboard = (text: string) => {
           </div>
 
           <UFormField label="New Role">
-            <USelect v-model="newRole" :items="[
+            <USelect
+v-model="newRole" :items="[
               { label: 'Player', value: 'PLAYER' },
               { label: 'Admin', value: 'ADMIN' },
             ]" class="w-full" value-key="value" />

@@ -235,12 +235,16 @@ onMounted(fetchTournaments)
                     v-if="t.status === TournamentStatus.REGISTRATION"
                     size="xs" color="success" variant="soft" icon="i-heroicons:play"
                     @click="startTournament(t.id)"
-                  >Start</UButton>
+                  >
+Start
+</UButton>
                   <UButton
                     v-if="t.status !== TournamentStatus.COMPLETED && t.status !== TournamentStatus.CANCELLED"
                     size="xs" color="error" variant="soft" icon="i-heroicons:x-mark"
                     @click="cancelTournament(t.id)"
-                  >Cancel</UButton>
+                  >
+Cancel
+</UButton>
                 </div>
               </td>
             </tr>
@@ -294,7 +298,9 @@ onMounted(fetchTournaments)
           color="primary"
           :disabled="!newTournament.title || newTournament.entryFee < 0"
           @click="createTournament"
-        >Create Tournament</UButton>
+        >
+Create Tournament
+</UButton>
       </template>
     </UModal>
   </div>

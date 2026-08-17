@@ -187,7 +187,7 @@ onMounted(async () => {
           :disabled="pinnedKeys.has(toNameKey(game.gameName))"
           @click="addGame(game)"
         >
-          <img v-if="game.imageSquare" :src="game.imageSquare" alt="" class="w-6 h-6 rounded-md object-cover" >
+          <img v-if="game.imageSquare" :src="game.imageSquare" alt="" class="w-6 h-6 rounded-md object-cover">
           <span class="font-medium">{{ game.gameName }}</span>
           <span v-if="!game.isActive" class="text-[10px] uppercase tracking-wider text-red-400">hidden</span>
           <UIcon v-else name="i-heroicons:plus" class="w-3.5 h-3.5 text-white/40" />

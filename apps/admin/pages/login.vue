@@ -31,8 +31,7 @@ async function handleLogin() {
 
 <template>
   <div class="shell">
-
-    <!-- ── Left: brand panel ─────────────────────────────────────────── -->
+<!-- ── Left: brand panel ─────────────────────────────────────────── -->
     <aside class="brand-side" aria-hidden="true">
       <div class="brand-content">
         <div class="brand-mark">
@@ -72,8 +71,7 @@ async function handleLogin() {
         </header>
 
         <form class="form-fields" novalidate @submit.prevent="handleLogin">
-
-          <!-- Identifier -->
+<!-- Identifier -->
           <div class="field field--1">
             <label class="field-label" for="login-id">Username or Phone</label>
             <div class="input-wrap">
@@ -136,8 +134,7 @@ async function handleLogin() {
               Authenticating…
             </span>
           </button>
-
-        </form>
+</form>
 
         <footer class="form-footer">
           <svg viewBox="0 0 16 16" fill="currentColor" class="footer-icon" aria-hidden="true">
@@ -147,8 +144,7 @@ async function handleLogin() {
         </footer>
       </div>
     </main>
-
-  </div>
+</div>
 </template>
 
 <style scoped>

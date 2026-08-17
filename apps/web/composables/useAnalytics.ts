@@ -26,7 +26,7 @@ interface QueuedEvent extends RawEvent {
     ts: number
 }
 
-let queue: QueuedEvent[] = []
+const queue: QueuedEvent[] = []
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 
 function getAnonId(): string {

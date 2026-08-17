@@ -180,11 +180,11 @@ onUnmounted(() => {
     <div class="cat-header max-container">
       <NuxtLink to="/" class="back-btn" aria-label="Back to home">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6"/>
+          <polyline points="15 18 9 12 15 6" />
         </svg>
       </NuxtLink>
       <h1 class="cat-title">{{ categoryLabel }}</h1>
-      <div class="cat-count" v-if="showBingo">
+      <div v-if="showBingo" class="cat-count">
         {{ bingoGames.length }} rooms
       </div>
     </div>
@@ -221,7 +221,7 @@ onUnmounted(() => {
           <div class="rt-footer">
             <div class="rt-players">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
               </svg>
               {{ gameStore.livePlayers[game.id] ?? (game as any).currentPlayers ?? 0 }}<span class="rt-slash">/</span>{{ (game as any).maxPlayers ?? 10 }}
             </div>

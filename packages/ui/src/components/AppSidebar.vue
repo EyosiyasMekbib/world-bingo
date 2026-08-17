@@ -4,7 +4,7 @@
       <nav class="sidebar" role="dialog" aria-label="Navigation menu">
         <div class="sidebar__header">
           <span class="sidebar__title">MENU</span>
-          <button class="sidebar__close" @click="emit('close')" aria-label="Close menu">✕</button>
+          <button class="sidebar__close" aria-label="Close menu" @click="emit('close')">✕</button>
         </div>
 
         <div class="sidebar__user">

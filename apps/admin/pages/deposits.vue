@@ -407,7 +407,7 @@ const copyToClipboard = (text: string) => {
           >
             {{ chip.label }}
             <button class="opacity-60 hover:opacity-100 transition-opacity" @click="chip.clear">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </span>
           <span v-if="!activeChips.length" class="text-[11px] text-white/20">None</span>
@@ -419,12 +419,12 @@ const copyToClipboard = (text: string) => {
             title="Fetch each pending receipt from this (Ethiopia) browser and auto-verify"
             @click="checkAll"
           >
-            <svg v-if="checkAllRunning" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+            <svg v-if="checkAllRunning" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="9" /></svg>
             {{ checkAllRunning ? `Checking ${checkProgress.done}/${checkProgress.total}` : 'Check All' }}
           </button>
           <button class="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-[11px] font-medium text-white/50 hover:text-white border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all" @click="exportCSV">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             Export
           </button>
           <button
@@ -434,7 +434,7 @@ const copyToClipboard = (text: string) => {
               : 'text-white/70 hover:text-white border border-white/15 hover:border-amber-500/50 bg-white/5 hover:bg-amber-500/10'"
             @click="filtersOpen = !filtersOpen"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
             Filter
           </button>
         </div>
@@ -515,7 +515,9 @@ const copyToClipboard = (text: string) => {
             <UBadge
               v-if="ageMinutes((row.original as unknown as DepositTransaction).createdAt) > 15"
               color="error" variant="soft" size="xs"
-            >⚠ Late ({{ ageMinutes((row.original as unknown as DepositTransaction).createdAt) }}m)</UBadge>
+            >
+⚠ Late ({{ ageMinutes((row.original as unknown as DepositTransaction).createdAt) }}m)
+</UBadge>
           </div>
         </template>
         <template #receipt-cell="{ row }">
@@ -523,7 +525,9 @@ const copyToClipboard = (text: string) => {
             v-if="(row.original as unknown as DepositTransaction).receiptUrl"
             size="xs" color="neutral" variant="ghost" icon="i-heroicons:photo"
             @click="openReceipt((row.original as unknown as DepositTransaction).receiptUrl!)"
-          >View</UButton>
+          >
+View
+</UButton>
           <span v-else class="text-zinc-600 text-xs">No receipt</span>
         </template>
         <template #verification-cell="{ row }">
@@ -541,7 +545,9 @@ const copyToClipboard = (text: string) => {
               :loading="checkStates[(row.original as unknown as DepositTransaction).id]?.phase === 'fetching' || checkStates[(row.original as unknown as DepositTransaction).id]?.phase === 'verifying'"
               :disabled="!receiptRefOf(row.original as unknown as DepositTransaction)"
               @click="checkDeposit(row.original as unknown as DepositTransaction)"
-            >Check</UButton>
+            >
+Check
+</UButton>
             <UButton size="xs" color="success" variant="soft" icon="i-heroicons:check" @click="openApproveModal((row.original as unknown as DepositTransaction).id)">Approve</UButton>
             <UButton size="xs" color="warning" variant="soft" icon="i-heroicons:pencil-square" @click="openAdjustModal(row.original as unknown as DepositTransaction)">Adjust</UButton>
             <UButton size="xs" color="error" variant="soft" icon="i-heroicons:x-mark" @click="openDeclineModal((row.original as unknown as DepositTransaction).id)">Decline</UButton>
@@ -572,7 +578,7 @@ const copyToClipboard = (text: string) => {
             @click.stop="copyToClipboard(d.paymentTransactionId)"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
             </svg>
           </button>
         </div>
@@ -635,21 +641,21 @@ const copyToClipboard = (text: string) => {
               :disabled="!receiptRefOf(d) || checkStates[d.id]?.phase === 'fetching' || checkStates[d.id]?.phase === 'verifying'"
               @click="checkDeposit(d)"
             >
-              <svg v-if="checkStates[d.id]?.phase === 'fetching' || checkStates[d.id]?.phase === 'verifying'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+              <svg v-if="checkStates[d.id]?.phase === 'fetching' || checkStates[d.id]?.phase === 'verifying'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>
               {{ checkStates[d.id]?.phase === 'fetching' ? 'Fetching…' : checkStates[d.id]?.phase === 'verifying' ? 'Verifying…' : 'Check' }}
             </button>
             <button class="action-btn action-btn--approve" @click="openApproveModal(d.id)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
               Approve
             </button>
             <div class="action-row">
               <button class="action-btn action-btn--adjust" @click="openAdjustModal(d)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                 Adjust
               </button>
               <button class="action-btn action-btn--decline" @click="openDeclineModal(d.id)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 Decline
               </button>
             </div>
@@ -708,7 +714,9 @@ const copyToClipboard = (text: string) => {
               :color="declineNote === reason ? 'error' : 'neutral'"
               :variant="declineNote === reason ? 'soft' : 'ghost'"
               @click="declineNote = reason; customReason = ''"
-            >{{ reason }}</UButton>
+            >
+{{ reason }}
+</UButton>
           </div>
           <UInput v-model="customReason" placeholder="Custom reason (optional)" @input="declineNote = ''" />
           <p v-if="declineNote || customReason" class="text-xs text-zinc-500">

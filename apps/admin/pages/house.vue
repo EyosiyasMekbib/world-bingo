@@ -142,11 +142,13 @@ onMounted(() => {
     <div class="rounded-2xl border border-(--surface-border) p-6 shadow-xl" style="background:var(--surface-raised);">
       <p class="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Current House Balance</p>
       <div class="flex items-end gap-3 mb-2">
-        <span class="text-5xl font-extrabold tabular-nums"
+        <span
+class="text-5xl font-extrabold tabular-nums"
           :class="Number(balance) < 0 ? 'text-red-400' : 'text-yellow-400'">
           {{ balance }}
         </span>
-        <span class="text-xl font-bold mb-1"
+        <span
+class="text-xl font-bold mb-1"
           :class="Number(balance) < 0 ? 'text-red-400/60' : 'text-yellow-400/60'">
           ETB
         </span>

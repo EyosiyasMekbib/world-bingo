@@ -1,5 +1,5 @@
 <template>
-  <button class="wallet-balance" @click="emit('click')" aria-label="Open wallet">
+  <button class="wallet-balance" aria-label="Open wallet" @click="emit('click')">
     <span class="wallet-balance__icon">💰</span>
     <span class="wallet-balance__amount"
       >ETB

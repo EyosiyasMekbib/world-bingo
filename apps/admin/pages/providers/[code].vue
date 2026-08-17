@@ -239,7 +239,9 @@ onMounted(async () => {
                     :color="tx.type === 'BET' ? 'error' : tx.type.includes('WIN') || tx.type.includes('CREDIT') ? 'success' : 'neutral'"
                     variant="subtle"
                     size="xs"
-                  >{{ tx.type }}</UBadge>
+                  >
+{{ tx.type }}
+</UBadge>
                 </td>
                 <td class="px-4 py-3 text-white/50 text-xs font-mono">{{ tx.gameCode }}</td>
                 <td class="px-4 py-3 text-right font-mono text-xs text-white">{{ Number(tx.amount).toFixed(2) }}</td>

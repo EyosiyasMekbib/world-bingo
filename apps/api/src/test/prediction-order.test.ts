@@ -289,7 +289,7 @@ function createStore() {
 
     function project(model: string, row: Row | null, args: any): any {
         if (!row) return null
-        let out: Row = { ...row }
+        const out: Row = { ...row }
         if (args?.include) {
             for (const [rel, spec] of Object.entries(args.include)) {
                 if (!spec) continue

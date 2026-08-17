@@ -19,7 +19,7 @@
             <span class="status-badge" :class="`badge-${t.status.toLowerCase()}`">
               {{ statusLabel(t.status) }}
             </span>
-            <span class="rounds-badge" v-if="t.rounds > 1">Round {{ t.rounds }}</span>
+            <span v-if="t.rounds > 1" class="rounds-badge">Round {{ t.rounds }}</span>
           </div>
 
           <h3 class="card-title">{{ t.title }}</h3>
