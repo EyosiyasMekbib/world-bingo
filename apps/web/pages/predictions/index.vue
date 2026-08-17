@@ -207,13 +207,31 @@ useHead({ title: 'Predictions — World Bingo' })
       </ul>
     </section>
 
-    <div v-if="store.marketsLoading && !store.markets.length" class="pm-state">
-      <span class="pm-spinner" />
-      {{ t('prediction.loading') }}
+    <!-- Skeleton rows, sized like the real bout rows they replace, so the page
+         does not reflow when the data lands. A spinner would say "something is
+         happening"; this says "three bouts are coming, and this is their shape". -->
+    <div v-if="store.marketsLoading && !store.markets.length" class="pm-skeletons" aria-busy="true">
+      <span class="u-sr">{{ t('prediction.loading') }}</span>
+      <div v-for="n in 3" :key="n" class="pm-skel" :style="{ '--i': n - 1 }">
+        <div class="pm-skel-head">
+          <span class="pm-skel-chip" />
+          <span class="pm-skel-chip pm-skel-chip--sm" />
+        </div>
+        <div class="pm-skel-fighters">
+          <span class="pm-skel-block" />
+          <span class="pm-skel-block" />
+        </div>
+        <span class="pm-skel-line" />
+      </div>
     </div>
 
     <div v-else-if="!store.markets.length" class="pm-empty">
-      <div class="pm-empty-icon">🥊</div>
+      <svg class="pm-empty-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <rect x="9" y="14" width="19" height="21" rx="6.5" stroke="currentColor" stroke-width="1.6" />
+        <path d="M28 20h4.5A5.5 5.5 0 0 1 38 25.5v0a5.5 5.5 0 0 1-5.5 5.5H28" stroke="currentColor" stroke-width="1.6" />
+        <path d="M14 14v-2.5A3.5 3.5 0 0 1 17.5 8h2A3.5 3.5 0 0 1 23 11.5V14" stroke="currentColor" stroke-width="1.6" />
+        <path d="M9 24h19" stroke="currentColor" stroke-width="1.6" />
+      </svg>
       <p class="pm-empty-text">
         {{ store.marketsFailed ? t('prediction.loadFailed') : t('prediction.emptyCard') }}
       </p>
@@ -229,10 +247,11 @@ useHead({ title: 'Predictions — World Bingo' })
       </h2>
 
       <NuxtLink
-        v-for="market in group.markets"
+        v-for="(market, i) in group.markets"
         :key="market.id"
         :to="`/predictions/${market.id}`"
         class="pm-bout"
+        :style="{ '--i': i }"
       >
         <div class="pm-bout-head">
           <span v-if="boutMetaOf(market.description).mainEvent" class="pm-badge pm-badge--main">
@@ -313,6 +332,88 @@ useHead({ title: 'Predictions — World Bingo' })
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+/* ── Skeletons ──
+   Shaped like the bout rows they stand in for, so nothing jumps when the real
+   data arrives. The shimmer is a transform on a pseudo-element, never a width
+   or background-position animation, so it stays on the compositor. */
+.pm-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.u-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.pm-skel {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  opacity: 0;
+  animation: pm-skel-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i) * 70ms);
+}
+@keyframes pm-skel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.pm-skel-head { display: flex; gap: 0.5rem; }
+.pm-skel-fighters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.pm-skel-chip,
+.pm-skel-block,
+.pm-skel-line {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-border) 60%, var(--surface-raised));
+}
+.pm-skel-chip { width: 74px; height: 18px; border-radius: 999px; }
+.pm-skel-chip--sm { width: 52px; }
+.pm-skel-block { height: 54px; border-radius: 10px; }
+.pm-skel-line { width: 45%; height: 12px; }
+.pm-skel-chip::after,
+.pm-skel-block::after,
+.pm-skel-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text-secondary) 14%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: pm-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes pm-shimmer {
+  to { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pm-skel { animation: none; opacity: 1; }
+  .pm-skel-chip::after,
+  .pm-skel-block::after,
+  .pm-skel-line::after { animation: none; }
+}
+
+/* The empty mark is drawn, not an emoji — it inherits ink colour and scales
+   with the type rather than rendering as someone else's glyph. */
+.pm-empty-mark {
+  width: 46px;
+  height: 46px;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  margin-bottom: 0.35rem;
 }
 
 /* Question heading — only on markets whose outcomes do not name themselves. */
@@ -554,7 +655,37 @@ useHead({ title: 'Predictions — World Bingo' })
   padding: 0.9rem 1rem;
   text-decoration: none;
   color: inherit;
-  transition: border-color var(--duration-fast, 200ms), transform var(--duration-fast, 200ms);
+  /* One easing for everything that moves on this page. The overshoot curve
+     reads as weight rather than as a fade. */
+  transition:
+    border-color 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* Staggered reveal — rows arrive in reading order instead of all at once. */
+  animation: pm-row-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+@keyframes pm-row-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.pm-bout:hover {
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, var(--surface-border));
+  /* Tinted to the surface rather than a neutral drop shadow, and no glow. */
+  box-shadow: 0 10px 28px -18px color-mix(in srgb, var(--brand-primary) 55%, transparent);
+}
+/* Tactile feedback: the row physically gives under the finger. */
+.pm-bout:active {
+  transform: scale(0.988);
+  transition-duration: 90ms;
+}
+.pm-bout:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pm-bout { animation: none; }
+  .pm-bout:active { transform: none; }
 }
 .pm-bout:hover {
   border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
@@ -727,6 +858,13 @@ useHead({ title: 'Predictions — World Bingo' })
   border-radius: 8px;
   padding: 0.55rem 1.3rem;
   cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms ease;
+}
+.pm-retry:hover { filter: brightness(1.06); }
+.pm-retry:active { transform: scale(0.96); transition-duration: 90ms; }
+.pm-retry:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .pm-retry:active { transform: none; }
 }
 
 @media (max-width: 480px) {

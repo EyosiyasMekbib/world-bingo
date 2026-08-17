@@ -116,8 +116,10 @@ function submitSearch() {
         <NuxtLink to="/" class="ab-nav-link" exact-active-class="ab-nav-active">Home</NuxtLink>
         <NuxtLink to="/games/mini" class="ab-nav-link" active-class="ab-nav-active">Aviator</NuxtLink>
         <NuxtLink to="/games" class="ab-nav-link" exact-active-class="ab-nav-active">Games</NuxtLink>
-        <NuxtLink v-if="predictionsEnabled" to="/predictions" class="ab-nav-link" active-class="ab-nav-active">Fights</NuxtLink>
-        <NuxtLink to="/games/live" class="ab-nav-link" active-class="ab-nav-active">
+        <NuxtLink v-if="predictionsEnabled" to="/predictions" class="ab-nav-link" active-class="ab-nav-active">
+          Fights<span class="ab-new">NEW</span>
+        </NuxtLink>
+        <NuxtLink v-else to="/games/live" class="ab-nav-link" active-class="ab-nav-active">
           Virtual Sport<span class="ab-new">NEW</span>
         </NuxtLink>
         <NuxtLink to="/promotions" class="ab-nav-link" active-class="ab-nav-active">Promotions</NuxtLink>
@@ -168,7 +170,7 @@ function submitSearch() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 4 9l2.5 2.5M9 4 7 6M14.5 14.5 12 12M17 20l2.5-2.5L17 15M15 20l2-2M4 20l7.5-7.5M14 4l6 6" /></svg>
           <span>Fights</span>
         </NuxtLink>
-        <NuxtLink to="/games/live" class="ab-mtab" active-class="ab-mtab-active">
+        <NuxtLink v-if="!predictionsEnabled" to="/games/live" class="ab-mtab" active-class="ab-mtab-active">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           <span>Virtual</span>
         </NuxtLink>

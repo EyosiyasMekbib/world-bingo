@@ -375,10 +375,27 @@ const tooltipX = computed(() => {
   border-radius: 999px;
   padding: 3px 12px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pc-range:hover {
   color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, var(--surface-border));
+}
+/* Tactile: the pill gives under the finger, then springs back. */
+.pc-range:active {
+  transform: scale(0.94);
+  transition-duration: 90ms;
+}
+.pc-range:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-range:active { transform: none; }
 }
 .pc-range-on {
   color: var(--text-on-brand, #000);

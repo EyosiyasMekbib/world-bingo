@@ -50,7 +50,15 @@ function descriptionFor(bout: Bout): string {
     return bout.mainEvent ? `${line} — Main Event` : line
 }
 
-async function main() {
+/**
+ * Seeds the ETFC card. Exported so the main seed can call it directly rather
+ * than shelling out to a second script — `RUN_SEED=true` then covers the fight
+ * card too, on every environment, with no extra command to remember.
+ *
+ * Idempotent, and every market is left DRAFT: publishing is a deliberate admin
+ * action, so running this on a live deployment adds nothing players can see.
+ */
+export async function seedEtfcCard() {
     console.log(`Seeding "${EVENT_NAME}" prediction markets...`)
 
     let created = 0
@@ -106,18 +114,26 @@ async function main() {
         }
     }
 
-    const total = await prisma.predictionMarket.count({ where: { eventName: EVENT_NAME } })
-    console.log(`Done — ${created} created, ${existingCount} already present, ${total} markets on the card`)
-    if (total !== CARD.length) {
-        console.warn(`⚠  Expected ${CARD.length} markets for "${EVENT_NAME}" but found ${total}`)
+    // Count only the bouts this script owns. Other markets legitimately share the
+    // event name — the faceoff novelty markets do — so counting everything under
+    // `eventName` would warn about markets that are supposed to be there.
+    const bouts = await prisma.predictionMarket.count({
+        where: { eventName: EVENT_NAME, question: { in: CARD.map(questionFor) } },
+    })
+    console.log(`Done — ${created} created, ${existingCount} already present, ${bouts}/${CARD.length} bouts on the card`)
+    if (bouts !== CARD.length) {
+        console.warn(`⚠  Expected ${CARD.length} bouts for "${EVENT_NAME}" but found ${bouts}`)
     }
 }
 
-main()
-    .catch((e) => {
-        console.error(e)
-        process.exitCode = 1
-    })
-    .finally(async () => {
-        await prisma.$disconnect()
-    })
+// Standalone runner — only when invoked directly, so importing this module
+// from seed.ts does not trigger a second run.
+const invokedDirectly = process.argv[1]?.includes('seed-etfc')
+if (invokedDirectly) {
+    seedEtfcCard()
+        .catch((e) => {
+            console.error(e)
+            process.exitCode = 1
+        })
+        .finally(() => prisma.$disconnect())
+}

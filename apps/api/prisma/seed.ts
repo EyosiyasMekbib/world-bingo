@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 import bcrypt from 'bcryptjs'
+import { seedEtfcCard } from './seed-etfc'
 
 const prisma = new PrismaClient()
 
@@ -233,6 +234,19 @@ async function main() {
         }
     }
     console.log('Initial games created')
+
+    // ── Prediction markets ───────────────────────────────────────────────────
+    // The ETFC card seeds with everything else so a fresh environment comes up
+    // complete. Every market is DRAFT and the whole feature sits behind
+    // `feature_prediction_market` (default false), so this adds nothing a player
+    // can see until an admin both publishes a market and turns the flag on.
+    // Failure here must not abort the rest of the seed — the bingo tables above
+    // matter more than the fight card.
+    try {
+        await seedEtfcCard()
+    } catch (err) {
+        console.warn('⚠  ETFC prediction card seed failed, continuing:', (err as Error).message)
+    }
 }
 
 main()
