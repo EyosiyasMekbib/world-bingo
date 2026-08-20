@@ -46,6 +46,7 @@ vi.mock('../lib/redis', () => {
         scard: vi.fn().mockResolvedValue(1),
         smembers: vi.fn().mockResolvedValue([]),
         incrby: vi.fn().mockResolvedValue(1),
+        decrby: vi.fn().mockResolvedValue(1),
         expire: vi.fn().mockResolvedValue(1),
     }
     return {
@@ -455,6 +456,42 @@ describe('GameService.joinGame — spendAccount selection', () => {
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
         expect(new Decimal(wallet.realBalance).toNumber()).toBe(990)
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(500) // untouched
+    })
+})
+
+// ─── LeaveGame — Bonus Restore (Task 15) ─────────────────────────────────────
+// Task 14 made joinGame stamp the GAME_ENTRY transaction's bonusExpiresAtSpend
+// with the expiry of the lot it consumed. leaveGame must restore the bonus
+// portion of a refund into a lot carrying that SAME original expiry — not a
+// fresh window — by routing through BonusService.restore instead of a raw
+// wallet.bonusBalance increment.
+
+describe('GameService.leaveGame — bonus restore', () => {
+    it('restores a bonus-funded entry to a lot carrying the ORIGINAL expiry, not a fresh window', async () => {
+        const originalExpiry = new Date(Date.now() + 1800_000)
+        const user = await createUserWithWallet('leaverestore1', '+251900000022', 0)
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS' } })
+        // Grant amount equals the entry cost below so the lot is FULLY consumed
+        // (status → CONSUMED) by the join — this makes the assertions below a
+        // clean discriminator: pre-fix, leaveGame never creates a new lot, so
+        // there would be no ACTIVE lot left at all after leaving.
+        await prisma.$transaction((tx) =>
+            BonusService.grant(tx, { userId: user.id, amount: 50, source: 'ADMIN', expiresAt: originalExpiry }),
+        )
+
+        const game = await createGame({ ticketPrice: 50 })
+        const c = await createCartela('LEAVE-RESTORE-C1')
+        await GameService.joinGame(user.id, game.id, [c.serial])
+        await GameService.leaveGame(user.id, game.id)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50)
+
+        const activeLot = await prisma.bonusGrant.findFirstOrThrow({
+            where: { userId: user.id, status: 'ACTIVE' },
+        })
+        expect(activeLot.expiresAt?.getTime()).toBe(originalExpiry.getTime())
+        expect(new Decimal(activeLot.remaining).toNumber()).toBe(50)
     })
 })
 
