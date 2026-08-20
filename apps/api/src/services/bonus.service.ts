@@ -49,13 +49,17 @@ export class BonusService {
         `
         const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
 
-        const periodStart = params.periodStart ?? new Date()
-        const expiresAt = params.expiresAt ?? null
+        // Convert dates to ISO strings and bind as naive timestamps to match schema.
+        // The columns are `timestamp` WITHOUT time zone holding UTC. Prisma binds a JS Date
+        // as timestamptz, which Postgres reconciles using the SESSION timezone, silently
+        // shifting the stored value. Passing ISO strings cast to `timestamp` avoids this.
+        const periodStartUtc = (params.periodStart ?? new Date()).toISOString()
+        const expiresAtUtc = params.expiresAt ? params.expiresAt.toISOString() : null
         const ruleId = params.ruleId ?? null
 
         const rows = await tx.$queryRaw<Array<{ id: string }>>`
             INSERT INTO bonus_grants (id, "userId", "ruleId", amount, remaining, "periodStart", "expiresAt", status, "createdAt")
-            VALUES (gen_random_uuid(), ${params.userId}, ${ruleId}, ${amount}, ${amount}, ${periodStart}, ${expiresAt}, 'ACTIVE', NOW())
+            VALUES (gen_random_uuid(), ${params.userId}, ${ruleId}, ${amount}, ${amount}, ${periodStartUtc}::timestamp, ${expiresAtUtc}::timestamp, 'ACTIVE', NOW())
             ON CONFLICT ("ruleId", "userId", "periodStart") DO NOTHING
             RETURNING id
         `

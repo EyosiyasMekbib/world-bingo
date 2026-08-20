@@ -40,8 +40,7 @@ describe('BonusService.grant', () => {
         expect(new Decimal(lot.amount).toNumber()).toBe(100)
         expect(new Decimal(lot.remaining).toNumber()).toBe(100)
         expect(lot.status).toBe('ACTIVE')
-        // Verify expiresAt was set (exact value may have DB timezone conversions)
-        expect(lot.expiresAt).not.toBeNull()
+        expect(lot.expiresAt?.getTime()).toBe(expiresAt.getTime())
     })
 
     it('is idempotent on (ruleId, userId, periodStart)', async () => {
