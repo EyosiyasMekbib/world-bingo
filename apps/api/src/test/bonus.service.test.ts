@@ -162,3 +162,43 @@ describe('BonusService.spend', () => {
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(10)
     })
 })
+
+describe('BonusService.reduce', () => {
+    it('consumes lots soonest-first like spend', async () => {
+        const user = await makeUser('reduce1', '+251900000005')
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 40, source: 'ADMIN' }))
+
+        const result = await prisma.$transaction((tx) => BonusService.reduce(tx, user.id, 15))
+
+        expect(result.reduced.toNumber()).toBe(15)
+        expect(result.bonusBalanceAfter.toNumber()).toBe(25)
+    })
+
+    it('clamps at zero instead of throwing when the reduction exceeds the balance', async () => {
+        const user = await makeUser('reduce2', '+251900000006')
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 10, source: 'ADMIN' }))
+
+        const result = await prisma.$transaction((tx) => BonusService.reduce(tx, user.id, 999))
+
+        expect(result.reduced.toNumber()).toBe(10)
+        expect(result.bonusBalanceAfter.toNumber()).toBe(0)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(0)
+    })
+})
+
+describe('BonusService.restore', () => {
+    it('grants a fresh lot carrying the passed-in expiry, not a new window', async () => {
+        const user = await makeUser('restore1', '+251900000007')
+        const originalExpiry = new Date(Date.now() + 1800_000)
+
+        const result = await prisma.$transaction((tx) => BonusService.restore(tx, user.id, 25, originalExpiry))
+
+        expect(result.granted).toBe(true)
+        expect(result.bonusBalanceAfter.toNumber()).toBe(25)
+        const lot = await prisma.bonusGrant.findUniqueOrThrow({ where: { id: result.grantId! } })
+        expect(lot.ruleId).toBeNull()
+        expect(lot.expiresAt?.getTime()).toBe(originalExpiry.getTime())
+    })
+})

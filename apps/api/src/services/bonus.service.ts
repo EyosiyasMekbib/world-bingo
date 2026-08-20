@@ -27,6 +27,12 @@ export interface SpendBonusResult {
     soonestExpiryConsumed: Date | null
 }
 
+export interface ReduceBonusResult {
+    reduced: Decimal
+    bonusBalanceBefore: Decimal
+    bonusBalanceAfter: Decimal
+}
+
 export class InsufficientBonusBalanceError extends Error {
     statusCode = 400
 
@@ -90,14 +96,15 @@ export class BonusService {
      * Consumes active lots soonest-expiry-first (NULL expiry sorts last — it
      * never dies, so it is the worst choice to spend from first). Assumes the
      * caller already holds a FOR UPDATE lock on the wallet row in this same
-     * transaction; this does not re-lock it.
+     * transaction; this does not re-lock it. Shared by `spend` (throws when
+     * short) and `reduce` (clamps at zero when short).
      */
-    static async spend(tx: Prisma.TransactionClient, userId: string, amount: Decimal | number): Promise<SpendBonusResult> {
-        const need = new Decimal(amount)
-        if (!need.isFinite() || need.lte(0)) {
-            throw new Error('Spend amount must be a positive number')
-        }
-
+    private static async consumeLots(
+        tx: Prisma.TransactionClient,
+        userId: string,
+        amount: Decimal,
+        opts: { clamp: boolean },
+    ): Promise<{ consumed: Decimal; soonestExpiryConsumed: Date | null }> {
         const lots = await tx.$queryRaw<Array<{ id: string; remaining: Decimal; expiresAt: Date | null }>>`
             SELECT id, remaining, "expiresAt" FROM bonus_grants
             WHERE "userId" = ${userId} AND status = 'ACTIVE'
@@ -105,12 +112,7 @@ export class BonusService {
             FOR UPDATE
         `
 
-        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
-            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}
-        `
-        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
-
-        let remainingNeed = need
+        let remainingNeed = amount
         let soonestExpiryConsumed: Date | null = null
         const updates: Array<Promise<unknown>> = []
 
@@ -124,27 +126,66 @@ export class BonusService {
             updates.push(
                 tx.bonusGrant.update({
                     where: { id: lot.id },
-                    data: {
-                        remaining: newRemaining,
-                        status: newRemaining.lte(0) ? 'CONSUMED' : 'ACTIVE',
-                    },
+                    data: { remaining: newRemaining, status: newRemaining.lte(0) ? 'CONSUMED' : 'ACTIVE' },
                 }),
             )
             remainingNeed = remainingNeed.minus(take)
         }
 
-        if (remainingNeed.gt(0)) {
+        if (remainingNeed.gt(0) && !opts.clamp) {
             throw new InsufficientBonusBalanceError()
         }
 
         await Promise.all(updates)
-        await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: need } } })
+        const consumed = amount.minus(remainingNeed.gt(0) ? remainingNeed : new Decimal(0))
+        return { consumed, soonestExpiryConsumed }
+    }
+
+    static async spend(tx: Prisma.TransactionClient, userId: string, amount: Decimal | number): Promise<SpendBonusResult> {
+        const need = new Decimal(amount)
+        if (!need.isFinite() || need.lte(0)) {
+            throw new Error('Spend amount must be a positive number')
+        }
+        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
+            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}
+        `
+        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
+
+        const { consumed, soonestExpiryConsumed } = await this.consumeLots(tx, userId, need, { clamp: false })
+        await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: consumed } } })
 
         return {
-            spent: need,
+            spent: consumed,
             bonusBalanceBefore,
-            bonusBalanceAfter: bonusBalanceBefore.minus(need),
+            bonusBalanceAfter: bonusBalanceBefore.minus(consumed),
             soonestExpiryConsumed,
         }
+    }
+
+    /** Negative admin adjustment. Clamps at zero — a balance never goes below zero. */
+    static async reduce(tx: Prisma.TransactionClient, userId: string, amount: Decimal | number): Promise<ReduceBonusResult> {
+        const requested = new Decimal(amount)
+        if (!requested.isFinite() || requested.lte(0)) {
+            throw new Error('Reduce amount must be a positive number')
+        }
+        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
+            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}
+        `
+        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
+
+        const { consumed } = await this.consumeLots(tx, userId, requested, { clamp: true })
+        await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: consumed } } })
+
+        return { reduced: consumed, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore.minus(consumed) }
+    }
+
+    /** Recreates a lot for refunded bonus, carrying the ORIGINAL expiry — never a fresh window. */
+    static async restore(
+        tx: Prisma.TransactionClient,
+        userId: string,
+        amount: Decimal | number,
+        expiresAt: Date | null,
+    ): Promise<GrantBonusResult> {
+        return this.grant(tx, { userId, amount, source: 'ADMIN', ruleId: null, expiresAt })
     }
 }
