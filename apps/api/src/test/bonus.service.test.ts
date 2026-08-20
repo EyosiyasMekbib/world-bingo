@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/library'
 import { prisma } from './setup'
-import { BonusService } from '../services/bonus.service'
+import { BonusService, InsufficientBonusBalanceError } from '../services/bonus.service'
 
 async function makeUser(username: string, phone: string) {
     return prisma.user.create({
@@ -123,5 +123,42 @@ describe('BonusService.grant', () => {
             expect(stillWorks).not.toBeNull()
             expect(new Decimal(stillWorks!.bonusBalance).toNumber()).toBe(10)
         })
+    })
+})
+
+describe('BonusService.spend', () => {
+    it('consumes lots soonest-expiry-first and marks drained lots CONSUMED', async () => {
+        const user = await makeUser('spend1', '+251900000003')
+        const soon = new Date(Date.now() + 3600_000)
+        const later = new Date(Date.now() + 7 * 86_400_000)
+
+        await prisma.$transaction(async (tx) => {
+            await BonusService.grant(tx, { userId: user.id, amount: 30, source: 'ADMIN', expiresAt: later })
+            await BonusService.grant(tx, { userId: user.id, amount: 20, source: 'ADMIN', expiresAt: soon })
+        })
+
+        const result = await prisma.$transaction((tx) => BonusService.spend(tx, user.id, 25))
+
+        expect(result.spent.toNumber()).toBe(25)
+        expect(result.bonusBalanceAfter.toNumber()).toBe(25)
+        expect(result.soonestExpiryConsumed?.getTime()).toBe(soon.getTime())
+
+        const lots = await prisma.bonusGrant.findMany({ where: { userId: user.id }, orderBy: { expiresAt: 'asc' } })
+        expect(lots[0].status).toBe('CONSUMED')
+        expect(new Decimal(lots[0].remaining).toNumber()).toBe(0)
+        expect(lots[1].status).toBe('ACTIVE')
+        expect(new Decimal(lots[1].remaining).toNumber()).toBe(25)
+    })
+
+    it('throws InsufficientBonusBalanceError and touches nothing when lots fall short', async () => {
+        const user = await makeUser('spend2', '+251900000004')
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 10, source: 'ADMIN' }))
+
+        await expect(prisma.$transaction((tx) => BonusService.spend(tx, user.id, 50))).rejects.toThrow(
+            InsufficientBonusBalanceError,
+        )
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(10)
     })
 })

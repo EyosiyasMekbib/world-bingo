@@ -20,6 +20,13 @@ export interface GrantBonusResult {
     bonusBalanceAfter: Decimal
 }
 
+export interface SpendBonusResult {
+    spent: Decimal
+    bonusBalanceBefore: Decimal
+    bonusBalanceAfter: Decimal
+    soonestExpiryConsumed: Date | null
+}
+
 export class InsufficientBonusBalanceError extends Error {
     statusCode = 400
 
@@ -77,5 +84,67 @@ export class BonusService {
         const bonusBalanceAfter = bonusBalanceBefore.plus(amount)
 
         return { granted: true, grantId, amount, bonusBalanceBefore, bonusBalanceAfter }
+    }
+
+    /**
+     * Consumes active lots soonest-expiry-first (NULL expiry sorts last — it
+     * never dies, so it is the worst choice to spend from first). Assumes the
+     * caller already holds a FOR UPDATE lock on the wallet row in this same
+     * transaction; this does not re-lock it.
+     */
+    static async spend(tx: Prisma.TransactionClient, userId: string, amount: Decimal | number): Promise<SpendBonusResult> {
+        const need = new Decimal(amount)
+        if (!need.isFinite() || need.lte(0)) {
+            throw new Error('Spend amount must be a positive number')
+        }
+
+        const lots = await tx.$queryRaw<Array<{ id: string; remaining: Decimal; expiresAt: Date | null }>>`
+            SELECT id, remaining, "expiresAt" FROM bonus_grants
+            WHERE "userId" = ${userId} AND status = 'ACTIVE'
+            ORDER BY "expiresAt" ASC NULLS LAST, id ASC
+            FOR UPDATE
+        `
+
+        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
+            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}
+        `
+        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
+
+        let remainingNeed = need
+        let soonestExpiryConsumed: Date | null = null
+        const updates: Array<Promise<unknown>> = []
+
+        for (const lot of lots) {
+            if (remainingNeed.lte(0)) break
+            const lotRemaining = new Decimal(lot.remaining)
+            const take = Decimal.min(lotRemaining, remainingNeed)
+            if (soonestExpiryConsumed === null) soonestExpiryConsumed = lot.expiresAt
+
+            const newRemaining = lotRemaining.minus(take)
+            updates.push(
+                tx.bonusGrant.update({
+                    where: { id: lot.id },
+                    data: {
+                        remaining: newRemaining,
+                        status: newRemaining.lte(0) ? 'CONSUMED' : 'ACTIVE',
+                    },
+                }),
+            )
+            remainingNeed = remainingNeed.minus(take)
+        }
+
+        if (remainingNeed.gt(0)) {
+            throw new InsufficientBonusBalanceError()
+        }
+
+        await Promise.all(updates)
+        await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: need } } })
+
+        return {
+            spent: need,
+            bonusBalanceBefore,
+            bonusBalanceAfter: bonusBalanceBefore.minus(need),
+            soonestExpiryConsumed,
+        }
     }
 }
