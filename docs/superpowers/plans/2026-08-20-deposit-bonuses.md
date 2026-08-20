@@ -18,6 +18,7 @@
 - All money-touching work runs inside the caller's existing `prisma.$transaction` on a `SELECT ... FOR UPDATE`-locked wallet row. `BonusService` methods take a `Prisma.TransactionClient` (`tx`), never the bare `prisma` client, and never lock the wallet themselves — the caller already holds the lock.
 - Test command: `pnpm --filter @world-bingo/api test` (Vitest, sequential, real Postgres via `DATABASE_URL_TEST`). Add new tables to `cleanDb()` in `apps/api/src/test/setup.ts`.
 - Per project memory: `apps/admin` typecheck is red by default and `pnpm lint` does not check TypeScript. Verify by grepping the touched files for their own errors, not by trusting exit codes.
+- `BonusGrant.periodStart`/`.expiresAt` and every other `bonus_*` timestamp column are `timestamp` WITHOUT time zone. Any raw `$queryRaw`/`$executeRaw` that binds a JS `Date` directly into one — as a write, or as a comparison in a `WHERE` clause — hits a documented bug class already present in this codebase (`player-metrics.service.ts`'s `findStaleUserIds`) and rediscovered during Task 2's review: Prisma sends a bound `Date` as `timestamptz`, and Postgres reconciles the mismatch using the session timezone, silently shifting the value/comparison on any non-UTC-pinned session. Always convert with `.toISOString()` first and cast explicitly in the SQL (`${isoString}::timestamp`). Prisma's typed client calls (`tx.bonusGrant.update(...)`, etc.) are unaffected — this only applies to raw SQL.
 
 ---
 
@@ -2740,9 +2741,17 @@ Add to `apps/api/src/services/bonus.service.ts`, inside the `BonusService` class
      * reduce/restore, this locks the wallet itself.
      */
     static async expireForUser(tx: Prisma.TransactionClient, userId: string, now: Date): Promise<ExpireBonusResult | null> {
+        // "expiresAt" is `timestamp` WITHOUT time zone; binding a raw Date here
+        // sends it as timestamptz and lets Postgres reconcile using the session
+        // timezone, silently shifting the comparison on any non-UTC-pinned
+        // session — the exact bug already documented and fixed in
+        // player-metrics.service.ts's findStaleUserIds, and hit again (then
+        // fixed) in BonusService.grant during Task 2's review. Bind the ISO
+        // string and cast explicitly instead.
+        const nowUtc = now.toISOString()
         const lots = await tx.$queryRaw<Array<{ id: string; remaining: Decimal }>>`
             SELECT id, remaining FROM bonus_grants
-            WHERE "userId" = ${userId} AND status = 'ACTIVE' AND "expiresAt" <= ${now}
+            WHERE "userId" = ${userId} AND status = 'ACTIVE' AND "expiresAt" <= ${nowUtc}::timestamp
             FOR UPDATE
         `
         if (lots.length === 0) return null
@@ -2809,8 +2818,12 @@ const bonusExpiryQueue = new Queue<BonusExpiryJobData>(QUEUE_NAMES.BONUS_EXPIRY,
 
 export async function sweepExpiredBonuses(): Promise<{ usersProcessed: number; totalExpired: string }> {
     const now = new Date()
+    // See the identical note in BonusService.expireForUser — bind the ISO
+    // string and cast explicitly; a raw Date here would compare against
+    // "expiresAt" (naive timestamp) using the session timezone.
+    const nowUtc = now.toISOString()
     const dueUsers = await prisma.$queryRaw<Array<{ userId: string }>>`
-        SELECT DISTINCT "userId" FROM bonus_grants WHERE status = 'ACTIVE' AND "expiresAt" <= ${now}
+        SELECT DISTINCT "userId" FROM bonus_grants WHERE status = 'ACTIVE' AND "expiresAt" <= ${nowUtc}::timestamp
     `
 
     let usersProcessed = 0
