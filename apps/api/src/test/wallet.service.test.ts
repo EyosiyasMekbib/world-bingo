@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { WalletService } from '../services/wallet.service'
+import { BonusRuleService } from '../services/bonus-rule.service'
 import { prisma } from './setup'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 
@@ -253,6 +254,24 @@ describe('WalletService', () => {
             const lot = await prisma.bonusGrant.findFirstOrThrow({ where: { userId: testUserId } })
             expect(lot.ruleId).toBeNull()
             expect(Number(lot.remaining)).toBe(100)
+        })
+
+        it('a first deposit that also crosses a daily-deposit threshold grants both lots', async () => {
+            // The outer beforeEach already seeded first_deposit_bonus_amount = '100'.
+            await BonusRuleService.create({
+                name: 'Daily combo', type: 'DAILY_DEPOSIT', threshold: 500, rewardType: 'FIXED',
+                rewardValue: 50, validityHours: 24, startsAt: '2026-01-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z',
+            })
+
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 600 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.realBalance)).toBe(1100) // 500 existing + 600 deposited
+            expect(Number(wallet.bonusBalance)).toBe(150) // 100 first-deposit + 50 daily
+
+            const lots = await prisma.bonusGrant.findMany({ where: { userId: testUserId } })
+            expect(lots).toHaveLength(2)
         })
     })
 

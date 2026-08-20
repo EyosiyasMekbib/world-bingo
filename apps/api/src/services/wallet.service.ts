@@ -6,6 +6,7 @@ import { ReferralService } from './referral.service'
 import { wbDepositsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
+import { DepositBonusService } from './deposit-bonus.service'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -167,11 +168,17 @@ export class WalletService {
                 }
             }
 
-            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount }
-        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount }) => {
-            const finalBonusBalance = bonusAwarded > 0
-                ? bonusBefore.plus(new Decimal(bonusAwarded)).toNumber()
-                : bonusBefore.toNumber()
+            // ── Deposit Bonus Rules (daily / weekly threshold) ──────────────
+            // Runs regardless of whether a first-deposit bonus was just granted
+            // above — the two are independent and both can fire on the same
+            // deposit (e.g. a large first deposit that also crosses a daily
+            // threshold).
+            const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, new Date())
+
+            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }
+        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }) => {
+            const depositBonusTotal = new Decimal(depositBonusResult.daily?.amount ?? 0).plus(depositBonusResult.weekly?.amount ?? 0)
+            const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
 
             // Push balance update
             NotificationService.pushWalletUpdate(
