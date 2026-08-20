@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
+import { Readable } from 'stream'
 import { z } from 'zod'
 import { SegmentService } from '../../services/player-crm/segment.service'
 import { SegmentCompileError } from '../../services/player-crm/segment-compiler'
@@ -381,7 +382,6 @@ const crmRoutes: FastifyPluginAsync = async (fastify) => {
 
 /** Adapts the async generator to something Fastify can pipe. */
 function streamToWebReadable(gen: AsyncGenerator<string>): NodeJS.ReadableStream {
-    const { Readable } = require('stream') as typeof import('stream')
     return Readable.from(gen)
 }
 
