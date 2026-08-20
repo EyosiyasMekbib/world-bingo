@@ -17,6 +17,10 @@ export class WalletService {
         return wallet
     }
 
+    static async setSpendAccount(userId: string, account: 'REAL' | 'BONUS') {
+        return prisma.wallet.update({ where: { userId }, data: { spendAccount: account } })
+    }
+
     static async initiateDeposit(userId: string, data: DepositDto) {
         const [minRow, maxRow] = await Promise.all([
             prisma.siteSetting.findUnique({ where: { key: 'min_deposit_amount' } }),

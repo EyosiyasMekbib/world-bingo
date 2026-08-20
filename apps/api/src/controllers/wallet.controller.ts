@@ -134,5 +134,16 @@ export class WalletController {
         })
         return transactions
     }
+
+    static async setSpendAccount(request: FastifyRequest, reply: FastifyReply) {
+        // @ts-ignore
+        const userId = request.user.id
+        const { account } = request.body as { account: 'REAL' | 'BONUS' }
+        if (account !== 'REAL' && account !== 'BONUS') {
+            return reply.status(400).send({ error: 'account must be REAL or BONUS' })
+        }
+        const wallet = await WalletService.setSpendAccount(userId, account)
+        return wallet
+    }
 }
 
