@@ -7,6 +7,7 @@ import { parseSegmentRuleSet } from '@world-bingo/shared-types'
 import { NotificationType, TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { getIo } from '../../lib/socket'
 import { reportError } from '../../lib/sentry.js'
+import { BonusService } from '../bonus.service'
 
 /**
  * Campaign lifecycle and delivery.
@@ -454,21 +455,10 @@ export class CampaignService {
                         return
                     }
 
-                    const wallets = await tx.$queryRaw<
-                        Array<{ realBalance: Decimal; bonusBalance: Decimal }>
-                    >`
-                        SELECT "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
-                    `
-                    const wallet = wallets[0]
-                    if (!wallet) throw new Error(`Wallet not found for ${userId}`)
-
-                    const realBefore = new Decimal(wallet.realBalance)
-                    const bonusBefore = new Decimal(wallet.bonusBalance)
-                    const bonusAfter = bonusBefore.plus(amount)
-
-                    await tx.wallet.update({
-                        where: { userId },
-                        data: { bonusBalance: bonusAfter },
+                    const grantResult = await BonusService.grant(tx, {
+                        userId,
+                        amount,
+                        source: 'CAMPAIGN',
                     })
 
                     const txn = await tx.transaction.create({
@@ -479,10 +469,10 @@ export class CampaignService {
                             status: PaymentStatus.APPROVED as never,
                             referenceId: campaignId,
                             note: '[Campaign] bonus grant',
-                            balanceBefore: realBefore,
-                            balanceAfter: realBefore,
-                            bonusBalanceBefore: bonusBefore,
-                            bonusBalanceAfter: bonusAfter,
+                            balanceBefore: grantResult.bonusBalanceBefore,
+                            balanceAfter: grantResult.bonusBalanceBefore,
+                            bonusBalanceBefore: grantResult.bonusBalanceBefore,
+                            bonusBalanceAfter: grantResult.bonusBalanceAfter,
                         },
                     })
                     transactionId = txn.id

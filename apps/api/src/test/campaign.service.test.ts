@@ -222,6 +222,9 @@ describe('CampaignService — bonus grants', () => {
         expect(txn!.referenceId).toBe(campaign.id)
         expect(Number(txn!.bonusBalanceBefore)).toBe(0)
         expect(Number(txn!.bonusBalanceAfter)).toBe(25)
+
+        const lot = await prisma.bonusGrant.findFirstOrThrow({ where: { userId: players[0].id } })
+        expect(lot.ruleId).toBeNull()
     })
 
     it('skips players above the per-player cap instead of paying them', async () => {
