@@ -91,6 +91,7 @@ describe('POST /admin/players/:id/adjust-balance (bonus branch)', () => {
         expect(txn.status).toBe(PaymentStatus.APPROVED)
         expect(new Decimal(txn.bonusBalanceBefore!).toNumber()).toBe(0)
         expect(new Decimal(txn.bonusBalanceAfter!).toNumber()).toBe(40)
+        expect(new Decimal(txn.amount).toNumber()).toBe(40)
     })
 
     it('negative bonus adjustment clamps at zero rather than going negative', async () => {
@@ -122,8 +123,8 @@ describe('POST /admin/players/:id/adjust-balance (bonus branch)', () => {
         })
         expect(new Decimal(txn.bonusBalanceBefore!).toNumber()).toBe(30)
         expect(new Decimal(txn.bonusBalanceAfter!).toNumber()).toBe(0)
-        // The transaction records the admin's stated adjustment, not the
-        // amount actually consumed after clamping.
-        expect(new Decimal(txn.amount).toNumber()).toBe(-999)
+        // The transaction records the actual applied delta (-30, what really
+        // moved after clamping), not the admin's requested -999.
+        expect(new Decimal(txn.amount).toNumber()).toBe(-30)
     })
 })

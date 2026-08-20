@@ -163,11 +163,15 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                                   bonusBalanceBefore: r.bonusBalanceBefore,
                                   bonusBalanceAfter: r.bonusBalanceAfter,
                               }))
+                    // Record the actual applied delta, not the admin's requested one — reduce()
+                    // clamps at zero, so a request to remove more bonus than the player has would
+                    // otherwise write a Transaction.amount that overstates what really moved.
+                    const actualDelta = grantOrReduce.bonusBalanceAfter.minus(grantOrReduce.bonusBalanceBefore)
                     await tx.transaction.create({
                         data: {
                             userId,
                             type: TransactionType.ADMIN_BONUS_ADJUSTMENT,
-                            amount: adjustAmount,
+                            amount: actualDelta,
                             status: PaymentStatus.APPROVED,
                             note: `[Admin] ${note}`,
                             balanceBefore: realBefore,
