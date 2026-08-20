@@ -242,6 +242,18 @@ describe('WalletService', () => {
             const wallet = await WalletService.getBalance(testUserId)
             expect(Number(wallet.bonusBalance)).toBe(0)
         })
+
+        it('grants the first-deposit bonus as a BonusGrant lot, not a raw increment', async () => {
+            const deposit = await WalletService.initiateDeposit(testUserId, { amount: 200 })
+            await WalletService.approveDeposit(deposit.id)
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.bonusBalance)).toBe(100)
+
+            const lot = await prisma.bonusGrant.findFirstOrThrow({ where: { userId: testUserId } })
+            expect(lot.ruleId).toBeNull()
+            expect(Number(lot.remaining)).toBe(100)
+        })
     })
 
     describe('approveDeposit — concurrent approval (double-credit prevention)', () => {

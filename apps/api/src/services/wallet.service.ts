@@ -5,6 +5,7 @@ import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
 import { wbDepositsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
+import { BonusService } from './bonus.service'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -141,30 +142,28 @@ export class WalletService {
                 const bonusAmount = Number(bonusSetting?.value ?? '0')
 
                 if (bonusAmount > 0) {
-                    const bonusAfter = bonusBefore.plus(new Decimal(bonusAmount))
-
-                    // Credit bonusBalance
-                    await tx.wallet.update({
-                        where: { userId: transaction.userId },
-                        data: { bonusBalance: { increment: bonusAmount } },
+                    const grantResult = await BonusService.grant(tx, {
+                        userId: transaction.userId,
+                        amount: bonusAmount,
+                        source: 'FIRST_DEPOSIT',
                     })
 
-                    // Record bonus transaction
-                    await tx.transaction.create({
-                        data: {
-                            userId: transaction.userId,
-                            type: TransactionType.FIRST_DEPOSIT_BONUS,
-                            amount: bonusAmount,
-                            status: PaymentStatus.APPROVED,
-                            note: 'First deposit bonus',
-                            balanceBefore: realAfter,
-                            balanceAfter: realAfter,
-                            bonusBalanceBefore: bonusBefore,
-                            bonusBalanceAfter: bonusAfter,
-                        },
-                    })
-
-                    bonusAwarded = bonusAmount
+                    if (grantResult.granted) {
+                        await tx.transaction.create({
+                            data: {
+                                userId: transaction.userId,
+                                type: TransactionType.FIRST_DEPOSIT_BONUS,
+                                amount: bonusAmount,
+                                status: PaymentStatus.APPROVED,
+                                note: 'First deposit bonus',
+                                balanceBefore: realAfter,
+                                balanceAfter: realAfter,
+                                bonusBalanceBefore: grantResult.bonusBalanceBefore,
+                                bonusBalanceAfter: grantResult.bonusBalanceAfter,
+                            },
+                        })
+                        bonusAwarded = bonusAmount
+                    }
                 }
             }
 
