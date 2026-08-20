@@ -8,8 +8,10 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { GameService } from '../services/game.service'
+import { BonusService } from '../services/bonus.service'
 import { prisma } from './setup'
 import { GameStatus, PatternType, NotificationType, PaymentStatus, TransactionType } from '@world-bingo/shared-types'
+import { Decimal } from '@prisma/client/runtime/library'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -286,9 +288,15 @@ describe('GameService.joinGame — Extended', () => {
     })
 })
 
-// ─── JoinGame — Bonus-First Deduction ────────────────────────────────────────
+// ─── JoinGame — Spend Account Default (REAL) ─────────────────────────────────
+// Task 14 (deposit-bonuses plan) replaced the old "bonus-first, then real"
+// mixed-spend behavior this block used to cover: joinGame now spends entirely
+// from whichever account wallet.spendAccount selects (REAL by default), never
+// splitting a single entry cost across both accounts. These tests were updated
+// to assert the new default-REAL semantics; see the "spendAccount selection"
+// block below for explicit BONUS/REAL selection coverage.
 
-describe('GameService.joinGame — bonus-first deduction', () => {
+describe('GameService.joinGame — spendAccount defaults to REAL', () => {
     let gameId: string
 
     beforeEach(async () => {
@@ -296,8 +304,8 @@ describe('GameService.joinGame — bonus-first deduction', () => {
         gameId = game.id
     })
 
-    it('should deduct bonus balance before real balance', async () => {
-        // User has 100 bonus + 500 real. Cost = 50.
+    it('spends entirely from real balance and leaves bonus untouched (default spendAccount)', async () => {
+        // User has 100 bonus + 500 real, spendAccount left at its REAL default. Cost = 50.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_first_1',
@@ -310,12 +318,12 @@ describe('GameService.joinGame — bonus-first deduction', () => {
         await GameService.joinGame(user.id, gameId, [c.serial])
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-        expect(Number(wallet!.bonusBalance)).toBe(50)  // 100 - 50 (full cost from bonus)
-        expect(Number(wallet!.realBalance)).toBe(500)  // untouched
+        expect(Number(wallet!.realBalance)).toBe(450)  // 500 - 50, spent entirely from real
+        expect(Number(wallet!.bonusBalance)).toBe(100) // untouched — no cross-account mixing
     })
 
-    it('should use real balance when bonus is partially exhausted', async () => {
-        // User has 30 bonus + 500 real. Cost = 50.
+    it('does not draw from bonus even when bonus balance is smaller than the cost', async () => {
+        // User has 30 bonus + 500 real, spendAccount left at its REAL default. Cost = 50.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_first_2',
@@ -328,11 +336,11 @@ describe('GameService.joinGame — bonus-first deduction', () => {
         await GameService.joinGame(user.id, gameId, [c.serial])
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-        expect(Number(wallet!.bonusBalance)).toBe(0)   // 30 - 30 (all bonus consumed)
-        expect(Number(wallet!.realBalance)).toBe(480)  // 500 - 20 (remaining cost)
+        expect(Number(wallet!.bonusBalance)).toBe(30)  // untouched
+        expect(Number(wallet!.realBalance)).toBe(450)  // 500 - 50, spent entirely from real
     })
 
-    it('should record correct bonus balance snapshots in GAME_ENTRY transaction', async () => {
+    it('should record correct balance snapshots in GAME_ENTRY transaction', async () => {
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_snap',
@@ -348,22 +356,26 @@ describe('GameService.joinGame — bonus-first deduction', () => {
             where: { userId: user.id, type: TransactionType.GAME_ENTRY },
         })
         expect(tx).not.toBeNull()
-        expect(Number(tx!.bonusBalanceBefore)).toBe(100)
-        expect(Number(tx!.bonusBalanceAfter)).toBe(50)  // 100 - 50
-        expect(Number(tx!.balanceBefore)).toBe(500)     // real untouched
-        expect(Number(tx!.balanceAfter)).toBe(500)
+        expect(Number(tx!.bonusBalanceBefore)).toBe(100) // untouched
+        expect(Number(tx!.bonusBalanceAfter)).toBe(100)  // untouched
+        expect(Number(tx!.balanceBefore)).toBe(500)
+        expect(Number(tx!.balanceAfter)).toBe(450)
     })
 
-    it('should succeed using only bonus balance when real balance is 0', async () => {
-        // User has 0 real + 200 bonus. Cost = 50.
+    it('should succeed using only bonus balance when spendAccount is BONUS and real balance is 0', async () => {
+        // User has 0 real + 200 bonus, spendAccount explicitly set to BONUS. Cost = 50.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_only',
                 phone: '+251911100004',
                 passwordHash: 'hashed:pass',
-                wallet: { create: { realBalance: 0, bonusBalance: 200 } },
+                wallet: { create: { realBalance: 0, bonusBalance: 0, spendAccount: 'BONUS' } },
             },
         })
+        // BonusService.spend consumes real bonus_grants lots, not the wallet's
+        // cached bonusBalance directly — grant a real lot so the spend has
+        // something to draw from.
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 200, source: 'ADMIN' }))
         const c = await createCartela('BF-C4')
 
         const entries = await GameService.joinGame(user.id, gameId, [c.serial])
@@ -374,7 +386,7 @@ describe('GameService.joinGame — bonus-first deduction', () => {
         expect(Number(wallet!.realBalance)).toBe(0)
     })
 
-    it('should fail when combined real + bonus is less than cost', async () => {
+    it('should fail when real balance is less than cost (spendAccount defaults to REAL, bonus is never consulted)', async () => {
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_poor',
@@ -385,10 +397,64 @@ describe('GameService.joinGame — bonus-first deduction', () => {
         })
         const c = await createCartela('BF-C5')
 
-        // Total available = 40, cost = 50 → insufficient
+        // realBalance (20) < cost (50) → insufficient. Under the old mixed-spend
+        // behavior the bonus (20) would have topped it up; spendAccount now
+        // defaults to REAL, so bonus is never consulted.
         await expect(
             GameService.joinGame(user.id, gameId, [c.serial]),
         ).rejects.toThrow('Insufficient funds')
+    })
+})
+
+// ─── JoinGame — Player-Selected Spend Account (Task 14) ──────────────────────
+
+describe('GameService.joinGame — spendAccount selection', () => {
+    it('spends from BONUS when spendAccount is BONUS, and stamps bonusExpiresAtSpend', async () => {
+        const expiresAt = new Date(Date.now() + 3600_000)
+        const user = await createUserWithWallet('spendbonus1', '+251900000019')
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS', realBalance: 1000 } })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 50, source: 'ADMIN', expiresAt }))
+
+        const game = await createGame({ ticketPrice: 10 })
+        const c = await createCartela('SA-BONUS-C1')
+        await GameService.joinGame(user.id, game.id, [c.serial])
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000) // untouched
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(40)
+
+        const entryTxn = await prisma.transaction.findFirstOrThrow({ where: { userId: user.id, type: TransactionType.GAME_ENTRY } })
+        expect(entryTxn.bonusExpiresAtSpend?.getTime()).toBe(expiresAt.getTime())
+    })
+
+    it('rejects with Insufficient bonus balance when BONUS is selected but short, without touching real', async () => {
+        const user = await createUserWithWallet('spendbonus2', '+251900000020')
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS', realBalance: 1000 } })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 5, source: 'ADMIN' }))
+
+        const game = await createGame({ ticketPrice: 10 })
+        const c = await createCartela('SA-BONUS-C2')
+        await expect(GameService.joinGame(user.id, game.id, [c.serial])).rejects.toThrow(
+            'Insufficient bonus balance',
+        )
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(5)
+    })
+
+    it('spends from REAL when spendAccount is REAL, even if BONUS has funds', async () => {
+        const user = await createUserWithWallet('spendreal1', '+251900000021')
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'REAL', realBalance: 1000 } })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 500, source: 'ADMIN' }))
+
+        const game = await createGame({ ticketPrice: 10 })
+        const c = await createCartela('SA-REAL-C1')
+        await GameService.joinGame(user.id, game.id, [c.serial])
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(990)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(500) // untouched
     })
 })
 

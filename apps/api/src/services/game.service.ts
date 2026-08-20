@@ -5,6 +5,7 @@ import { GameStatus, TransactionType, PaymentStatus, NotificationType } from '@w
 import { checkPattern, PatternName } from '@world-bingo/game-logic'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
+import { BonusService } from './bonus.service'
 import { startGameEngine, stopGameEngine } from '../lib/game-engine'
 import { RefundService } from './refund.service'
 import { clearGameState } from '../lib/game-state'
@@ -85,35 +86,30 @@ export class GameService {
             const totalCost = new Decimal(game.ticketPrice).times(cartelaSerials.length)
 
             // Lock the wallet row to prevent concurrent joins depleting balance
-            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal; spendAccount: string }>>`
+                SELECT id, "realBalance", "bonusBalance", "spendAccount" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
             `
             const wallet = wallets[0]
             if (!wallet) throw new Error('Wallet not found')
 
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
-            const totalAvailable = realBefore.plus(bonusBefore)
 
-            if (totalAvailable.lessThan(totalCost)) {
-                throw new Error('Insufficient funds')
+            let realAfter = realBefore
+            let bonusAfter = bonusBefore
+            let bonusExpiresAtSpend: Date | null = null
+
+            if (wallet.spendAccount === 'BONUS') {
+                const spendResult = await BonusService.spend(tx, userId, totalCost)
+                bonusAfter = spendResult.bonusBalanceAfter
+                bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
+            } else {
+                if (realBefore.lessThan(totalCost)) {
+                    throw new Error('Insufficient funds')
+                }
+                realAfter = realBefore.minus(totalCost)
+                await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })
             }
-
-            // Deduct from bonusBalance first, then realBalance
-            const bonusDeduction = Decimal.min(bonusBefore, totalCost)
-            const realDeduction = totalCost.minus(bonusDeduction)
-
-            const realAfter = realBefore.minus(realDeduction)
-            const bonusAfter = bonusBefore.minus(bonusDeduction)
-
-            // Apply deductions
-            await tx.wallet.update({
-                where: { userId },
-                data: {
-                    realBalance: realAfter,
-                    bonusBalance: bonusAfter,
-                },
-            })
 
             // Create a single transaction record for the total entry cost
             await tx.transaction.create({
@@ -127,6 +123,7 @@ export class GameService {
                     balanceAfter: realAfter,
                     bonusBalanceBefore: bonusBefore,
                     bonusBalanceAfter: bonusAfter,
+                    bonusExpiresAtSpend,
                 }
             })
 
