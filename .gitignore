@@ -50,3 +50,6 @@ playwright/.cache/
 
 # Runtime upload storage
 apps/api/uploads/
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
