@@ -455,6 +455,30 @@ export class CampaignService {
                         return
                     }
 
+                    // Wallet is an optional relation (schema.prisma: `wallet Wallet?` on
+                    // User) and bot creation (bot.service.ts) upserts User and Wallet as
+                    // two separate, non-transactional calls, so a walletless User is
+                    // possible in principle. Campaign targeting excludes bots and
+                    // non-PLAYER roles at two independent points — the metrics rollup
+                    // and this delivery's own live re-check above — which is why this
+                    // can't happen in practice today. But that's an emergent invariant
+                    // spread across several independently-maintained filters, not a
+                    // schema guarantee, so fail the delivery explicitly here rather than
+                    // relying on BonusService.grant's internal wallet-update throw to be
+                    // caught by the outer try/catch.
+                    const wallet = await tx.wallet.findUnique({ where: { userId } })
+                    if (!wallet) {
+                        await tx.campaignDelivery.update({
+                            where: { id: deliveryId },
+                            data: { status: 'FAILED', error: 'No wallet for user' },
+                        })
+                        await tx.campaign.update({
+                            where: { id: campaignId },
+                            data: { failedCount: { increment: 1 } },
+                        })
+                        return
+                    }
+
                     const grantResult = await BonusService.grant(tx, {
                         userId,
                         amount,

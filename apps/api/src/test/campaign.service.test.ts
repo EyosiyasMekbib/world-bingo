@@ -227,6 +227,51 @@ describe('CampaignService — bonus grants', () => {
         expect(lot.ruleId).toBeNull()
     })
 
+    it('fails the delivery gracefully when the targeted user has no wallet', async () => {
+        // Wallet is an optional relation (schema.prisma), so Prisma allows creating
+        // a User with no Wallet row directly — the same shape bot.service.ts's
+        // non-transactional upsert pair can transiently leave behind. This proves
+        // the explicit guard in processDelivery fails closed instead of letting
+        // BonusService.grant's internal wallet-update throw escape uncaught.
+        const walletless = await prisma.user.create({
+            data: {
+                username: `nowallet_${Date.now()}`,
+                phone: '+251900199999',
+                passwordHash: 'hashed:pass',
+                role: 'PLAYER',
+            },
+        })
+        await PlayerMetricsService.refreshAll()
+
+        const segment = await SegmentService.create({ name: `nowallet-${Date.now()}`, rules: allPlayers })
+        const campaign = await CampaignService.create({
+            name: 'No wallet test',
+            segmentId: segment.id,
+            actions: { bonus: { amount: 10 } },
+            maxRecipients: 1000,
+            maxTotalBonus: 10_000,
+            maxPerPlayer: 100,
+            actorId: AUTHOR,
+            actorName: 'author',
+        })
+        await CampaignService.submitForApproval(campaign.id)
+        await CampaignService.approve(campaign.id, { id: APPROVER, note: 'test' })
+        await CampaignService.launch(campaign.id)
+        await runToCompletion(campaign.id)
+
+        const delivery = await prisma.campaignDelivery.findFirst({
+            where: { campaignId: campaign.id, userId: walletless.id },
+        })
+        expect(delivery!.status).toBe('FAILED')
+        expect(delivery!.error).toMatch(/wallet/i)
+        expect(
+            await prisma.transaction.count({ where: { userId: walletless.id, type: 'CAMPAIGN_BONUS' } }),
+        ).toBe(0)
+
+        const final = await prisma.campaign.findUnique({ where: { id: campaign.id } })
+        expect(final!.failedCount).toBe(1)
+    })
+
     it('skips players above the per-player cap instead of paying them', async () => {
         const { campaign } = await setup({ players: 1, bonusAmount: 500, caps: { maxPerPlayer: 100 } })
         await CampaignService.submitForApproval(campaign.id)
