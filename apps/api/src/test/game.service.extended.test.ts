@@ -493,6 +493,66 @@ describe('GameService.leaveGame — bonus restore', () => {
         expect(activeLot.expiresAt?.getTime()).toBe(originalExpiry.getTime())
         expect(new Decimal(activeLot.remaining).toNumber()).toBe(50)
     })
+
+    it('restores using the SOONEST original expiry across multiple GAME_ENTRY transactions, not an arbitrary one', async () => {
+        // There is no per-user-per-game join guard (only a per-cartela one), so a
+        // player can call joinGame on the same WAITING game more than once. Each
+        // call stamps its own GAME_ENTRY transaction with whichever lot
+        // BonusService.spend happened to drain (soonest-expiry-first across the
+        // WHOLE user, not per-call). Set this up so the two GAME_ENTRY
+        // transactions end up with genuinely different bonusExpiresAtSpend
+        // values, AND so the transaction stamped with the LATER expiry is
+        // inserted first — the naive `entryTxns.find(...)` (no ORDER BY) would
+        // return that one first in practice, giving the WRONG (later) answer.
+        // Restoring must pick the MINIMUM across all entries instead.
+        const laterExpiry = new Date(Date.now() + 3600_000) // 60 min
+        const soonExpiry = new Date(Date.now() + 900_000) // 15 min
+        const user = await createUserWithWallet('leaverestore2', '+251900000024', 0)
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS' } })
+
+        const game = await createGame({ ticketPrice: 10 })
+        const c1 = await createCartela('LEAVE-RESTORE-MULTI-C1')
+        const c2 = await createCartela('LEAVE-RESTORE-MULTI-C2')
+
+        // Grant + spend the LATER lot FIRST — it is the only ACTIVE lot at this
+        // point, so this join's GAME_ENTRY transaction is inserted first and
+        // stamped with the LATER expiry.
+        await prisma.$transaction((tx) =>
+            BonusService.grant(tx, { userId: user.id, amount: 10, source: 'ADMIN', expiresAt: laterExpiry }),
+        )
+        await GameService.joinGame(user.id, game.id, [c1.serial])
+
+        // Now grant + spend the SOON lot — it becomes the only (and therefore
+        // soonest) ACTIVE lot, so this second join's transaction, inserted
+        // SECOND, is stamped with the SOON expiry.
+        await prisma.$transaction((tx) =>
+            BonusService.grant(tx, { userId: user.id, amount: 10, source: 'ADMIN', expiresAt: soonExpiry }),
+        )
+        await GameService.joinGame(user.id, game.id, [c2.serial])
+
+        // Sanity-check the setup actually produced two different stamped expiries,
+        // with the later one inserted first — otherwise this test proves nothing.
+        const entryTxns = await prisma.transaction.findMany({
+            where: { userId: user.id, type: TransactionType.GAME_ENTRY, referenceId: game.id },
+            orderBy: { createdAt: 'asc' },
+        })
+        expect(entryTxns).toHaveLength(2)
+        expect(entryTxns[0].bonusExpiresAtSpend?.getTime()).toBe(laterExpiry.getTime())
+        expect(entryTxns[1].bonusExpiresAtSpend?.getTime()).toBe(soonExpiry.getTime())
+
+        await GameService.leaveGame(user.id, game.id)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(20)
+
+        const activeLot = await prisma.bonusGrant.findFirstOrThrow({
+            where: { userId: user.id, status: 'ACTIVE' },
+        })
+        // Must be the SOONER of the two — not the later one, and not whichever
+        // an unordered query happened to return first.
+        expect(activeLot.expiresAt?.getTime()).toBe(soonExpiry.getTime())
+        expect(new Decimal(activeLot.remaining).toNumber()).toBe(20)
+    })
 })
 
 // ─── StartGame — Extended Tests ───────────────────────────────────────────────

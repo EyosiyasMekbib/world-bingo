@@ -239,7 +239,18 @@ export class GameService {
                 await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })
             }
             if (bonusRefund.gt(0)) {
-                const originalExpiry = entryTxns.find((t) => t.bonusExpiresAtSpend != null)?.bonusExpiresAtSpend ?? null
+                // A player can join the same WAITING game more than once (no per-user-per-game
+                // guard, only a per-cartela one), and BonusService.spend always drains
+                // soonest-expiry-first across the user's lots. So a second join can land on a
+                // later-expiring lot than the first, giving each GAME_ENTRY transaction a
+                // different bonusExpiresAtSpend. Restoring under the LATER of those would
+                // extend that portion's effective life — take the soonest (minimum) non-null
+                // expiry across all entries instead, matching consumeLots' own convention.
+                const originalExpiry = entryTxns.reduce<Date | null>((soonest, t) => {
+                    if (t.bonusExpiresAtSpend == null) return soonest
+                    if (soonest == null || t.bonusExpiresAtSpend < soonest) return t.bonusExpiresAtSpend
+                    return soonest
+                }, null)
                 const restoreResult = await BonusService.restore(tx, userId, bonusRefund, originalExpiry)
                 bonusAfter = restoreResult.bonusBalanceAfter
             }
