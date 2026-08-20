@@ -49,26 +49,22 @@ export class BonusService {
         `
         const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
 
-        let grantId: string
-        try {
-            const lot = await tx.bonusGrant.create({
-                data: {
-                    userId: params.userId,
-                    ruleId: params.ruleId ?? null,
-                    amount,
-                    remaining: amount,
-                    periodStart: params.periodStart ?? new Date(),
-                    expiresAt: params.expiresAt ?? null,
-                    status: 'ACTIVE',
-                },
-            })
-            grantId = lot.id
-        } catch (err: any) {
-            if (err?.code === 'P2002') {
-                return { granted: false, amount, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore }
-            }
-            throw err
+        const periodStart = params.periodStart ?? new Date()
+        const expiresAt = params.expiresAt ?? null
+        const ruleId = params.ruleId ?? null
+
+        const rows = await tx.$queryRaw<Array<{ id: string }>>`
+            INSERT INTO bonus_grants (id, "userId", "ruleId", amount, remaining, "periodStart", "expiresAt", status, "createdAt")
+            VALUES (gen_random_uuid(), ${params.userId}, ${ruleId}, ${amount}, ${amount}, ${periodStart}, ${expiresAt}, 'ACTIVE', NOW())
+            ON CONFLICT ("ruleId", "userId", "periodStart") DO NOTHING
+            RETURNING id
+        `
+
+        if (rows.length === 0) {
+            return { granted: false, amount, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore }
         }
+
+        const grantId = rows[0].id
 
         await tx.wallet.update({
             where: { userId: params.userId },

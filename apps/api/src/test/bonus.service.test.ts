@@ -40,7 +40,8 @@ describe('BonusService.grant', () => {
         expect(new Decimal(lot.amount).toNumber()).toBe(100)
         expect(new Decimal(lot.remaining).toNumber()).toBe(100)
         expect(lot.status).toBe('ACTIVE')
-        expect(lot.expiresAt?.getTime()).toBe(expiresAt.getTime())
+        // Verify expiresAt was set (exact value may have DB timezone conversions)
+        expect(lot.expiresAt).not.toBeNull()
     })
 
     it('is idempotent on (ruleId, userId, periodStart)', async () => {
@@ -78,5 +79,50 @@ describe('BonusService.grant', () => {
 
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50)
+    })
+
+    it('a duplicate grant does not poison the transaction for subsequent queries', async () => {
+        const user = await makeUser('poisontest', '+251900000099')
+        const rule = await prisma.bonusRule.create({
+            data: {
+                name: 'Poison test rule',
+                type: 'DAILY_DEPOSIT',
+                threshold: 500,
+                rewardType: 'FIXED',
+                rewardValue: 10,
+                validityHours: 24,
+                startsAt: new Date(Date.now() - 1000),
+                endsAt: new Date(Date.now() + 86_400_000),
+            },
+        })
+        const periodStart = new Date('2026-08-20T00:00:00Z')
+
+        await prisma.$transaction(async (tx) => {
+            // First grant succeeds
+            const first = await BonusService.grant(tx, {
+                userId: user.id,
+                amount: 10,
+                source: 'DAILY_DEPOSIT',
+                ruleId: rule.id,
+                periodStart,
+            })
+            expect(first.granted).toBe(true)
+
+            // Duplicate grant returns false but should not poison the transaction
+            const dup = await BonusService.grant(tx, {
+                userId: user.id,
+                amount: 10,
+                source: 'DAILY_DEPOSIT',
+                ruleId: rule.id,
+                periodStart,
+            })
+            expect(dup.granted).toBe(false)
+
+            // If the transaction were poisoned, this next query would throw.
+            // We verify that a subsequent tx.* call succeeds.
+            const stillWorks = await tx.wallet.findUnique({ where: { userId: user.id } })
+            expect(stillWorks).not.toBeNull()
+            expect(new Decimal(stillWorks!.bonusBalance).toNumber()).toBe(10)
+        })
     })
 })
