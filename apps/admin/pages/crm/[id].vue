@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
-const { getSegment, updateSegment, previewSegmentRules } = useAdminApi()
+const { getSegment, updateSegment, previewSegmentRules, exportSegmentCsv } = useAdminApi()
 const toast = useToast()
 
 const segmentId = route.params.id as string
@@ -74,7 +74,23 @@ async function save() {
   }
 }
 
-const exportUrl = computed(() => `/api/admin/crm/segments/${segmentId}/export.csv`)
+const exporting = ref(false)
+async function exportCsv() {
+  exporting.value = true
+  try {
+    const blob = await exportSegmentCsv(segmentId)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `segment-${segment.value.name.replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err: any) {
+    toast.add({ title: 'Export failed', description: err?.data?.error ?? 'Failed to export segment', color: 'error' })
+  } finally {
+    exporting.value = false
+  }
+}
 
 function money(value: any) {
   const n = Number(value ?? 0)
@@ -111,8 +127,8 @@ function shortDate(value: any) {
             label="Export CSV"
             color="neutral"
             variant="subtle"
-            :to="exportUrl"
-            external
+            :loading="exporting"
+            @click="exportCsv"
           />
           <UButton label="Save changes" color="primary" :loading="saving" @click="save" />
         </div>

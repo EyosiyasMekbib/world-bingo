@@ -7,6 +7,7 @@ const {
   getCrmFreshness,
   refreshCrmMetrics,
   deleteSegment,
+  exportSegmentCsv,
 } = useAdminApi()
 const toast = useToast()
 
@@ -93,9 +94,22 @@ async function remove(segment: any) {
   }
 }
 
-const config = useRuntimeConfig()
-function exportUrl(id: string) {
-  return `/api/admin/crm/segments/${id}/export.csv`
+const exporting = ref<string | null>(null)
+async function exportCsv(segment: any) {
+  exporting.value = segment.id
+  try {
+    const blob = await exportSegmentCsv(segment.id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `segment-${segment.name.replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err: any) {
+    toast.add({ title: 'Export failed', description: err?.data?.error ?? 'Failed to export segment', color: 'error' })
+  } finally {
+    exporting.value = null
+  }
 }
 </script>
 
@@ -194,8 +208,8 @@ function exportUrl(id: string) {
                 variant="ghost"
                 icon="i-heroicons:arrow-down-tray"
                 label="CSV"
-                :to="exportUrl(segment.id)"
-                external
+                :loading="exporting === segment.id"
+                @click="exportCsv(segment)"
               />
               <UButton
                 v-if="!segment.isPreset"

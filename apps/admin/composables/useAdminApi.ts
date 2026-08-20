@@ -294,6 +294,12 @@ export const useAdminApi = () => {
                 body: { rules },
             }),
 
+        // A plain <a href> to this route 401s — it's a bare browser navigation and
+        // carries none of the Authorization header apiFetch attaches. Fetch the
+        // file through apiFetch instead and hand the caller a Blob to save.
+        exportSegmentCsv: (id: string) =>
+            apiFetch<Blob>(`/admin/crm/segments/${id}/export.csv`, { responseType: 'blob' }),
+
         // ── Campaigns ─────────────────────────────────────────────────────────
         getCampaigns: () =>
             apiFetch<Array<{
