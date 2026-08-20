@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
+import { BonusService } from './bonus.service'
 import { wbRefundsTotal } from '../lib/metrics'
 
 /**
@@ -82,13 +83,17 @@ export class RefundService {
 
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
-                const realAfter = realBefore.plus(realRefund)
-                const bonusAfter = bonusBefore.plus(bonusRefund)
+                let realAfter = realBefore.plus(realRefund)
+                let bonusAfter = bonusBefore
 
-                await tx.wallet.update({
-                    where: { userId },
-                    data: { realBalance: realAfter, bonusBalance: bonusAfter },
-                })
+                if (realRefund.gt(0)) {
+                    await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })
+                }
+                if (bonusRefund.gt(0)) {
+                    const originalExpiry = entryTxns.find((t) => t.bonusExpiresAtSpend != null)?.bonusExpiresAtSpend ?? null
+                    const restoreResult = await BonusService.restore(tx, userId, bonusRefund, originalExpiry)
+                    bonusAfter = restoreResult.bonusBalanceAfter
+                }
 
                 await tx.transaction.create({
                     data: {

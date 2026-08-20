@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { RefundService } from '../services/refund.service'
 import { WalletService } from '../services/wallet.service'
+import { BonusService } from '../services/bonus.service'
 import { prisma } from './setup'
 import { TransactionType, PaymentStatus, GameStatus, PatternType } from '@world-bingo/shared-types'
+import { Decimal } from '@prisma/client/runtime/library'
 
 describe('RefundService', () => {
     let user1Id: string
@@ -157,6 +159,79 @@ describe('RefundService', () => {
 
             const results = await RefundService.refundGame(emptyGame.id)
             expect(results).toHaveLength(0)
+        })
+
+        // Task 15: bonus-funded entries must restore to a lot carrying the
+        // ORIGINAL expiry (from the GAME_ENTRY transaction's bonusExpiresAtSpend,
+        // stamped by Task 14), not a raw wallet.bonusBalance bump.
+        it('restores a bonus-funded entry to a lot carrying the ORIGINAL expiry, not a fresh window', async () => {
+            const originalExpiry = new Date(Date.now() + 1800_000)
+            const bonusUser = await prisma.user.create({
+                data: {
+                    username: 'refund_bonus1',
+                    phone: '+251900000023',
+                    passwordHash: 'hashed:pass',
+                    wallet: { create: { realBalance: 0, bonusBalance: 0 } },
+                },
+            })
+            // Grant amount equals the entry cost below, so the join fully
+            // consumes the lot (status → CONSUMED) — a clean discriminator: without
+            // the fix, refundGame never creates a new lot, so there is no ACTIVE
+            // lot left for this user after the refund.
+            await prisma.$transaction((tx) =>
+                BonusService.grant(tx, { userId: bonusUser.id, amount: 50, source: 'ADMIN', expiresAt: originalExpiry }),
+            )
+
+            const bonusGame = await prisma.game.create({
+                data: {
+                    title: 'Bonus Refund Game',
+                    status: GameStatus.WAITING,
+                    ticketPrice: 50,
+                    maxPlayers: 10,
+                    minPlayers: 2,
+                    houseEdgePct: 10,
+                    pattern: PatternType.ANY_LINE,
+                    calledBalls: [],
+                },
+            })
+            const bonusCartela = await prisma.cartela.create({
+                data: {
+                    serial: 'BONUS-REFUND-C1',
+                    grid: [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 0, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]],
+                },
+            })
+
+            // Simulate what GameService.joinGame (spendAccount BONUS) records: consume
+            // the lot and stamp the GAME_ENTRY transaction with its expiry.
+            await prisma.$transaction(async (tx) => {
+                await BonusService.spend(tx, bonusUser.id, 50)
+                await tx.transaction.create({
+                    data: {
+                        userId: bonusUser.id,
+                        type: TransactionType.GAME_ENTRY,
+                        amount: 50,
+                        status: PaymentStatus.APPROVED,
+                        referenceId: bonusGame.id,
+                        balanceBefore: 0,
+                        balanceAfter: 0,
+                        bonusBalanceBefore: 50,
+                        bonusBalanceAfter: 0,
+                        bonusExpiresAtSpend: originalExpiry,
+                    },
+                })
+            })
+            await prisma.gameEntry.create({ data: { gameId: bonusGame.id, userId: bonusUser.id, cartelaId: bonusCartela.id } })
+
+            await RefundService.refundGame(bonusGame.id)
+
+            const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: bonusUser.id } })
+            expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50)
+
+            const activeLot = await prisma.bonusGrant.findFirstOrThrow({
+                where: { userId: bonusUser.id, status: 'ACTIVE' },
+            })
+            expect(activeLot.expiresAt?.getTime()).toBe(originalExpiry.getTime())
+            expect(new Decimal(activeLot.remaining).toNumber()).toBe(50)
         })
     })
 })
