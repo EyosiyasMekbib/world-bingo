@@ -30,6 +30,8 @@ async function cleanDb() {
     // and cascade confusing failures through every later suite.
     await prisma.campaignDelivery.deleteMany()
     await prisma.campaign.deleteMany()
+    await prisma.bonusGrant.deleteMany()
+    await prisma.bonusRule.deleteMany()
     await prisma.segment.deleteMany()
     await prisma.playerMetrics.deleteMany()
     await prisma.cashbackPromotion.deleteMany()

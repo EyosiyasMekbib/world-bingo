@@ -24,6 +24,9 @@ export enum TransactionType {
     TP_ROLLBACK = 'TP_ROLLBACK',
     TP_ADJUSTMENT = 'TP_ADJUSTMENT',
     CAMPAIGN_BONUS = 'CAMPAIGN_BONUS',
+    DAILY_DEPOSIT_BONUS = 'DAILY_DEPOSIT_BONUS',
+    WEEKLY_DEPOSIT_BONUS = 'WEEKLY_DEPOSIT_BONUS',
+    BONUS_EXPIRED = 'BONUS_EXPIRED',
 }
 
 export enum GameProviderStatus {
@@ -101,4 +104,25 @@ export enum CashbackFrequency {
     DAILY = 'DAILY',
     WEEKLY = 'WEEKLY',
     MONTHLY = 'MONTHLY',
+}
+
+export enum BonusRuleType {
+    DAILY_DEPOSIT = 'DAILY_DEPOSIT',
+    WEEKLY_DEPOSIT = 'WEEKLY_DEPOSIT',
+}
+
+export enum BonusRewardType {
+    FIXED = 'FIXED',
+    PERCENTAGE = 'PERCENTAGE',
+}
+
+export enum BonusGrantStatus {
+    ACTIVE = 'ACTIVE',
+    CONSUMED = 'CONSUMED',
+    EXPIRED = 'EXPIRED',
+}
+
+export enum SpendAccount {
+    REAL = 'REAL',
+    BONUS = 'BONUS',
 }

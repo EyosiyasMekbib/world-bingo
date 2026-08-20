@@ -40,6 +40,7 @@ model User {
   campaignDeliveries    CampaignDelivery[]
   predictionOrders      PredictionOrder[]
   predictionPositions   PredictionPosition[]
+  bonusGrants           BonusGrant[]
 
   @@index([role])
   @@index([referralCode])
@@ -47,13 +48,14 @@ model User {
 }
 
 model Wallet {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  realBalance  Decimal  @default(0) @db.Decimal(20, 8)
-  bonusBalance Decimal  @default(0) @db.Decimal(20, 8)
-  currency     String   @default("ETB")
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String       @id @default(uuid())
+  userId       String       @unique
+  realBalance  Decimal      @default(0) @db.Decimal(20, 8)
+  bonusBalance Decimal      @default(0) @db.Decimal(20, 8)
+  spendAccount SpendAccount @default(REAL)
+  currency     String       @default("ETB")
+  updatedAt    DateTime     @updatedAt
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("wallets")
 }
@@ -148,6 +150,7 @@ model Transaction {
   balanceAfter         Decimal?             @db.Decimal(12, 2)
   bonusBalanceBefore   Decimal?             @db.Decimal(12, 2)
   bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
+  bonusExpiresAtSpend  DateTime?
   paymentTransactionId String?              @unique
   senderName           String?
   senderAccount        String?
@@ -201,6 +204,9 @@ enum TransactionType {
   PREDICTION_ORDER_RELEASE
   PREDICTION_WIN
   PREDICTION_REFUND
+  DAILY_DEPOSIT_BONUS
+  WEEKLY_DEPOSIT_BONUS
+  BONUS_EXPIRED
 }
 
 enum PaymentStatus {
@@ -324,6 +330,27 @@ enum CashbackFrequency {
   MONTHLY
 }
 
+enum BonusRuleType {
+  DAILY_DEPOSIT
+  WEEKLY_DEPOSIT
+}
+
+enum BonusRewardType {
+  FIXED
+  PERCENTAGE
+}
+
+enum BonusGrantStatus {
+  ACTIVE
+  CONSUMED
+  EXPIRED
+}
+
+enum SpendAccount {
+  REAL
+  BONUS
+}
+
 model Tournament {
   id              String            @id @default(uuid())
   title           String
@@ -406,6 +433,44 @@ model CashbackDisbursement {
   @@unique([promotionId, userId, periodStart])
   @@index([promotionId, periodStart])
   @@map("cashback_disbursements")
+}
+
+model BonusRule {
+  id            String          @id @default(uuid())
+  name          String
+  type          BonusRuleType
+  threshold     Decimal         @db.Decimal(12, 2)
+  rewardType    BonusRewardType
+  rewardValue   Decimal         @db.Decimal(12, 2)
+  maxReward     Decimal?        @db.Decimal(12, 2)
+  validityHours Int
+  startsAt      DateTime
+  endsAt        DateTime
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  grants        BonusGrant[]
+
+  @@index([isActive, type])
+  @@map("bonus_rules")
+}
+
+model BonusGrant {
+  id          String           @id @default(uuid())
+  userId      String
+  ruleId      String?
+  amount      Decimal          @db.Decimal(12, 2)
+  remaining   Decimal          @db.Decimal(12, 2)
+  periodStart DateTime
+  expiresAt   DateTime?
+  status      BonusGrantStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  rule        BonusRule?       @relation(fields: [ruleId], references: [id])
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, userId, periodStart])
+  @@index([userId, status, expiresAt])
+  @@index([status, expiresAt])
+  @@map("bonus_grants")
 }
 
 // ─── Site Settings / Feature Flags ──────────────────────────────────────────────
@@ -729,8 +794,9 @@ model PlayerMetrics {
   tpWon          Decimal   @default(0) @db.Decimal(14, 2)
   lastTpPlayedAt DateTime?
 
-  bonusReceived Decimal @default(0) @db.Decimal(14, 2)
-  referralCount Int     @default(0)
+  bonusReceived   Decimal  @default(0) @db.Decimal(14, 2)
+  referralCount   Int      @default(0)
+  avgDailyDeposit Decimal? @db.Decimal(12, 2)
 
   // Precomputed recency. Stored as ints so "churned = daysSinceLastPlay > 30"
   // is an index scan rather than a per-row date subtraction.
