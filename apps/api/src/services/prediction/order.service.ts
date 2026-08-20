@@ -12,6 +12,7 @@ import prisma from '../../lib/prisma.js'
 import redis from '../../lib/redis.js'
 import { PredictionMatchingService, splitAgainstReserve } from './matching.service.js'
 import { emitBook, emitTrade } from '../../gateways/prediction.gateway.js'
+import { BonusService, type SpendBonusResult } from '../bonus.service.js'
 
 /**
  * Order placement, cancellation and reserve accounting for the binary order book.
@@ -85,13 +86,19 @@ interface LockedWallet {
     id: string
     real: Prisma.Decimal
     bonus: Prisma.Decimal
+    spendAccount: 'REAL' | 'BONUS'
 }
 
 async function lockWallet(tx: Prisma.TransactionClient, userId: string): Promise<LockedWallet> {
     const wallets = await tx.$queryRaw<
-        Array<{ id: string; realBalance: Prisma.Decimal; bonusBalance: Prisma.Decimal }>
+        Array<{
+            id: string
+            realBalance: Prisma.Decimal
+            bonusBalance: Prisma.Decimal
+            spendAccount: 'REAL' | 'BONUS'
+        }>
     >`
-        SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+        SELECT id, "realBalance", "bonusBalance", "spendAccount" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
     `
     const wallet = wallets[0]
     if (!wallet) throw httpError('Wallet not found', 404)
@@ -100,6 +107,7 @@ async function lockWallet(tx: Prisma.TransactionClient, userId: string): Promise
         id: wallet.id,
         real: new Prisma.Decimal(wallet.realBalance),
         bonus: new Prisma.Decimal(wallet.bonusBalance),
+        spendAccount: wallet.spendAccount,
     }
 }
 
@@ -274,24 +282,28 @@ export class PredictionOrderService {
                         )
                     }
 
-                    // ── 5. Reserve limitPrice × quantity, bonus first then real ──
+                    // ── 5. Reserve limitPrice × quantity from the selected account ──
                     const limitPrice = new Prisma.Decimal(priceBirr)
                     const reserve = limitPrice.times(quantity)
 
-                    if (wallet.real.plus(wallet.bonus).lessThan(reserve)) {
-                        throw httpError('Insufficient funds', 400)
+                    let reservedReal = new Prisma.Decimal(0)
+                    let reservedBonus = new Prisma.Decimal(0)
+                    let realAfterHold = wallet.real
+                    let bonusAfterHold = wallet.bonus
+                    let spendResult: SpendBonusResult | undefined
+
+                    if (wallet.spendAccount === 'BONUS') {
+                        spendResult = await BonusService.spend(tx, userId, reserve)
+                        reservedBonus = reserve
+                        bonusAfterHold = spendResult.bonusBalanceAfter
+                    } else {
+                        if (wallet.real.lessThan(reserve)) {
+                            throw httpError('Insufficient funds', 400)
+                        }
+                        reservedReal = reserve
+                        realAfterHold = wallet.real.minus(reserve)
+                        await tx.wallet.update({ where: { userId }, data: { realBalance: realAfterHold } })
                     }
-
-                    const reservedBonus = Prisma.Decimal.min(wallet.bonus, reserve)
-                    const reservedReal = reserve.minus(reservedBonus)
-
-                    const realAfterHold = wallet.real.minus(reservedReal)
-                    const bonusAfterHold = wallet.bonus.minus(reservedBonus)
-
-                    await tx.wallet.update({
-                        where: { userId },
-                        data: { realBalance: realAfterHold, bonusBalance: bonusAfterHold },
-                    })
 
                     // ── 6. Insert the order + the hold transaction ───────────────
                     const order = await tx.predictionOrder.create({
@@ -319,6 +331,8 @@ export class PredictionOrderService {
                             balanceAfter: realAfterHold,
                             bonusBalanceBefore: wallet.bonus,
                             bonusBalanceAfter: bonusAfterHold,
+                            bonusExpiresAtSpend:
+                                wallet.spendAccount === 'BONUS' ? spendResult!.soonestExpiryConsumed : null,
                         },
                     })
 

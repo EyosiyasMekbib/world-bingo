@@ -56,6 +56,36 @@ vi.mock('../gateways/prediction.gateway.js', () => ({
     emitSettled: vi.fn(),
 }))
 
+/**
+ * `BonusService.spend` is production code with its own dedicated real-DB
+ * coverage (bonus.service.test.ts) — soonest-expiry-first lot consumption
+ * against `bonus_grants`, a table this in-memory double does not model. What
+ * `placeOrder` needs verified HERE is only its own contract with `spend`: pass
+ * the reserve, apply `bonusBalanceAfter` to the wallet, propagate
+ * `InsufficientBonusBalanceError` untouched. This fake reproduces exactly that
+ * observable surface against the same double `tx` the rest of the suite uses,
+ * the same way redis/redlock/the gateway are faked below rather than run for
+ * real.
+ */
+vi.mock('../services/bonus.service.js', () => ({
+    BonusService: {
+        spend: vi.fn(async (tx: any, userId: string, amount: any) => {
+            const rows = await tx.$queryRaw`SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}`
+            const before = new Decimal(rows[0]?.bonusBalance ?? 0)
+            const need = new Decimal(amount)
+            if (before.lessThan(need)) {
+                throw Object.assign(new Error('Insufficient bonus balance'), {
+                    statusCode: 400,
+                    name: 'InsufficientBonusBalanceError',
+                })
+            }
+            const after = before.minus(need)
+            await tx.wallet.update({ where: { userId }, data: { bonusBalance: after } })
+            return { spent: need, bonusBalanceBefore: before, bonusBalanceAfter: after, soonestExpiryConsumed: null }
+        }),
+    },
+}))
+
 // ── In-memory Prisma ──────────────────────────────────────────────────────────
 
 /**
@@ -217,7 +247,7 @@ function createStore() {
 
     const defaults: Record<string, Row> = {
         user: { role: 'PLAYER' },
-        wallet: { realBalance: dec(0), bonusBalance: dec(0) },
+        wallet: { realBalance: dec(0), bonusBalance: dec(0), spendAccount: 'REAL' },
         transaction: {},
         predictionMarket: {
             status: 'DRAFT',
@@ -441,6 +471,7 @@ function createStore() {
                     id: wallet.id,
                     realBalance: wallet.realBalance,
                     bonusBalance: wallet.bonusBalance,
+                    spendAccount: wallet.spendAccount,
                 }]
                 : []
         }
@@ -507,7 +538,13 @@ function seedMarket(overrides: Record<string, any> = {}): Seeded {
     return { marketId: market.id, outcomeA: outcomeA.id, outcomeB: outcomeB.id }
 }
 
-function seedUser(userId: string, real: number, bonus = 0, role = 'PLAYER'): string {
+function seedUser(
+    userId: string,
+    real: number,
+    bonus = 0,
+    role = 'PLAYER',
+    spendAccount: 'REAL' | 'BONUS' = 'REAL',
+): string {
     // A user row as well as a wallet: placeOrder reads the role to refuse staff
     // accounts, so a wallet with no user behind it is not a valid fixture.
     db.tables.user.push({ id: userId, role })
@@ -516,6 +553,7 @@ function seedUser(userId: string, real: number, bonus = 0, role = 'PLAYER'): str
         userId,
         realBalance: D(real),
         bonusBalance: D(bonus),
+        spendAccount,
     })
     return userId
 }
@@ -629,7 +667,14 @@ describe('placeOrder — the money leaves the wallet at placement', () => {
         expect(walletOf('alice')).toEqual({ real: '650', bonus: '0' })
     })
 
-    it('draws bonus balance before real balance', async () => {
+    // Task 16 (deposit-bonuses plan) replaced the old "bonus first, then real"
+    // mixed-spend behavior these two cases used to cover: placeOrder now
+    // reserves entirely from whichever account wallet.spendAccount selects
+    // (REAL by default), never splitting a single reserve across both. See
+    // the "spendAccount selection" block below for explicit BONUS/REAL
+    // coverage, including the case that used to exercise this fixture.
+
+    it('spends entirely from real balance and leaves bonus untouched (default spendAccount)', async () => {
         const { marketId, outcomeA } = seedMarket()
         seedUser('alice', 900, 100)
 
@@ -640,14 +685,14 @@ describe('placeOrder — the money leaves the wallet at placement', () => {
             quantity: 10,
         })
 
-        expect(order.reservedBonus.toString()).toBe('100')
-        expect(order.reservedReal.toString()).toBe('400')
-        expect(walletOf('alice')).toEqual({ real: '500', bonus: '0' })
+        expect(order.reservedReal.toString()).toBe('500')
+        expect(order.reservedBonus.toString()).toBe('0')
+        expect(walletOf('alice')).toEqual({ real: '400', bonus: '100' })
     })
 
-    it('takes nothing from real balance while bonus covers the whole reserve', async () => {
+    it('reserves entirely from bonus when spendAccount is BONUS, even though real also has funds', async () => {
         const { marketId, outcomeA } = seedMarket()
-        seedUser('alice', 900, 500)
+        seedUser('alice', 900, 500, 'PLAYER', 'BONUS')
 
         const { order } = await PredictionOrderService.placeOrder('alice', {
             marketId,
@@ -676,9 +721,10 @@ describe('placeOrder — the money leaves the wallet at placement', () => {
         expect(hold.amount.toString()).toBe('500')
         expect(hold.referenceId).toBe(marketId)
         expect(hold.balanceBefore.toString()).toBe('900')
-        expect(hold.balanceAfter.toString()).toBe('500')
+        expect(hold.balanceAfter.toString()).toBe('400')
         expect(hold.bonusBalanceBefore.toString()).toBe('100')
-        expect(hold.bonusBalanceAfter.toString()).toBe('0')
+        expect(hold.bonusBalanceAfter.toString()).toBe('100')
+        expect(hold.bonusExpiresAtSpend ?? null).toBeNull()
     })
 
     it('rejects an order the wallet cannot fund, leaving the balance untouched', async () => {
@@ -696,6 +742,59 @@ describe('placeOrder — the money leaves the wallet at placement', () => {
 
         expect(walletOf('alice')).toEqual({ real: '100', bonus: '50' })
         expect(db.tables.predictionOrder).toHaveLength(0)
+    })
+})
+
+// ── Player-selected spend account (Task 16) ─────────────────────────────────
+
+describe('placeOrder — spendAccount selection', () => {
+    it('reserves entirely from BONUS when spendAccount is BONUS', async () => {
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('predbonus1', 1000, 100, 'PLAYER', 'BONUS')
+
+        const { order } = await PredictionOrderService.placeOrder('predbonus1', {
+            marketId,
+            outcomeId: outcomeA,
+            limitPrice: 5,
+            quantity: 10,
+        })
+
+        expect(D(order.reservedBonus).toNumber()).toBe(50)
+        expect(D(order.reservedReal).toNumber()).toBe(0)
+        expect(walletOf('predbonus1')).toEqual({ real: '1000', bonus: '50' }) // real untouched
+    })
+
+    it('rejects with insufficient bonus balance rather than falling back to real', async () => {
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('predbonus2', 1000, 5, 'PLAYER', 'BONUS')
+
+        await expect(
+            PredictionOrderService.placeOrder('predbonus2', {
+                marketId,
+                outcomeId: outcomeA,
+                limitPrice: 5,
+                quantity: 10,
+            }),
+        ).rejects.toThrow('Insufficient bonus balance')
+
+        expect(walletOf('predbonus2')).toEqual({ real: '1000', bonus: '5' })
+        expect(db.tables.predictionOrder).toHaveLength(0)
+    })
+
+    it('reserves entirely from REAL when spendAccount is REAL, never touching bonus', async () => {
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('predreal1', 1000, 500, 'PLAYER', 'REAL')
+
+        const { order } = await PredictionOrderService.placeOrder('predreal1', {
+            marketId,
+            outcomeId: outcomeA,
+            limitPrice: 5,
+            quantity: 10,
+        })
+
+        expect(D(order.reservedReal).toNumber()).toBe(50)
+        expect(D(order.reservedBonus).toNumber()).toBe(0)
+        expect(walletOf('predreal1')).toEqual({ real: '950', bonus: '500' }) // bonus untouched
     })
 })
 
@@ -767,10 +866,20 @@ describe('placeOrder — matching against the book', () => {
         expect(release.amount.toString()).toBe('100')
     })
 
-    it('releases the improvement in the proportion the reserve was funded', async () => {
+    // Since Task 16, a reserve is never split across both accounts at
+    // placement — it is funded entirely from wallet.spendAccount. This case
+    // used to construct a 200/200 mixed reserve straight from wallet
+    // balances; that fixture is no longer reachable (a single account now
+    // funds the whole reserve or the order is rejected), so it is replaced
+    // with the single-bucket case splitAgainstReserve degrades to: with
+    // reservedReal === 0, every split — including the price-improvement
+    // release below — comes back 100% bonus, proving the release logic
+    // still respects "bonus returns as bonus" without needing its own code
+    // change for the single-bucket case.
+    it('releases the improvement entirely as bonus when the whole reserve was funded from bonus', async () => {
         const { marketId, outcomeA, outcomeB } = seedMarket()
         seedUser('bob', 1000)
-        seedUser('alice', 200, 200)
+        seedUser('alice', 1000, 400, 'PLAYER', 'BONUS')
 
         await PredictionOrderService.placeOrder('bob', {
             marketId,
@@ -785,12 +894,12 @@ describe('placeOrder — matching against the book', () => {
             quantity: 10,
         })
 
-        // 400 reserved as 200 bonus / 200 real; 300 consumed 150/150; the 100
-        // improvement comes back 50/50 — bonus as bonus, never as cash.
-        expect(walletOf('alice')).toEqual({ real: '50', bonus: '50' })
+        // 400 reserved entirely as bonus; 300 consumed; the 100 improvement
+        // comes back entirely as bonus too — real is never touched.
+        expect(walletOf('alice')).toEqual({ real: '1000', bonus: '100' })
         const position = positionOf('alice', outcomeA)!
-        expect(position.costBasisBonus.toString()).toBe('150')
-        expect(position.costBasisReal.toString()).toBe('150')
+        expect(position.costBasisBonus.toString()).toBe('300')
+        expect(position.costBasisReal.toString()).toBe('0')
     })
 
     it('sweeps several makers best price first and rests the remainder', async () => {
@@ -1125,18 +1234,20 @@ describe('cancelOrder', () => {
     })
 
     it('returns bonus-funded reserve to the bonus bucket', async () => {
+        // Since Task 16 the whole reserve is funded from a single account —
+        // bonus must cover it outright, real is never topped up.
         const { marketId, outcomeA } = seedMarket()
-        seedUser('alice', 100, 300)
+        seedUser('alice', 100, 400, 'PLAYER', 'BONUS')
 
         const rested = await PredictionOrderService.placeOrder('alice', {
             marketId, outcomeId: outcomeA, limitPrice: 40, quantity: 10,
         })
-        expect(walletOf('alice')).toEqual({ real: '0', bonus: '0' })
+        expect(walletOf('alice')).toEqual({ real: '100', bonus: '0' })
 
         await PredictionOrderService.cancelOrder('alice', rested.order.id)
 
-        // 300 was bonus and 100 real — refunding it all to real would launder it.
-        expect(walletOf('alice')).toEqual({ real: '100', bonus: '300' })
+        // The whole reserve was bonus — refunding it to real would launder it.
+        expect(walletOf('alice')).toEqual({ real: '100', bonus: '400' })
     })
 
     it('refuses to cancel an order that belongs to someone else', async () => {
