@@ -4,8 +4,8 @@ import { BonusService } from './bonus.service'
 import { dayBucketStart, weekBucketStart } from '../lib/bonus-period'
 
 export interface EvaluateDepositBonusResult {
-    daily?: { ruleId: string; amount: Decimal }
-    weekly?: { ruleId: string; amount: Decimal }
+    daily: Array<{ ruleId: string; amount: Decimal }>
+    weekly: Array<{ ruleId: string; amount: Decimal }>
 }
 
 function computeReward(rule: { rewardType: string; rewardValue: Decimal | number; maxReward: Decimal | number | null }, bucketTotal: Decimal): Decimal {
@@ -19,21 +19,37 @@ export class DepositBonusService {
     /**
      * Evaluated at deposit-approval time, inside the same transaction that
      * credits realBalance. Every active DAILY_DEPOSIT/WEEKLY_DEPOSIT rule is
-     * checked independently, so one deposit can trigger both. Idempotent per
-     * (rule, user, bucket) via BonusService.grant's unique constraint.
+     * checked independently, so one deposit can trigger both — and, since
+     * BonusRule has no uniqueness constraint on `type`, more than one rule of
+     * the same type can independently grant too (hence `daily`/`weekly` are
+     * arrays, not single optional slots). Idempotent per (rule, user, bucket)
+     * via BonusService.grant's unique constraint.
+     *
+     * Two distinct timestamps matter here, and they are NOT the same instant
+     * when a deposit sits in manual review for a while:
+     *   - `depositCreatedAt` (the deposit transaction's own `createdAt`) drives
+     *     which day/week bucket this deposit belongs to, and thus the SUM
+     *     query's date range — a deposit must always be evaluated against the
+     *     bucket it actually happened in, regardless of how long it waited for
+     *     approval.
+     *   - `grantedAt` (the approval instant) drives which BonusRules are
+     *     currently active, and anchors `expiresAt` — the bonus's usable
+     *     window starts when it's actually granted, not when the deposit was
+     *     originally submitted.
      */
     static async evaluateAndGrant(
         tx: Prisma.TransactionClient,
         userId: string,
-        depositAt: Date,
+        depositCreatedAt: Date,
+        grantedAt: Date,
     ): Promise<EvaluateDepositBonusResult> {
         const rules = await tx.bonusRule.findMany({
-            where: { isActive: true, startsAt: { lte: depositAt }, endsAt: { gte: depositAt } },
+            where: { isActive: true, startsAt: { lte: grantedAt }, endsAt: { gte: grantedAt } },
         })
-        const result: EvaluateDepositBonusResult = {}
+        const result: EvaluateDepositBonusResult = { daily: [], weekly: [] }
 
         for (const rule of rules) {
-            const periodStart = rule.type === 'DAILY_DEPOSIT' ? dayBucketStart(depositAt) : weekBucketStart(depositAt)
+            const periodStart = rule.type === 'DAILY_DEPOSIT' ? dayBucketStart(depositCreatedAt) : weekBucketStart(depositCreatedAt)
             const bucketMs = rule.type === 'DAILY_DEPOSIT' ? 86_400_000 : 7 * 86_400_000
             const bucketEnd = new Date(periodStart.getTime() + bucketMs)
 
@@ -47,7 +63,7 @@ export class DepositBonusService {
             const reward = computeReward(rule, bucketTotal)
             if (reward.lte(0)) continue
 
-            const expiresAt = new Date(depositAt.getTime() + rule.validityHours * 3_600_000)
+            const expiresAt = new Date(grantedAt.getTime() + rule.validityHours * 3_600_000)
             const grantResult = await BonusService.grant(tx, {
                 userId,
                 amount: reward,
@@ -58,8 +74,8 @@ export class DepositBonusService {
             })
             if (!grantResult.granted) continue
 
-            if (rule.type === 'DAILY_DEPOSIT') result.daily = { ruleId: rule.id, amount: reward }
-            else result.weekly = { ruleId: rule.id, amount: reward }
+            if (rule.type === 'DAILY_DEPOSIT') result.daily.push({ ruleId: rule.id, amount: reward })
+            else result.weekly.push({ ruleId: rule.id, amount: reward })
         }
 
         return result

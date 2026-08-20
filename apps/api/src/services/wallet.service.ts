@@ -69,8 +69,8 @@ export class WalletService {
         return await prisma.$transaction(async (tx) => {
             // Lock the transaction row first to prevent concurrent approvals from both
             // passing the PENDING_REVIEW check before either commits.
-            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string; note: string | null }>>`
-                SELECT id, "userId", amount, status, type, note FROM transactions WHERE id = ${transactionId} FOR UPDATE
+            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string; note: string | null; createdAt: Date }>>`
+                SELECT id, "userId", amount, status, type, note, "createdAt" FROM transactions WHERE id = ${transactionId} FOR UPDATE
             `
             const transaction = transactions[0]
             if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
@@ -173,11 +173,12 @@ export class WalletService {
             // above — the two are independent and both can fire on the same
             // deposit (e.g. a large first deposit that also crosses a daily
             // threshold).
-            const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, new Date())
+            const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, transaction.createdAt, new Date())
 
             return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }
         }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }) => {
-            const depositBonusTotal = new Decimal(depositBonusResult.daily?.amount ?? 0).plus(depositBonusResult.weekly?.amount ?? 0)
+            const depositBonusTotal = [...depositBonusResult.daily, ...depositBonusResult.weekly]
+                .reduce((sum, grant) => sum.plus(grant.amount), new Decimal(0))
             const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
 
             // Push balance update
