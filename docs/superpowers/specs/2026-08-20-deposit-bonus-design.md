@@ -32,12 +32,22 @@ The cost of caching is a second place that can drift. Section 7 covers the invar
 
 ### Two consequences that are not optional
 
-**Every bonus credit must route through one service.** `CashbackService`, `CampaignService`,
-`ReferralService`, `WalletService.approveDeposit` and the admin adjustment route all currently
-`increment` `bonusBalance` directly. If any of them keeps doing that, the cached column desyncs
-from the lots the first time it runs. All of them move to `BonusService.grant()`. This is why
-`BonusGrant.ruleId` and `BonusGrant.expiresAt` are nullable — legacy sources get a lot with no rule
-and no expiry.
+**Every bonus credit must route through one service.** Four call sites `increment` `bonusBalance`
+directly today. If any keeps doing so, the cached column desyncs from the lots the first time it
+runs, so all four move to `BonusService.grant()`:
+
+| Source | Location |
+|---|---|
+| First-deposit bonus | `WalletService.approveDeposit` |
+| Cashback | `CashbackService.disburse` |
+| Campaign bonus | `CampaignService`, the `CAMPAIGN_BONUS` credit |
+| Admin adjustment | `apps/api/src/routes/admin/index.ts` |
+
+This is why `BonusGrant.ruleId` and `BonusGrant.expiresAt` are nullable — these sources get a lot
+with no rule and no expiry.
+
+`ReferralService` is deliberately **not** on this list: it credits `realBalance`, not bonus, despite
+the name. It needs no change.
 
 **The migration must backfill.** Every existing non-zero `bonusBalance` needs a synthetic
 never-expiring lot, or the invariant is violated the moment the migration lands.
@@ -224,6 +234,14 @@ The refund lot is written with `ruleId = NULL`. It must be: reusing the original
 `periodStart` would collide with the grant it came from under
 `@@unique([ruleId, userId, periodStart])`, and the refund would fail. A refund is a restoration of
 already-granted credit, not a new award, so it correctly carries no rule.
+
+**Provider rollbacks have the same hole, and it predates this work.**
+`PalaceWalletService.processCancel` credits the reversed stake to `realBalance` unconditionally,
+even when the bet was funded from bonus. That converts bonus to withdrawable cash with no play at
+all — strictly worse than the play-through exposure accepted above, which at least requires risking
+the money. It is low-severity today because only the provider can trigger a cancel, not the player.
+The rollback reads the original bet's transaction snapshot and restores each side to the account it
+came from, matching the bingo refund rule.
 
 Carrying the original expiry rather than granting a fresh window is the point: a fresh window would
 make join-then-cancel a way to extend a bonus indefinitely. The consequence is that a refund
