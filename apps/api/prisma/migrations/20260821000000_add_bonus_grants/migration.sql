@@ -84,7 +84,18 @@ ALTER TABLE "bonus_grants" ADD CONSTRAINT "bonus_grants_userId_fkey" FOREIGN KEY
 
 -- Backfill: every pre-existing non-zero bonusBalance becomes one never-expiring,
 -- ruleless lot. Without this the cached-balance invariant is false on day one.
+--
+-- Round bonusBalance to 2dp FIRST, on the wallet itself, before backfilling from
+-- it — a pre-existing gap in CashbackService's percentage-refund math (no
+-- ROUND_DOWN before crediting bonusBalance) means some wallets may carry more
+-- than 2 decimal places today. Rounding both sides from the same UPDATE keeps
+-- wallet.bonusBalance and the new lot in exact agreement post-migration; the
+-- alternative (widening BonusGrant past 2dp) would be inconsistent with every
+-- other money column in this schema (Transaction.amount, BonusRule.threshold/
+-- rewardValue, CashbackPromotion.refundValue), all Decimal(12,2).
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+UPDATE "wallets" SET "bonusBalance" = ROUND("bonusBalance", 2) WHERE "bonusBalance" > 0;
 
 INSERT INTO "bonus_grants" ("id", "userId", "ruleId", "amount", "remaining", "periodStart", "expiresAt", "status", "createdAt")
 SELECT gen_random_uuid(), "userId", NULL, "bonusBalance", "bonusBalance", NOW(), NULL, 'ACTIVE', NOW()
