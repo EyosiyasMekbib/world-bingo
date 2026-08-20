@@ -4,6 +4,7 @@ import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
 import crmRoutes from './crm'
 import { AdminService } from '../../services/admin.service'
+import { BonusService } from '../../services/bonus.service'
 import { GameService } from '../../services/game.service'
 import { BotService } from '../../services/bot.service'
 import prisma from '../../lib/prisma'
@@ -155,11 +156,27 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: adjustAmount, status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realAfter, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore } })
                     return { realBalance: Number(realAfter), bonusBalance: Number(bonusBefore) }
                 } else {
-                    const bonusAfter = bonusBefore.plus(adjustAmount)
-                    if (bonusAfter.lessThan(0)) throw new Error('Adjustment would make bonus balance negative')
-                    await tx.wallet.update({ where: { userId }, data: { bonusBalance: { increment: adjustAmount } } })
-                    await tx.transaction.create({ data: { userId, type: TransactionType.ADMIN_BONUS_ADJUSTMENT, amount: adjustAmount, status: PaymentStatus.APPROVED, note: `[Admin] ${note}`, balanceBefore: realBefore, balanceAfter: realBefore, bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter } })
-                    return { realBalance: Number(realBefore), bonusBalance: Number(bonusAfter) }
+                    const grantOrReduce =
+                        adjustAmount.gte(0)
+                            ? await BonusService.grant(tx, { userId, amount: adjustAmount, source: 'ADMIN' })
+                            : await BonusService.reduce(tx, userId, adjustAmount.abs()).then((r) => ({
+                                  bonusBalanceBefore: r.bonusBalanceBefore,
+                                  bonusBalanceAfter: r.bonusBalanceAfter,
+                              }))
+                    await tx.transaction.create({
+                        data: {
+                            userId,
+                            type: TransactionType.ADMIN_BONUS_ADJUSTMENT,
+                            amount: adjustAmount,
+                            status: PaymentStatus.APPROVED,
+                            note: `[Admin] ${note}`,
+                            balanceBefore: realBefore,
+                            balanceAfter: realBefore,
+                            bonusBalanceBefore: grantOrReduce.bonusBalanceBefore,
+                            bonusBalanceAfter: grantOrReduce.bonusBalanceAfter,
+                        },
+                    })
+                    return { realBalance: Number(realBefore), bonusBalance: Number(grantOrReduce.bonusBalanceAfter) }
                 }
             })
             NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
