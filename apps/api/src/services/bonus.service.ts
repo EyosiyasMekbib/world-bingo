@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
+import prisma from '../lib/prisma'
 
 export type BonusGrantSource = 'FIRST_DEPOSIT' | 'DAILY_DEPOSIT' | 'WEEKLY_DEPOSIT' | 'CASHBACK' | 'CAMPAIGN' | 'ADMIN'
 
@@ -31,6 +32,12 @@ export interface ReduceBonusResult {
     reduced: Decimal
     bonusBalanceBefore: Decimal
     bonusBalanceAfter: Decimal
+}
+
+export interface ReconciliationMismatch {
+    userId: string
+    cachedBalance: Decimal
+    lotSum: Decimal
 }
 
 export class InsufficientBonusBalanceError extends Error {
@@ -187,5 +194,28 @@ export class BonusService {
         expiresAt: Date | null,
     ): Promise<GrantBonusResult> {
         return this.grant(tx, { userId, amount, source: 'ADMIN', ruleId: null, expiresAt })
+    }
+
+    /**
+     * Every wallet where the cached bonusBalance disagrees with the sum of its
+     * live lots. Should always be empty — see the Global Constraints invariant.
+     * Exposed to the admin panel (Task 24) so drift in production is visible
+     * rather than silent.
+     */
+    static async reconcile(client: Prisma.TransactionClient | typeof import('../lib/prisma').default = prisma): Promise<ReconciliationMismatch[]> {
+        const rows = await client.$queryRaw<Array<{ userId: string; cachedBalance: Decimal; lotSum: Decimal }>>`
+            SELECT w."userId",
+                   w."bonusBalance" AS "cachedBalance",
+                   COALESCE(SUM(g.remaining) FILTER (WHERE g.status = 'ACTIVE'), 0) AS "lotSum"
+            FROM wallets w
+            LEFT JOIN bonus_grants g ON g."userId" = w."userId"
+            GROUP BY w."userId", w."bonusBalance"
+            HAVING w."bonusBalance" != COALESCE(SUM(g.remaining) FILTER (WHERE g.status = 'ACTIVE'), 0)
+        `
+        return rows.map((r) => ({
+            userId: r.userId,
+            cachedBalance: new Decimal(r.cachedBalance),
+            lotSum: new Decimal(r.lotSum),
+        }))
     }
 }
