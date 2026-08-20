@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { TransactionType, PaymentStatus, NotificationType, CashbackRefundType, CashbackFrequency } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
+import { BonusService } from './bonus.service'
 
 /**
  * Compute the start and end of the current frequency window (UTC).
@@ -189,24 +190,13 @@ export class CashbackService {
                 })
                 if (existing) return 'skipped'
 
-                // Lock wallet
-                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${entry.userId} FOR UPDATE
-                `
-                const wallet = wallets[0]
-                if (!wallet) return 'skipped'
-
-                const realBefore = new Decimal(wallet.realBalance)
-                const bonusBefore = new Decimal(wallet.bonusBalance)
-                const bonusAfter = bonusBefore.plus(cashbackAmount)
-
-                // Credit bonusBalance
-                await tx.wallet.update({
-                    where: { userId: entry.userId },
-                    data: { bonusBalance: { increment: cashbackAmount } },
+                const grantResult = await BonusService.grant(tx, {
+                    userId: entry.userId,
+                    amount: cashbackAmount,
+                    source: 'CASHBACK',
                 })
+                if (!grantResult.granted) return 'skipped'
 
-                // Record transaction
                 await tx.transaction.create({
                     data: {
                         userId: entry.userId,
@@ -215,10 +205,10 @@ export class CashbackService {
                         status: PaymentStatus.APPROVED,
                         referenceId: promotionId,
                         note: `Cashback: ${promotion.name}`,
-                        balanceBefore: realBefore,
-                        balanceAfter: realBefore,
-                        bonusBalanceBefore: bonusBefore,
-                        bonusBalanceAfter: bonusAfter,
+                        balanceBefore: grantResult.bonusBalanceBefore,
+                        balanceAfter: grantResult.bonusBalanceBefore,
+                        bonusBalanceBefore: grantResult.bonusBalanceBefore,
+                        bonusBalanceAfter: grantResult.bonusBalanceAfter,
                     },
                 })
 

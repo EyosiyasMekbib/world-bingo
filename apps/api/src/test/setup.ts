@@ -34,6 +34,7 @@ async function cleanDb() {
     await prisma.bonusRule.deleteMany()
     await prisma.segment.deleteMany()
     await prisma.playerMetrics.deleteMany()
+    await prisma.cashbackDisbursement.deleteMany()
     await prisma.cashbackPromotion.deleteMany()
     await prisma.siteSetting.deleteMany()
     await prisma.houseTransaction.deleteMany()
