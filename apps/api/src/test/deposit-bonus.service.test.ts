@@ -4,6 +4,7 @@ import { prisma } from './setup'
 import { DepositBonusService } from '../services/deposit-bonus.service'
 import { BonusRuleService } from '../services/bonus-rule.service'
 import { dayBucketStart } from '../lib/bonus-period'
+import { SEGMENT_RULESET_VERSION } from '@world-bingo/shared-types'
 
 async function makeUser(username: string, phone: string) {
     return prisma.user.create({
@@ -139,5 +140,115 @@ describe('DepositBonusService.evaluateAndGrant', () => {
         // expiresAt must be anchored to grantedAt (the approval instant), not
         // depositCreatedAt -- validityHours=24 from grantedAt.
         expect(grant.expiresAt?.toISOString()).toBe(new Date(grantedAt.getTime() + 24 * 3_600_000).toISOString())
+    })
+})
+
+describe('DepositBonusService.evaluateAndGrant — segment targeting', () => {
+    it('grants to a member of the targeted cohort', async () => {
+        const user = await makeUser('segmember', '+251900002001')
+        await prisma.playerMetrics.create({
+            data: { userId: user.id, lifetimeDeposits: 5000, registeredAt: new Date() },
+        })
+        const segment = await prisma.segment.create({
+            data: {
+                name: 'Members',
+                rules: {
+                    version: SEGMENT_RULESET_VERSION,
+                    root: { kind: 'group', op: 'AND', children: [{ kind: 'cond', field: 'lifetimeDeposits', op: 'gte', value: 1000 }] },
+                },
+            },
+        })
+        await BonusRuleService.create({
+            name: 'Targeted', type: 'DAILY_DEPOSIT', threshold: 500, rewardType: 'FIXED',
+            rewardValue: 50, validityHours: 24,
+            startsAt: '2026-01-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z',
+            segmentId: segment.id,
+        })
+
+        const day = new Date('2026-08-20T10:00:00Z')
+        await approvedDeposit(user.id, 600, day)
+        const result = await prisma.$transaction((tx) =>
+            DepositBonusService.evaluateAndGrant(tx, user.id, day, day),
+        )
+
+        expect(result.daily).toHaveLength(1)
+        expect(result.daily[0].amount.toNumber()).toBe(50)
+    })
+
+    it('does not grant to a non-member, under identical deposit conditions', async () => {
+        const member = await makeUser('segin', '+251900002002')
+        const outsider = await makeUser('segout', '+251900002003')
+        await prisma.playerMetrics.createMany({
+            data: [
+                { userId: member.id, lifetimeDeposits: 5000, registeredAt: new Date() },
+                { userId: outsider.id, lifetimeDeposits: 5, registeredAt: new Date() },
+            ],
+        })
+        const segment = await prisma.segment.create({
+            data: {
+                name: 'Members2',
+                rules: {
+                    version: SEGMENT_RULESET_VERSION,
+                    root: { kind: 'group', op: 'AND', children: [{ kind: 'cond', field: 'lifetimeDeposits', op: 'gte', value: 1000 }] },
+                },
+            },
+        })
+        await BonusRuleService.create({
+            name: 'Targeted2', type: 'DAILY_DEPOSIT', threshold: 500, rewardType: 'FIXED',
+            rewardValue: 50, validityHours: 24,
+            startsAt: '2026-01-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z',
+            segmentId: segment.id,
+        })
+
+        const day = new Date('2026-08-20T10:00:00Z')
+        await approvedDeposit(outsider.id, 600, day)
+        const result = await prisma.$transaction((tx) =>
+            DepositBonusService.evaluateAndGrant(tx, outsider.id, day, day),
+        )
+
+        expect(result.daily).toHaveLength(0)
+        expect(result.weekly).toHaveLength(0)
+    })
+
+    it('deleting the targeted segment does NOT turn the rule global', async () => {
+        // The specific failure `isSegmentScoped` exists to prevent: segmentId is
+        // nulled by the FK's SetNull, so gating on it would make this rule pay
+        // everyone. Gating on isSegmentScoped must keep the outsider excluded.
+        const outsider = await makeUser('segdel', '+251900002004')
+        await prisma.playerMetrics.create({
+            data: { userId: outsider.id, lifetimeDeposits: 5, registeredAt: new Date() },
+        })
+        const insider = await makeUser('segdel2', '+251900002005')
+        await prisma.playerMetrics.create({
+            data: { userId: insider.id, lifetimeDeposits: 5000, registeredAt: new Date() },
+        })
+        const segment = await prisma.segment.create({
+            data: {
+                name: 'ToDelete',
+                rules: {
+                    version: SEGMENT_RULESET_VERSION,
+                    root: { kind: 'group', op: 'AND', children: [{ kind: 'cond', field: 'lifetimeDeposits', op: 'gte', value: 1000 }] },
+                },
+            },
+        })
+        const rule = await BonusRuleService.create({
+            name: 'Targeted3', type: 'DAILY_DEPOSIT', threshold: 500, rewardType: 'FIXED',
+            rewardValue: 50, validityHours: 24,
+            startsAt: '2026-01-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z',
+            segmentId: segment.id,
+        })
+
+        await prisma.segment.delete({ where: { id: segment.id } })
+        const after = await prisma.bonusRule.findUniqueOrThrow({ where: { id: rule.id } })
+        expect(after.segmentId).toBeNull()          // FK nulled it
+        expect(after.isSegmentScoped).toBe(true)    // targeting survives
+        expect(after.segmentName).toBe('ToDelete')  // provenance survives
+
+        const day = new Date('2026-08-20T10:00:00Z')
+        await approvedDeposit(outsider.id, 600, day)
+        const result = await prisma.$transaction((tx) =>
+            DepositBonusService.evaluateAndGrant(tx, outsider.id, day, day),
+        )
+        expect(result.daily).toHaveLength(0)
     })
 })

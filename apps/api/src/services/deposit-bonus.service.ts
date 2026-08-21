@@ -46,9 +46,28 @@ export class DepositBonusService {
         const rules = await tx.bonusRule.findMany({
             where: { isActive: true, startsAt: { lte: grantedAt }, endsAt: { gte: grantedAt } },
         })
+
+        // Membership is gated on isSegmentScoped, NOT on segmentId: segmentId is a
+        // nullable FK that a segment deletion sets to null, which would silently
+        // turn a targeted rule into one that pays every player. One batched query
+        // covers every scoped rule rather than one lookup per rule.
+        const scoped = rules.filter((r) => r.isSegmentScoped)
+        const memberOf = scoped.length
+            ? new Set(
+                  (
+                      await tx.bonusRuleMember.findMany({
+                          where: { userId, ruleId: { in: scoped.map((r) => r.id) } },
+                          select: { ruleId: true },
+                      })
+                  ).map((m) => m.ruleId),
+              )
+            : new Set<string>()
+
         const result: EvaluateDepositBonusResult = { daily: [], weekly: [] }
 
         for (const rule of rules) {
+            if (rule.isSegmentScoped && !memberOf.has(rule.id)) continue
+
             const periodStart = rule.type === 'DAILY_DEPOSIT' ? dayBucketStart(depositCreatedAt) : weekBucketStart(depositCreatedAt)
             const bucketMs = rule.type === 'DAILY_DEPOSIT' ? 86_400_000 : 7 * 86_400_000
             const bucketEnd = new Date(periodStart.getTime() + bucketMs)
