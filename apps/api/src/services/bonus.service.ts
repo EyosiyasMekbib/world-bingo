@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import prisma from '../lib/prisma'
+import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import { NotificationService } from './notification.service'
 
 export type BonusGrantSource = 'FIRST_DEPOSIT' | 'DAILY_DEPOSIT' | 'WEEKLY_DEPOSIT' | 'CASHBACK' | 'CAMPAIGN' | 'ADMIN'
 
@@ -44,6 +46,11 @@ export interface ReconciliationMismatch {
     userId: string
     cachedBalance: Decimal
     lotSum: Decimal
+}
+
+export interface SweepExpiredBonusesResult {
+    usersProcessed: number
+    totalExpired: string
 }
 
 export class InsufficientBonusBalanceError extends Error {
@@ -204,9 +211,19 @@ export class BonusService {
 
     /**
      * Called by the expiry worker, which holds no prior lock — unlike spend/
-     * reduce/restore, this locks the wallet itself.
+     * reduce/restore, this locks the wallet itself. Locks the wallet BEFORE
+     * the bonus_grants rows, matching the lock order every other call site
+     * uses (the caller locks the wallet, then consumeLots locks bonus_grants
+     * rows filtered by status = 'ACTIVE' — the same set this method locks).
+     * Locking lots first here would invert that order and risk a deadlock
+     * against a concurrent spend/reduce for the same user.
      */
     static async expireForUser(tx: Prisma.TransactionClient, userId: string, now: Date): Promise<ExpireBonusResult | null> {
+        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
+            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+        `
+        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
+
         // "expiresAt" is `timestamp` WITHOUT time zone; binding a raw Date here
         // sends it as timestamptz and lets Postgres reconcile using the session
         // timezone, silently shifting the comparison on any non-UTC-pinned
@@ -222,11 +239,6 @@ export class BonusService {
         `
         if (lots.length === 0) return null
 
-        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
-            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
-        `
-        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
-
         const total = lots.reduce((sum, lot) => sum.plus(new Decimal(lot.remaining)), new Decimal(0))
 
         await tx.bonusGrant.updateMany({
@@ -236,6 +248,59 @@ export class BonusService {
         await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: total } } })
 
         return { expired: total, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore.minus(total) }
+    }
+
+    /**
+     * Sweeps every user with an ACTIVE lot past its expiresAt: expires each
+     * one in its own transaction via expireForUser and writes a
+     * BONUS_EXPIRED transaction so a balance dropping overnight has an audit
+     * row, then pushes a live wallet update. Called every 15 minutes by the
+     * bonus-expiry worker (a thin BullMQ wrapper around this method, matching
+     * how every other worker in this codebase wraps a testable service
+     * method rather than holding its own business logic).
+     */
+    static async sweepExpired(): Promise<SweepExpiredBonusesResult> {
+        const now = new Date()
+        // See the identical note in expireForUser — bind the ISO string and
+        // cast explicitly; a raw Date here would compare against
+        // "expiresAt" (naive timestamp) using the session timezone.
+        const nowUtc = now.toISOString()
+        const dueUsers = await prisma.$queryRaw<Array<{ userId: string }>>`
+            SELECT DISTINCT "userId" FROM bonus_grants WHERE status = 'ACTIVE' AND "expiresAt" <= ${nowUtc}::timestamp
+        `
+
+        let usersProcessed = 0
+        let totalExpired = new Decimal(0)
+
+        for (const { userId } of dueUsers) {
+            const result = await prisma.$transaction(async (tx) => {
+                const expireResult = await BonusService.expireForUser(tx, userId, now)
+                if (!expireResult) return null
+                await tx.transaction.create({
+                    data: {
+                        userId,
+                        type: TransactionType.BONUS_EXPIRED,
+                        amount: expireResult.expired,
+                        status: PaymentStatus.APPROVED,
+                        note: 'Bonus expired',
+                        bonusBalanceBefore: expireResult.bonusBalanceBefore,
+                        bonusBalanceAfter: expireResult.bonusBalanceAfter,
+                    },
+                })
+                return expireResult
+            })
+            if (!result) continue
+
+            usersProcessed++
+            totalExpired = totalExpired.plus(result.expired)
+
+            const wallet = await prisma.wallet.findUnique({ where: { userId } })
+            if (wallet) {
+                NotificationService.pushWalletUpdate(userId, Number(wallet.realBalance), Number(wallet.bonusBalance))
+            }
+        }
+
+        return { usersProcessed, totalExpired: totalExpired.toFixed(2) }
     }
 
     /**
