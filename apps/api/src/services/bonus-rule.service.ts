@@ -3,6 +3,20 @@ import type { BonusRule } from '@prisma/client'
 import { compileSegment } from './player-crm/segment-compiler'
 import { parseSegmentRuleSet } from '@world-bingo/shared-types'
 
+export class SegmentNotFoundError extends Error {
+    constructor() {
+        super('Segment not found')
+        this.name = 'SegmentNotFoundError'
+    }
+}
+
+export class EmptySegmentError extends Error {
+    constructor(segmentName: string) {
+        super(`Segment "${segmentName}" matches no players — this rule could never pay anyone`)
+        this.name = 'EmptySegmentError'
+    }
+}
+
 export interface CreateBonusRuleInput {
     name: string
     type: 'DAILY_DEPOSIT' | 'WEEKLY_DEPOSIT'
@@ -40,12 +54,12 @@ export class BonusRuleService {
         }
 
         const segment = await prisma.segment.findUnique({ where: { id: input.segmentId } })
-        if (!segment) throw new Error('Segment not found')
+        if (!segment) throw new SegmentNotFoundError()
 
         const where = compileSegment(parseSegmentRuleSet(segment.rules))
         const matches = await prisma.playerMetrics.findMany({ where, select: { userId: true } })
         if (matches.length === 0) {
-            throw new Error(`Segment "${segment.name}" matches no players — this rule could never pay anyone`)
+            throw new EmptySegmentError(segment.name)
         }
 
         return prisma.$transaction(async (tx) => {

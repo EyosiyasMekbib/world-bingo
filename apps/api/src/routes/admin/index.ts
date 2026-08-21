@@ -11,7 +11,7 @@ import prisma from '../../lib/prisma'
 import { GameSchedulerService } from '../../services/game-scheduler.service'
 import { HouseWalletService } from '../../services/house-wallet.service'
 import { CashbackService } from '../../services/cashback.service'
-import { BonusRuleService } from '../../services/bonus-rule.service'
+import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
@@ -541,7 +541,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             try {
                 return await BonusRuleService.create({ name, type: type as any, threshold, rewardType: rewardType as any, rewardValue, maxReward, validityHours, startsAt, endsAt, segmentId })
             } catch (err: any) {
-                if (/segment/i.test(err?.message ?? '')) return reply.status(400).send({ error: err.message })
+                if (err instanceof SegmentNotFoundError || err instanceof EmptySegmentError) return reply.status(400).send({ error: err.message })
                 throw err
             }
         })

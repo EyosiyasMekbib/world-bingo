@@ -235,6 +235,7 @@ describe('Admin bonus rules', () => {
         })
         expect(res.statusCode).toBe(400)
         expect(res.json().error).toMatch(/segment not found/i)
+        expect(await prisma.bonusRule.count({ where: { name: 'Ghost segment' } })).toBe(0)
     })
 
     it('rejects segmentId on PATCH with a clean 400', async () => {
@@ -254,6 +255,29 @@ describe('Admin bonus rules', () => {
             method: 'PATCH',
             url: `/admin/bonus-rules/${ruleId}`,
             payload: { segmentId: segment.id },
+        })
+        expect(patchRes.statusCode).toBe(400)
+
+        const unchanged = await prisma.bonusRule.findUniqueOrThrow({ where: { id: ruleId } })
+        expect(unchanged.isSegmentScoped).toBe(false)
+        expect(unchanged.segmentId).toBeNull()
+    })
+
+    it('rejects an explicit segmentId: null on PATCH just as it rejects a real one', async () => {
+        const admin = await mkAdmin()
+        const app = await buildApp(admin.id)
+
+        const createRes = await app.inject({
+            method: 'POST',
+            url: '/admin/bonus-rules',
+            payload: { ...BASE_RULE_PAYLOAD, name: 'Patchable null' },
+        })
+        const ruleId = createRes.json().id
+
+        const patchRes = await app.inject({
+            method: 'PATCH',
+            url: `/admin/bonus-rules/${ruleId}`,
+            payload: { segmentId: null },
         })
         expect(patchRes.statusCode).toBe(400)
 
