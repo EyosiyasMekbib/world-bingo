@@ -274,7 +274,19 @@ export class PalaceWalletService {
         if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
 
         const existing = await findExisting(params.trans_guid)
-        if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
+        if (existing) {
+            // Same reasoning as processBet's replay branch: `existing.balanceAfter`
+            // is the ledger's combined real+bonus total captured at win time —
+            // correct for audit purposes, but stale for what Palace should see on a
+            // retry. Re-read the live wallet and report only the selected account.
+            const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+            const current = wallet
+                ? wallet.spendAccount === 'BONUS'
+                    ? new Decimal(wallet.bonusBalance)
+                    : new Decimal(wallet.realBalance)
+                : new Decimal(0)
+            return ok({ balance: Number(current.toFixed(2)) })
+        }
 
         const winAmount = new Decimal(params.amount).abs()
 
@@ -367,7 +379,13 @@ export class PalaceWalletService {
                 },
             })
 
-            return newTotal
+            // Report back only the account this win is reflected in. A win always
+            // credits real balance (see the R1 guard comment above), so a player
+            // whose selected account is BONUS sees no change from this win at all —
+            // reporting the combined total would re-advertise real money that
+            // account doesn't hold, undoing the point of authenticate/getBalance/
+            // processBet already reporting per-account.
+            return wallet.spendAccount === 'BONUS' ? bonusBefore : newReal
         })
 
         return ok({ balance: Number(balanceAfter.toFixed(2)) })
@@ -388,7 +406,19 @@ export class PalaceWalletService {
         if (!cancelTxId) return palaceErr(1002, 'INVALID_REQUEST')
 
         const existing = await findExisting(cancelTxId)
-        if (existing) return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
+        if (existing) {
+            // Same reasoning as processBet's replay branch: `existing.balanceAfter`
+            // is the ledger's combined real+bonus total captured at cancel time —
+            // correct for audit purposes, but stale for what Palace should see on a
+            // retry. Re-read the live wallet and report only the selected account.
+            const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+            const current = wallet
+                ? wallet.spendAccount === 'BONUS'
+                    ? new Decimal(wallet.bonusBalance)
+                    : new Decimal(wallet.realBalance)
+                : new Decimal(0)
+            return ok({ balance: Number(current.toFixed(2)) })
+        }
 
         const providerId = await getPalaceProviderId()
 
@@ -523,7 +553,11 @@ export class PalaceWalletService {
                 })
             }
 
-            return newTotal
+            // Report back only the account this cancel is reflected in — the
+            // combined total (`newTotal`, still used for the ledger rows above)
+            // would re-advertise money this account doesn't hold, same as the
+            // processBet/processWin fixes above.
+            return wallet.spendAccount === 'BONUS' ? newBonus : newReal
         })
 
         return ok({ balance: Number(balanceAfter.toFixed(2)) })
@@ -608,7 +642,9 @@ export class PalaceWalletService {
         // trans_status }. Return both so either check passes.
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         const balance = wallet
-            ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+            ? wallet.spendAccount === 'BONUS'
+                ? new Decimal(wallet.bonusBalance)
+                : new Decimal(wallet.realBalance)
             : new Decimal(0)
 
         return ok({

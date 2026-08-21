@@ -5,7 +5,7 @@ vi.mock('../lib/prisma.js', () => ({
     default: {
         gameProvider: { findUnique: vi.fn() },
         wallet: { findUnique: vi.fn(), update: vi.fn() },
-        thirdPartyTransaction: { findUnique: vi.fn(), create: vi.fn() },
+        thirdPartyTransaction: { findUnique: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
         transaction: { create: vi.fn(), findFirst: vi.fn() },
         user: { findUnique: vi.fn() },
         $transaction: vi.fn(),
@@ -215,6 +215,80 @@ describe('PalaceWalletService', () => {
         expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
     })
 
+    it('processWin credits real balance but reports the BONUS account when that is selected — no change from this win', async () => {
+        // Task 32: a win always credits REAL only (see the R1 guard comment in
+        // the service). With BONUS selected, the reported balance must reflect
+        // the (untouched) bonus account, not the combined total.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // no existing win row for this trans_guid
+        p.thirdPartyTransaction.aggregate.mockResolvedValue({ _sum: { betAmount: '10.00' }, _count: 1 }) // R1 guard: a prior bet exists
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '40.00', spendAccount: 'BONUS' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn() },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processWin({
+            trans_guid: 'win1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'c1', amount: 25, type: 2,
+        })
+
+        expect(res.result).toBe(0)
+        // 1000 + 25 real credited = 1025 real, 40 bonus untouched — combined
+        // would be 1065; only the selected (bonus) account is reported.
+        expect((res.data as any).balance).toBe(40)
+        const realUpdateArg = (fakeTx.wallet.update as any).mock.calls[0][0]
+        expect((realUpdateArg.data.realBalance as Decimal).toNumber()).toBe(1025)
+    })
+
+    it('processWin reports the REAL account balance (post-win) when that is selected', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        p.thirdPartyTransaction.aggregate.mockResolvedValue({ _sum: { betAmount: '10.00' }, _count: 1 })
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '100.00', bonusBalance: '40.00', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn() },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processWin({
+            trans_guid: 'win2', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'c1', amount: 25, type: 2,
+        })
+
+        expect(res.result).toBe(0)
+        // real 100 + 25 win = 125; the untouched 40 bonus is not part of the
+        // reported figure (combined would have been 165).
+        expect((res.data as any).balance).toBe(125)
+    })
+
+    it('processWin replay (same trans_guid) reports the live selected-account balance, not the stale combined total', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue({
+            // Ledger legitimately recorded the combined total (real 1025 + bonus 40).
+            balanceAfter: '1065.00',
+        })
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '1025.00', bonusBalance: '40.00', spendAccount: 'BONUS' })
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processWin({
+            trans_guid: 'win1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'c1', amount: 25, type: 2,
+        })
+
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(40) // live bonus balance — not the stale 1065 total
+        expect(p.$transaction).not.toHaveBeenCalled()
+    })
+
     it('processCancel restores a bonus-funded bet to bonus, carrying the ORIGINAL expiry, not real or null', async () => {
         // Original bet spent 15 entirely out of bonus (bonus 20 -> 5); the cancel
         // must restore that 15 back into bonus, not mint it into real. Task 31: it
@@ -268,7 +342,9 @@ describe('PalaceWalletService', () => {
         } as any)
 
         expect(res.result).toBe(0)
-        expect((res.data as any).balance).toBe(1020) // real 1000 (untouched) + bonus 20 (5 + 15 restored)
+        // Task 32: reports only the selected (BONUS) account — 5 + 15 restored —
+        // not the combined real+bonus total (1020).
+        expect((res.data as any).balance).toBe(20)
 
         // Restored through BonusService.restore (a new BonusGrant lot), carrying
         // the ORIGINAL expiry the spend consumed — not null/never-expiring.
@@ -386,7 +462,9 @@ describe('PalaceWalletService', () => {
         } as any)
 
         expect(res.result).toBe(0)
-        expect((res.data as any).balance).toBe(1020) // real 985 + 15 restored, bonus 20 untouched
+        // Task 32: reports only the selected (REAL) account — 985 + 15 restored —
+        // not the combined real+bonus total (1020).
+        expect((res.data as any).balance).toBe(1000)
 
         expect(fakeTx.wallet.update).toHaveBeenCalledTimes(1)
         const realUpdateArg = (fakeTx.wallet.update as any).mock.calls[0][0]
@@ -426,12 +504,33 @@ describe('PalaceWalletService', () => {
         } as any)
 
         expect(res.result).toBe(0)
-        expect((res.data as any).balance).toBe(1020) // unchanged combined total — forged amount not minted
+        // Task 32: reports only the selected (REAL) account (1000) — unchanged,
+        // forged amount not minted — not the combined real+bonus total (1020).
+        expect((res.data as any).balance).toBe(1000)
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
         expect(BonusService.restore).not.toHaveBeenCalled()
         expect(fakeTx.transaction.findFirst).not.toHaveBeenCalled() // split lookup never reached — nothing to split
         expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled() // nothing to settle
         expect(fakeTx.transaction.create).not.toHaveBeenCalled() // no TP_ROLLBACK ledger row for a non-credit
+    })
+
+    it('processCancel replay (same cancel id) reports the live selected-account balance, not the stale combined total', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue({
+            balanceAfter: '1020.00', // stale combined-total ledger value — must NOT be echoed back
+        })
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '1000.00', bonusBalance: '20.00', spendAccount: 'BONUS' })
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processCancel({
+            trans_guid: 'replay-cancel', account: 'alice', gplay_id: 'p3', round_id: 'r3', game_code: 'c1',
+            amount: 15, cancle_trans_guid: 'g3',
+        } as any)
+
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(20) // live BONUS balance — not the stale 1020 total
+        expect(p.$transaction).not.toHaveBeenCalled()
     })
 
     it('getStatus returns 21 when user does not exist', async () => {
@@ -461,6 +560,17 @@ describe('PalaceWalletService', () => {
         expect(res.status).toBe('OK')
         expect((res.data as any).trans_guid).toBe('tg-exists')
         expect((res.data as any).trans_status).toBe('OK')
+    })
+
+    it('getStatus reports only the selected account balance, not the combined total', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue({ id: 'some-tx' })
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '1000.00', bonusBalance: '40.00', spendAccount: 'BONUS' })
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.getStatus('alice', 'tg-exists')
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(40) // BONUS account only — not the combined 1040
     })
 
     it('dispatch emits a structured outcome line with masked account + result code', async () => {
