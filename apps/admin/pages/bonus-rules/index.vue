@@ -11,6 +11,7 @@ const creating = ref(false)
 
 const mismatches = ref<Array<{ userId: string; cachedBalance: number; lotSum: number }>>([])
 const reconciling = ref(false)
+const reconciliationStatus = ref<'checking' | 'clean' | 'drift' | 'error'>('checking')
 
 const form = reactive({
   name: '',
@@ -51,9 +52,12 @@ async function fetchRules() {
 
 async function fetchReconciliation() {
   reconciling.value = true
+  reconciliationStatus.value = 'checking'
   try {
     mismatches.value = await getBonusReconciliation()
+    reconciliationStatus.value = mismatches.value.length ? 'drift' : 'clean'
   } catch {
+    reconciliationStatus.value = 'error'
     toast.add({ title: 'Error', description: 'Failed to run reconciliation', color: 'error' })
   } finally {
     reconciling.value = false
@@ -102,6 +106,34 @@ async function toggle(rule: any) {
   }
 }
 
+const reconciliationIcon = computed(() => ({
+  checking: 'i-heroicons:arrow-path',
+  clean: 'i-heroicons:check-circle',
+  drift: 'i-heroicons:exclamation-triangle',
+  error: 'i-heroicons:x-circle',
+}[reconciliationStatus.value]))
+
+const reconciliationIconColor = computed(() => ({
+  checking: 'text-white/40',
+  clean: 'text-green-400',
+  drift: 'text-red-400',
+  error: 'text-amber-400',
+}[reconciliationStatus.value]))
+
+const reconciliationBorderClass = computed(() => ({
+  checking: 'border-(--surface-border)',
+  clean: 'border-(--surface-border)',
+  drift: 'border-red-500/40 bg-red-500/5',
+  error: 'border-amber-500/40 bg-amber-500/5',
+}[reconciliationStatus.value]))
+
+const reconciliationMessage = computed(() => {
+  if (reconciliationStatus.value === 'checking') return 'Checking bonus ledger for drift...'
+  if (reconciliationStatus.value === 'clean') return 'Bonus ledger reconciled — no drift detected'
+  if (reconciliationStatus.value === 'drift') return `${mismatches.value.length} wallet(s) disagree with their bonus grant ledger`
+  return 'Reconciliation check failed — try again'
+})
+
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-ET', { year: 'numeric', month: 'short', day: 'numeric' })
 }
@@ -134,18 +166,20 @@ onMounted(() => {
     <!-- Reconciliation widget (design spec §7) -->
     <div
       class="rounded-2xl border p-4 flex items-center justify-between"
-      :class="mismatches.length ? 'border-red-500/40 bg-red-500/5' : 'border-(--surface-border)'"
+      :class="reconciliationBorderClass"
       style="background: var(--surface-raised);"
     >
       <div class="flex items-center gap-3">
-        <UIcon :name="mismatches.length ? 'i-heroicons:exclamation-triangle' : 'i-heroicons:check-circle'" :class="mismatches.length ? 'text-red-400' : 'text-green-400'" class="w-5 h-5" />
-        <span class="text-sm text-white/70">
-          {{ mismatches.length ? `${mismatches.length} wallet(s) disagree with their bonus grant ledger` : 'Bonus ledger reconciled — no drift detected' }}
-        </span>
+        <UIcon
+          :name="reconciliationIcon"
+          :class="[reconciliationIconColor, { 'animate-spin': reconciliationStatus === 'checking' }]"
+          class="w-5 h-5"
+        />
+        <span class="text-sm text-white/70">{{ reconciliationMessage }}</span>
       </div>
       <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons:arrow-path" :loading="reconciling" label="Re-check" @click="fetchReconciliation" />
     </div>
-    <div v-if="mismatches.length" class="rounded-xl border border-red-500/20 divide-y divide-red-500/10">
+    <div v-if="reconciliationStatus === 'drift'" class="rounded-xl border border-red-500/20 divide-y divide-red-500/10">
       <div v-for="m in mismatches" :key="m.userId" class="px-4 py-2 text-xs text-white/60 flex justify-between">
         <span>{{ m.userId }}</span>
         <span>wallet: {{ m.cachedBalance.toFixed(2) }} · lots: {{ m.lotSum.toFixed(2) }}</span>
