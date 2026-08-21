@@ -86,6 +86,7 @@ const bonusRuleFields = z.object({
     validityHours: z.coerce.number().int().positive().max(24 * 90),
     startsAt: z.string(),
     endsAt: z.string(),
+    segmentId: z.string().uuid().nullable().optional(),
 })
 
 const bonusRuleCreateSchema = bonusRuleFields.refine(
@@ -536,13 +537,23 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.post('/bonus-rules', async (req: any, reply) => {
             const parsed = bonusRuleCreateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
-            const { name, type, threshold, rewardType, rewardValue, maxReward, validityHours, startsAt, endsAt } = parsed.data
-            return BonusRuleService.create({ name, type: type as any, threshold, rewardType: rewardType as any, rewardValue, maxReward, validityHours, startsAt, endsAt })
+            const { name, type, threshold, rewardType, rewardValue, maxReward, validityHours, startsAt, endsAt, segmentId } = parsed.data
+            try {
+                return await BonusRuleService.create({ name, type: type as any, threshold, rewardType: rewardType as any, rewardValue, maxReward, validityHours, startsAt, endsAt, segmentId })
+            } catch (err: any) {
+                if (/segment/i.test(err?.message ?? '')) return reply.status(400).send({ error: err.message })
+                throw err
+            }
         })
 
         f.patch('/bonus-rules/:id', async (req: any, reply) => {
             const parsed = bonusRuleUpdateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            if (parsed.data.segmentId !== undefined) {
+                return reply.status(400).send({
+                    error: "A rule's segment targeting cannot be changed after creation — create a new rule instead",
+                })
+            }
             const { name, type, threshold, rewardType, rewardValue, maxReward, validityHours, startsAt, endsAt, isActive } = parsed.data
             return BonusRuleService.update(req.params.id, {
                 ...(name !== undefined && { name }),
