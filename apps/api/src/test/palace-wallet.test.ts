@@ -103,11 +103,12 @@ describe('PalaceWalletService', () => {
         expect(BonusService.spend).not.toHaveBeenCalled()
 
         // Valid bet: spends entirely out of BONUS via BonusService.spend.
+        const spendExpiry = new Date(Date.now() + 1_800_000)
         vi.mocked(BonusService.spend).mockResolvedValue({
             spent: new Decimal(6),
             bonusBalanceBefore: new Decimal(10),
             bonusBalanceAfter: new Decimal(4),
-            soonestExpiryConsumed: null,
+            soonestExpiryConsumed: spendExpiry,
         } as any)
         const okBet = await PalaceWalletService.processBet({
             trans_guid: 'g2', account: 'alice', gplay_id: 'p2', round_id: 'r2', game_code: 'c1', amount: 6,
@@ -116,6 +117,18 @@ describe('PalaceWalletService', () => {
         expect((okBet.data as any).balance).toBe(4)
         expect(BonusService.spend).toHaveBeenCalledWith(fakeTx, 'uid1', expect.anything())
         expect(fakeTx.wallet.update).not.toHaveBeenCalled() // BONUS branch: BonusService.spend owns the wallet write
+
+        // Task 31: the TP_BET ledger row stamps the expiry BonusService.spend
+        // reported consuming, so a later cancel can restore into that SAME
+        // expiry rather than a never-expiring lot.
+        expect(fakeTx.transaction.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: 'TP_BET',
+                    bonusExpiresAtSpend: spendExpiry,
+                }),
+            }),
+        )
     })
 
     it('processBet is idempotent on duplicate trans_guid (COMPLETED), reporting the live selected-account balance', async () => {
@@ -202,9 +215,13 @@ describe('PalaceWalletService', () => {
         expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
     })
 
-    it('processCancel restores a bonus-funded bet to bonus, not real', async () => {
+    it('processCancel restores a bonus-funded bet to bonus, carrying the ORIGINAL expiry, not real or null', async () => {
         // Original bet spent 15 entirely out of bonus (bonus 20 -> 5); the cancel
-        // must restore that 15 back into bonus, not mint it into real.
+        // must restore that 15 back into bonus, not mint it into real. Task 31: it
+        // must also carry the SAME expiry the original spend consumed
+        // (bonusExpiresAtSpend, now stamped on the TP_BET row by processBet), not a
+        // never-expiring lot.
+        const originalExpiry = new Date(Date.now() + 1_800_000)
         p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // no existing rollback row for this cancel id
@@ -228,7 +245,11 @@ describe('PalaceWalletService', () => {
             transaction: {
                 create: vi.fn(),
                 // The paired Transaction row processBet wrote alongside the bet.
-                findFirst: vi.fn().mockResolvedValue({ bonusBalanceBefore: '20.00', bonusBalanceAfter: '5.00' }),
+                findFirst: vi.fn().mockResolvedValue({
+                    bonusBalanceBefore: '20.00',
+                    bonusBalanceAfter: '5.00',
+                    bonusExpiresAtSpend: originalExpiry,
+                }),
             },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
@@ -249,22 +270,24 @@ describe('PalaceWalletService', () => {
         expect(res.result).toBe(0)
         expect((res.data as any).balance).toBe(1020) // real 1000 (untouched) + bonus 20 (5 + 15 restored)
 
-        // Restored through BonusService.restore (a new BonusGrant lot), never-expiring.
+        // Restored through BonusService.restore (a new BonusGrant lot), carrying
+        // the ORIGINAL expiry the spend consumed — not null/never-expiring.
         expect(BonusService.restore).toHaveBeenCalledTimes(1)
         const [restoreTx, restoreUserId, restoreAmount, restoreExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
         expect(restoreTx).toBe(fakeTx)
         expect(restoreUserId).toBe('uid1')
         expect((restoreAmount as Decimal).toNumber()).toBe(15)
-        expect(restoreExpiry).toBeNull()
+        expect((restoreExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
 
         // Real balance untouched — no raw wallet.update for the real side.
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
 
         // Looked up the paired bet Transaction row by TP_BET + the original bet's
-        // own trans_guid as referenceId (the field processBet actually wrote it under).
+        // own trans_guid as referenceId (the field processBet actually wrote it
+        // under), selecting the expiry it stamped alongside the bonus snapshot.
         expect(fakeTx.transaction.findFirst).toHaveBeenCalledWith({
             where: { userId: 'uid1', type: 'TP_BET', referenceId: 'g3' },
-            select: { bonusBalanceBefore: true, bonusBalanceAfter: true },
+            select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
         })
 
         // Original bet settled so it cannot be cancelled twice (R5 guard intact).
@@ -272,6 +295,58 @@ describe('PalaceWalletService', () => {
             where: { id: 'bet-tx-1' },
             data: { status: 'ROLLED_BACK' },
         })
+    })
+
+    it('processCancel falls back to a never-expiring lot when the paired bet predates bonusExpiresAtSpend', async () => {
+        // Old data: the paired TP_BET row exists but has no bonusExpiresAtSpend
+        // (predates Task 31's stamping). Must still restore the bonus portion,
+        // just without an original expiry to preserve.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '5.00', spendAccount: 'BONUS' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue({
+                    id: 'bet-tx-5',
+                    transactionId: 'g5',
+                    type: 'BET',
+                    status: 'COMPLETED',
+                    betAmount: '15.00',
+                    amount: '-15.00',
+                }),
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: {
+                create: vi.fn(),
+                findFirst: vi.fn().mockResolvedValue({
+                    bonusBalanceBefore: '20.00',
+                    bonusBalanceAfter: '5.00',
+                    bonusExpiresAtSpend: null,
+                }),
+            },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+        vi.mocked(BonusService.restore).mockResolvedValue({
+            granted: true,
+            grantId: 'grant-2',
+            amount: new Decimal(15),
+            bonusBalanceBefore: new Decimal(5),
+            bonusBalanceAfter: new Decimal(20),
+        } as any)
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        await PalaceWalletService.processCancel({
+            trans_guid: 'g5cancel', account: 'alice', gplay_id: 'p5', round_id: 'r5', game_code: 'c1',
+            amount: 15, cancle_trans_guid: 'g5',
+        } as any)
+
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, , , restoreExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoreExpiry).toBeNull()
     })
 
     it('processCancel restores a real-funded bet to real, unchanged from before', async () => {

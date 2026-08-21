@@ -906,6 +906,12 @@ describe('placeOrder — matching against the book', () => {
     // still respects "bonus returns as bonus" without needing its own code
     // change for the single-bucket case.
     it('releases the improvement entirely as bonus when the whole reserve was funded from bonus', async () => {
+        // Task 31 (regression on Task 16): the release used to land bonus
+        // straight on `wallet.bonusBalance` via a raw update, minting bonus
+        // with no `BonusGrant` lot behind it. It must now go through
+        // `BonusService.restore` — same as `cancelOrder` — carrying the
+        // ORIGINAL hold's expiry, not a raw balance bump.
+        const originalExpiry = new Date(Date.now() + 900_000)
         const { marketId, outcomeA, outcomeB } = seedMarket()
         seedUser('bob', 1000)
         seedUser('alice', 1000, 400, 'PLAYER', 'BONUS')
@@ -916,12 +922,15 @@ describe('placeOrder — matching against the book', () => {
             limitPrice: 70,
             quantity: 10,
         })
+
+        bonusMockState.nextSpendExpiry = originalExpiry
         await PredictionOrderService.placeOrder('alice', {
             marketId,
             outcomeId: outcomeA,
             limitPrice: 40,
             quantity: 10,
         })
+        bonusMockState.nextSpendExpiry = null
 
         // 400 reserved entirely as bonus; 300 consumed; the 100 improvement
         // comes back entirely as bonus too — real is never touched.
@@ -929,6 +938,17 @@ describe('placeOrder — matching against the book', () => {
         const position = positionOf('alice', outcomeA)!
         expect(position.costBasisBonus.toString()).toBe('300')
         expect(position.costBasisReal.toString()).toBe('0')
+
+        // The improvement must land through BonusService.restore (a real
+        // BonusGrant lot), carrying the same expiry the hold consumed — not a
+        // raw wallet.update that mints unspendable, un-lotted bonus.
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [restoreTx, restoredUserId, restoredAmount, restoredExpiry] =
+            vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoreTx).toBeDefined()
+        expect(restoredUserId).toBe('alice')
+        expect(new Decimal(restoredAmount as any).toString()).toBe('100')
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
     })
 
     it('sweeps several makers best price first and rests the remainder', async () => {

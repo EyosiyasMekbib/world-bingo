@@ -400,10 +400,20 @@ export class PredictionOrderService {
                         realFinal = realAfterHold.plus(released.real)
                         bonusFinal = bonusAfterHold.plus(released.bonus)
 
-                        await tx.wallet.update({
-                            where: { userId },
-                            data: { realBalance: realFinal, bonusBalance: bonusFinal },
-                        })
+                        // Real returns as a plain wallet credit; bonus returns through
+                        // `BonusService.restore` so it lands in a lot carrying the SAME
+                        // expiry the original hold consumed, rather than a fresh window
+                        // — and, critically, in an actual `BonusGrant` lot rather than a
+                        // raw balance bump with no lot backing it, which would mint
+                        // unspendable bonus and permanently trip reconcile(). Mirrors
+                        // `cancelOrder`'s release, exactly.
+                        if (released.real.greaterThan(0)) {
+                            await tx.wallet.update({ where: { userId }, data: { realBalance: realFinal } })
+                        }
+                        if (released.bonus.greaterThan(0)) {
+                            const expiry = await originalHoldExpiry(tx, userId, order.id)
+                            await BonusService.restore(tx, userId, released.bonus, expiry)
+                        }
 
                         // The order must forget what it just gave back, or a later
                         // cancellation would refund the improvement a second time.

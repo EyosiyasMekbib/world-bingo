@@ -177,11 +177,13 @@ export class PalaceWalletService {
 
                 let newReal = realBefore
                 let newBonus = bonusBefore
+                let bonusExpiresAtSpend: Date | null = null
 
                 if (wallet.spendAccount === 'BONUS') {
                     if (bonusBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
                     const spendResult = await BonusService.spend(tx, user.id, betAmount)
                     newBonus = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
                 } else {
                     if (realBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
                     newReal = realBefore.minus(betAmount)
@@ -220,6 +222,7 @@ export class PalaceWalletService {
                         balanceAfter: newTotal,
                         bonusBalanceBefore: bonusBefore,
                         bonusBalanceAfter: newBonus,
+                        bonusExpiresAtSpend,
                     },
                 })
 
@@ -441,16 +444,18 @@ export class PalaceWalletService {
             // fall back to crediting real only, same as before.
             let realDelta = delta
             let bonusDelta = new Decimal(0)
+            let restoreExpiry: Date | null = null
             if (refundable && delta.greaterThan(0)) {
                 const betTxn = await tx.transaction.findFirst({
                     where: { userId: user.id, type: TransactionType.TP_BET, referenceId: originalBet!.transactionId },
-                    select: { bonusBalanceBefore: true, bonusBalanceAfter: true },
+                    select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
                 })
                 if (betTxn) {
                     const bonusSpent = new Decimal(betTxn.bonusBalanceBefore ?? 0).minus(new Decimal(betTxn.bonusBalanceAfter ?? 0))
                     if (bonusSpent.greaterThan(0)) {
                         bonusDelta = Decimal.min(bonusSpent, delta)
                         realDelta = delta.minus(bonusDelta)
+                        restoreExpiry = betTxn.bonusExpiresAtSpend ?? null
                     }
                 }
             }
@@ -463,13 +468,16 @@ export class PalaceWalletService {
                     await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
                 if (bonusDelta.greaterThan(0)) {
-                    // Restore into a fresh, never-expiring lot rather than the bet's
-                    // original expiry: the bet's own `Transaction` row doesn't carry
-                    // `bonusExpiresAtSpend` (that column is stamped by spend call sites
-                    // added elsewhere in this plan, not by processBet), and a null
-                    // expiry is strictly more generous to the player than losing the
-                    // credit outright. This path is provider-triggered only.
-                    const restoreResult = await BonusService.restore(tx, user.id, bonusDelta, null)
+                    // Restore into a lot carrying the ORIGINAL expiry the spend
+                    // consumed — read back from `bonusExpiresAtSpend` on the bet's
+                    // own `Transaction` row, which `processBet` now stamps. Falls
+                    // back to never-expiring only when the bet predates that
+                    // stamping (defensive only). A never-expiring restore would be
+                    // strictly more generous than the original hold, letting a
+                    // cancel launder an about-to-expire bonus into a longer-lived
+                    // one — the same reasoning Task 19's cancelOrder pattern
+                    // already applies.
+                    const restoreResult = await BonusService.restore(tx, user.id, bonusDelta, restoreExpiry)
                     newBonus = restoreResult.bonusBalanceAfter
                 }
                 // Settle the original bet so it cannot be cancelled again.
