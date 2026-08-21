@@ -47,6 +47,13 @@ model User {
   @@map("users")
 }
 
+// realBalance and bonusBalance also carry raw CHECK (>= 0) constraints at the
+// database level (see migration 20260821000001_add_wallet_balance_check_constraints).
+// Prisma's schema DSL doesn't model CHECK constraints for this Prisma version, so
+// they exist only in the migration SQL, not as an attribute here. This is a
+// backstop against any spend path — present or future — that fails to prevent a
+// double-spend in application code: instead of a silent negative balance, the
+// offending transaction fails loudly at commit time.
 model Wallet {
   id           String       @id @default(uuid())
   userId       String       @unique
