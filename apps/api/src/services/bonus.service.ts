@@ -34,6 +34,12 @@ export interface ReduceBonusResult {
     bonusBalanceAfter: Decimal
 }
 
+export interface ExpireBonusResult {
+    expired: Decimal
+    bonusBalanceBefore: Decimal
+    bonusBalanceAfter: Decimal
+}
+
 export interface ReconciliationMismatch {
     userId: string
     cachedBalance: Decimal
@@ -194,6 +200,42 @@ export class BonusService {
         expiresAt: Date | null,
     ): Promise<GrantBonusResult> {
         return this.grant(tx, { userId, amount, source: 'ADMIN', ruleId: null, expiresAt })
+    }
+
+    /**
+     * Called by the expiry worker, which holds no prior lock — unlike spend/
+     * reduce/restore, this locks the wallet itself.
+     */
+    static async expireForUser(tx: Prisma.TransactionClient, userId: string, now: Date): Promise<ExpireBonusResult | null> {
+        // "expiresAt" is `timestamp` WITHOUT time zone; binding a raw Date here
+        // sends it as timestamptz and lets Postgres reconcile using the session
+        // timezone, silently shifting the comparison on any non-UTC-pinned
+        // session — the exact bug already documented and fixed in
+        // player-metrics.service.ts's findStaleUserIds, and hit again (then
+        // fixed) in BonusService.grant during Task 2's review. Bind the ISO
+        // string and cast explicitly instead.
+        const nowUtc = now.toISOString()
+        const lots = await tx.$queryRaw<Array<{ id: string; remaining: Decimal }>>`
+            SELECT id, remaining FROM bonus_grants
+            WHERE "userId" = ${userId} AND status = 'ACTIVE' AND "expiresAt" <= ${nowUtc}::timestamp
+            FOR UPDATE
+        `
+        if (lots.length === 0) return null
+
+        const wallets = await tx.$queryRaw<Array<{ bonusBalance: Decimal }>>`
+            SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+        `
+        const bonusBalanceBefore = new Decimal(wallets[0]?.bonusBalance ?? 0)
+
+        const total = lots.reduce((sum, lot) => sum.plus(new Decimal(lot.remaining)), new Decimal(0))
+
+        await tx.bonusGrant.updateMany({
+            where: { id: { in: lots.map((l) => l.id) } },
+            data: { remaining: 0, status: 'EXPIRED' },
+        })
+        await tx.wallet.update({ where: { userId }, data: { bonusBalance: { decrement: total } } })
+
+        return { expired: total, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore.minus(total) }
     }
 
     /**

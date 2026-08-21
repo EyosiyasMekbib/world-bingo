@@ -202,3 +202,36 @@ describe('BonusService.restore', () => {
         expect(lot.expiresAt?.getTime()).toBe(originalExpiry.getTime())
     })
 })
+
+describe('BonusService.expireForUser', () => {
+    it('expires only lots past their expiry, leaving live lots untouched', async () => {
+        const user = await makeUser('expire1', '+251900000029')
+        const past = new Date(Date.now() - 1000)
+        const future = new Date(Date.now() + 3600_000)
+        await prisma.$transaction(async (tx) => {
+            await BonusService.grant(tx, { userId: user.id, amount: 30, source: 'ADMIN', expiresAt: past })
+            await BonusService.grant(tx, { userId: user.id, amount: 20, source: 'ADMIN', expiresAt: future })
+        })
+
+        const result = await prisma.$transaction((tx) => BonusService.expireForUser(tx, user.id, new Date()))
+
+        expect(result?.expired.toNumber()).toBe(30)
+        expect(result?.bonusBalanceAfter.toNumber()).toBe(20)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(20)
+
+        const lots = await prisma.bonusGrant.findMany({ where: { userId: user.id }, orderBy: { amount: 'asc' } })
+        expect(lots.find((l) => Number(l.amount) === 30)?.status).toBe('EXPIRED')
+        expect(lots.find((l) => Number(l.amount) === 20)?.status).toBe('ACTIVE')
+    })
+
+    it('returns null when nothing is due', async () => {
+        const user = await makeUser('expire2', '+251900000030')
+        await prisma.$transaction((tx) =>
+            BonusService.grant(tx, { userId: user.id, amount: 10, source: 'ADMIN', expiresAt: new Date(Date.now() + 3600_000) }),
+        )
+        const result = await prisma.$transaction((tx) => BonusService.expireForUser(tx, user.id, new Date()))
+        expect(result).toBeNull()
+    })
+})
