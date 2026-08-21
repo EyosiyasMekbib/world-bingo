@@ -6,7 +6,7 @@ vi.mock('../lib/prisma.js', () => ({
         gameProvider: { findUnique: vi.fn() },
         wallet: { findUnique: vi.fn(), update: vi.fn() },
         thirdPartyTransaction: { findUnique: vi.fn(), create: vi.fn() },
-        transaction: { create: vi.fn() },
+        transaction: { create: vi.fn(), findFirst: vi.fn() },
         user: { findUnique: vi.fn() },
         $transaction: vi.fn(),
         $queryRaw: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock('../lib/redis.js', () => ({ default: { get: vi.fn().mockResolvedValue(nu
 // `bonusBalanceAfter` becomes the reported balance. Mocked the same way
 // prediction-order.test.ts mocks it against the same underlying module.
 vi.mock('../services/bonus.service.js', () => ({
-    BonusService: { spend: vi.fn() },
+    BonusService: { spend: vi.fn(), restore: vi.fn() },
 }))
 
 import prisma from '../lib/prisma.js'
@@ -200,6 +200,163 @@ describe('PalaceWalletService', () => {
             round_id: 'r1', game_code: 'game1', amount: 100,
         })
         expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
+    })
+
+    it('processCancel restores a bonus-funded bet to bonus, not real', async () => {
+        // Original bet spent 15 entirely out of bonus (bonus 20 -> 5); the cancel
+        // must restore that 15 back into bonus, not mint it into real.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // no existing rollback row for this cancel id
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '5.00', spendAccount: 'BONUS' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                // The original bet, re-read under the wallet lock (R5 guard).
+                findUnique: vi.fn().mockResolvedValue({
+                    id: 'bet-tx-1',
+                    transactionId: 'g3',
+                    type: 'BET',
+                    status: 'COMPLETED',
+                    betAmount: '15.00',
+                    amount: '-15.00',
+                }),
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: {
+                create: vi.fn(),
+                // The paired Transaction row processBet wrote alongside the bet.
+                findFirst: vi.fn().mockResolvedValue({ bonusBalanceBefore: '20.00', bonusBalanceAfter: '5.00' }),
+            },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+        vi.mocked(BonusService.restore).mockResolvedValue({
+            granted: true,
+            grantId: 'grant-1',
+            amount: new Decimal(15),
+            bonusBalanceBefore: new Decimal(5),
+            bonusBalanceAfter: new Decimal(20),
+        } as any)
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processCancel({
+            trans_guid: 'g3cancel', account: 'alice', gplay_id: 'p3', round_id: 'r3', game_code: 'c1',
+            amount: 15, cancle_trans_guid: 'g3',
+        } as any)
+
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(1020) // real 1000 (untouched) + bonus 20 (5 + 15 restored)
+
+        // Restored through BonusService.restore (a new BonusGrant lot), never-expiring.
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [restoreTx, restoreUserId, restoreAmount, restoreExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoreTx).toBe(fakeTx)
+        expect(restoreUserId).toBe('uid1')
+        expect((restoreAmount as Decimal).toNumber()).toBe(15)
+        expect(restoreExpiry).toBeNull()
+
+        // Real balance untouched — no raw wallet.update for the real side.
+        expect(fakeTx.wallet.update).not.toHaveBeenCalled()
+
+        // Looked up the paired bet Transaction row by TP_BET + the original bet's
+        // own trans_guid as referenceId (the field processBet actually wrote it under).
+        expect(fakeTx.transaction.findFirst).toHaveBeenCalledWith({
+            where: { userId: 'uid1', type: 'TP_BET', referenceId: 'g3' },
+            select: { bonusBalanceBefore: true, bonusBalanceAfter: true },
+        })
+
+        // Original bet settled so it cannot be cancelled twice (R5 guard intact).
+        expect(fakeTx.thirdPartyTransaction.update).toHaveBeenCalledWith({
+            where: { id: 'bet-tx-1' },
+            data: { status: 'ROLLED_BACK' },
+        })
+    })
+
+    it('processCancel restores a real-funded bet to real, unchanged from before', async () => {
+        // Original bet spent 15 out of real (bonus never touched); the cancel must
+        // still restore it to real, exactly as before this fix — no regression.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '985.00', bonusBalance: '20.00', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue({
+                    id: 'bet-tx-2',
+                    transactionId: 'g4',
+                    type: 'BET',
+                    status: 'COMPLETED',
+                    betAmount: '15.00',
+                    amount: '-15.00',
+                }),
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: {
+                create: vi.fn(),
+                // Bonus untouched at bet time — real-funded bet.
+                findFirst: vi.fn().mockResolvedValue({ bonusBalanceBefore: '20.00', bonusBalanceAfter: '20.00' }),
+            },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processCancel({
+            trans_guid: 'g4cancel', account: 'alice', gplay_id: 'p4', round_id: 'r4', game_code: 'c1',
+            amount: 15, cancle_trans_guid: 'g4',
+        } as any)
+
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(1020) // real 985 + 15 restored, bonus 20 untouched
+
+        expect(fakeTx.wallet.update).toHaveBeenCalledTimes(1)
+        const realUpdateArg = (fakeTx.wallet.update as any).mock.calls[0][0]
+        expect(realUpdateArg.where).toEqual({ userId: 'uid1' })
+        expect((realUpdateArg.data.realBalance as Decimal).toNumber()).toBe(1000)
+
+        expect(BonusService.restore).not.toHaveBeenCalled()
+        expect(fakeTx.thirdPartyTransaction.update).toHaveBeenCalledWith({
+            where: { id: 'bet-tx-2' },
+            data: { status: 'ROLLED_BACK' },
+        })
+    })
+
+    it('processCancel R5 guard: no matching completed bet credits nothing and settles nothing', async () => {
+        // Forged/unmatched cancel — the fraud guard this fix builds on top of must
+        // still reject crediting anything, regardless of the real/bonus split logic.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '20.00', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue(null), // no original bet found under the lock
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: { create: vi.fn(), findFirst: vi.fn() },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processCancel({
+            trans_guid: 'forged-cancel', account: 'alice', gplay_id: 'p9', round_id: 'r9', game_code: 'c1',
+            amount: 999, cancle_trans_guid: 'never-happened',
+        } as any)
+
+        expect(res.result).toBe(0)
+        expect((res.data as any).balance).toBe(1020) // unchanged combined total — forged amount not minted
+        expect(fakeTx.wallet.update).not.toHaveBeenCalled()
+        expect(BonusService.restore).not.toHaveBeenCalled()
+        expect(fakeTx.transaction.findFirst).not.toHaveBeenCalled() // split lookup never reached — nothing to split
+        expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled() // nothing to settle
+        expect(fakeTx.transaction.create).not.toHaveBeenCalled() // no TP_ROLLBACK ledger row for a non-credit
     })
 
     it('getStatus returns 21 when user does not exist', async () => {

@@ -432,17 +432,54 @@ export class PalaceWalletService {
                 )
             }
 
-            const newReal = realBefore.plus(delta)
-            const newTotal = newReal.plus(bonusBefore)
+            // Split the refund between real and bonus based on how the original bet
+            // was actually funded. The `ThirdPartyTransaction` bet row itself doesn't
+            // carry that split, but the paired `Transaction` row `processBet` creates
+            // alongside it does, via `bonusBalanceBefore`/`bonusBalanceAfter` — look it
+            // up by the same `referenceId` (the original bet's `trans_guid`) processBet
+            // wrote it under. If no paired row is found (e.g. pre-dates this split),
+            // fall back to crediting real only, same as before.
+            let realDelta = delta
+            let bonusDelta = new Decimal(0)
+            if (refundable && delta.greaterThan(0)) {
+                const betTxn = await tx.transaction.findFirst({
+                    where: { userId: user.id, type: TransactionType.TP_BET, referenceId: originalBet!.transactionId },
+                    select: { bonusBalanceBefore: true, bonusBalanceAfter: true },
+                })
+                if (betTxn) {
+                    const bonusSpent = new Decimal(betTxn.bonusBalanceBefore ?? 0).minus(new Decimal(betTxn.bonusBalanceAfter ?? 0))
+                    if (bonusSpent.greaterThan(0)) {
+                        bonusDelta = Decimal.min(bonusSpent, delta)
+                        realDelta = delta.minus(bonusDelta)
+                    }
+                }
+            }
+
+            const newReal = realBefore.plus(realDelta)
+            let newBonus = bonusBefore
 
             if (delta.greaterThan(0)) {
-                await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                if (realDelta.greaterThan(0)) {
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                }
+                if (bonusDelta.greaterThan(0)) {
+                    // Restore into a fresh, never-expiring lot rather than the bet's
+                    // original expiry: the bet's own `Transaction` row doesn't carry
+                    // `bonusExpiresAtSpend` (that column is stamped by spend call sites
+                    // added elsewhere in this plan, not by processBet), and a null
+                    // expiry is strictly more generous to the player than losing the
+                    // credit outright. This path is provider-triggered only.
+                    const restoreResult = await BonusService.restore(tx, user.id, bonusDelta, null)
+                    newBonus = restoreResult.bonusBalanceAfter
+                }
                 // Settle the original bet so it cannot be cancelled again.
                 await tx.thirdPartyTransaction.update({
                     where: { id: originalBet!.id },
                     data: { status: ThirdPartyTxStatus.ROLLED_BACK },
                 })
             }
+
+            const newTotal = newReal.plus(newBonus)
 
             await tx.thirdPartyTransaction.create({
                 data: {
@@ -473,7 +510,7 @@ export class PalaceWalletService {
                         balanceBefore: totalBefore,
                         balanceAfter: newTotal,
                         bonusBalanceBefore: bonusBefore,
-                        bonusBalanceAfter: bonusBefore,
+                        bonusBalanceAfter: newBonus,
                     },
                 })
             }
