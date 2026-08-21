@@ -319,6 +319,72 @@ describe('CampaignService — bonus grants', () => {
         expect(await prisma.transaction.count({ where: { type: 'CAMPAIGN_BONUS' } })).toBe(1)
     })
 
+    it('locks the wallet so concurrent campaign deliveries to the same player chain their before/after balances correctly', async () => {
+        // BonusService.grant() reads the wallet with a plain, unlocked SELECT —
+        // it assumes the caller already holds a FOR UPDATE lock on the wallet
+        // row in this same transaction (the Global Constraint every other
+        // BonusService caller follows; see game.service.ts's joinGame). Without
+        // it, two DIFFERENT campaigns draining concurrently — a realistic
+        // multi-worker scenario — and both targeting the same player can each
+        // read a stale bonusBalance and record a wrong bonusBalanceBefore in
+        // their audit row, even though the wallet's own increments are
+        // individually atomic and the final balance is correct.
+        //
+        // A single colliding pair is a coin flip given how much sequential work
+        // (user lookup, campaign-row lock, cap check) each delivery does before
+        // reaching the unlocked read — not flaky exactly, but not a reliable
+        // regression guard on its own. Eight campaigns racing the same player
+        // turns that into 28 colliding PAIRS, so the unlocked-code failure rate
+        // is close to certain while the locked-code pass rate stays exactly 100%
+        // (FOR UPDATE serializes every one of them, no matter how many).
+        const player = await makePlayer(`camp_conc_${Date.now()}`, `+2519009${String(Date.now()).slice(-6)}`)
+        await PlayerMetricsService.refreshAll()
+
+        const segment = await SegmentService.create({ name: `conc-${Date.now()}`, rules: allPlayers })
+
+        const amounts = [1, 2, 3, 4, 5, 6, 7, 8]
+        const campaigns = []
+        for (const amount of amounts) {
+            campaigns.push(
+                await CampaignService.create({
+                    name: `Concurrent ${amount}`, segmentId: segment.id,
+                    actions: { bonus: { amount } },
+                    maxRecipients: 1000, maxTotalBonus: 10_000, maxPerPlayer: 100,
+                    actorId: AUTHOR, actorName: 'author',
+                }),
+            )
+        }
+        for (const c of campaigns) {
+            await CampaignService.submitForApproval(c.id)
+            await CampaignService.approve(c.id, { id: APPROVER, note: 'concurrent test' })
+            await CampaignService.launch(c.id)
+        }
+
+        await Promise.all(campaigns.map((c) => runToCompletion(c.id)))
+
+        const total = amounts.reduce((a, b) => a + b, 0) // 36
+        const wallet = await prisma.wallet.findUnique({ where: { userId: player.id } })
+        expect(Number(wallet!.bonusBalance)).toBe(total)
+
+        const rows = await prisma.transaction.findMany({
+            where: { userId: player.id, type: 'CAMPAIGN_BONUS' },
+        })
+        expect(rows).toHaveLength(amounts.length)
+
+        // Sorted by "before", a correctly serialized run is a strict chain:
+        // each row's before equals the PREVIOUS row's after, starting at 0 and
+        // ending at the true final total. An unlocked, racing read breaks this
+        // chain — two rows can share the same (wrong) "before".
+        const sorted = [...rows].sort(
+            (a, b) => Number(a.bonusBalanceBefore) - Number(b.bonusBalanceBefore),
+        )
+        expect(Number(sorted[0].bonusBalanceBefore)).toBe(0)
+        for (let i = 1; i < sorted.length; i++) {
+            expect(Number(sorted[i].bonusBalanceBefore)).toBe(Number(sorted[i - 1].bonusBalanceAfter))
+        }
+        expect(Number(sorted[sorted.length - 1].bonusBalanceAfter)).toBe(total)
+    })
+
     it('fails the campaign if the payload changed after approval', async () => {
         const { campaign } = await setup({ players: 1, bonusAmount: 10 })
         await CampaignService.submitForApproval(campaign.id)

@@ -466,7 +466,19 @@ export class CampaignService {
                     // schema guarantee, so fail the delivery explicitly here rather than
                     // relying on BonusService.grant's internal wallet-update throw to be
                     // caught by the outer try/catch.
-                    const wallet = await tx.wallet.findUnique({ where: { userId } })
+                    //
+                    // FOR UPDATE, immediately before BonusService.grant: grant() reads
+                    // bonusBalance with a plain, unlocked SELECT — it assumes the
+                    // caller already holds the wallet row lock in this same
+                    // transaction (the Global Constraint every other BonusService
+                    // caller follows; see game.service.ts's joinGame). Without it, two
+                    // campaigns draining concurrently for the same player can each
+                    // read a stale bonusBalance and record a wrong bonusBalanceBefore
+                    // in their audit row.
+                    const wallets = await tx.$queryRaw<Array<{ id: string }>>`
+                        SELECT id FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                    `
+                    const wallet = wallets[0]
                     if (!wallet) {
                         await tx.campaignDelivery.update({
                             where: { id: deliveryId },

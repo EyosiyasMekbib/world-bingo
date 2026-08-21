@@ -195,6 +195,18 @@ export class CashbackService {
                 })
                 if (existing) return 'skipped'
 
+                // BonusService.grant() reads the wallet with a plain, unlocked
+                // SELECT — it assumes the caller already holds a FOR UPDATE lock
+                // on the wallet row in this same transaction (the Global
+                // Constraint every other BonusService caller follows; see
+                // game.service.ts's joinGame). Without it, two disbursements
+                // racing for the same player can each read a stale
+                // bonusBalance and record a wrong bonusBalanceBefore in their
+                // audit row.
+                await tx.$queryRaw`
+                    SELECT id FROM wallets WHERE "userId" = ${entry.userId} FOR UPDATE
+                `
+
                 const grantResult = await BonusService.grant(tx, {
                     userId: entry.userId,
                     amount: cashbackAmount,
