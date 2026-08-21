@@ -565,10 +565,16 @@ export class PredictionSettlementService {
                             // expiry the funding order's hold consumed, rather than a fresh
                             // window — mirrors `refundOpenOrders` above. A position has no
                             // single originating order (its cost basis can accumulate from
-                            // several fills), so the hold is looked up by (userId, type,
-                            // referenceId=marketId) instead of note-contains-orderId — every
-                            // PREDICTION_ORDER_HOLD for this user on this market carries that
-                            // same referenceId.
+                            // several fills — matching.service.ts's upsert increments
+                            // costBasisBonus across potentially many orders), so every
+                            // PREDICTION_ORDER_HOLD for this user on this market is fetched
+                            // (referenceId=marketId, no note-contains-orderId to scope to one)
+                            // and reduced to the SOONEST non-null bonusExpiresAtSpend among
+                            // them — the same fix Task 15 applied to leaveGame/refundGame for
+                            // the identical multi-hold ambiguity (see refund.service.ts).
+                            // Restoring under a LATER expiry than any contributing hold
+                            // actually had would extend that portion's effective life, which
+                            // is exactly the anti-abuse leak this plan exists to close.
                             const realAfter = realBefore.plus(basisReal)
                             const bonusAfter = bonusBefore.plus(basisBonus)
                             if (basisReal.greaterThan(0)) {
@@ -578,7 +584,7 @@ export class PredictionSettlementService {
                                 })
                             }
                             if (basisBonus.greaterThan(0)) {
-                                const hold = await tx.transaction.findFirst({
+                                const holds = await tx.transaction.findMany({
                                     where: {
                                         userId: position.userId,
                                         type: 'PREDICTION_ORDER_HOLD',
@@ -586,12 +592,12 @@ export class PredictionSettlementService {
                                     },
                                     select: { bonusExpiresAtSpend: true },
                                 })
-                                await BonusService.restore(
-                                    tx,
-                                    position.userId,
-                                    basisBonus,
-                                    hold?.bonusExpiresAtSpend ?? null,
-                                )
+                                const holdExpiry = holds.reduce<Date | null>((soonest, t) => {
+                                    if (t.bonusExpiresAtSpend == null) return soonest
+                                    if (soonest == null || t.bonusExpiresAtSpend < soonest) return t.bonusExpiresAtSpend
+                                    return soonest
+                                }, null)
+                                await BonusService.restore(tx, position.userId, basisBonus, holdExpiry)
                             }
                             await tx.transaction.create({
                                 data: {

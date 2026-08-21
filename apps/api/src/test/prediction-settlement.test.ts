@@ -1122,6 +1122,72 @@ describe('voidMarket', () => {
         expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
     })
 
+    it('restores using the SOONEST original expiry across multiple PREDICTION_ORDER_HOLD transactions, not an arbitrary one', async () => {
+        // A position's cost basis can accumulate from several fills across
+        // DIFFERENT orders (matching.service.ts's upsert increments
+        // costBasisBonus per fill), so more than one PREDICTION_ORDER_HOLD can
+        // back one position. Set this up so the two holds have genuinely
+        // different expiries, AND so the LATER-expiry one is inserted first —
+        // the old `findFirst` (no ORDER BY) would return that one, giving the
+        // WRONG (later) answer. Mirrors Task 15's identical fix for
+        // leaveGame/refundGame's multi-GAME_ENTRY ambiguity
+        // (game.service.extended.test.ts) — restoring must pick the MINIMUM
+        // across all holds instead.
+        const laterExpiry = new Date(Date.now() + 3_600_000) // 60 min
+        const soonExpiry = new Date(Date.now() + 900_000) // 15 min
+        const { marketId, outcomeA } = seedMarket({ status: 'OPEN', totalShares: 1, totalVolume: D(100) })
+        seedUser('frank', 0, 0)
+        seedPosition(marketId, outcomeA, 'frank', 1, 0, 100)
+
+        // Later-expiry hold inserted FIRST.
+        db.tables.transaction.push({
+            id: 'tx-hold-later',
+            userId: 'frank',
+            type: 'PREDICTION_ORDER_HOLD',
+            amount: D(40),
+            status: 'APPROVED',
+            referenceId: marketId,
+            note: 'Prediction order order-later',
+            balanceBefore: D(0),
+            balanceAfter: D(0),
+            bonusBalanceBefore: D(40),
+            bonusBalanceAfter: D(0),
+            bonusExpiresAtSpend: laterExpiry,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })
+        // Sooner-expiry hold inserted SECOND.
+        db.tables.transaction.push({
+            id: 'tx-hold-soon',
+            userId: 'frank',
+            type: 'PREDICTION_ORDER_HOLD',
+            amount: D(60),
+            status: 'APPROVED',
+            referenceId: marketId,
+            note: 'Prediction order order-soon',
+            balanceBefore: D(0),
+            balanceAfter: D(0),
+            bonusBalanceBefore: D(100),
+            bonusBalanceAfter: D(40),
+            bonusExpiresAtSpend: soonExpiry,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })
+
+        vi.mocked(BonusService.restore).mockClear()
+        const result = await PredictionSettlementService.voidMarket(marketId, 'Bout cancelled')
+
+        expect(result.positionsRefunded).toBe(1)
+        expect(walletOf('frank')).toEqual({ real: '0', bonus: '100' })
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, restoredUserId, restoredAmount, restoredExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoredUserId).toBe('frank')
+        expect(new Decimal(restoredAmount as any).toString()).toBe('100')
+        // Must be the SOONER of the two — not the later one, and not whichever
+        // an unordered query happened to return first.
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(soonExpiry.getTime())
+    })
+
     it('claims VOIDED before it hands back a single birr', async () => {
         // A void on a LIVE market is the expected operational case — a cancelled
         // bout with a full book. If the status only flipped after the refunds,
