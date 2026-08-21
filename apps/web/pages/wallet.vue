@@ -3,6 +3,7 @@ import { useAuthStore } from '~/store/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { t } = useI18n()
 
 // Redirect unauthenticated users
 onMounted(async () => {
@@ -54,15 +55,16 @@ async function fetchBonusGrants() {
 }
 
 function formatTimeRemaining(expiresAt: string | null): string {
-  if (!expiresAt) return 'No expiry'
+  if (!expiresAt) return t('wallet.bonusNoExpiry')
   const ms = new Date(expiresAt).getTime() - Date.now()
-  if (ms <= 0) return 'Expiring…'
+  if (ms <= 0) return t('wallet.bonusExpiring')
   const hours = Math.floor(ms / 3_600_000)
   const days = Math.floor(hours / 24)
-  if (days > 0) return `Expires in ${days}d ${hours % 24}h`
-  if (hours > 0) return `Expires in ${hours}h`
-  const mins = Math.floor(ms / 60_000)
-  return `Expires in ${mins}m`
+  let time: string
+  if (days > 0) time = `${days}d ${hours % 24}h`
+  else if (hours > 0) time = `${hours}h`
+  else time = `${Math.floor(ms / 60_000)}m`
+  return t('wallet.bonusExpiresIn', { time })
 }
 
 const formattedRealBalance = computed(() => {
@@ -202,7 +204,7 @@ function formatRelativeTime(dateStr: string): string {
               :disabled="togglingAccount"
               @click="setSpendAccount('REAL')"
             >
-              Real
+              {{ t('wallet.spendAccountReal') }}
             </button>
             <button
               type="button"
@@ -211,7 +213,7 @@ function formatRelativeTime(dateStr: string): string {
               :disabled="togglingAccount"
               @click="setSpendAccount('BONUS')"
             >
-              Bonus
+              {{ t('wallet.spendAccountBonus') }}
             </button>
           </div>
         </div>
@@ -294,7 +296,7 @@ function formatRelativeTime(dateStr: string): string {
       <!-- ── Active Bonuses ───────────────────────────────────────── -->
       <div v-if="bonusGrants.length" class="section">
         <div class="section-header">
-          <span class="section-title">Active Bonuses</span>
+          <span class="section-title">{{ t('wallet.activeBonuses') }}</span>
         </div>
 
         <div class="tx-card">

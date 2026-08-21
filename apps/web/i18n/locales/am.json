@@ -60,7 +60,15 @@
     "submitWithdraw": "የወጪ ጥያቄ አስገባ",
     "pending": "በሂደት ላይ",
     "approved": "ጸድቋል",
-    "rejected": "ተቀባይነት አልነበረም"
+    "rejected": "ተቀባይነት አልነበረም",
+    "spendAccountReal": "እውነተኛ ተጠቀም",
+    "spendAccountBonus": "ጉርሻ ተጠቀም",
+    "activeBonuses": "ንቁ ጉርሻዎች",
+    "bonusExpiresIn": "በ {time} ውስጥ ያበቃል",
+    "bonusNoExpiry": "ማብቂያ የለውም",
+    "bonusExpiring": "እያበቃ ነው...",
+    "depositDailyHint": "ዛሬ {amount} ብር በማስገባት ጉርሻ ያግኙ።",
+    "depositWeeklyHint": "በዚህ ሳምንት {amount} ብር በማስገባት ጉርሻ ያግኙ።"
   },
   "refer": {
     "title": "🎁 ጓደኛ ጋብዝ፣ ሽልማት ወሰድ",

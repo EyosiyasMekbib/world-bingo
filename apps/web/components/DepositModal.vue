@@ -192,6 +192,7 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const promotions = usePromotionsStore()
 const { track } = useAnalytics()
+const { t } = useI18n()
 
 type DepositMethod = {
   id: string
@@ -267,18 +268,14 @@ watch(() => props.modelValue, (open) => {
 })
 
 // ── Deposit-progress hints (daily/weekly deposit bonus rules) ──────
-function formatDepositHint(rule: typeof promotions.dailyDepositBonus, periodLabel: string): string | null {
-  if (!rule) return null
-  const rewardText = rule.rewardType === 'FIXED'
-    ? `${rule.rewardValue} ETB`
-    : rule.maxReward != null
-      ? `${rule.rewardValue}% (up to ${rule.maxReward} ETB)`
-      : `${rule.rewardValue}%`
-  return `Deposit ${rule.threshold} ETB ${periodLabel} to get a ${rewardText} bonus.`
-}
-
-const dailyDepositHint = computed(() => formatDepositHint(promotions.dailyDepositBonus, 'today'))
-const weeklyDepositHint = computed(() => formatDepositHint(promotions.weeklyDepositBonus, 'this week'))
+const dailyDepositHint = computed(() => {
+  const rule = promotions.dailyDepositBonus
+  return rule ? t('wallet.depositDailyHint', { amount: rule.threshold }) : null
+})
+const weeklyDepositHint = computed(() => {
+  const rule = promotions.weeklyDepositBonus
+  return rule ? t('wallet.depositWeeklyHint', { amount: rule.threshold }) : null
+})
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement

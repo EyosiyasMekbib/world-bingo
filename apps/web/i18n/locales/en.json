@@ -60,7 +60,15 @@
     "submitWithdraw": "Request Withdrawal",
     "pending": "Pending Review",
     "approved": "Approved",
-    "rejected": "Rejected"
+    "rejected": "Rejected",
+    "spendAccountReal": "Spend Real",
+    "spendAccountBonus": "Spend Bonus",
+    "activeBonuses": "Active Bonuses",
+    "bonusExpiresIn": "Expires in {time}",
+    "bonusNoExpiry": "No expiry",
+    "bonusExpiring": "Expiring...",
+    "depositDailyHint": "Deposit {amount} ETB today for a bonus.",
+    "depositWeeklyHint": "Deposit {amount} ETB this week for a bonus."
   },
   "refer": {
     "title": "🎁 Refer & Earn",
