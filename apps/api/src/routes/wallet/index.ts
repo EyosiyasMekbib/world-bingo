@@ -31,6 +31,10 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.patch('/spend-account', {
         handler: WalletController.setSpendAccount,
     })
+
+    fastify.get('/bonus-grants', {
+        handler: WalletController.getBonusGrants,
+    })
 }
 
 export default walletRoutes

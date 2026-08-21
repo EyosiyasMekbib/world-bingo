@@ -3,6 +3,7 @@ import { WalletService } from '../services'
 import type { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
 import { uploadFile, validateFile } from '../lib/storage'
 import { EventService } from '../services/event.service.js'
+import { BonusGrantQueryService } from '../services/bonus-grant-query.service'
 
 export class WalletController {
     static async getBalance(request: FastifyRequest, reply: FastifyReply) {
@@ -10,6 +11,12 @@ export class WalletController {
         const userId = request.user.id
         const wallet = await WalletService.getBalance(userId)
         return wallet
+    }
+
+    static async getBonusGrants(request: FastifyRequest, reply: FastifyReply) {
+        // @ts-ignore
+        const userId = request.user.id
+        return BonusGrantQueryService.listActiveForUser(userId)
     }
 
     /**
