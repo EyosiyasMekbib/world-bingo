@@ -6,6 +6,7 @@ import redis from '../../lib/redis.js'
 import { getQueue, QUEUE_NAMES } from '../../lib/queue.js'
 import { reportError } from '../../lib/sentry.js'
 import { emitBook, emitSettled, emitStatus } from '../../gateways/prediction.gateway.js'
+import { BonusService } from '../bonus.service.js'
 
 /**
  * Prediction market settlement and void.
@@ -758,10 +759,30 @@ export class PredictionSettlementService {
 
                         const realAfter = realBefore.plus(real)
                         const bonusAfter = bonusBefore.plus(bonus)
-                        await tx.wallet.update({
-                            where: { userId: order.userId },
-                            data: { realBalance: realAfter, bonusBalance: bonusAfter },
-                        })
+
+                        // Real returns as a plain wallet credit; bonus returns
+                        // through `BonusService.restore` so it lands in a lot
+                        // carrying the SAME expiry the order's original hold
+                        // consumed, rather than a fresh window — mirrors
+                        // `cancelOrder`'s own release path (Task 17).
+                        if (real.greaterThan(0)) {
+                            await tx.wallet.update({
+                                where: { userId: order.userId },
+                                data: { realBalance: realAfter },
+                            })
+                        }
+                        if (bonus.greaterThan(0)) {
+                            const hold = await tx.transaction.findFirst({
+                                where: {
+                                    userId: order.userId,
+                                    type: 'PREDICTION_ORDER_HOLD',
+                                    note: { contains: order.id },
+                                },
+                                select: { bonusExpiresAtSpend: true },
+                            })
+                            await BonusService.restore(tx, order.userId, bonus, hold?.bonusExpiresAtSpend ?? null)
+                        }
+
                         await tx.transaction.create({
                             data: {
                                 userId: order.userId,

@@ -55,6 +55,30 @@ const gatewayMock = vi.hoisted(() => ({
 }))
 vi.mock('../gateways/prediction.gateway.js', () => gatewayMock)
 
+/**
+ * `BonusService.restore` is production code with its own dedicated real-DB
+ * coverage (bonus.service.test.ts) — lot creation against `bonus_grants`, a
+ * table this in-memory double does not model. What `refundOpenOrders` needs
+ * verified HERE is only its own contract with `restore`: pass the released
+ * amount, apply the resulting balance to the wallet, and pass through
+ * whatever expiry it looked up from the order's original hold — not a fresh
+ * one. This fake reproduces exactly that observable surface against the same
+ * double `tx` the rest of the suite uses, the same way redlock/redis/the
+ * queue/sentry/the gateway are faked above rather than run for real.
+ */
+vi.mock('../services/bonus.service.js', () => ({
+    BonusService: {
+        restore: vi.fn(async (tx: any, userId: string, amount: any, expiresAt: Date | null) => {
+            const rows = await tx.$queryRaw`SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}`
+            const before = new Decimal(rows[0]?.bonusBalance ?? 0)
+            const restored = new Decimal(amount)
+            const after = before.plus(restored)
+            await tx.wallet.update({ where: { userId }, data: { bonusBalance: after } })
+            return { granted: restored, bonusBalanceBefore: before, bonusBalanceAfter: after, expiresAt }
+        }),
+    },
+}))
+
 const holder = vi.hoisted(() => ({ client: null as any }))
 
 vi.mock('../lib/prisma.js', () => ({
@@ -68,6 +92,7 @@ vi.mock('../lib/prisma.js', () => ({
 }))
 
 import { PredictionSettlementService, round2 } from '../services/prediction/settlement.service.js'
+import { BonusService } from '../services/bonus.service.js'
 
 const db = createStore()
 holder.client = db.client
@@ -107,7 +132,7 @@ function createStore() {
         return a - b
     }
 
-    const OPS = new Set(['equals', 'in', 'notIn', 'not', 'gt', 'gte', 'lt', 'lte', 'mode'])
+    const OPS = new Set(['equals', 'in', 'notIn', 'not', 'gt', 'gte', 'lt', 'lte', 'mode', 'contains'])
 
     const isOpNode = (cond: any): boolean =>
         !!cond &&
@@ -148,6 +173,12 @@ function createStore() {
                     if (op === 'gte' && !(cmp(value, operand) >= 0)) return false
                     if (op === 'lt' && !(cmp(value, operand) < 0)) return false
                     if (op === 'lte' && !(cmp(value, operand) <= 0)) return false
+                    if (
+                        op === 'contains' &&
+                        !(typeof value === 'string' && typeof operand === 'string' && value.includes(operand))
+                    ) {
+                        return false
+                    }
                 }
                 continue
             }
@@ -1008,6 +1039,46 @@ describe('voidMarket', () => {
         expect(
             db.tables.transaction.filter((t) => t.type === 'PREDICTION_REFUND'),
         ).toHaveLength(1)
+    })
+
+    it('restores a refunded order s bonus reserve to a lot carrying its ORIGINAL expiry', async () => {
+        // The expiry comes from the order's own PREDICTION_ORDER_HOLD
+        // transaction (Task 16), looked up by `note` containing the order's id
+        // — not a fresh window. The hold is seeded directly (this double does
+        // not run `placeOrder`, so nothing creates it on its own).
+        const { marketId, outcomeA } = seedMarket({ status: 'OPEN' })
+        seedUser('dave', 0, 0)
+        const order = seedOrder(marketId, outcomeA, 'dave', 25, 4, {
+            reservedReal: D(0), reservedBonus: D(100),
+        })
+        const originalExpiry = new Date(Date.now() + 1_800_000)
+        db.tables.transaction.push({
+            id: 'tx-hold-1',
+            userId: 'dave',
+            type: 'PREDICTION_ORDER_HOLD',
+            amount: D(100),
+            status: 'APPROVED',
+            referenceId: marketId,
+            note: `Prediction order ${order.id}`,
+            balanceBefore: D(0),
+            balanceAfter: D(0),
+            bonusBalanceBefore: D(100),
+            bonusBalanceAfter: D(0),
+            bonusExpiresAtSpend: originalExpiry,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })
+
+        vi.mocked(BonusService.restore).mockClear()
+        const result = await PredictionSettlementService.voidMarket(marketId, 'Bout cancelled')
+
+        expect(result.ordersRefunded).toBe(1)
+        expect(walletOf('dave')).toEqual({ real: '0', bonus: '100' })
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, restoredUserId, restoredAmount, restoredExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoredUserId).toBe('dave')
+        expect(new Decimal(restoredAmount as any).toString()).toBe('100')
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
     })
 
     it('claims VOIDED before it hands back a single birr', async () => {
