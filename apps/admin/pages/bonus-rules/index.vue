@@ -1,13 +1,17 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
-const { getBonusRules, createBonusRule, toggleBonusRule, getBonusReconciliation } = useAdminApi()
+const { getBonusRules, createBonusRule, toggleBonusRule, getBonusReconciliation, getSegments, countSegmentRules } = useAdminApi()
 const toast = useToast()
 
 const rules = ref<any[]>([])
 const loading = ref(true)
 const showCreate = ref(false)
 const creating = ref(false)
+
+const segments = ref<any[]>([])
+const projecting = ref(false)
+const projectedCount = ref<number | null>(null)
 
 const mismatches = ref<Array<{ userId: string; cachedBalance: number; lotSum: number }>>([])
 const reconciling = ref(false)
@@ -23,6 +27,7 @@ const form = reactive({
   validityHours: 24,
   startsAt: '',
   endsAt: '',
+  segmentId: '',
 })
 
 const typeOptions = [
@@ -38,6 +43,46 @@ const rewardTypeOptions = [
 const rewardValueLabel = computed(() =>
   form.rewardType === 'PERCENTAGE' ? 'Reward Percentage (%)' : 'Reward Amount (ETB)'
 )
+
+const segmentOptions = computed(() => [
+  { label: 'All players (no targeting)', value: '' },
+  ...segments.value.map((s: any) => ({ label: s.name, value: s.id })),
+])
+
+// FIXED rewards always have a known per-player ceiling; PERCENTAGE rewards
+// only do when maxReward is set — otherwise there is no worst case to show.
+const maxPerPlayer = computed<number | null>(() =>
+  form.rewardType === 'FIXED' ? form.rewardValue : (form.maxReward ?? null)
+)
+
+const maxExposure = computed<number | null>(() =>
+  projectedCount.value !== null && maxPerPlayer.value !== null
+    ? projectedCount.value * maxPerPlayer.value
+    : null
+)
+
+async function refreshProjection() {
+  if (!form.segmentId) {
+    projectedCount.value = null
+    return
+  }
+  const seg = segments.value.find((s: any) => s.id === form.segmentId)
+  if (!seg) {
+    projectedCount.value = null
+    return
+  }
+  projecting.value = true
+  try {
+    const res = await countSegmentRules(seg.rules)
+    projectedCount.value = res.count
+  } catch {
+    projectedCount.value = null
+  } finally {
+    projecting.value = false
+  }
+}
+
+watch(() => form.segmentId, refreshProjection)
 
 async function fetchRules() {
   loading.value = true
@@ -81,6 +126,7 @@ async function create() {
       validityHours: form.validityHours,
       startsAt: new Date(form.startsAt).toISOString(),
       endsAt: new Date(form.endsAt).toISOString(),
+      segmentId: form.segmentId || null,
     })
     toast.add({ title: 'Created', description: 'Bonus rule created', color: 'success' })
     showCreate.value = false
@@ -92,6 +138,8 @@ async function create() {
     form.validityHours = 24
     form.startsAt = ''
     form.endsAt = ''
+    form.segmentId = ''
+    projectedCount.value = null
     await fetchRules()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err?.data?.error ?? 'Failed to create', color: 'error' })
@@ -151,9 +199,18 @@ function describeRule(rule: any) {
   return `Deposit ${threshold} ETB in ${period} → get ${val}, usable for ${rule.validityHours}h`
 }
 
+async function fetchSegments() {
+  try {
+    segments.value = await getSegments()
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to load segments', color: 'error' })
+  }
+}
+
 onMounted(() => {
   fetchRules()
   fetchReconciliation()
+  fetchSegments()
 })
 </script>
 
@@ -212,6 +269,7 @@ onMounted(() => {
               <h3 class="text-base font-bold text-white">{{ rule.name }}</h3>
               <UBadge color="neutral" variant="soft" :label="rule.type === 'DAILY_DEPOSIT' ? 'Daily' : 'Weekly'" />
               <UBadge :color="rule.isActive ? 'success' : 'neutral'" variant="soft" :label="rule.isActive ? 'Active' : 'Inactive'" />
+              <UBadge v-if="rule.isSegmentScoped" color="info" variant="soft" :label="`${rule.segmentName ?? 'Segment'} · ${rule.memberCount ?? 0}`" />
             </div>
             <p class="text-sm text-white/40 mt-1">{{ describeRule(rule) }}</p>
             <p class="text-xs text-white/30 mt-1">{{ formatDate(rule.startsAt) }} — {{ formatDate(rule.endsAt) }}</p>
@@ -230,6 +288,25 @@ onMounted(() => {
           <UFormField label="Type">
             <USelect v-model="form.type" :items="typeOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
+          <UFormField label="Target Segment">
+            <USelect v-model="form.segmentId" :items="segmentOptions" value-key="value" label-key="label" class="w-full" />
+          </UFormField>
+          <div v-if="form.segmentId" class="rounded-xl border border-(--surface-border) p-3 text-sm space-y-1">
+            <div v-if="projecting" class="text-white/40">Calculating…</div>
+            <template v-else-if="projectedCount !== null">
+              <div class="flex justify-between"><span class="text-white/50">Matching players</span><span class="text-white font-medium">{{ projectedCount.toLocaleString() }}</span></div>
+              <div class="flex justify-between">
+                <span class="text-white/50">Max reward per player</span>
+                <span class="text-white font-medium">{{ maxPerPlayer !== null ? `${maxPerPlayer} ETB` : 'uncapped' }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-white/50">Max exposure per period</span>
+                <span class="text-white font-medium">{{ maxExposure !== null ? `${maxExposure.toLocaleString()} ETB` : 'uncapped' }}</span>
+              </div>
+              <p v-if="projectedCount === 0" class="text-red-400 pt-1">This segment matches no players — the rule could never pay anyone.</p>
+              <p v-else class="text-white/30 pt-1 text-xs">Worst case: assumes every matched player crosses the threshold in the same period.</p>
+            </template>
+          </div>
           <UFormField label="Threshold (ETB)">
             <UInput v-model.number="form.threshold" type="number" min="1" class="w-full" />
           </UFormField>

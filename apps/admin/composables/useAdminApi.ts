@@ -507,6 +507,7 @@ export const useAdminApi = () => {
             validityHours: number
             startsAt: string
             endsAt: string
+            segmentId?: string | null
         }) => apiFetch('/admin/bonus-rules', { method: 'POST', body: data }),
         toggleBonusRule: (id: string, isActive: boolean) =>
             apiFetch(`/admin/bonus-rules/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
