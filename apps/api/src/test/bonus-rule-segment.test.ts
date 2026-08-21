@@ -85,3 +85,35 @@ describe('BonusRuleService.create — segment targeting', () => {
         ).rejects.toThrow(/segment not found/i)
     })
 })
+
+describe('BonusRuleService.update — targeting is immutable', () => {
+    it('updates editable fields without disturbing the frozen cohort', async () => {
+        const user = await makePlayer('seg_upd', '+251900001005', 5000)
+        const segment = await makeSegment('Editable', 1000)
+        const rule = await BonusRuleService.create({ ...BASE, segmentId: segment.id })
+
+        const updated = await BonusRuleService.update(rule.id, { threshold: 900, isActive: false })
+
+        expect(Number(updated.threshold)).toBe(900)
+        expect(updated.isActive).toBe(false)
+        expect(updated.isSegmentScoped).toBe(true)
+        expect(updated.segmentId).toBe(segment.id)
+        expect(updated.memberCount).toBe(1)
+        const members = await prisma.bonusRuleMember.findMany({ where: { ruleId: rule.id } })
+        expect(members.map((m) => m.userId)).toEqual([user.id])
+    })
+
+    it('refuses to retarget a rule at a different segment', async () => {
+        await makePlayer('seg_a', '+251900001006', 5000)
+        const segment = await makeSegment('Original', 1000)
+        const other = await makeSegment('Other', 1)
+        const rule = await BonusRuleService.create({ ...BASE, segmentId: segment.id })
+
+        await expect(
+            BonusRuleService.update(rule.id, { segmentId: other.id } as never),
+        ).rejects.toThrow(/cannot be changed/i)
+
+        const unchanged = await prisma.bonusRule.findUniqueOrThrow({ where: { id: rule.id } })
+        expect(unchanged.segmentId).toBe(segment.id)
+    })
+})

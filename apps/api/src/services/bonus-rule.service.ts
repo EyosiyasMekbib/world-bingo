@@ -75,6 +75,13 @@ export class BonusRuleService {
     }
 
     static async update(id: string, input: Partial<CreateBonusRuleInput> & { isActive?: boolean }): Promise<BonusRule> {
+        // Targeting is frozen at creation (design spec §3). A mutable audience is
+        // just live membership with extra steps, and would silently strand players
+        // who were mid-qualification when it changed.
+        if ('segmentId' in input || 'isSegmentScoped' in input || 'memberCount' in input) {
+            throw new Error("A rule's segment targeting cannot be changed after creation — create a new rule instead")
+        }
+
         return prisma.bonusRule.update({
             where: { id },
             data: {
