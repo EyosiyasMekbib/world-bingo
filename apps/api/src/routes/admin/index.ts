@@ -11,6 +11,7 @@ import prisma from '../../lib/prisma'
 import { GameSchedulerService } from '../../services/game-scheduler.service'
 import { HouseWalletService } from '../../services/house-wallet.service'
 import { CashbackService } from '../../services/cashback.service'
+import { BonusRuleService } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
@@ -71,6 +72,30 @@ const cashbackCreateSchema = z.object({
     (data) => new Date(data.startsAt) < new Date(data.endsAt),
     { message: 'endsAt must be after startsAt', path: ['endsAt'] }
 )
+
+// Defined as a plain object schema (not the refined create schema below) so
+// bonusRuleUpdateSchema can call .partial() on it — ZodEffects (what .refine()
+// returns) has no .partial() method in zod v3.
+const bonusRuleFields = z.object({
+    name: z.string().min(1),
+    type: z.enum(['DAILY_DEPOSIT', 'WEEKLY_DEPOSIT']),
+    threshold: z.coerce.number().positive(),
+    rewardType: z.enum(['FIXED', 'PERCENTAGE']),
+    rewardValue: z.coerce.number().positive(),
+    maxReward: z.coerce.number().positive().nullable().optional(),
+    validityHours: z.coerce.number().int().positive().max(24 * 90),
+    startsAt: z.string(),
+    endsAt: z.string(),
+})
+
+const bonusRuleCreateSchema = bonusRuleFields.refine(
+    (data) => new Date(data.startsAt) < new Date(data.endsAt),
+    { message: 'endsAt must be after startsAt', path: ['endsAt'] },
+)
+
+const bonusRuleUpdateSchema = bonusRuleFields.partial().extend({
+    isActive: z.boolean().optional(),
+})
 
 const paymentMethodCreateSchema = z.object({
     code: z.string().min(1),
@@ -503,6 +528,69 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         f.patch('/cashback/:id/toggle', async (req: any, _reply) => {
             return CashbackService.togglePromotion(req.params.id, (req.body as { isActive: boolean }).isActive)
+        })
+
+        // ── Deposit Bonus Rules ─────────────────────────────────────────────────
+        f.get('/bonus-rules', async (_req, _reply) => BonusRuleService.list())
+
+        f.post('/bonus-rules', async (req: any, reply) => {
+            const parsed = bonusRuleCreateSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            const { name, type, threshold, rewardType, rewardValue, maxReward, validityHours, startsAt, endsAt } = parsed.data
+            return BonusRuleService.create({ name, type: type as any, threshold, rewardType: rewardType as any, rewardValue, maxReward, validityHours, startsAt, endsAt })
+        })
+
+        f.patch('/bonus-rules/:id', async (req: any, reply) => {
+            const parsed = bonusRuleUpdateSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
+            const { name, type, threshold, rewardType, rewardValue, maxReward, validityHours, startsAt, endsAt, isActive } = parsed.data
+            return BonusRuleService.update(req.params.id, {
+                ...(name !== undefined && { name }),
+                ...(type !== undefined && { type: type as any }),
+                ...(threshold !== undefined && { threshold }),
+                ...(rewardType !== undefined && { rewardType: rewardType as any }),
+                ...(rewardValue !== undefined && { rewardValue }),
+                ...(maxReward !== undefined && { maxReward }),
+                ...(validityHours !== undefined && { validityHours }),
+                ...(startsAt !== undefined && { startsAt }),
+                ...(endsAt !== undefined && { endsAt }),
+                ...(isActive !== undefined && { isActive }),
+            })
+        })
+
+        f.patch('/bonus-rules/:id/toggle', async (req: any, reply) => {
+            const parsed = z.object({ isActive: z.boolean() }).safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: 'isActive is required' })
+            return BonusRuleService.update(req.params.id, { isActive: parsed.data.isActive })
+        })
+
+        // ── Bonus ledger reconciliation (design spec §7) ─────────────────────────
+        f.get('/bonus-reconciliation', async (_req, _reply) => {
+            const mismatches = await BonusService.reconcile()
+            return mismatches.map((m) => ({
+                userId: m.userId,
+                cachedBalance: m.cachedBalance.toNumber(),
+                lotSum: m.lotSum.toNumber(),
+            }))
+        })
+
+        // ── Player detail: bonus grants panel ────────────────────────────────────
+        f.get('/players/:id/bonus-grants', async (req: any, _reply) => {
+            const grants = await prisma.bonusGrant.findMany({
+                where: { userId: req.params.id },
+                orderBy: { createdAt: 'desc' },
+                include: { rule: { select: { name: true, type: true } } },
+            })
+            return grants.map((g) => ({
+                id: g.id,
+                amount: Number(g.amount),
+                remaining: Number(g.remaining),
+                expiresAt: g.expiresAt,
+                status: g.status,
+                ruleName: g.rule?.name ?? null,
+                ruleType: g.rule?.type ?? null,
+                createdAt: g.createdAt,
+            }))
         })
 
         // ── Payment Methods ───────────────────────────────────────────────────
