@@ -1588,9 +1588,8 @@ describe('GROUP 10 — Spec Error Codes', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TASK 28 — Spend-account-based spend (processBet, processBetDebit, the debit
-// branch of processAdjustment). The credit/restore sites (processRollback,
-// processBetCredit) are covered in a later commit.
+// TASK 28 — Spend-account-based spend/restore (5 write sites migrated off the
+// old real-first-then-bonus / bonus-untouched-on-restore behavior).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Task 28 — spend-account-based spend/restore', () => {
@@ -1719,6 +1718,180 @@ describe('Task 28 — spend-account-based spend/restore', () => {
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
         expect(new Decimal(wallet.realBalance).toNumber()).toBe(210)
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(30) // untouched
+    })
+
+    // ── processRollback (bidirectional: credit-back = restore, debit-back = spend) ──
+
+    it('T28.08 wallet/bet then wallet/rollback restores a bonus-funded bet to bonus, not real, preserving the original expiry', async () => {
+        const expiresAt = new Date(Date.now() + 3600_000)
+        await setWallet(validUserId, { real: 1000, bonus: 20, spendAccount: 'BONUS', bonusExpiresAt: expiresAt })
+        const betId = uid()
+
+        const betRes = await post('bet', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(),
+            amount: 6, currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
+        })
+        expect(betRes.status).toBe('SC_OK')
+
+        let wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(14)
+
+        const rbRes = await post('rollback', {
+            traceId: uid(), transactionId: uid(), betId, externalTransactionId: uid(),
+            roundId: uid(), gameCode: GAME_CODE, username: VALID_USER, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(rbRes.status).toBe('SC_OK')
+
+        wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(20) // restored to bonus
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000) // untouched — never minted into real
+
+        // Restored into a lot carrying the ORIGINAL expiry, not a fresh window.
+        const lot = await prisma.bonusGrant.findFirst({
+            where: { userId: validUserId, status: 'ACTIVE' },
+            orderBy: { createdAt: 'desc' },
+        })
+        expect(lot?.expiresAt?.getTime()).toBe(expiresAt.getTime())
+    })
+
+    it('T28.09 wallet/bet then wallet/rollback restores a real-funded bet to real (regression, unchanged)', async () => {
+        await setWallet(validUserId, { real: 1000, bonus: 50, spendAccount: 'REAL' })
+        const betId = uid()
+
+        const betRes = await post('bet', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(),
+            amount: 6, currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
+        })
+        expect(betRes.status).toBe('SC_OK')
+
+        const rbRes = await post('rollback', {
+            traceId: uid(), transactionId: uid(), betId, externalTransactionId: uid(),
+            roundId: uid(), gameCode: GAME_CODE, username: VALID_USER, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(rbRes.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50) // untouched
+    })
+
+    it('T28.10 wallet/bet_result [BET_WIN] then wallet/rollback (debit-back) honors spendAccount and rejects rather than falling back to real', async () => {
+        // Force a net-positive BET_WIN credit (betAmount=0 free-spin style, win=50)
+        // so the rollback's undo is a pure debit-back of a +50 real credit.
+        await setWallet(validUserId, { real: 1000, bonus: 5, spendAccount: 'BONUS' })
+        const betId = uid()
+        const roundId = uid()
+
+        const winRes = await post('bet_result', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(), roundId,
+            betAmount: 0, winAmount: 50, effectiveTurnover: 0, winLoss: 50, jackpotAmount: 0,
+            resultType: 'BET_WIN', isFreespin: 0, isEndRound: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(),
+        })
+        expect(winRes.status).toBe('SC_OK')
+
+        let wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1050) // win credits real only
+
+        // Rolling back this +50 win credit must debit 50 from the SELECTED account
+        // (BONUS, which only has 5) — reject, don't quietly pull the 50 from real.
+        const rbRes = await post('rollback', {
+            traceId: uid(), transactionId: uid(), betId, externalTransactionId: uid(),
+            roundId, gameCode: GAME_CODE, username: VALID_USER, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(rbRes.status).toBe('SC_INSUFFICIENT_FUNDS')
+
+        wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1050) // untouched — no fallback debit
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(5) // untouched
+    })
+
+    // ── processBetCredit (bidirectional: isRefund=1 = restore, else = fresh credit) ──
+
+    it('T28.11 wallet/bet_debit then wallet/bet_credit isRefund=1 restores a bonus-funded debit to bonus, not real, preserving the original expiry', async () => {
+        const expiresAt = new Date(Date.now() + 3600_000)
+        await setWallet(validUserId, { real: 1000, bonus: 50, spendAccount: 'BONUS', bonusExpiresAt: expiresAt })
+        const roundId = uid()
+
+        const debitRes = await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId, amount: 20, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        expect(debitRes.status).toBe('SC_OK')
+
+        let wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(30)
+
+        const creditRes = await post('bet_credit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(), betId: uid(),
+            roundId, isRefund: 1, amount: 20, betAmount: 20, winAmount: 0,
+            effectiveTurnover: 20, winLoss: -20, jackpotAmount: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
+        })
+        expect(creditRes.status).toBe('SC_OK')
+
+        wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50) // restored to bonus
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000) // untouched — never minted into real
+
+        const lot = await prisma.bonusGrant.findFirst({
+            where: { userId: validUserId, status: 'ACTIVE' },
+            orderBy: { createdAt: 'desc' },
+        })
+        expect(lot?.expiresAt?.getTime()).toBe(expiresAt.getTime())
+    })
+
+    it('T28.12 wallet/bet_credit isRefund=0 (normal settlement) still credits realBalance only, even with bonus in play', async () => {
+        await setWallet(validUserId, { real: 500, bonus: 50, spendAccount: 'BONUS' })
+        const roundId = uid()
+
+        const debitRes = await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId, amount: 20, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        expect(debitRes.status).toBe('SC_OK')
+        // bonus now 30
+
+        const creditRes = await post('bet_credit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(), betId: uid(),
+            roundId, isRefund: 0, amount: 100, betAmount: 20, winAmount: 100,
+            effectiveTurnover: 20, winLoss: 80, jackpotAmount: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
+        })
+        expect(creditRes.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(600) // 500 + 100 credit, real only
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(30) // untouched — a settlement win, not a refund
+    })
+
+    it('T28.13 wallet/bet_debit then wallet/bet_credit isRefund=1 restores a real-funded debit to real (regression, unchanged)', async () => {
+        await setWallet(validUserId, { real: 500, bonus: 50, spendAccount: 'REAL' })
+        const roundId = uid()
+
+        await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId, amount: 20, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+
+        const creditRes = await post('bet_credit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(), betId: uid(),
+            roundId, isRefund: 1, amount: 20, betAmount: 20, winAmount: 0,
+            effectiveTurnover: 20, winLoss: -20, jackpotAmount: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
+        })
+        expect(creditRes.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(500) // 480 + 20 restored
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50) // untouched
     })
 })
 

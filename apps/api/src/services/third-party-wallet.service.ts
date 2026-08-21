@@ -650,35 +650,69 @@ export class ThirdPartyWalletService {
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
 
-            // If undoing a credit (e.g. BET_WIN), ensure player still has funds
-            if (rollbackDelta.lessThan(0) && totalBefore.lessThan(rollbackDelta.abs())) {
-                throw { code: 'SC_INSUFFICIENT_FUNDS' }
-            }
+            let newReal = realBefore
+            let newBonus = bonusBefore
+            let bonusExpiresAtSpend: Date | null = null
 
-            // Compute explicit new balances (avoid increment which can go negative)
-            let newReal: Decimal
-            let newBonus: Decimal
             if (rollbackDelta.greaterThanOrEqualTo(0)) {
-                // Credit back: add to realBalance
-                newReal = realBefore.plus(rollbackDelta)
-                newBonus = bonusBefore
+                // Credit back: undoing a prior debit (BET/BET_DEBIT, or a net-debit
+                // BET_RESULT). Restore proportionally to whichever account(s) actually
+                // funded that debit, using the paired `Transaction` row the original
+                // write site created alongside its `ThirdPartyTransaction` row (every
+                // debit site in this file writes one, keyed by referenceId = its own
+                // transactionId — the same value `originalBet.transactionId` holds).
+                // Falls back to crediting real only when no paired row is found (e.g.
+                // pre-dates this split), so behavior is unchanged for old data.
+                if (rollbackDelta.greaterThan(0)) {
+                    let realDelta = rollbackDelta
+                    let bonusDelta = new Decimal(0)
+                    let restoreExpiry: Date | null = null
+
+                    const debitTxn = await tx.transaction.findFirst({
+                        where: { userId: user.id, referenceId: originalBet.transactionId },
+                        select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
+                    })
+                    if (debitTxn) {
+                        const bonusSpent = new Decimal(debitTxn.bonusBalanceBefore ?? 0).minus(
+                            new Decimal(debitTxn.bonusBalanceAfter ?? 0),
+                        )
+                        if (bonusSpent.greaterThan(0)) {
+                            bonusDelta = Decimal.min(bonusSpent, rollbackDelta)
+                            realDelta = rollbackDelta.minus(bonusDelta)
+                            restoreExpiry = debitTxn.bonusExpiresAtSpend ?? null
+                        }
+                    }
+
+                    if (realDelta.greaterThan(0)) {
+                        newReal = realBefore.plus(realDelta)
+                        await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                    }
+                    if (bonusDelta.greaterThan(0)) {
+                        // Restore into a lot carrying the ORIGINAL expiry captured on the
+                        // debit's Transaction row (never a fresh window), falling back to
+                        // never-expiring only when that debit predates this migration.
+                        const restoreResult = await BonusService.restore(tx, user.id, bonusDelta, restoreExpiry)
+                        newBonus = restoreResult.bonusBalanceAfter
+                    }
+                }
             } else {
-                // Debit back (undoing a win credit): remove from realBalance first, then bonus
+                // Debit back: undoing a prior credit (e.g. reversing a BET_WIN's net
+                // gain). This removes money from the wallet, so — like any other
+                // debit — it must honor the player's currently-selected spend account
+                // and reject rather than silently draining the other one when short.
                 const debit = rollbackDelta.abs()
-                if (realBefore.greaterThanOrEqualTo(debit)) {
-                    newReal = realBefore.minus(debit)
-                    newBonus = bonusBefore
+                if (wallet.spendAccount === 'BONUS') {
+                    if (bonusBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    const spendResult = await BonusService.spend(tx, user.id, debit)
+                    newBonus = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
                 } else {
-                    newReal = new Decimal(0)
-                    newBonus = bonusBefore.minus(debit.minus(realBefore))
+                    if (realBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    newReal = realBefore.minus(debit)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
             }
             const balanceAfter = newReal.plus(newBonus)
-
-            await tx.wallet.update({
-                where: { userId: user.id },
-                data: { realBalance: newReal, bonusBalance: newBonus },
-            })
 
             // Mark original as rolled back
             await tx.thirdPartyTransaction.update({
@@ -715,7 +749,8 @@ export class ThirdPartyWalletService {
                     balanceBefore: totalBefore,
                     balanceAfter,
                     bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
+                    bonusBalanceAfter: newBonus,
+                    bonusExpiresAtSpend,
                 },
             })
 
@@ -1017,53 +1052,93 @@ export class ThirdPartyWalletService {
                 const wallet = await lockWallet(tx, user.id)
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
-            const totalBefore = realBefore.plus(bonusBefore)
-            const newReal = realBefore.plus(creditAmount)
-            const balanceAfter = newReal.plus(bonusBefore)
+                const totalBefore = realBefore.plus(bonusBefore)
 
-            await tx.wallet.update({
-                where: { userId: user.id },
-                data: { realBalance: newReal },
+                // isRefund=1 refunds a specific prior debit (bet_debit, or a bet) —
+                // restore proportionally to whichever account(s) actually funded it,
+                // via the paired `Transaction` row that debit's write site created
+                // (referenceId = the debit's own transactionId, which `priorDebit`
+                // above already resolved). Any other credit (isRefund=0/absent — a
+                // room settlement's remaining balance + winnings) is a fresh credit
+                // and lands on realBalance only, matching how wins credit real only
+                // elsewhere in this file. Falls back to crediting real only when no
+                // paired row is found (e.g. pre-dates this split, or no roundId/no
+                // matching debit), so behavior is unchanged for that case.
+                let realDelta = creditAmount
+                let bonusDelta = new Decimal(0)
+                let restoreExpiry: Date | null = null
+
+                if (params.isRefund === 1 && priorDebit && creditAmount.greaterThan(0)) {
+                    const debitTxn = await tx.transaction.findFirst({
+                        where: { userId: user.id, referenceId: priorDebit.transactionId },
+                        select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
+                    })
+                    if (debitTxn) {
+                        const bonusSpent = new Decimal(debitTxn.bonusBalanceBefore ?? 0).minus(
+                            new Decimal(debitTxn.bonusBalanceAfter ?? 0),
+                        )
+                        if (bonusSpent.greaterThan(0)) {
+                            bonusDelta = Decimal.min(bonusSpent, creditAmount)
+                            realDelta = creditAmount.minus(bonusDelta)
+                            restoreExpiry = debitTxn.bonusExpiresAtSpend ?? null
+                        }
+                    }
+                }
+
+                let newReal = realBefore
+                let newBonus = bonusBefore
+
+                if (realDelta.greaterThan(0)) {
+                    newReal = realBefore.plus(realDelta)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                }
+                if (bonusDelta.greaterThan(0)) {
+                    // Restore into a lot carrying the ORIGINAL expiry captured on the
+                    // debit's Transaction row (never a fresh window).
+                    const restoreResult = await BonusService.restore(tx, user.id, bonusDelta, restoreExpiry)
+                    newBonus = restoreResult.bonusBalanceAfter
+                }
+
+                const balanceAfter = newReal.plus(newBonus)
+
+                await tx.thirdPartyTransaction.create({
+                    data: {
+                        providerId: await getProviderId(),
+                        userId: user.id,
+                        transactionId: params.transactionId,
+                        betId: params.betId,
+                        roundId: params.roundId,
+                        gameCode: params.gameCode,
+                        type: ThirdPartyTxType.BET_CREDIT,
+                        status: ThirdPartyTxStatus.COMPLETED,
+                        betAmount: new Decimal(params.betAmount),
+                        winAmount: new Decimal(params.winAmount),
+                        amount: creditAmount,
+                        balanceBefore: totalBefore,
+                        balanceAfter,
+                        rawRequest: params as any,
+                    },
+                })
+
+                await tx.transaction.create({
+                    data: {
+                        userId: user.id,
+                        type: TransactionType.TP_WIN,
+                        amount: creditAmount,
+                        status: PaymentStatus.APPROVED,
+                        note: `TP credit${params.isRefund ? ' (refund)' : ''}: ${params.gameCode} round ${params.roundId}`,
+                        referenceId: params.transactionId,
+                        balanceBefore: totalBefore,
+                        balanceAfter,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: newBonus,
+                    },
+                })
+
+                return balanceAfter
             })
 
-            await tx.thirdPartyTransaction.create({
-                data: {
-                    providerId: await getProviderId(),
-                    userId: user.id,
-                    transactionId: params.transactionId,
-                    betId: params.betId,
-                    roundId: params.roundId,
-                    gameCode: params.gameCode,
-                    type: ThirdPartyTxType.BET_CREDIT,
-                    status: ThirdPartyTxStatus.COMPLETED,
-                    betAmount: new Decimal(params.betAmount),
-                    winAmount: new Decimal(params.winAmount),
-                    amount: creditAmount,
-                    balanceBefore: totalBefore,
-                    balanceAfter,
-                    rawRequest: params as any,
-                },
-            })
-
-            await tx.transaction.create({
-                data: {
-                    userId: user.id,
-                    type: TransactionType.TP_WIN,
-                    amount: creditAmount,
-                    status: PaymentStatus.APPROVED,
-                    note: `TP credit${params.isRefund ? ' (refund)' : ''}: ${params.gameCode} round ${params.roundId}`,
-                    referenceId: params.transactionId,
-                    balanceBefore: totalBefore,
-                    balanceAfter,
-                    bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
-                },
-            })
-
-            return balanceAfter
-        })
-
-        return ok(params.traceId, params.username, result)
+            return ok(params.traceId, params.username, result)
         } catch (e: any) {
             if (e?.code) return err(params.traceId, e.code)
             console.error('[GASea] Unexpected error in processBetCredit:', e)
