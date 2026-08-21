@@ -1,4 +1,4 @@
-import type { GameStatus, UserRole, PatternType, TransactionType, PaymentStatus, NotificationType } from '../enums'
+import type { GameStatus, UserRole, PatternType, TransactionType, PaymentStatus, NotificationType, SpendAccount } from '../enums'
 
 export interface User {
     id: string
@@ -30,6 +30,7 @@ export interface Wallet {
     userId: string
     realBalance: number
     bonusBalance: number
+    spendAccount: SpendAccount
     currency: 'ETB'
     updatedAt: Date
 }

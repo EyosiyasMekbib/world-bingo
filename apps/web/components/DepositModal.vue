@@ -72,6 +72,16 @@
               </div>
             </div>
 
+            <!-- Deposit bonus progress hints -->
+            <div v-if="dailyDepositHint || weeklyDepositHint" class="deposit-bonus-hints">
+              <p v-if="dailyDepositHint" class="deposit-bonus-hint">
+                <span aria-hidden="true">🎁</span>{{ dailyDepositHint }}
+              </p>
+              <p v-if="weeklyDepositHint" class="deposit-bonus-hint">
+                <span aria-hidden="true">🎁</span>{{ weeklyDepositHint }}
+              </p>
+            </div>
+
             <!-- Transaction ID -->
             <div class="wb-field">
               <label class="wb-label">Transaction ID <span class="wb-req">*</span></label>
@@ -171,6 +181,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
+import { usePromotionsStore } from '~/store/promotions'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{
@@ -179,6 +190,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const promotions = usePromotionsStore()
 const { track } = useAnalytics()
 
 type DepositMethod = {
@@ -249,9 +261,24 @@ const fetchMethods = async () => {
 watch(() => props.modelValue, (open) => {
   if (open) {
     fetchMethods()
+    promotions.fetch()
     track('deposit_modal_opened')
   }
 })
+
+// ── Deposit-progress hints (daily/weekly deposit bonus rules) ──────
+function formatDepositHint(rule: typeof promotions.dailyDepositBonus, periodLabel: string): string | null {
+  if (!rule) return null
+  const rewardText = rule.rewardType === 'FIXED'
+    ? `${rule.rewardValue} ETB`
+    : rule.maxReward != null
+      ? `${rule.rewardValue}% (up to ${rule.maxReward} ETB)`
+      : `${rule.rewardValue}%`
+  return `Deposit ${rule.threshold} ETB ${periodLabel} to get a ${rewardText} bonus.`
+}
+
+const dailyDepositHint = computed(() => formatDepositHint(promotions.dailyDepositBonus, 'today'))
+const weeklyDepositHint = computed(() => formatDepositHint(promotions.weeklyDepositBonus, 'this week'))
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -380,6 +407,21 @@ function resetForm() {
   color: var(--text-primary);
 }
 .banner-instructions { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.5; }
+
+/* ── Deposit bonus hints (bespoke) ────────────────────────────── */
+.deposit-bonus-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.deposit-bonus-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--brand-primary);
+}
 
 /* ── Receipt drop zone (bespoke) ──────────────────────────────── */
 .file-drop {

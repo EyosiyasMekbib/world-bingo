@@ -10,7 +10,7 @@ onMounted(async () => {
     router.replace('/auth/login')
     return
   }
-  await Promise.all([refreshBalance(), fetchRecentTx()])
+  await Promise.all([refreshBalance(), fetchRecentTx(), fetchBonusGrants()])
 })
 
 const showDeposit = ref(false)
@@ -18,6 +18,52 @@ const showWithdrawal = ref(false)
 const refreshing = ref(false)
 const txLoading = ref(false)
 const recentTx = ref<any[]>([])
+
+// ── Spend-account toggle ──────────────────────────────────────────
+const spendAccount = computed(() => auth.wallet?.spendAccount ?? 'REAL')
+const togglingAccount = ref(false)
+const spendAccountError = ref('')
+
+async function setSpendAccount(account: 'REAL' | 'BONUS') {
+  if (account === spendAccount.value || togglingAccount.value) return
+  togglingAccount.value = true
+  spendAccountError.value = ''
+  try {
+    await auth.apiFetch('/wallet/spend-account', { method: 'PATCH', body: { account } })
+    await auth.fetchWallet()
+  } catch {
+    spendAccountError.value = 'Could not switch account. Please try again.'
+  } finally {
+    togglingAccount.value = false
+  }
+}
+
+// ── Active bonus grants ─────────────────────────────────────────────
+const bonusGrants = ref<any[]>([])
+const grantsLoading = ref(false)
+
+async function fetchBonusGrants() {
+  grantsLoading.value = true
+  try {
+    bonusGrants.value = await auth.apiFetch<any[]>('/wallet/bonus-grants')
+  } catch {
+    // non-critical — the balance card still works without the grants list
+  } finally {
+    grantsLoading.value = false
+  }
+}
+
+function formatTimeRemaining(expiresAt: string | null): string {
+  if (!expiresAt) return 'No expiry'
+  const ms = new Date(expiresAt).getTime() - Date.now()
+  if (ms <= 0) return 'Expiring…'
+  const hours = Math.floor(ms / 3_600_000)
+  const days = Math.floor(hours / 24)
+  if (days > 0) return `Expires in ${days}d ${hours % 24}h`
+  if (hours > 0) return `Expires in ${hours}h`
+  const mins = Math.floor(ms / 60_000)
+  return `Expires in ${mins}m`
+}
 
 const formattedRealBalance = computed(() => {
   const bal = Number(auth.wallet?.realBalance ?? 0)
@@ -145,6 +191,32 @@ function formatRelativeTime(dateStr: string): string {
           </div>
         </div>
 
+        <!-- Spend account toggle -->
+        <div class="spend-account-row">
+          <span class="balance-part-label">Spend From</span>
+          <div class="spend-toggle" role="group" aria-label="Spend from">
+            <button
+              type="button"
+              class="spend-toggle-btn"
+              :class="{ 'spend-toggle-btn--active': spendAccount === 'REAL' }"
+              :disabled="togglingAccount"
+              @click="setSpendAccount('REAL')"
+            >
+              Real
+            </button>
+            <button
+              type="button"
+              class="spend-toggle-btn"
+              :class="{ 'spend-toggle-btn--active': spendAccount === 'BONUS' }"
+              :disabled="togglingAccount"
+              @click="setSpendAccount('BONUS')"
+            >
+              Bonus
+            </button>
+          </div>
+        </div>
+        <p v-if="spendAccountError" class="spend-account-error">{{ spendAccountError }}</p>
+
         <!-- Actions -->
         <div class="action-row">
           <button class="action-btn action-btn--deposit" @click="showDeposit = true">
@@ -213,6 +285,38 @@ function formatRelativeTime(dateStr: string): string {
                 <span class="tx-status" :class="txStatusClass(tx.status)">
                   {{ tx.status }}
                 </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Active Bonuses ───────────────────────────────────────── -->
+      <div v-if="bonusGrants.length" class="section">
+        <div class="section-header">
+          <span class="section-title">Active Bonuses</span>
+        </div>
+
+        <div class="tx-card">
+          <div class="tx-list">
+            <div v-for="(grant, i) in bonusGrants" :key="grant.id" class="tx-row" :class="{ 'tx-row--bordered': i < bonusGrants.length - 1 }">
+              <!-- Icon -->
+              <div class="tx-icon tx-icon--bonus">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="8" width="18" height="4" rx="1" stroke-linecap="round" stroke-linejoin="round" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" />
+                </svg>
+              </div>
+
+              <!-- Info -->
+              <div class="tx-info">
+                <span class="tx-type">{{ grant.ruleName ?? 'Bonus credit' }}</span>
+                <span class="tx-date">{{ formatTimeRemaining(grant.expiresAt) }}</span>
+              </div>
+
+              <!-- Amount -->
+              <div class="tx-right">
+                <span class="tx-amount amount-positive">{{ Number(grant.remaining).toFixed(2) }} ETB</span>
               </div>
             </div>
           </div>
@@ -408,6 +512,48 @@ function formatRelativeTime(dateStr: string): string {
   color: var(--brand-primary);
 }
 
+/* ── Spend Account Toggle ────────────────────────────────────────── */
+.spend-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.spend-toggle {
+  display: flex;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full, 9999px);
+  padding: 3px;
+  gap: 2px;
+}
+.spend-toggle-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-full, 9999px);
+  border: none;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.spend-toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.spend-toggle-btn--active {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+.spend-account-error {
+  margin: -0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--status-error);
+  text-align: right;
+}
+
 /* ── Action Buttons ──────────────────────────────────────────────── */
 .action-row {
   display: grid;
@@ -522,6 +668,7 @@ function formatRelativeTime(dateStr: string): string {
 .tx-icon--prize_win  { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
 .tx-icon--refund     { background: color-mix(in srgb, var(--accent-primary) 22%, transparent); color: #a5b4fc; }
 .tx-icon--game_entry { background: color-mix(in srgb, var(--accent-primary) 24%, transparent); color: #60a5fa; }
+.tx-icon--bonus      { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
 
 .tx-info {
   flex: 1;
