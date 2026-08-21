@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { PromotionsService } from '../services/promotions.service'
+import { BonusRuleService } from '../services/bonus-rule.service'
 import { prisma } from './setup'
 
 describe('PromotionsService.getPromotions', () => {
@@ -107,5 +108,40 @@ describe('PromotionsService.getPromotions', () => {
     expect(result.cashback?.refundType).toBe('FIXED')
     expect(result.cashback?.refundValue).toBe(30)
     expect(result.firstDepositBonus).toBe(100)
+  })
+
+  it('includes the most recently created active daily and weekly rules', async () => {
+    await BonusRuleService.create({
+      name: 'Daily 500',
+      type: 'DAILY_DEPOSIT',
+      threshold: 500,
+      rewardType: 'FIXED',
+      rewardValue: 50,
+      validityHours: 24,
+      startsAt: '2026-01-01T00:00:00Z',
+      endsAt: '2027-01-01T00:00:00Z',
+    })
+    await BonusRuleService.create({
+      name: 'Weekly 2000',
+      type: 'WEEKLY_DEPOSIT',
+      threshold: 2000,
+      rewardType: 'PERCENTAGE',
+      rewardValue: 10,
+      maxReward: 300,
+      validityHours: 168,
+      startsAt: '2026-01-01T00:00:00Z',
+      endsAt: '2027-01-01T00:00:00Z',
+    })
+
+    const promos = await PromotionsService.getPromotions()
+
+    expect(promos.dailyDepositBonus).toMatchObject({ name: 'Daily 500', threshold: 500, rewardValue: 50 })
+    expect(promos.weeklyDepositBonus).toMatchObject({ name: 'Weekly 2000', threshold: 2000, maxReward: 300 })
+  })
+
+  it('returns null deposit-bonus fields when none are active', async () => {
+    const promos = await PromotionsService.getPromotions()
+    expect(promos.dailyDepositBonus).toBeNull()
+    expect(promos.weeklyDepositBonus).toBeNull()
   })
 })

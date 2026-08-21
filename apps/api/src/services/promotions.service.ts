@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma'
-import { CashbackRefundType, CashbackFrequency } from '@world-bingo/shared-types'
+import { CashbackRefundType, CashbackFrequency, BonusRuleType, BonusRewardType } from '@world-bingo/shared-types'
+import { BonusRuleService } from './bonus-rule.service'
 
 export interface CashbackPromoResult {
   name: string
@@ -8,9 +9,21 @@ export interface CashbackPromoResult {
   frequency: CashbackFrequency
 }
 
+export interface DepositBonusPromoResult {
+  name: string
+  type: BonusRuleType
+  threshold: number
+  rewardType: BonusRewardType
+  rewardValue: number
+  maxReward: number | null
+  validityHours: number
+}
+
 export interface PromotionsResult {
   cashback: CashbackPromoResult | null
   firstDepositBonus: number | null
+  dailyDepositBonus: DepositBonusPromoResult | null
+  weeklyDepositBonus: DepositBonusPromoResult | null
 }
 
 export class PromotionsService {
@@ -22,7 +35,7 @@ export class PromotionsService {
   static async getPromotions(): Promise<PromotionsResult> {
     const now = new Date()
 
-    const [cashbackRow, bonusSetting] = await Promise.all([
+    const [cashbackRow, bonusSetting, activeRules] = await Promise.all([
       prisma.cashbackPromotion.findFirst({
         where: {
           isActive: true,
@@ -40,10 +53,24 @@ export class PromotionsService {
       prisma.siteSetting.findUnique({
         where: { key: 'first_deposit_bonus_amount' },
       }),
+      BonusRuleService.listActive(now),
     ])
 
     const raw = bonusSetting ? Number(bonusSetting.value) : 0
     const firstDepositBonus = isNaN(raw) ? 0 : raw
+
+    const toPromo = (rule: (typeof activeRules)[number]): DepositBonusPromoResult => ({
+      name: rule.name,
+      type: rule.type as BonusRuleType,
+      threshold: Number(rule.threshold),
+      rewardType: rule.rewardType as BonusRewardType,
+      rewardValue: Number(rule.rewardValue),
+      maxReward: rule.maxReward != null ? Number(rule.maxReward) : null,
+      validityHours: rule.validityHours,
+    })
+
+    const dailyRule = activeRules.find((r) => r.type === 'DAILY_DEPOSIT')
+    const weeklyRule = activeRules.find((r) => r.type === 'WEEKLY_DEPOSIT')
 
     return {
       cashback: cashbackRow
@@ -55,6 +82,8 @@ export class PromotionsService {
           }
         : null,
       firstDepositBonus: firstDepositBonus > 0 ? firstDepositBonus : null,
+      dailyDepositBonus: dailyRule ? toPromo(dailyRule) : null,
+      weeklyDepositBonus: weeklyRule ? toPromo(weeklyRule) : null,
     }
   }
 }

@@ -55,6 +55,7 @@ export class BonusRuleService {
     static async listActive(now: Date): Promise<BonusRule[]> {
         return prisma.bonusRule.findMany({
             where: { isActive: true, startsAt: { lte: now }, endsAt: { gte: now } },
+            orderBy: { createdAt: 'desc' },
         })
     }
 }
