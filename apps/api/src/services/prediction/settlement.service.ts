@@ -559,13 +559,40 @@ export class PredictionSettlementService {
 
                             // Bonus goes back as bonus. Refunding a bonus-funded position to
                             // real balance would launder promotional credit into withdrawable
-                            // cash — the same rule the bingo leave/refund path enforces.
+                            // cash — the same rule the bingo leave/refund path enforces. Real
+                            // returns as a plain wallet credit; bonus returns through
+                            // `BonusService.restore` so it lands in a lot carrying the SAME
+                            // expiry the funding order's hold consumed, rather than a fresh
+                            // window — mirrors `refundOpenOrders` above. A position has no
+                            // single originating order (its cost basis can accumulate from
+                            // several fills), so the hold is looked up by (userId, type,
+                            // referenceId=marketId) instead of note-contains-orderId — every
+                            // PREDICTION_ORDER_HOLD for this user on this market carries that
+                            // same referenceId.
                             const realAfter = realBefore.plus(basisReal)
                             const bonusAfter = bonusBefore.plus(basisBonus)
-                            await tx.wallet.update({
-                                where: { userId: position.userId },
-                                data: { realBalance: realAfter, bonusBalance: bonusAfter },
-                            })
+                            if (basisReal.greaterThan(0)) {
+                                await tx.wallet.update({
+                                    where: { userId: position.userId },
+                                    data: { realBalance: realAfter },
+                                })
+                            }
+                            if (basisBonus.greaterThan(0)) {
+                                const hold = await tx.transaction.findFirst({
+                                    where: {
+                                        userId: position.userId,
+                                        type: 'PREDICTION_ORDER_HOLD',
+                                        referenceId: marketId,
+                                    },
+                                    select: { bonusExpiresAtSpend: true },
+                                })
+                                await BonusService.restore(
+                                    tx,
+                                    position.userId,
+                                    basisBonus,
+                                    hold?.bonusExpiresAtSpend ?? null,
+                                )
+                            }
                             await tx.transaction.create({
                                 data: {
                                     userId: position.userId,

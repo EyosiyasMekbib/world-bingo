@@ -1081,6 +1081,47 @@ describe('voidMarket', () => {
         expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
     })
 
+    it('restores a refunded position s bonus reserve to a lot carrying its ORIGINAL expiry', async () => {
+        // Mirrors the order case above, but for a POSITION's cost basis. A
+        // position has no single originating order id of its own (it can
+        // accumulate cost basis from several fills), so the hold is looked up
+        // by (userId, type, referenceId=marketId) instead of note-contains-
+        // orderId — every PREDICTION_ORDER_HOLD for this user on this market
+        // carries that same referenceId. The hold is seeded directly (this
+        // double does not run placeOrder/matchOrder).
+        const { marketId, outcomeA } = seedMarket({ status: 'OPEN', totalShares: 1, totalVolume: D(100) })
+        seedUser('erin', 0, 0)
+        seedPosition(marketId, outcomeA, 'erin', 1, 0, 100)
+        const originalExpiry = new Date(Date.now() + 1_800_000)
+        db.tables.transaction.push({
+            id: 'tx-hold-2',
+            userId: 'erin',
+            type: 'PREDICTION_ORDER_HOLD',
+            amount: D(100),
+            status: 'APPROVED',
+            referenceId: marketId,
+            note: 'Prediction order order-99',
+            balanceBefore: D(0),
+            balanceAfter: D(0),
+            bonusBalanceBefore: D(100),
+            bonusBalanceAfter: D(0),
+            bonusExpiresAtSpend: originalExpiry,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })
+
+        vi.mocked(BonusService.restore).mockClear()
+        const result = await PredictionSettlementService.voidMarket(marketId, 'Bout cancelled')
+
+        expect(result.positionsRefunded).toBe(1)
+        expect(walletOf('erin')).toEqual({ real: '0', bonus: '100' })
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, restoredUserId, restoredAmount, restoredExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoredUserId).toBe('erin')
+        expect(new Decimal(restoredAmount as any).toString()).toBe('100')
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
+    })
+
     it('claims VOIDED before it hands back a single birr', async () => {
         // A void on a LIVE market is the expected operational case — a cancelled
         // bout with a full book. If the status only flipped after the refunds,
