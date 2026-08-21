@@ -41,6 +41,7 @@ model User {
   predictionOrders      PredictionOrder[]
   predictionPositions   PredictionPosition[]
   bonusGrants           BonusGrant[]
+  bonusRuleMemberships  BonusRuleMember[]
 
   @@index([role])
   @@index([referralCode])
@@ -443,19 +444,25 @@ model CashbackDisbursement {
 }
 
 model BonusRule {
-  id            String          @id @default(uuid())
-  name          String
-  type          BonusRuleType
-  threshold     Decimal         @db.Decimal(12, 2)
-  rewardType    BonusRewardType
-  rewardValue   Decimal         @db.Decimal(12, 2)
-  maxReward     Decimal?        @db.Decimal(12, 2)
-  validityHours Int
-  startsAt      DateTime
-  endsAt        DateTime
-  isActive      Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  grants        BonusGrant[]
+  id              String            @id @default(uuid())
+  name            String
+  type            BonusRuleType
+  threshold       Decimal           @db.Decimal(12, 2)
+  rewardType      BonusRewardType
+  rewardValue     Decimal           @db.Decimal(12, 2)
+  maxReward       Decimal?          @db.Decimal(12, 2)
+  validityHours   Int
+  startsAt        DateTime
+  endsAt          DateTime
+  isActive        Boolean           @default(true)
+  isSegmentScoped Boolean           @default(false)
+  segmentId       String?
+  segment         Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  segmentName     String?
+  memberCount     Int?
+  members         BonusRuleMember[]
+  createdAt       DateTime          @default(now())
+  grants          BonusGrant[]
 
   @@index([isActive, type])
   @@map("bonus_rules")
@@ -478,6 +485,20 @@ model BonusGrant {
   @@index([userId, status, expiresAt])
   @@index([status, expiresAt])
   @@map("bonus_grants")
+}
+
+/// A bonus rule's frozen target cohort. Materialized once when the rule is
+/// created and never recomputed — see the design spec §3. The composite
+/// primary key is also the index the hot path uses: grant-time asks only
+/// "is this user in this rule", which [ruleId, userId] answers directly.
+model BonusRuleMember {
+  ruleId String
+  userId String
+  rule   BonusRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, userId])
+  @@map("bonus_rule_members")
 }
 
 // ─── Site Settings / Feature Flags ──────────────────────────────────────────────
@@ -838,17 +859,18 @@ model PlayerMetrics {
 /// A saved audience definition. Presets are seeded rows, not code, so "preset"
 /// and "custom" are the same thing and clone-and-tweak works on day one.
 model Segment {
-  id          String     @id @default(uuid())
-  name        String     @unique
+  id          String      @id @default(uuid())
+  name        String      @unique
   description String?
   rules       Json
-  isPreset    Boolean    @default(false)
+  isPreset    Boolean     @default(false)
   cachedCount Int?
   countedAt   DateTime?
   createdById String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   campaigns   Campaign[]
+  bonusRules  BonusRule[]
 
   @@map("segments")
 }
