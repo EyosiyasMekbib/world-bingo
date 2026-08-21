@@ -652,7 +652,6 @@ export class ThirdPartyWalletService {
 
             let newReal = realBefore
             let newBonus = bonusBefore
-            let bonusExpiresAtSpend: Date | null = null
 
             if (rollbackDelta.greaterThanOrEqualTo(0)) {
                 // Credit back: undoing a prior debit (BET/BET_DEBIT, or a net-debit
@@ -697,20 +696,17 @@ export class ThirdPartyWalletService {
                 }
             } else {
                 // Debit back: undoing a prior credit (e.g. reversing a BET_WIN's net
-                // gain). This removes money from the wallet, so — like any other
-                // debit — it must honor the player's currently-selected spend account
-                // and reject rather than silently draining the other one when short.
+                // gain). Every credit path in this file (processBetResult's netChange > 0
+                // branch, processBetCredit's isRefund=0 case) credits realBalance only,
+                // unconditionally — so the money being reversed here is KNOWN to be 100%
+                // real. This must NOT consult spendAccount: doing so would let a
+                // BONUS-toggled player debit their bonus instead of the real balance the
+                // win actually landed in, leaving the win's real credit un-reversed while
+                // draining unrelated bonus funds.
                 const debit = rollbackDelta.abs()
-                if (wallet.spendAccount === 'BONUS') {
-                    if (bonusBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
-                    const spendResult = await BonusService.spend(tx, user.id, debit)
-                    newBonus = spendResult.bonusBalanceAfter
-                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
-                } else {
-                    if (realBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
-                    newReal = realBefore.minus(debit)
-                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
-                }
+                if (realBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                newReal = realBefore.minus(debit)
+                await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
             }
             const balanceAfter = newReal.plus(newBonus)
 
@@ -750,7 +746,11 @@ export class ThirdPartyWalletService {
                     balanceAfter,
                     bonusBalanceBefore: bonusBefore,
                     bonusBalanceAfter: newBonus,
-                    bonusExpiresAtSpend,
+                    // Neither branch above performs a genuine bonus spend: the credit-back
+                    // branch restores bonus (via BonusService.restore, which owns its own
+                    // new grant's expiry), and the debit-back branch is real-only. This
+                    // ledger row never has an original spend-expiry of its own to stamp.
+                    bonusExpiresAtSpend: null,
                 },
             })
 

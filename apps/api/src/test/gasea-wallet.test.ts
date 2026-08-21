@@ -1777,10 +1777,14 @@ describe('Task 28 — spend-account-based spend/restore', () => {
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(50) // untouched
     })
 
-    it('T28.10 wallet/bet_result [BET_WIN] then wallet/rollback (debit-back) honors spendAccount and rejects rather than falling back to real', async () => {
+    it('T28.10 wallet/bet_result [BET_WIN] then wallet/rollback (debit-back) reverses the win against REAL only, ignoring spendAccount entirely', async () => {
         // Force a net-positive BET_WIN credit (betAmount=0 free-spin style, win=50)
-        // so the rollback's undo is a pure debit-back of a +50 real credit.
-        await setWallet(validUserId, { real: 1000, bonus: 5, spendAccount: 'BONUS' })
+        // so the rollback's undo is a pure debit-back of a +50 real credit. Wallet has
+        // PLENTY of both real and bonus, and spendAccount is deliberately toggled to
+        // BONUS — proving the toggle has no bearing on this branch: every credit path
+        // in this file (processBetResult's netChange>0, processBetCredit's isRefund=0)
+        // lands on realBalance only, so the reversal must too, unconditionally.
+        await setWallet(validUserId, { real: 1000, bonus: 1000, spendAccount: 'BONUS' })
         const betId = uid()
         const roundId = uid()
 
@@ -1797,8 +1801,44 @@ describe('Task 28 — spend-account-based spend/restore', () => {
         let wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
         expect(new Decimal(wallet.realBalance).toNumber()).toBe(1050) // win credits real only
 
-        // Rolling back this +50 win credit must debit 50 from the SELECTED account
-        // (BONUS, which only has 5) — reject, don't quietly pull the 50 from real.
+        const rbRes = await post('rollback', {
+            traceId: uid(), transactionId: uid(), betId, externalTransactionId: uid(),
+            roundId, gameCode: GAME_CODE, username: VALID_USER, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(rbRes.status).toBe('SC_OK')
+
+        wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        // The +50 win is reversed out of REAL — back to the pre-win 1000.
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000)
+        // BONUS is completely untouched, even though it had ample funds (1000) and
+        // was the player's SELECTED account — the toggle plays no part here.
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(1000)
+    })
+
+    it('T28.10b wallet/bet_result [BET_WIN] then wallet/rollback rejects on REAL-insufficiency, regardless of bonus balance', async () => {
+        // Real is too low to cover the reversal, but bonus is plentiful and selected —
+        // must still reject, never dip into bonus to cover a real-only reversal.
+        await setWallet(validUserId, { real: 20, bonus: 1000, spendAccount: 'BONUS' })
+        const betId = uid()
+        const roundId = uid()
+
+        const winRes = await post('bet_result', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(), roundId,
+            betAmount: 0, winAmount: 50, effectiveTurnover: 0, winLoss: 50, jackpotAmount: 0,
+            resultType: 'BET_WIN', isFreespin: 0, isEndRound: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(),
+        })
+        expect(winRes.status).toBe('SC_OK')
+
+        let wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(70) // 20 + 50 win
+
+        // Drain real back below the 50 needed to reverse the win, so the rollback's
+        // real-insufficiency guard is the one actually exercised.
+        await prisma.wallet.update({ where: { userId: validUserId }, data: { realBalance: new Decimal(10) } })
+
         const rbRes = await post('rollback', {
             traceId: uid(), transactionId: uid(), betId, externalTransactionId: uid(),
             roundId, gameCode: GAME_CODE, username: VALID_USER, currency: CURRENCY, timestamp: Date.now(),
@@ -1806,8 +1846,8 @@ describe('Task 28 — spend-account-based spend/restore', () => {
         expect(rbRes.status).toBe('SC_INSUFFICIENT_FUNDS')
 
         wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
-        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1050) // untouched — no fallback debit
-        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(5) // untouched
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(10) // untouched
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(1000) // untouched — never consulted
     })
 
     // ── processBetCredit (bidirectional: isRefund=1 = restore, else = fresh credit) ──
