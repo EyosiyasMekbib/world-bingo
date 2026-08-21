@@ -65,6 +65,10 @@ async function fetchReconciliation() {
 }
 
 async function create() {
+  if (!form.name.trim() || !form.startsAt || !form.endsAt) {
+    toast.add({ title: 'Missing fields', description: 'Name, Period Start and Period End are required', color: 'error' })
+    return
+  }
   creating.value = true
   try {
     await createBonusRule({
@@ -224,13 +228,13 @@ onMounted(() => {
             <UInput v-model="form.name" placeholder="Daily 500 bonus" class="w-full" />
           </UFormField>
           <UFormField label="Type">
-            <USelect v-model="form.type" :options="typeOptions" value-key="value" label-key="label" class="w-full" />
+            <USelect v-model="form.type" :items="typeOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
           <UFormField label="Threshold (ETB)">
             <UInput v-model.number="form.threshold" type="number" min="1" class="w-full" />
           </UFormField>
           <UFormField label="Reward Type">
-            <USelect v-model="form.rewardType" :options="rewardTypeOptions" value-key="value" label-key="label" class="w-full" />
+            <USelect v-model="form.rewardType" :items="rewardTypeOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
           <UFormField :label="rewardValueLabel">
             <UInput v-model.number="form.rewardValue" type="number" min="0.01" class="w-full" />
