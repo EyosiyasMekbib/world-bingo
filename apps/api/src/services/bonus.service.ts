@@ -72,7 +72,15 @@ export class BonusService {
      * callers must ensure they only call grant() once per award.
      */
     static async grant(tx: Prisma.TransactionClient, params: GrantBonusParams): Promise<GrantBonusResult> {
-        const amount = new Decimal(params.amount)
+        // Rounded to 2dp DOWN before it touches either write. `bonus_grants`
+        // (amount/remaining) is Decimal(12,2) — Postgres ROUNDS a higher-precision
+        // value on cast into that column — while `wallets.bonusBalance` is
+        // Decimal(20,8) and keeps the extra digits untouched. Without rounding
+        // HERE, any caller passing a fractional-cent amount (e.g. a PERCENTAGE-
+        // type cashback payout) would leave the lot and the wallet permanently
+        // disagreeing. Defensive: fixes it for every current and future caller,
+        // not just the one that first tripped over it.
+        const amount = new Decimal(params.amount).toDecimalPlaces(2, Decimal.ROUND_DOWN)
         if (!amount.isFinite() || amount.lte(0)) {
             throw new Error('Grant amount must be a positive number')
         }

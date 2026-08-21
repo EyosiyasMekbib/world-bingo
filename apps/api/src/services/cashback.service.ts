@@ -173,10 +173,15 @@ export class CashbackService {
             // Qualifies when netLoss >= lossThreshold (inclusive boundary)
             if (netLoss.lt(lossThreshold)) continue
 
-            // Calculate cashback amount
+            // Calculate cashback amount. Rounded down to 2dp: a PERCENTAGE payout
+            // can otherwise carry more precision than bonus_grants' Decimal(12,2)
+            // can hold, silently truncating there while wallets.bonusBalance
+            // (Decimal(20,8)) keeps the extra digits — permanent drift on every
+            // percentage disbursement. BonusService.grant() also rounds
+            // defensively, so this is belt-and-suspenders for this call site.
             const cashbackAmount =
                 promotion.refundType === CashbackRefundType.PERCENTAGE
-                    ? netLoss.times(refundValue.div(100))
+                    ? netLoss.times(refundValue.div(100)).toDecimalPlaces(2, Decimal.ROUND_DOWN)
                     : refundValue
 
             if (cashbackAmount.lte(0)) continue

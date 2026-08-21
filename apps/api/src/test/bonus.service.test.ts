@@ -124,6 +124,37 @@ describe('BonusService.grant', () => {
             expect(new Decimal(stillWorks!.bonusBalance).toNumber()).toBe(10)
         })
     })
+
+    it('rounds the amount to 2 decimal places (round down) before it touches the lot or the wallet — no caller can reintroduce drift', async () => {
+        // bonus_grants.amount/remaining is Decimal(12,2) — Postgres rounds
+        // (half up) a higher-precision value on cast into that column.
+        // wallets.bonusBalance is Decimal(20,8) — it keeps the extra digits
+        // untouched. Without rounding INSIDE grant() itself, those two writes
+        // silently diverge on every fractional-cent amount, which is exactly
+        // the drift a PERCENTAGE-type cashback payout can produce. Rounding
+        // must happen before either write, so the lot and the wallet always
+        // agree — not just at this one call site.
+        const user = await makeUser('grantround', '+251900000098')
+
+        const result = await prisma.$transaction((tx) =>
+            BonusService.grant(tx, {
+                userId: user.id,
+                amount: new Decimal('33.336666'),
+                source: 'ADMIN',
+            }),
+        )
+
+        expect(result.granted).toBe(true)
+        expect(result.amount.toString()).toBe('33.33')
+        expect(result.bonusBalanceAfter.toNumber()).toBe(33.33)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(33.33)
+
+        const lot = await prisma.bonusGrant.findUniqueOrThrow({ where: { id: result.grantId! } })
+        expect(new Decimal(lot.amount).toNumber()).toBe(33.33)
+        expect(new Decimal(lot.remaining).toNumber()).toBe(33.33)
+    })
 })
 
 describe('BonusService.spend', () => {
