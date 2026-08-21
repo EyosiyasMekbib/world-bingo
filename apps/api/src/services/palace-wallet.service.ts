@@ -4,6 +4,7 @@ import redis from '../lib/redis.js'
 import { getLogger } from '../lib/log-context.js'
 import { maskAccount } from '../lib/logger.js'
 import { TransactionType, PaymentStatus, ThirdPartyTxType, ThirdPartyTxStatus } from '@world-bingo/shared-types'
+import { BonusService } from './bonus.service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,14 +92,14 @@ async function resolveUser(account: string): Promise<{ id: string; isActive: boo
     return user
 }
 
-type WalletRow = { id: string; realBalance: Decimal; bonusBalance: Decimal }
+type WalletRow = { id: string; realBalance: Decimal; bonusBalance: Decimal; spendAccount: 'REAL' | 'BONUS' }
 
 async function lockWallet(
     tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
     userId: string,
 ): Promise<WalletRow> {
     const rows = await tx.$queryRaw<WalletRow[]>`
-        SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+        SELECT id, "realBalance", "bonusBalance", "spendAccount" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
     `
     if (!rows[0]) throw { code: 'USER_NOT_FOUND' }
     return rows[0]
@@ -125,7 +126,9 @@ export class PalaceWalletService {
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         const balance = wallet
-            ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+            ? wallet.spendAccount === 'BONUS'
+                ? new Decimal(wallet.bonusBalance)
+                : new Decimal(wallet.realBalance)
             : new Decimal(0)
         return ok({ account, balance: Number(balance.toFixed(2)) })
     }
@@ -138,7 +141,7 @@ export class PalaceWalletService {
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         if (!wallet) return palaceErr(21, 'USER_NOT_FOUND')
 
-        const balance = new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+        const balance = wallet.spendAccount === 'BONUS' ? new Decimal(wallet.bonusBalance) : new Decimal(wallet.realBalance)
         return ok({ balance: Number(balance.toFixed(2)) })
     }
 
@@ -161,22 +164,19 @@ export class PalaceWalletService {
                 const totalBefore = realBefore.plus(bonusBefore)
                 const betAmount = new Decimal(params.amount).abs()
 
-                if (totalBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
-
                 let newReal = realBefore
                 let newBonus = bonusBefore
-                if (realBefore.greaterThanOrEqualTo(betAmount)) {
-                    newReal = realBefore.minus(betAmount)
+
+                if (wallet.spendAccount === 'BONUS') {
+                    if (bonusBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
+                    const spendResult = await BonusService.spend(tx, user.id, betAmount)
+                    newBonus = spendResult.bonusBalanceAfter
                 } else {
-                    newReal = new Decimal(0)
-                    newBonus = bonusBefore.minus(betAmount.minus(realBefore))
+                    if (realBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
+                    newReal = realBefore.minus(betAmount)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
                 const newTotal = newReal.plus(newBonus)
-
-                await tx.wallet.update({
-                    where: { userId: user.id },
-                    data: { realBalance: newReal, bonusBalance: newBonus },
-                })
 
                 const providerId = await getPalaceProviderId()
                 await tx.thirdPartyTransaction.create({
@@ -212,7 +212,11 @@ export class PalaceWalletService {
                     },
                 })
 
-                return newTotal
+                // Report back only the account this bet actually drew from — the
+                // combined total (`newTotal`, still used for the ledger rows above)
+                // would re-advertise money this account doesn't hold, undoing the
+                // point of authenticate/getBalance now reporting per-account too.
+                return wallet.spendAccount === 'BONUS' ? newBonus : newReal
             })
 
             return ok({ balance: Number(balanceAfter.toFixed(2)) })
@@ -220,7 +224,9 @@ export class PalaceWalletService {
             if (e?.code === 'BALANCE_NOT_ENOUGH') {
                 const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
                 const current = wallet
-                    ? new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
+                    ? wallet.spendAccount === 'BONUS'
+                        ? new Decimal(wallet.bonusBalance)
+                        : new Decimal(wallet.realBalance)
                     : new Decimal(0)
                 try {
                     const providerId = await getPalaceProviderId()
