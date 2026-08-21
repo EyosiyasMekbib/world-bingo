@@ -46,6 +46,10 @@ async function fetchPromotions() {
 }
 
 async function create() {
+  if (!form.name.trim() || !form.startsAt || !form.endsAt) {
+    toast.add({ title: 'Missing fields', description: 'Name, Period Start and Period End are required', color: 'error' })
+    return
+  }
   creating.value = true
   try {
     await createCashbackPromotion({
@@ -151,13 +155,13 @@ onMounted(fetchPromotions)
             <UInput v-model.number="form.lossThreshold" type="number" min="1" class="w-full" />
           </UFormField>
           <UFormField label="Refund Type">
-            <USelect v-model="form.refundType" :options="refundTypeOptions" value-key="value" label-key="label" class="w-full" />
+            <USelect v-model="form.refundType" :items="refundTypeOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
           <UFormField :label="refundValueLabel">
             <UInput v-model.number="form.refundValue" type="number" min="0.01" class="w-full" />
           </UFormField>
           <UFormField label="Frequency">
-            <USelect v-model="form.frequency" :options="frequencyOptions" value-key="value" label-key="label" class="w-full" />
+            <USelect v-model="form.frequency" :items="frequencyOptions" value-key="value" label-key="label" class="w-full" />
           </UFormField>
           <UFormField label="Period Start">
             <UInput v-model="form.startsAt" type="datetime-local" class="w-full" />
