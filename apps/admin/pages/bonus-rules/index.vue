@@ -55,13 +55,22 @@ const maxPerPlayer = computed<number | null>(() =>
   form.rewardType === 'FIXED' ? form.rewardValue : (form.maxReward ?? null)
 )
 
-const maxExposure = computed<number | null>(() =>
-  projectedCount.value !== null && maxPerPlayer.value !== null
+const maxExposure = computed<number | null>(() => {
+  // Zero matched players means zero exposure no matter the per-player cap —
+  // "uncapped" only describes the unknown ceiling on an amount that can occur.
+  if (projectedCount.value === 0) return 0
+  return projectedCount.value !== null && maxPerPlayer.value !== null
     ? projectedCount.value * maxPerPlayer.value
     : null
-)
+})
+
+// Guards against out-of-order responses: if the admin switches segments while
+// a count request is still in flight, only the response for the *latest*
+// selected segment is allowed to write into projectedCount/projecting.
+let projectionToken = 0
 
 async function refreshProjection() {
+  const token = ++projectionToken
   if (!form.segmentId) {
     projectedCount.value = null
     return
@@ -74,11 +83,11 @@ async function refreshProjection() {
   projecting.value = true
   try {
     const res = await countSegmentRules(seg.rules)
-    projectedCount.value = res.count
+    if (token === projectionToken) projectedCount.value = res.count
   } catch {
-    projectedCount.value = null
+    if (token === projectionToken) projectedCount.value = null
   } finally {
-    projecting.value = false
+    if (token === projectionToken) projecting.value = false
   }
 }
 
