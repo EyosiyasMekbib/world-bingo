@@ -4252,3 +4252,339 @@ git commit -m "feat(bonus): add en/am translations for the deposit bonus UI"
 **Placeholder scan** — no task contains "TBD", "TODO", or an unshown "add error handling" instruction. The three places this plan explicitly defers detail (Task 9's app-injection helper names, Task 18's exact `Transaction.type`/`referenceId` field for the paired bet lookup, Task 26's exact insertion point in the deposit page) each name precisely what to `grep` for and why the plan couldn't pin it down further (the target file wasn't read in full during planning) — that is a scoped investigation step, not an unresolved requirement.
 
 **Type consistency** — `SpendAccount`, `BonusGrantSource`, `BonusRuleType`/`BonusRewardType`, and every result interface (`GrantBonusResult`, `SpendBonusResult`, `ReduceBonusResult`, `ExpireBonusResult`, `ReconciliationMismatch`) are defined once in Task 2-5/20 and reused verbatim by every later task that consumes them — checked by re-reading each "Interfaces: Consumes" line against the task that "Produces" it.
+
+---
+
+## Addendum — findings from the final whole-branch review (2026-08-21)
+
+Tasks 1-27 were each individually reviewed and merged. The final whole-branch review (required by `superpowers:subagent-driven-development` after all tasks complete) found issues no task-scoped review could see: two spend paths this plan's own §1 inventory never enumerated (it inventoried where bonus gets *credited*, never where every existing system *spends* it), a bug introduced by Task 16 in code 100 lines outside its own diff hunk, and three items the approved design spec (§9) called for that never became tasks. Full findings are in the SDD ledger; this addendum adds the tasks needed to close them, following this plan's existing conventions and using the human-approved decision recorded there: widen scope to close the money-correctness gaps now, and build the three missing spec-UI pieces now rather than deferring either.
+
+Tasks 28-30 close genuine scope gaps (a second spend path per money-moving subsystem this plan never touched). Tasks 31-33 fix bugs in code this plan already touched. Tasks 34-36 build the three spec items that were approved but never scheduled.
+
+---
+
+## Phase 11 — Close scope gaps: spend paths this plan never enumerated
+
+### Task 28: Migrate GASea (`third-party-wallet.service.ts`) to spend-account-based spend/restore
+
+**Files:**
+- Modify: `apps/api/src/services/third-party-wallet.service.ts`
+- Test: find existing coverage (`grep -rln "third-party-wallet\|GASea\|processBetDebit" apps/api/src/test/*.ts`)
+
+**Interfaces:**
+- Consumes: `BonusService.spend`, `BonusService.restore` (Tasks 3, 4) — identical to how Task 18/19 consumed them for Palace.
+
+GASea is a second live third-party casino provider, registered alongside Palace at `/v1/aggregator/wallet`. The design spec (§4) named it explicitly ("Palace / GASea `processBet`") but no task in the original 27 touched it — Task 18/19 covered only Palace. `third-party-wallet.service.ts` still has five raw `bonusBalance` writes, all bonus-first-then-real (the same inconsistent-with-everything-else behavior Task 18 replaced in Palace):
+
+- `processBet` (~line 240-290) — the spend path. Read it in full: it locks the wallet (`lockWallet`), computes `totalBefore`, deducts real-first-then-bonus (note: real-first here, opposite of Palace's original real-first — same class of bug, different ordering), writes `wallet.update({ realBalance, bonusBalance })` directly, then creates `thirdPartyTransaction` and `transaction` rows.
+- `processBetDebit`, `processRollback`, `processAdjustment`, `processBetCredit` (~lines 607-1061) — read each of these in full before touching any of them. Do not assume their semantics from their names. For each, determine: is this a **spend** (money leaves the wallet — apply the Task 18 pattern: honor `wallet.spendAccount`, spend entirely from that account via `BonusService.spend`, reject rather than fall back) or a **credit/restore** (money returns to the wallet — determine whether it's a rollback of a specific prior spend with a real/bonus split to preserve, in which case apply the Task 19 pattern: look up the paired `Transaction` row for the original debit and restore proportionally via `BonusService.restore(tx, userId, bonusPortion, null)`; or a fresh credit like a win, in which case it should credit `realBalance` only, matching how Palace's `processWin` and this file's own win-crediting logic already work — verify this against the actual code, don't assume).
+
+This task is intentionally scoped the way Task 19 was: the exact shape of each of the five methods needs investigation before applying a pattern, not a guess from the method name. Use Task 18's report and diff, and Task 19's report and diff, as your primary references for "what the target shape looks like" — this is the same job, done twice already in this plan, against a near-identical provider integration.
+
+- [ ] **Step 1: Read the whole file.** `third-party-wallet.service.ts` in full, plus its existing test file if one exists.
+- [ ] **Step 2: Classify each of the 5 write sites** as spend or credit/restore, per the reasoning above. Write this classification into your report before writing any code — it's the design decision this task hinges on.
+- [ ] **Step 3: Add `spendAccount` to this file's wallet-locking helper's `SELECT`**, mirroring Task 18's change to Palace's `lockWallet`.
+- [ ] **Step 4: Migrate the spend site(s)** to the Task 18 pattern (honor `spendAccount`, reject-not-fallback via `BonusService.spend`, stamp `bonusExpiresAtSpend` on the resulting `Transaction` row).
+- [ ] **Step 5: Migrate the credit/restore site(s)** to the Task 19 pattern (paired-transaction lookup + `BonusService.restore` for genuine rollbacks; real-only credit for fresh wins — per your Step 2 classification).
+- [ ] **Step 6: Write or extend tests covering each migrated site** — at minimum, one test per site proving: (a) it honors `spendAccount` where applicable, (b) it rejects rather than falls back on insufficient funds in the selected account, (c) a rollback restores to the account it came from. Follow Task 18/19's real-DB test style if this file already has real-DB test coverage; if it only has a mocked/in-memory test double (check before assuming), follow that file's existing convention instead — do not introduce a different testing strategy than what's already established for this file.
+- [ ] **Step 7: Run the full test file, confirm nothing broke.**
+- [ ] **Step 8: Commit**, in as many commits as make sense given the 5 sites (one commit per site, or fewer if several sites share one fix, following how Task 17/18/19 split their own commits).
+
+```bash
+git add apps/api/src/services/third-party-wallet.service.ts apps/api/src/test/<the file(s) you touched>
+git commit -m "feat(bonus): GASea provider bets spend from the player-selected account"
+```
+
+(Use additional commits with their own messages for the credit/restore sites if you split the work, following this plan's established one-fix-one-commit convention.)
+
+---
+
+### Task 29: Migrate tournament register/cancel to `BonusService.spend`/`.restore`
+
+**Files:**
+- Modify: `apps/api/src/services/tournament.service.ts`
+- Test: find existing coverage (`grep -rln "tournament.service\|TournamentService" apps/api/src/test/*.ts`)
+
+**Interfaces:**
+- Consumes: `BonusService.spend`, `BonusService.restore` (Tasks 3, 4) — identical pattern to Task 14/15 (bingo `joinGame`/`leaveGame`).
+
+`TournamentService.register` and `cancelTournament` were never in this plan's scope at all — the original design's §1 inventory enumerated only where bonus gets *credited* (first-deposit, cashback, campaign, admin), never every place it gets *spent*. Tournament entry fees are a fourth spend path, structurally identical to bingo's `GameService.joinGame`/`leaveGame`:
+
+```typescript
+// register(), current code (read the surrounding function in full first):
+const bonusDeduction = Decimal.min(bonusBefore, entryFee)
+const realDeduction = entryFee.minus(bonusDeduction)
+await tx.wallet.update({
+    where: { userId },
+    data: { realBalance: { decrement: realDeduction }, bonusBalance: { decrement: bonusDeduction } },
+})
+await tx.transaction.create({
+    data: { userId, type: TransactionType.GAME_ENTRY, amount: entryFee, /* ... */
+        balanceBefore: realBefore, balanceAfter: realAfter,
+        bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter },
+})
+```
+
+```typescript
+// cancelTournament(), current code — derives real/bonus split from GAME_ENTRY
+// transaction snapshots, exactly like refund.service.ts does for bingo, then:
+await tx.wallet.update({
+    where: { userId: entry.userId },
+    data: { realBalance: realAfter, bonusBalance: bonusAfter },
+})
+```
+
+Apply the exact Task 14 transformation to `register`: read `wallet.spendAccount`, spend the entire `entryFee` from that one account via `BonusService.spend` (BONUS branch) or a plain real decrement with an insufficient-funds check (REAL branch), stamp `bonusExpiresAtSpend` on the `GAME_ENTRY` transaction.
+
+Apply the exact Task 15 transformation to `cancelTournament`: keep the existing `realRefund`/`bonusRefund` derivation from `GAME_ENTRY` snapshots unchanged, but credit the real portion via a plain `wallet.realBalance` update and the bonus portion via `BonusService.restore(tx, userId, bonusRefund, originalExpiry)`, where `originalExpiry` is the MINIMUM non-null `bonusExpiresAtSpend` across that user's `GAME_ENTRY` transactions for this tournament — reuse the exact deterministic-minimum reduce Task 15's fix introduced in `refund.service.ts`/`game.service.ts` (do not reintroduce the unordered-`.find()` bug Task 15 fixed there).
+
+- [ ] **Step 1: Read `register` and `cancelTournament` in full**, plus this file's existing test coverage.
+- [ ] **Step 2: Migrate `register`** per the Task 14 pattern described above. Write the failing test first (a BONUS-selected registration spends entirely from bonus and rejects on shortfall; a REAL-selected registration is unaffected) if this file's test conventions support TDD against a real DB — check first.
+- [ ] **Step 3: Migrate `cancelTournament`** per the Task 15 pattern (min-of-non-null expiry restore), with its own test.
+- [ ] **Step 4: Run the full test file, confirm nothing else broke** (tournament settlement/prize logic is untouched and must stay that way).
+- [ ] **Step 5: Commit.**
+
+```bash
+git add apps/api/src/services/tournament.service.ts apps/api/src/test/<the file(s) you touched>
+git commit -m "feat(bonus): tournament entry fees spend from the player-selected account"
+```
+
+---
+
+### Task 30: `CHECK (bonusBalance >= 0)` constraint
+
+**Files:**
+- Create: a new migration under `apps/api/prisma/migrations/`
+- Modify: `apps/api/prisma/schema.prisma` (documentation comment only — Prisma doesn't model raw CHECK constraints in the schema DSL for this Prisma version; the constraint lives in the migration SQL only)
+
+**Interfaces:** none — this is a database-level backstop, not application code.
+
+The final whole-branch review found there are currently **zero** CHECK constraints anywhere in this schema's migration history, so the platform's stated rule #1 ("wallet balance never goes below zero") is enforced only by application-code convention. Tasks 28-29 close the two known double-spend paths, but this constraint is the backstop for any spend path this plan — or a future one — still misses: instead of a silent negative balance, an attempted double-spend becomes a loud, immediate transaction failure.
+
+- [ ] **Step 1: Confirm no existing wallet row would violate the constraint** before adding it (a constraint that fails to apply because of pre-existing bad data is worse than no constraint — it blocks the migration entirely). Run:
+
+```bash
+pnpm --filter @world-bingo/api exec tsx -e "
+import prisma from './src/lib/prisma'
+async function main() {
+  const bad = await prisma.wallet.count({ where: { OR: [{ bonusBalance: { lt: 0 } }, { realBalance: { lt: 0 } }] } })
+  console.log({ negativeWallets: bad })
+  await prisma.\$disconnect()
+}
+main()
+"
+```
+
+If this returns a nonzero count, STOP and report BLOCKED — do not add a constraint that can't apply, and do not attempt to silently zero-out negative balances yourself; that's a data-correctness decision for a human, not this task.
+
+- [ ] **Step 2: Generate the migration** (`pnpm --filter @world-bingo/api exec prisma migrate dev --name add_wallet_balance_check_constraints --create-only`), then hand-edit the generated `migration.sql` to add:
+
+```sql
+ALTER TABLE "wallets" ADD CONSTRAINT "wallets_realBalance_nonneg" CHECK ("realBalance" >= 0);
+ALTER TABLE "wallets" ADD CONSTRAINT "wallets_bonusBalance_nonneg" CHECK ("bonusBalance" >= 0);
+```
+
+Rename the migration folder to a date-prefixed name matching this repo's convention (check today's date; use the same pattern as `20260821000000_add_bonus_grants`).
+
+- [ ] **Step 3: Apply the migration** to both the dev and test databases, following the same approach Task 1 established (its report documents the working `prisma migrate dev`/`prisma db execute` commands and the pre-existing test-DB migration-history drift workaround — read it first: it's in the SDD ledger/report directory from this same plan run).
+- [ ] **Step 4: Verify the constraint actually rejects a violation.** Write a quick throwaway check (not a permanent test — this is a DB-level constraint, not application logic) confirming `UPDATE wallets SET "bonusBalance" = -1 WHERE ...` raises a Postgres error. Report the exact error text you saw.
+- [ ] **Step 5: Run the full API test suite** to confirm no existing test path relies on a transient negative balance mid-transaction that this constraint would now reject (constraints are checked at statement commit within a transaction by default in Postgres unless declared `DEFERRABLE`, so a transient negative value that's corrected before the transaction ends is fine — but confirm this empirically by running the suite, don't just reason about it).
+- [ ] **Step 6: Commit.**
+
+```bash
+git add apps/api/prisma/schema.prisma apps/api/prisma/migrations
+git commit -m "feat(bonus): add CHECK constraints so a wallet balance can never go negative"
+```
+
+---
+
+## Phase 12 — Fix bugs the final review found in already-scoped code
+
+### Task 31: Fix prediction price-improvement release (mints bonus with no lot) + Palace null-expiry restore
+
+**Files:**
+- Modify: `apps/api/src/services/prediction/order.service.ts`
+- Modify: `apps/api/src/services/palace-wallet.service.ts`
+- Test: `apps/api/src/test/prediction-order.test.ts`, `apps/api/src/test/palace-wallet.test.ts`
+
+**Interfaces:**
+- Consumes: `BonusService.restore` (Task 4), `originalHoldExpiry` (Task 17, already exists in `order.service.ts`).
+
+**Bug 1 (introduced by Task 16, real invariant break).** `placeOrder`'s price-improvement release, ~line 395-412 of `order.service.ts` (NOT the reserve logic Task 16 already fixed — this is a separate block, ~100 lines later in the same function, that Task 16's diff hunk didn't include):
+
+```typescript
+if (improvement.greaterThan(0)) {
+    const released = splitAgainstReserve(improvement, heldReal, heldBonus)
+    realFinal = realAfterHold.plus(released.real)
+    bonusFinal = bonusAfterHold.plus(released.bonus)
+    await tx.wallet.update({ where: { userId }, data: { realBalance: realFinal, bonusBalance: bonusFinal } })
+    // ...
+}
+```
+
+Since Task 16 made `placeOrder`'s reserve 100% one bucket (never split), a BONUS-selected order's `heldReal` is always 0, so `splitAgainstReserve` returns the entire `improvement` as `released.bonus`. This raw-increments `bonusBalance` with **no corresponding `bonus_grants` lot** — the money is unspendable through any lot-based path and permanently trips `reconcile()`. There is an existing test in this branch, `apps/api/src/test/prediction-order.test.ts` (search for the price-improvement test, ends with an assertion like `expect(walletOf('alice')).toEqual({ real: '1000', bonus: '100' })`), that directly asserts this buggy behavior — you will need to update that assertion once you fix the underlying code.
+
+Fix: split the `realFinal`/`bonusFinal` computation apart exactly like `cancelOrder` (`order.service.ts`, ~line 552-566, already correct — read it as your reference) already does: real portion via a plain `wallet.realBalance` update, bonus portion via `BonusService.restore(tx, userId, released.bonus, await originalHoldExpiry(tx, userId, order.id))` (the `originalHoldExpiry` helper already exists in this file from Task 17 — reuse it, don't reimplement).
+
+**Bug 2 (Palace `processCancel` restores with `expiresAt: null`).** `palace-wallet.service.ts`'s `processCancel` (~line 377-385, from Task 19) restores bonus via `BonusService.restore(tx, user.id, bonusDelta, null)` — a never-expiring lot. Task 19's own report explains why: the `TP_BET` transaction row doesn't carry `bonusExpiresAtSpend`. The final review argues `null` (infinite) is actually worse than the "fresh window" abuse case the design explicitly ruled out. Fix: stamp `bonusExpiresAtSpend` on `processBet`'s `TP_BET` transaction create (~line 210-217 — it already has `spendResult` in scope from Task 18's fix, just add `bonusExpiresAtSpend: spendResult?.soonestExpiryConsumed ?? null` to that `data` object), then have `processCancel`'s existing `betTxn` lookup (~line 356-359, already selects from that row) read and pass through that column instead of `null`.
+
+- [ ] **Step 1: Fix the `placeOrder` price-improvement release.** Write/update the failing test first (the existing test that asserts the buggy `{real: '1000', bonus: '100'}` outcome — change its expectation to assert a `BonusGrant` lot exists instead, following this file's testing convention — check whether it's real-DB or an in-memory double, per Task 16/17's own findings about this file, and adapt accordingly).
+- [ ] **Step 2: Run RED, then implement, run GREEN.**
+- [ ] **Step 3: Fix Palace's `bonusExpiresAtSpend` stamping and `processCancel`'s read of it.** Write/update a test confirming a cancelled bonus-funded bet restores with the ORIGINAL expiry, not `null`, following Task 19's existing test in this file as your pattern.
+- [ ] **Step 4: Run RED, then implement, run GREEN.**
+- [ ] **Step 5: Run both full test files, confirm nothing else broke.**
+- [ ] **Step 6: Commit** (can be one commit or two, given these are two independent fixes in two different files — your call, following this plan's convention of one logical fix per commit).
+
+```bash
+git add apps/api/src/services/prediction/order.service.ts apps/api/src/services/palace-wallet.service.ts apps/api/src/test/prediction-order.test.ts apps/api/src/test/palace-wallet.test.ts
+git commit -m "fix(bonus): prediction price-improvement release and Palace rollback both restore into a real BonusGrant lot"
+```
+
+---
+
+### Task 32: Fix voidMarket, Palace cross-callback reporting, cashback rounding, dropped locks, error mapping
+
+**Files:**
+- Modify: `apps/api/src/services/prediction/settlement.service.ts`
+- Modify: `apps/api/src/services/palace-wallet.service.ts`
+- Modify: `apps/api/src/services/cashback.service.ts`
+- Modify: `apps/api/src/services/player-crm/campaign.service.ts`
+- Test: corresponding existing test files for each
+
+**Interfaces:**
+- Consumes: `BonusService.restore`, `BonusService.grant` (Tasks 3, 4) — no new interfaces.
+
+This task bundles five independent, small fixes the final review found — each is a one-file, few-line change, grouped here because none warrants its own task-sized ceremony. Fix them one at a time, in this order, with its own test and its own commit per fix (five commits total is fine — don't force them into one).
+
+**Fix 1 — `voidMarket` position refund** (`settlement.service.ts`, ~line 564-567, inside `voidMarket`'s position-refund loop, NOT `refundOpenOrders` a few lines above it which Task 17 already fixed correctly — use that as your pattern). Currently: `await tx.wallet.update({ data: { realBalance: realAfter, bonusBalance: bonusAfter } })` for `position.costBasisBonus`, no `BonusService.restore`, no expiry lookup. Fix identically to how `refundOpenOrders` already handles it in this same file: real portion via plain update, bonus portion via `BonusService.restore` with the original hold's expiry (same lookup pattern `refundOpenOrders` already uses).
+
+**Fix 2 — Palace cross-callback reporting** (`palace-wallet.service.ts`). Task 18 fixed `authenticate`/`getBalance`/`processBet` (fresh + replay) to report only the selected account. `getStatus`, and BOTH the fresh and replay paths of `processWin` and `processCancel`, still report the combined `realBalance + bonusBalance` total. Apply the identical fix (report `wallet.spendAccount === 'BONUS' ? bonusBalance : realBalance` instead of the combined total) to all of: `getStatus`, `processWin`'s fresh return value, `processWin`'s replay branch, `processCancel`'s fresh return value, `processCancel`'s replay branch. This does NOT change what's persisted to `ThirdPartyTransaction`/`Transaction` audit rows (those correctly stay combined-total, per Task 18's original design) — only what's returned to the provider in the HTTP response.
+
+**Fix 3 — Cashback percentage rounding** (`cashback.service.ts`, the `cashbackAmount` computation, ~line 176-179). `netLoss.times(refundValue.div(100))` has no rounding, so a `PERCENTAGE`-type promotion's payout can carry more than 2 decimal places, which then gets silently truncated when it lands in `bonus_grants` (`Decimal(12,2)`) but not in `wallets.bonusBalance` (`Decimal(20,8)`) — permanent drift on every percentage disbursement. Fix: add `.toDecimalPlaces(2, Decimal.ROUND_DOWN)` to the computed `cashbackAmount`. Also add a defensive `.toDecimalPlaces(2, Decimal.ROUND_DOWN)` inside `BonusService.grant` itself (`bonus.service.ts`, on the `amount` parameter, before it's used for both the lot and the wallet increment) so no future caller can reintroduce this class of drift — this is the more important half of the fix; the `cashback.service.ts` change alone only fixes this one call site, `grant()` fixes it for everyone.
+
+**Fix 4 — Restore dropped `FOR UPDATE` locks.** `cashback.service.ts`'s `checkAndDisburse` (Task 7) and `player-crm/campaign.service.ts`'s bonus-delivery path (Task 8) both lost their `SELECT ... FOR UPDATE` wallet lock during migration to `BonusService.grant` — `grant()` itself reads `bonusBalance` via a plain, unlocked `SELECT`. This violates this plan's own Global Constraints ("the caller already holds the lock"). Restore the `FOR UPDATE` lock in both files, immediately before the `BonusService.grant` call, matching the pattern every other caller of `BonusService` methods already uses (see `game.service.ts`'s `joinGame` as the reference).
+
+**Fix 5 — `InsufficientBonusBalanceError` missing from Palace's error mapping.** `palace-wallet.service.ts`'s `processBet`, the `catch` block around line 234-243, maps specific error shapes to Palace protocol error codes (e.g. `{ code: 'BALANCE_NOT_ENOUGH' }` → `31`). `BonusService.spend`'s `InsufficientBonusBalanceError` (which carries `.statusCode`, not `.code`) falls through this mapping and would surface as an unhandled 500. Add a branch checking `err?.name === 'InsufficientBonusBalanceError'` (or `err instanceof InsufficientBonusBalanceError`, whichever matches this file's existing error-checking convention) to the same `BALANCE_NOT_ENOUGH` branch.
+
+- [ ] **Step 1-5 (one per fix above):** for each, write/update a failing test first where practical, implement, verify GREEN, run that file's full test suite, commit.
+- [ ] **Step 6: Run the full API test suite once at the end**, confirm no cross-fix interaction broke anything.
+
+```bash
+git add apps/api/src/services/prediction/settlement.service.ts apps/api/src/services/palace-wallet.service.ts apps/api/src/services/cashback.service.ts apps/api/src/services/bonus.service.ts apps/api/src/services/player-crm/campaign.service.ts apps/api/src/test/<files touched>
+# five commits, one per fix, messages describing each fix specifically
+```
+
+---
+
+### Task 33: System-level invariant test coverage
+
+**Files:**
+- Modify: `apps/api/src/test/setup.ts` (add a shared helper) OR create `apps/api/src/test/helpers/invariant.ts` — your call based on how this codebase's test helpers are typically organized (check whether `setup.ts` already exports reusable assertion helpers, or whether a separate helpers file is the convention)
+- Modify: `apps/api/src/test/game.service.extended.test.ts`, `apps/api/src/test/refund.service.test.ts`, `apps/api/src/test/wallet.service.test.ts`, `apps/api/src/test/cashback.service.test.ts`, `apps/api/src/test/admin-adjust-balance.test.ts`, `apps/api/src/test/bonus-expiry.worker.test.ts` — every REAL-DB test suite that exercises a `BonusService`-touching code path
+
+**Interfaces:**
+- Consumes: `BonusService.reconcile()` (Task 5).
+
+The final review found that `bonus-invariant.test.ts` only proves `BonusService` is internally self-consistent (grant/spend/reduce/restore calling itself) — it never runs a real end-to-end flow (join→leave, place→fill→cancel, bet→cancel, disburse) and asserts `reconcile()` comes back empty. The two suites that structurally could not see this plan's real bugs (`prediction-order.test.ts`, `prediction-settlement.test.ts`, `palace-wallet.test.ts`) all mock `BonusService`/`prisma` entirely and have no `bonus_grants` table modeled — so a shared invariant check can't help THOSE suites directly (they're not real-DB), but it should be added to every suite that DOES touch a real DB and a real `BonusService` call, to close the same class of blind spot going forward.
+
+- [ ] **Step 1: Write a small, shared helper.**
+
+```typescript
+import { BonusService } from '../services/bonus.service' // adjust path per actual file location
+import { expect } from 'vitest'
+
+export async function expectInvariantClean() {
+    const mismatches = await BonusService.reconcile()
+    expect(mismatches).toEqual([])
+}
+```
+
+- [ ] **Step 2: Add a call to `expectInvariantClean()` inside the `afterEach` (or equivalent per-test cleanup hook) of each real-DB suite listed above** — after the test's own assertions, before `cleanDb()` runs (so it checks state the test actually left behind, not a freshly-wiped DB). If a suite already has a custom `afterEach`, add the call there; if not, add one.
+- [ ] **Step 3: Run each modified test file.** If any of them now fails because a PRE-EXISTING (unfixed-by-this-plan) code path in that specific test's setup/execution leaves the invariant broken, that's real information — do not silence it by removing the check; report it clearly instead (it may be one of Tasks 28-32's fixes not yet having landed, in which case note the dependency; or it may be a genuinely new finding this task surfaced, in which case treat it as BLOCKED and report the specifics rather than guessing a fix).
+- [ ] **Step 4: Commit.**
+
+```bash
+git add apps/api/src/test/<helper file> apps/api/src/test/game.service.extended.test.ts apps/api/src/test/refund.service.test.ts apps/api/src/test/wallet.service.test.ts apps/api/src/test/cashback.service.test.ts apps/api/src/test/admin-adjust-balance.test.ts apps/api/src/test/bonus-expiry.worker.test.ts
+git commit -m "test(bonus): assert the wallet/lot invariant holds after every real-DB bonus-touching test"
+```
+
+---
+
+## Phase 13 — Build the three approved spec items that were never scheduled
+
+### Task 34: Admin player-detail grants panel
+
+**Files:**
+- Modify: `apps/admin/composables/useAdminApi.ts` (add `getPlayerBonusGrants(userId)` calling the existing `GET /admin/players/:id/bonus-grants` route from Task 24 — no backend change needed, the route already exists and is tested)
+- Modify: whichever admin page currently shows player detail (`find apps/admin/pages -path '*players*'` — read the result in full to find the right insertion point; this plan doesn't know its exact current structure)
+
+**Interfaces:**
+- Consumes: `GET /admin/players/:id/bonus-grants` (Task 24, already built and tested — response shape: array of `{ id, amount, remaining, expiresAt, status, ruleName, ruleType, createdAt }`).
+
+Spec §9: "Player detail gains a grants panel: amount, remaining, expiry, source rule, status." The backend route exists (Task 24) but nothing in `apps/admin` calls it.
+
+- [ ] **Step 1: Find the admin player-detail page** (`find apps/admin/pages -path '*players*'`) and read it in full to understand its current layout (likely tabs or sections for balance, transactions, etc. — find where a new section fits naturally).
+- [ ] **Step 2: Add the composable method** to `useAdminApi.ts`, following the exact pattern of `getPlayerBonusGrants` sibling methods already in that file (e.g. how other player-scoped admin endpoints are called).
+- [ ] **Step 3: Add a grants table/list section to the player-detail page** — columns for amount, remaining, expiry (formatted, with a "never" fallback for `null`), status (badge, colored per status like the bonus-rules page's `isActive` badge), source rule name (or "Legacy/Admin" fallback for `ruleName: null`). Match this page's existing table/list styling exactly (read a sibling section on the same page for the convention, the same way Task 25 mirrored `cashback/index.vue`).
+- [ ] **Step 4: Static verification only** (per this plan's established limitation — no dev server in this execution): read your new section against the page's existing conventions line-by-line, run the scoped `vue-tsc` grep this plan's later tasks established (`pnpm --filter @world-bingo/admin exec vue-tsc --noEmit -p tsconfig.json 2>&1 | grep -i "<your files>"`), confirm no NEW errors.
+- [ ] **Step 5: Commit**, reporting DONE_WITH_CONCERNS for the same browser-verification-skipped reason Tasks 25/26 did.
+
+```bash
+git add apps/admin/composables/useAdminApi.ts apps/admin/pages/<the player detail page>
+git commit -m "feat(bonus): admin player detail gains a bonus grants panel"
+```
+
+---
+
+### Task 35: Admin bonus-rule edit UI
+
+**Files:**
+- Modify: `apps/admin/composables/useAdminApi.ts` (add `updateBonusRule(id, data)` calling the existing `PATCH /admin/bonus-rules/:id` route from Task 24 — already built and tested, just never exposed to the frontend)
+- Modify: `apps/admin/pages/bonus-rules/index.vue` (Task 25)
+
+**Interfaces:**
+- Consumes: `PATCH /admin/bonus-rules/:id` (Task 24).
+
+Spec §9: "`/admin/bonus-rules` — list, create, **edit**, activate/deactivate." Create and toggle exist (Task 25); edit does not — an operator can't correct a typo'd threshold without deleting and recreating the rule (and there's no delete either, so today they genuinely cannot).
+
+- [ ] **Step 1: Read `bonus-rules/index.vue` in full** (Task 25's output, possibly since amended by earlier fix rounds — read the CURRENT state).
+- [ ] **Step 2: Add `updateBonusRule` to `useAdminApi.ts`**, following `createBonusRule`'s exact pattern (same file, from Task 25).
+- [ ] **Step 3: Add an "Edit" affordance to each rule card** — a button opening a modal pre-filled with that rule's current values, reusing the existing create-modal's form structure (don't duplicate the whole form markup if it can be reasonably shared via a second `v-model:open` + shared `form` reactive object with a mode flag — your call on the cleanest approach given what you find in the file, but don't over-engineer a generic "modal component" abstraction for two use sites).
+- [ ] **Step 4: On submit, call `updateBonusRule`** with only the changed fields (or all fields — `PATCH` accepts partial updates per Task 24's `bonusRuleUpdateSchema`), refresh the list, toast success/failure matching the page's existing pattern.
+- [ ] **Step 5: Static verification** (same as Task 34 — scoped `vue-tsc` grep, no new errors, line-by-line review against the page's own existing conventions).
+- [ ] **Step 6: Commit**, DONE_WITH_CONCERNS for the same browser-verification-skipped reason.
+
+```bash
+git add apps/admin/composables/useAdminApi.ts apps/admin/pages/bonus-rules/index.vue
+git commit -m "feat(bonus): admin can edit an existing bonus rule, not just create and toggle"
+```
+
+---
+
+### Task 36: Deposit progress-tracking (real "X of Y deposited", not a static hint)
+
+**Files:**
+- Create: a new endpoint or extend an existing one to expose the player's CURRENT bucket total for each active daily/weekly rule (read `apps/api/src/services/deposit-bonus.service.ts`'s `evaluateAndGrant` — Task 12 — for the exact bucket-sum query shape; you need a READ-ONLY version of that same aggregation, callable without a pending deposit, not the grant-evaluation logic itself)
+- Modify: `apps/api/src/routes/wallet/index.ts` or `apps/api/src/routes/promotions/index.ts` (your call on the more natural home — a wallet-scoped "my deposit progress" read fits either)
+- Modify: `apps/web/components/DepositModal.vue` (Task 26)
+- Modify: `apps/web/store/promotions.ts` (Task 26) if that's where the fetch belongs, or add a new small composable/store slice if a player-specific (not global) value doesn't belong in the promotions store — read that store's current shape first (Task 26 already extended it once) before deciding
+
+**Interfaces:**
+- Consumes: `dayBucketStart`/`weekBucketStart` (Task 10, `apps/api/src/lib/bonus-period.ts`).
+- Produces: a new endpoint, e.g. `GET /wallet/deposit-progress`, returning `{ dailyDeposited: number, dailyThreshold: number | null, weeklyDeposited: number, weeklyThreshold: number | null }` (or your own clean shape — this plan doesn't mandate the exact field names, just the semantic content: current bucket total vs. active rule's threshold, per bucket type, `null` threshold when no rule of that type is active).
+
+Spec §9: "Deposit screen: progress toward today's and this week's threshold." Task 26 built a static hint ("Deposit 500 ETB today for a bonus") with no notion of how much the player has already deposited — this task makes it real progress.
+
+- [ ] **Step 1: Read `deposit-bonus.service.ts`'s `evaluateAndGrant`** (Task 12) to find its bucket-sum query (`tx.transaction.aggregate({ where: { userId, type: 'DEPOSIT', status: 'APPROVED', createdAt: { gte: periodStart, lt: bucketEnd } }, _sum: { amount: true } })`). You need the read-only equivalent, callable from a GET route (not inside a deposit-approval transaction) — same query shape, plain `prisma` instead of `tx`.
+- [ ] **Step 2: Write the service method** (add to `bonus-rule.service.ts` or a small new file — your call) that, given a `userId`, computes today's and this week's deposit total against the currently-active daily/weekly rules (reuse `BonusRuleService.listActive`, Task 11, to find them), returning `null` for a bucket type with no active rule.
+- [ ] **Step 3: Write the failing test**, RED, implement, GREEN, following this plan's established real-DB testing convention for API-layer additions (see Task 23 as your closest precedent — new read-only endpoint backed by a new query).
+- [ ] **Step 4: Wire the route.**
+- [ ] **Step 5: Update `DepositModal.vue`** to fetch this on modal open (alongside the existing promotions fetch, per Task 26's established pattern) and render actual progress — e.g. "You've deposited 300 of 500 ETB today" instead of the static hint, with the static hint as a fallback only if the progress fetch fails (don't regress to a broken/blank state on a transient API error).
+- [ ] **Step 6: Add the new copy strings to both locale files**, following Task 27's established `wallet.*` (or a new `deposit.*` namespace, your call) key convention — English text plus an Amharic translation. If you're not confident in the Amharic phrasing, use the same register/style as the nearest existing `wallet.*` string and note in your report that a native speaker should sanity-check it, rather than leaving it in English only.
+- [ ] **Step 7: Static verification** (web typecheck clean, no dev server per this plan's established limitation).
+- [ ] **Step 8: Commit.**
+
+```bash
+git add apps/api/src/services/<new/modified files> apps/api/src/routes/<the route file> apps/api/src/test/<new test file> apps/web/components/DepositModal.vue apps/web/store/promotions.ts apps/web/i18n/locales/en.json apps/web/i18n/locales/am.json
+git commit -m "feat(bonus): deposit screen shows real progress toward the daily/weekly bonus threshold"
+```
