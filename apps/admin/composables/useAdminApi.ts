@@ -494,6 +494,23 @@ export const useAdminApi = () => {
         }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
+
+        // ── Deposit Bonus Rules ─────────────────────────────────────────────
+        getBonusRules: () => apiFetch<any[]>('/admin/bonus-rules'),
+        createBonusRule: (data: {
+            name: string
+            type: 'DAILY_DEPOSIT' | 'WEEKLY_DEPOSIT'
+            threshold: number
+            rewardType: 'FIXED' | 'PERCENTAGE'
+            rewardValue: number
+            maxReward?: number | null
+            validityHours: number
+            startsAt: string
+            endsAt: string
+        }) => apiFetch('/admin/bonus-rules', { method: 'POST', body: data }),
+        toggleBonusRule: (id: string, isActive: boolean) =>
+            apiFetch(`/admin/bonus-rules/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
+        getBonusReconciliation: () => apiFetch<Array<{ userId: string; cachedBalance: number; lotSum: number }>>('/admin/bonus-reconciliation'),
     }
 }
 
