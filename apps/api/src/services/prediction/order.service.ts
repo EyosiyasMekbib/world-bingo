@@ -89,6 +89,25 @@ interface LockedWallet {
     spendAccount: 'REAL' | 'BONUS'
 }
 
+/**
+ * Looks up the expiry `BonusService.spend` stamped on this order's original hold,
+ * so a release restores it rather than granting a fresh window. Falls back to
+ * null (never-expiring) if the hold predates this column (defensive only —
+ * every hold created after Task 16 ships has one) or if the order was funded
+ * entirely from real and never held a bonus reserve at all.
+ */
+async function originalHoldExpiry(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    orderId: string,
+): Promise<Date | null> {
+    const hold = await tx.transaction.findFirst({
+        where: { userId, type: TransactionType.PREDICTION_ORDER_HOLD, note: { contains: orderId } },
+        select: { bonusExpiresAtSpend: true },
+    })
+    return hold?.bonusExpiresAtSpend ?? null
+}
+
 async function lockWallet(tx: Prisma.TransactionClient, userId: string): Promise<LockedWallet> {
     const wallets = await tx.$queryRaw<
         Array<{
@@ -533,10 +552,18 @@ export class PredictionOrderService {
                 const bonusAfter = wallet.bonus.plus(releasedBonus)
 
                 if (refund.greaterThan(0)) {
-                    await tx.wallet.update({
-                        where: { userId },
-                        data: { realBalance: realAfter, bonusBalance: bonusAfter },
-                    })
+                    // Real returns as a plain wallet credit; bonus returns through
+                    // `BonusService.restore` so it lands in a lot carrying the SAME
+                    // expiry the original hold consumed, rather than a fresh window
+                    // — otherwise a cancel would let a player launder an
+                    // about-to-expire bonus into a longer-lived one.
+                    if (releasedReal.greaterThan(0)) {
+                        await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })
+                    }
+                    if (releasedBonus.greaterThan(0)) {
+                        const expiry = await originalHoldExpiry(tx, userId, order.id)
+                        await BonusService.restore(tx, userId, releasedBonus, expiry)
+                    }
 
                     await tx.transaction.create({
                         data: {

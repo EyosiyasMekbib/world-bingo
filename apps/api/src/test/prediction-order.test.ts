@@ -57,16 +57,24 @@ vi.mock('../gateways/prediction.gateway.js', () => ({
 }))
 
 /**
- * `BonusService.spend` is production code with its own dedicated real-DB
- * coverage (bonus.service.test.ts) — soonest-expiry-first lot consumption
- * against `bonus_grants`, a table this in-memory double does not model. What
- * `placeOrder` needs verified HERE is only its own contract with `spend`: pass
- * the reserve, apply `bonusBalanceAfter` to the wallet, propagate
- * `InsufficientBonusBalanceError` untouched. This fake reproduces exactly that
- * observable surface against the same double `tx` the rest of the suite uses,
- * the same way redis/redlock/the gateway are faked below rather than run for
- * real.
+ * `BonusService.spend`/`.restore` are production code with their own dedicated
+ * real-DB coverage (bonus.service.test.ts) — soonest-expiry-first lot
+ * consumption and lot creation against `bonus_grants`, a table this in-memory
+ * double does not model. What `placeOrder`/`cancelOrder` need verified HERE is
+ * only their own contract with these two: pass the reserve/release, apply the
+ * resulting balance to the wallet, propagate `InsufficientBonusBalanceError`
+ * untouched, and — for `restore` — pass through whatever expiry the caller
+ * looked up. These fakes reproduce exactly that observable surface against the
+ * same double `tx` the rest of the suite uses, the same way redis/redlock/the
+ * gateway are faked below rather than run for real.
+ *
+ * `bonusMockState.nextSpendExpiry` lets a test control what `spend` reports as
+ * `soonestExpiryConsumed` on the next call, so a test can place a bonus-funded
+ * order whose `PREDICTION_ORDER_HOLD` transaction carries a known expiry and
+ * then assert `cancelOrder` looks that same expiry back up and restores it.
  */
+const bonusMockState = vi.hoisted(() => ({ nextSpendExpiry: null as Date | null }))
+
 vi.mock('../services/bonus.service.js', () => ({
     BonusService: {
         spend: vi.fn(async (tx: any, userId: string, amount: any) => {
@@ -81,7 +89,20 @@ vi.mock('../services/bonus.service.js', () => ({
             }
             const after = before.minus(need)
             await tx.wallet.update({ where: { userId }, data: { bonusBalance: after } })
-            return { spent: need, bonusBalanceBefore: before, bonusBalanceAfter: after, soonestExpiryConsumed: null }
+            return {
+                spent: need,
+                bonusBalanceBefore: before,
+                bonusBalanceAfter: after,
+                soonestExpiryConsumed: bonusMockState.nextSpendExpiry,
+            }
+        }),
+        restore: vi.fn(async (tx: any, userId: string, amount: any, expiresAt: Date | null) => {
+            const rows = await tx.$queryRaw`SELECT "bonusBalance" FROM wallets WHERE "userId" = ${userId}`
+            const before = new Decimal(rows[0]?.bonusBalance ?? 0)
+            const restored = new Decimal(amount)
+            const after = before.plus(restored)
+            await tx.wallet.update({ where: { userId }, data: { bonusBalance: after } })
+            return { granted: restored, bonusBalanceBefore: before, bonusBalanceAfter: after, expiresAt }
         }),
     },
 }))
@@ -106,6 +127,7 @@ vi.mock('../lib/prisma.js', () => ({
 }))
 
 import { PredictionOrderService } from '../services/prediction/order.service.js'
+import { BonusService } from '../services/bonus.service.js'
 
 const db = createStore()
 holder.client = db.client
@@ -143,7 +165,7 @@ function createStore() {
         return a - b
     }
 
-    const OPS = new Set(['equals', 'in', 'notIn', 'not', 'gt', 'gte', 'lt', 'lte', 'mode'])
+    const OPS = new Set(['equals', 'in', 'notIn', 'not', 'gt', 'gte', 'lt', 'lte', 'mode', 'contains'])
 
     const isOpNode = (cond: any): boolean =>
         !!cond &&
@@ -184,6 +206,12 @@ function createStore() {
                     if (op === 'gte' && !(cmp(value, operand) >= 0)) return false
                     if (op === 'lt' && !(cmp(value, operand) < 0)) return false
                     if (op === 'lte' && !(cmp(value, operand) <= 0)) return false
+                    if (
+                        op === 'contains' &&
+                        !(typeof value === 'string' && typeof operand === 'string' && value.includes(operand))
+                    ) {
+                        return false
+                    }
                 }
                 continue
             }
@@ -600,6 +628,7 @@ function moneyInSystem(): Decimal {
 beforeEach(() => {
     db.reset()
     lockMode.faithful = false
+    bonusMockState.nextSpendExpiry = null
     vi.clearAllMocks()
 })
 
@@ -1248,6 +1277,65 @@ describe('cancelOrder', () => {
 
         // The whole reserve was bonus — refunding it to real would launder it.
         expect(walletOf('alice')).toEqual({ real: '100', bonus: '400' })
+    })
+
+    it('restores unfilled bonus reserve to a lot carrying the ORIGINAL expiry', async () => {
+        // The hold's expiry comes from `BonusService.spend`'s
+        // `soonestExpiryConsumed` (Task 16); the mock above reports whatever
+        // `bonusMockState.nextSpendExpiry` says at the time `placeOrder` runs,
+        // so this is placed with a known, deliberately-not-fresh expiry and the
+        // release must look that exact value back up rather than granting a new
+        // window.
+        const originalExpiry = new Date(Date.now() + 1_800_000)
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('alice', 100, 400, 'PLAYER', 'BONUS')
+
+        bonusMockState.nextSpendExpiry = originalExpiry
+        const rested = await PredictionOrderService.placeOrder('alice', {
+            marketId, outcomeId: outcomeA, limitPrice: 40, quantity: 10,
+        })
+        bonusMockState.nextSpendExpiry = null
+
+        vi.mocked(BonusService.restore).mockClear()
+        await PredictionOrderService.cancelOrder('alice', rested.order.id)
+
+        expect(walletOf('alice')).toEqual({ real: '100', bonus: '400' })
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, restoredUserId, restoredAmount, restoredExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(restoredUserId).toBe('alice')
+        expect(new Decimal(restoredAmount as any).toString()).toBe('400')
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(originalExpiry.getTime())
+    })
+
+    it('looks up the CANCELLED order s own hold, not another order s', async () => {
+        // Two bonus-funded orders from the same player, each placed under a
+        // different `soonestExpiryConsumed`. Cancelling the second must restore
+        // the SECOND order's expiry — proving the lookup is scoped by this
+        // order's own id (`note.contains(orderId)`), not just "the first hold
+        // this user has on this market".
+        const { marketId, outcomeA } = seedMarket()
+        seedUser('alice', 100, 1000, 'PLAYER', 'BONUS')
+
+        const firstExpiry = new Date(Date.now() + 3_600_000)
+        bonusMockState.nextSpendExpiry = firstExpiry
+        await PredictionOrderService.placeOrder('alice', {
+            marketId, outcomeId: outcomeA, limitPrice: 30, quantity: 5, // reserve 150
+        })
+
+        const secondExpiry = new Date(Date.now() + 7_200_000)
+        bonusMockState.nextSpendExpiry = secondExpiry
+        const second = await PredictionOrderService.placeOrder('alice', {
+            marketId, outcomeId: outcomeA, limitPrice: 40, quantity: 5, // reserve 200
+        })
+        bonusMockState.nextSpendExpiry = null
+
+        vi.mocked(BonusService.restore).mockClear()
+        await PredictionOrderService.cancelOrder('alice', second.order.id)
+
+        expect(BonusService.restore).toHaveBeenCalledTimes(1)
+        const [, , restoredAmount, restoredExpiry] = vi.mocked(BonusService.restore).mock.calls[0]
+        expect(new Decimal(restoredAmount as any).toString()).toBe('200')
+        expect((restoredExpiry as Date | null)?.getTime()).toBe(secondExpiry.getTime())
     })
 
     it('refuses to cancel an order that belongs to someone else', async () => {
