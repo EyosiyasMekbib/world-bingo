@@ -250,5 +250,16 @@ describe('DepositBonusService.evaluateAndGrant — segment targeting', () => {
             DepositBonusService.evaluateAndGrant(tx, outsider.id, day, day),
         )
         expect(result.daily).toHaveLength(0)
+
+        // The other direction matters just as much: a genuine member (still
+        // tracked via the frozen BonusRuleMember cohort) must keep being paid
+        // after the segment row itself is gone. A regression that broke scoped
+        // membership checks entirely -- not just the FK-null case -- would still
+        // pass the outsider assertion above but fail this one.
+        await approvedDeposit(insider.id, 600, day)
+        const insiderResult = await prisma.$transaction((tx) =>
+            DepositBonusService.evaluateAndGrant(tx, insider.id, day, day),
+        )
+        expect(insiderResult.daily).toHaveLength(1)
     })
 })
