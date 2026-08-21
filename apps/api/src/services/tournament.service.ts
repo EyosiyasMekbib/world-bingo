@@ -26,6 +26,7 @@ import {
 } from '@world-bingo/shared-types'
 import type { CreateTournamentDto, TournamentDto, TournamentEntryDto, TournamentLeaderboardEntry } from '@world-bingo/shared-types'
 import { NotificationService } from './notification.service'
+import { BonusService } from './bonus.service'
 import { Decimal } from '@prisma/client/runtime/library'
 import { reportError } from '../lib/sentry.js'
 
@@ -129,31 +130,32 @@ export class TournamentService {
 
             const entryFee = new Decimal(tournament.entryFee)
 
-            // Deduct entry fee from wallet (bonus-first)
+            // Deduct entry fee from wallet, entirely from the player-selected account
             if (entryFee.gt(0)) {
-                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal; spendAccount: string }>>`
+                    SELECT id, "realBalance", "bonusBalance", "spendAccount" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
                 `
                 const wallet = wallets[0]
                 if (!wallet) throw new Error('Wallet not found')
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
-                const totalBalance = realBefore.plus(bonusBefore)
-                if (totalBalance.lessThan(entryFee)) {
-                    throw new Error('Insufficient funds')
-                }
-                const bonusDeduction = Decimal.min(bonusBefore, entryFee)
-                const realDeduction = entryFee.minus(bonusDeduction)
-                const realAfter = realBefore.minus(realDeduction)
-                const bonusAfter = bonusBefore.minus(bonusDeduction)
 
-                await tx.wallet.update({
-                    where: { userId },
-                    data: {
-                        realBalance: { decrement: realDeduction },
-                        bonusBalance: { decrement: bonusDeduction },
-                    },
-                })
+                let realAfter = realBefore
+                let bonusAfter = bonusBefore
+                let bonusExpiresAtSpend: Date | null = null
+
+                if (wallet.spendAccount === 'BONUS') {
+                    const spendResult = await BonusService.spend(tx, userId, entryFee)
+                    bonusAfter = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
+                } else {
+                    if (realBefore.lessThan(entryFee)) {
+                        throw new Error('Insufficient funds')
+                    }
+                    realAfter = realBefore.minus(entryFee)
+                    await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })
+                }
+
                 await tx.transaction.create({
                     data: {
                         userId,
@@ -165,6 +167,7 @@ export class TournamentService {
                         balanceAfter: realAfter,
                         bonusBalanceBefore: bonusBefore,
                         bonusBalanceAfter: bonusAfter,
+                        bonusExpiresAtSpend,
                     },
                 })
             }
@@ -486,11 +489,12 @@ export class TournamentService {
 
         // Refund all entry fees, to the buckets they were actually taken from.
         //
-        // register() deducts bonus-first, so refunding everything to realBalance
-        // converted non-withdrawable promotional credit into withdrawable cash at
-        // 100% — join with bonus, cancel, withdraw. The real/bonus split is
-        // recoverable from the GAME_ENTRY transaction register() wrote, which
-        // snapshots both balances. Same approach as RefundService.refundGame.
+        // register() spends entirely from the player's selected account, so
+        // refunding everything to realBalance would convert non-withdrawable
+        // promotional credit into withdrawable cash at 100% — join with bonus,
+        // cancel, withdraw. The real/bonus split is recoverable from the
+        // GAME_ENTRY transaction register() wrote, which snapshots both
+        // balances. Same approach as RefundService.refundGame.
         if (Number(tournament.entryFee) > 0) {
             await Promise.all(
                 tournament.entries.map((entry: any) =>
@@ -545,13 +549,29 @@ export class TournamentService {
 
                         const realBefore = new Decimal(wallet.realBalance)
                         const bonusBefore = new Decimal(wallet.bonusBalance)
-                        const realAfter = realBefore.plus(realRefund)
-                        const bonusAfter = bonusBefore.plus(bonusRefund)
+                        let realAfter = realBefore.plus(realRefund)
+                        let bonusAfter = bonusBefore
 
-                        await tx.wallet.update({
-                            where: { userId: entry.userId },
-                            data: { realBalance: realAfter, bonusBalance: bonusAfter },
-                        })
+                        if (realRefund.gt(0)) {
+                            await tx.wallet.update({ where: { userId: entry.userId }, data: { realBalance: realAfter } })
+                        }
+                        if (bonusRefund.gt(0)) {
+                            // A player cannot register twice for the same tournament (the
+                            // tournamentId_userId unique index enforced above), so there is
+                            // normally only ever one GAME_ENTRY transaction per user here.
+                            // Still take the soonest (minimum) non-null bonusExpiresAtSpend
+                            // across all of them, matching consumeLots' own soonest-expiry-
+                            // first convention and RefundService.refundGame/GameService.leaveGame,
+                            // rather than an unordered .find() over a single-row-typical set.
+                            const originalExpiry = entryTxns.reduce<Date | null>((soonest, t) => {
+                                if (t.bonusExpiresAtSpend == null) return soonest
+                                if (soonest == null || t.bonusExpiresAtSpend < soonest) return t.bonusExpiresAtSpend
+                                return soonest
+                            }, null)
+                            const restoreResult = await BonusService.restore(tx, entry.userId, bonusRefund, originalExpiry)
+                            bonusAfter = restoreResult.bonusBalanceAfter
+                        }
+
                         await tx.transaction.create({
                             data: {
                                 userId: entry.userId,

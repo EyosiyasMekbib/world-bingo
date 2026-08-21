@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { TournamentService } from '../services/tournament.service'
+import { BonusService } from '../services/bonus.service'
 import { prisma } from './setup'
-import { TournamentStatus, PatternType, NotificationType } from '@world-bingo/shared-types'
+import { TournamentStatus, PatternType, NotificationType, TransactionType } from '@world-bingo/shared-types'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,61 @@ describe('TournamentService', () => {
 
             await expect(TournamentService.register(tournament.id, user.id))
                 .rejects.toThrow('Tournament registration is closed')
+        })
+    })
+
+    // ── register — Player-Selected Spend Account (Task 29) ─────────────────────
+    // Mirrors GameService.joinGame's Task 14 pattern: the entire entry fee is
+    // spent from whichever account wallet.spendAccount selects, with no
+    // fallback mixing across accounts.
+    describe('register — spendAccount selection', () => {
+        it('spends from BONUS when spendAccount is BONUS, and stamps bonusExpiresAtSpend', async () => {
+            const expiresAt = new Date(Date.now() + 3600_000)
+            const user = await createUser('spendbonus1', '+251900000201', 1000)
+            await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS' } })
+            await prisma.$transaction((tx) =>
+                BonusService.grant(tx, { userId: user.id, amount: 100, source: 'ADMIN', expiresAt }),
+            )
+            const tournament = await createTournament({ entryFee: 60 })
+
+            await TournamentService.register(tournament.id, user.id)
+
+            const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+            expect(Number(wallet.realBalance)).toBe(1000) // untouched
+            expect(Number(wallet.bonusBalance)).toBe(40)
+
+            const entryTxn = await prisma.transaction.findFirstOrThrow({
+                where: { userId: user.id, type: TransactionType.GAME_ENTRY, referenceId: tournament.id },
+            })
+            expect(entryTxn.bonusExpiresAtSpend?.getTime()).toBe(expiresAt.getTime())
+        })
+
+        it('rejects with Insufficient bonus balance when BONUS is selected but short, without touching real', async () => {
+            const user = await createUser('spendbonus2', '+251900000202', 1000)
+            await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS' } })
+            await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 5, source: 'ADMIN' }))
+            const tournament = await createTournament({ entryFee: 60 })
+
+            await expect(TournamentService.register(tournament.id, user.id)).rejects.toThrow(
+                'Insufficient bonus balance',
+            )
+
+            const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+            expect(Number(wallet.realBalance)).toBe(1000) // no fallback to real
+            expect(Number(wallet.bonusBalance)).toBe(5) // untouched — rejected before consuming lots
+        })
+
+        it('spends from REAL when spendAccount is REAL, even if BONUS has funds', async () => {
+            const user = await createUser('spendreal1', '+251900000203', 1000)
+            await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'REAL' } })
+            await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 500, source: 'ADMIN' }))
+            const tournament = await createTournament({ entryFee: 60 })
+
+            await TournamentService.register(tournament.id, user.id)
+
+            const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+            expect(Number(wallet.realBalance)).toBe(940)
+            expect(Number(wallet.bonusBalance)).toBe(500) // untouched
         })
     })
 
