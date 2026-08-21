@@ -69,8 +69,13 @@ export class PromotionsService {
       validityHours: rule.validityHours,
     })
 
-    const dailyRule = activeRules.find((r) => r.type === 'DAILY_DEPOSIT')
-    const weeklyRule = activeRules.find((r) => r.type === 'WEEKLY_DEPOSIT')
+    // A segment-scoped rule can only pay its frozen cohort, and this endpoint
+    // is unauthenticated -- there is no player context to check eligibility
+    // against. Advertising a promotion a given viewer can never receive is
+    // worse than not advertising it, so targeted rules are excluded from the
+    // public payload entirely (never displacing the newest *unscoped* rule).
+    const dailyRule = activeRules.find((r) => r.type === 'DAILY_DEPOSIT' && !r.isSegmentScoped)
+    const weeklyRule = activeRules.find((r) => r.type === 'WEEKLY_DEPOSIT' && !r.isSegmentScoped)
 
     return {
       cashback: cashbackRow

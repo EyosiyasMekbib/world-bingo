@@ -13,9 +13,23 @@ be scoped to a CRM segment, and the admin sees the projected cost before switchi
 
 Three adjacent features were considered and deliberately excluded:
 
-- **Player-facing eligibility.** `GET /promotions` still returns active rules globally, with no
-  per-player "you qualify for this" signal. A targeted rule is invisible to non-members until
-  they deposit and simply don't receive it.
+- **Player-facing eligibility.** `GET /promotions` has no per-player "you qualify for this" signal —
+  it is an unauthenticated endpoint with no user context, so it cannot have one.
+
+  **Correction (added after the final whole-branch review).** This section originally claimed a
+  targeted rule would be "invisible to non-members until they deposit." That was wrong about the
+  code, and the implementation inherited the error faithfully. `PromotionsService` picked the
+  *newest* active rule of each type; a freshly created targeted rule is by definition the newest,
+  so it both advertised itself to every player — including the ones who could never receive it —
+  and displaced the global rule those players actually qualified for. On a real-money product that
+  is a mis-advertised promotion.
+
+  The resolution keeps this section's intent (no per-player signal) while making it true:
+  `PromotionsService` filters on `!isSegmentScoped`, so a targeted rule is not a *public*
+  promotion at all. Non-members see the global rule they qualify for; members learn about their
+  targeted bonus through whatever channel the operator used to target them. Note the filter reads
+  `isSegmentScoped`, not `segmentId`, preserving §2's invariant — deleting a segment must never
+  widen anything, visibility included.
 - **An enforced spend cap.** The projection is advisory. There is no `maxTotalPayout` that halts
   granting once a rule has paid out N birr, the way `Campaign.maxTotalBonus` does.
 - **Live membership.** Covered in §3 — membership is frozen, not re-evaluated.

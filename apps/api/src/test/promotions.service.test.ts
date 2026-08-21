@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { PromotionsService } from '../services/promotions.service'
 import { BonusRuleService } from '../services/bonus-rule.service'
 import { prisma } from './setup'
+import { SEGMENT_RULESET_VERSION } from '@world-bingo/shared-types'
 
 describe('PromotionsService.getPromotions', () => {
   it('returns null for both when nothing is configured', async () => {
@@ -143,5 +144,63 @@ describe('PromotionsService.getPromotions', () => {
     const promos = await PromotionsService.getPromotions()
     expect(promos.dailyDepositBonus).toBeNull()
     expect(promos.weeklyDepositBonus).toBeNull()
+  })
+
+  it('never surfaces a segment-scoped rule, and falls back to the older global rule beneath it', async () => {
+    // Regression test: GET /promotions is unauthenticated, so a targeted rule
+    // can never be matched against "is this viewer eligible" -- it must be
+    // excluded from the public payload entirely, not just deprioritized. Before
+    // the fix, BonusRuleService.listActive's createdAt-desc ordering meant the
+    // newer targeted rule below would displace this older global one.
+    await BonusRuleService.create({
+      name: 'Global daily',
+      type: 'DAILY_DEPOSIT',
+      threshold: 500,
+      rewardType: 'FIXED',
+      rewardValue: 50,
+      validityHours: 24,
+      startsAt: '2026-01-01T00:00:00Z',
+      endsAt: '2027-01-01T00:00:00Z',
+    })
+
+    const whale = await prisma.user.create({
+      data: {
+        username: 'promo_whale',
+        phone: '+251900003001',
+        passwordHash: 'hashed:pass',
+        role: 'PLAYER',
+        wallet: { create: {} },
+      },
+    })
+    await prisma.playerMetrics.create({
+      data: { userId: whale.id, lifetimeDeposits: 5000, registeredAt: new Date() },
+    })
+    const segment = await prisma.segment.create({
+      data: {
+        name: 'Whales',
+        rules: {
+          version: SEGMENT_RULESET_VERSION,
+          root: {
+            kind: 'group',
+            op: 'AND',
+            children: [{ kind: 'cond', field: 'lifetimeDeposits', op: 'gte', value: 1000 }],
+          },
+        },
+      },
+    })
+    await BonusRuleService.create({
+      name: 'Whale daily',
+      type: 'DAILY_DEPOSIT',
+      threshold: 500,
+      rewardType: 'FIXED',
+      rewardValue: 999,
+      validityHours: 24,
+      startsAt: '2026-01-01T00:00:00Z',
+      endsAt: '2027-01-01T00:00:00Z',
+      segmentId: segment.id,
+    })
+
+    const promos = await PromotionsService.getPromotions()
+    expect(promos.dailyDepositBonus).toMatchObject({ name: 'Global daily', rewardValue: 50 })
   })
 })
