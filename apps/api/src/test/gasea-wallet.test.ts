@@ -29,6 +29,7 @@ import crypto from 'node:crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { prisma } from './setup'
 import aggregatorWalletRoutes from '../routes/aggregator/wallet'
+import { BonusService } from '../services/bonus.service'
 
 // Mock Redis — user cache misses gracefully fall through to DB
 vi.mock('../lib/redis', () => ({
@@ -157,6 +158,32 @@ async function setBalance(userId: string, amount: number) {
         where: { userId },
         data: { realBalance: new Decimal(amount), bonusBalance: new Decimal(0) },
     })
+}
+
+/**
+ * Seed a player's wallet with an explicit real/bonus split and spend account
+ * (Task 28). Bonus is granted via BonusService.grant so it is backed by a real
+ * bonus_grants lot — BonusService.spend/restore consume/create lots, not the
+ * cached wallet.bonusBalance directly (same precedent as
+ * game.service.extended.test.ts's spendAccount tests).
+ */
+async function setWallet(
+    userId: string,
+    opts: { real?: number; bonus?: number; spendAccount?: 'REAL' | 'BONUS'; bonusExpiresAt?: Date | null },
+) {
+    await prisma.wallet.update({
+        where: { userId },
+        data: {
+            realBalance: new Decimal(opts.real ?? 0),
+            bonusBalance: new Decimal(0),
+            ...(opts.spendAccount ? { spendAccount: opts.spendAccount } : {}),
+        },
+    })
+    if (opts.bonus && opts.bonus > 0) {
+        await prisma.$transaction((tx) =>
+            BonusService.grant(tx, { userId, amount: opts.bonus!, source: 'ADMIN', expiresAt: opts.bonusExpiresAt ?? null }),
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1557,6 +1584,141 @@ describe('GROUP 10 — Spec Error Codes', () => {
         // Spec: bet_result referencing an unknown bet should be rejected
         expect(res.status).toBe('SC_TRANSACTION_NOT_EXISTS')
         expect(res.data).toBeUndefined()
+    })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK 28 — Spend-account-based spend (processBet, processBetDebit, the debit
+// branch of processAdjustment). The credit/restore sites (processRollback,
+// processBetCredit) are covered in a later commit.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Task 28 — spend-account-based spend/restore', () => {
+    // ── processBet (spend) ────────────────────────────────────────────────────
+
+    it('T28.01 wallet/bet spends entirely from BONUS when selected, real untouched, stamps bonusExpiresAtSpend', async () => {
+        const expiresAt = new Date(Date.now() + 3600_000)
+        await setWallet(validUserId, { real: 1000, bonus: 20, spendAccount: 'BONUS', bonusExpiresAt: expiresAt })
+        const txId = uid()
+
+        const res = await post('bet', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: txId, betId: uid(), externalTransactionId: uid(),
+            amount: 6, currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000) // untouched
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(14)
+
+        const txn = await prisma.transaction.findFirstOrThrow({ where: { userId: validUserId, referenceId: txId } })
+        expect(Number(txn.bonusBalanceBefore)).toBe(20)
+        expect(Number(txn.bonusBalanceAfter)).toBe(14)
+        expect(txn.bonusExpiresAtSpend?.getTime()).toBe(expiresAt.getTime())
+    })
+
+    it('T28.02 wallet/bet rejects with SC_INSUFFICIENT_FUNDS when BONUS is short, without dipping into real', async () => {
+        await setWallet(validUserId, { real: 1000, bonus: 3, spendAccount: 'BONUS' })
+
+        const res = await post('bet', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId: uid(), externalTransactionId: uid(),
+            amount: 6, currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_INSUFFICIENT_FUNDS')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1000) // never touched
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(3) // never touched
+    })
+
+    // ── processBetDebit (spend) ───────────────────────────────────────────────
+
+    it('T28.03 wallet/bet_debit spends entirely from BONUS when selected, real untouched', async () => {
+        await setWallet(validUserId, { real: 500, bonus: 100, spendAccount: 'BONUS' })
+
+        const res = await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), amount: 40, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(500)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(60)
+    })
+
+    it('T28.04 wallet/bet_debit rejects rather than falling back to real when BONUS is short', async () => {
+        await setWallet(validUserId, { real: 500, bonus: 10, spendAccount: 'BONUS' })
+
+        const res = await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), amount: 40, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_INSUFFICIENT_FUNDS')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(500)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(10)
+    })
+
+    it('T28.05 wallet/bet_debit takeAll=1 drains only the selected BONUS account, not the combined total', async () => {
+        await setWallet(validUserId, { real: 500, bonus: 75, spendAccount: 'BONUS' })
+
+        const res = await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), takeAll: 1, amount: 0, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(0)
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(500) // untouched — takeAll drains only the selected account
+    })
+
+    // ── processAdjustment (bidirectional: negative = spend, positive = fresh credit) ──
+
+    it('T28.06 wallet/adjustment [DEBIT] spends entirely from BONUS when selected, real untouched', async () => {
+        await setWallet(validUserId, { real: 200, bonus: 30, spendAccount: 'BONUS' })
+
+        const res = await post('adjustment', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), gameCode: GAME_CODE, amount: -10, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(20)
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(200)
+    })
+
+    it('T28.07 wallet/adjustment [DEBIT] rejects rather than falling back to real when BONUS is short', async () => {
+        await setWallet(validUserId, { real: 200, bonus: 5, spendAccount: 'BONUS' })
+
+        const res = await post('adjustment', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), gameCode: GAME_CODE, amount: -10, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_INSUFFICIENT_FUNDS')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(200)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(5)
+    })
+
+    it('T28.07b wallet/adjustment [CREDIT] still credits realBalance only, even with bonus in play', async () => {
+        await setWallet(validUserId, { real: 200, bonus: 30, spendAccount: 'BONUS' })
+
+        const res = await post('adjustment', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId: uid(), gameCode: GAME_CODE, amount: 10, currency: CURRENCY, timestamp: Date.now(),
+        })
+        expect(res.status).toBe('SC_OK')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(210)
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(30) // untouched
     })
 })
 

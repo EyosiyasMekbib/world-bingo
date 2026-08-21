@@ -2,6 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { TransactionType, PaymentStatus, ThirdPartyTxType, ThirdPartyTxStatus } from '@world-bingo/shared-types'
+import { BonusService } from './bonus.service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,11 +168,11 @@ async function resolveUser(username: string): Promise<{ id: string; isActive: bo
 }
 
 /** Lock wallet row with SELECT FOR UPDATE, returning balance snapshot. */
-type WalletRow = { id: string; realBalance: Decimal; bonusBalance: Decimal }
+type WalletRow = { id: string; realBalance: Decimal; bonusBalance: Decimal; spendAccount: 'REAL' | 'BONUS' }
 
 async function lockWallet(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], userId: string): Promise<WalletRow> {
     const rows = await tx.$queryRaw<WalletRow[]>`
-        SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
+        SELECT id, "realBalance", "bonusBalance", "spendAccount" FROM wallets WHERE "userId" = ${userId} FOR UPDATE
     `
     if (!rows[0]) throw { code: 'SC_USER_NOT_EXISTS' }
     return rows[0]
@@ -244,27 +245,25 @@ export class ThirdPartyWalletService {
                 const totalBefore = realBefore.plus(bonusBefore)
                 const betAmount = new Decimal(params.amount).abs()
 
-                if (totalBefore.lessThan(betAmount)) {
-                    throw { code: 'SC_INSUFFICIENT_FUNDS' }
-                }
-
-                // Deduct from realBalance first, then bonus
+                // Spend entirely from the player's selected account — never fall back
+                // to the other one. Ledger rows below still record the combined total
+                // for audit purposes (unchanged, out of this task's scope).
                 let newReal = realBefore
                 let newBonus = bonusBefore
-                if (realBefore.greaterThanOrEqualTo(betAmount)) {
-                    newReal = realBefore.minus(betAmount)
+                let bonusExpiresAtSpend: Date | null = null
+
+                if (wallet.spendAccount === 'BONUS') {
+                    if (bonusBefore.lessThan(betAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    const spendResult = await BonusService.spend(tx, user.id, betAmount)
+                    newBonus = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
                 } else {
-                    const fromBonus = betAmount.minus(realBefore)
-                    newReal = new Decimal(0)
-                    newBonus = bonusBefore.minus(fromBonus)
+                    if (realBefore.lessThan(betAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    newReal = realBefore.minus(betAmount)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
 
                 const balanceAfter = newReal.plus(newBonus)
-
-                await tx.wallet.update({
-                    where: { userId: user.id },
-                    data: { realBalance: newReal, bonusBalance: newBonus },
-                })
 
                 await tx.thirdPartyTransaction.create({
                     data: {
@@ -297,6 +296,7 @@ export class ThirdPartyWalletService {
                         balanceAfter,
                         bonusBalanceBefore: bonusBefore,
                         bonusBalanceAfter: newBonus,
+                        bonusExpiresAtSpend,
                     },
                 })
 
@@ -774,27 +774,31 @@ export class ThirdPartyWalletService {
 
                 let newReal = realBefore
                 let newBonus = bonusBefore
+                let bonusExpiresAtSpend: Date | null = null
 
                 if (adjustAmount.lessThan(0)) {
+                    // Negative adjustment = a fresh, operator-triggered debit (not tied to
+                    // any specific prior spend to restore) — spend entirely from the
+                    // player's selected account, never fall back to the other one.
                     const debit = adjustAmount.abs()
-                    if (totalBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
-                    if (realBefore.greaterThanOrEqualTo(debit)) {
-                        newReal = realBefore.minus(debit)
+                    if (wallet.spendAccount === 'BONUS') {
+                        if (bonusBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                        const spendResult = await BonusService.spend(tx, user.id, debit)
+                        newBonus = spendResult.bonusBalanceAfter
+                        bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
                     } else {
-                        const fromBonus = debit.minus(realBefore)
-                        newReal = new Decimal(0)
-                        newBonus = bonusBefore.minus(fromBonus)
+                        if (realBefore.lessThan(debit)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                        newReal = realBefore.minus(debit)
+                        await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                     }
                 } else {
+                    // Positive adjustment = a fresh credit (e.g. operator-granted top-up),
+                    // matching how wins credit realBalance only, never bonus.
                     newReal = realBefore.plus(adjustAmount)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
 
                 const balanceAfter = newReal.plus(newBonus)
-
-                await tx.wallet.update({
-                    where: { userId: user.id },
-                    data: { realBalance: newReal, bonusBalance: newBonus },
-                })
 
                 await tx.thirdPartyTransaction.create({
                     data: {
@@ -825,6 +829,7 @@ export class ThirdPartyWalletService {
                         balanceAfter,
                         bonusBalanceBefore: bonusBefore,
                         bonusBalanceAfter: newBonus,
+                        bonusExpiresAtSpend,
                     },
                 })
 
@@ -867,28 +872,30 @@ export class ThirdPartyWalletService {
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
 
-                const debitAmount = params.takeAll === 1 ? totalBefore : new Decimal(params.amount)
+                // takeAll=1 drains the entire SELECTED account, not the combined total —
+                // draining the combined total here would silently reach into the other
+                // account, exactly the fallback behavior this migration removes below.
+                const accountBefore = wallet.spendAccount === 'BONUS' ? bonusBefore : realBefore
+                const debitAmount = params.takeAll === 1 ? accountBefore : new Decimal(params.amount)
 
-                if (totalBefore.lessThan(debitAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                // Spend entirely from the player's selected account — never fall back
+                // to the other one.
+                let newReal = realBefore
+                let newBonus = bonusBefore
+                let bonusExpiresAtSpend: Date | null = null
 
-                // Deduct from realBalance first, then bonus
-                let newReal: Decimal
-                let newBonus: Decimal
-                if (realBefore.greaterThanOrEqualTo(debitAmount)) {
-                    newReal = realBefore.minus(debitAmount)
-                    newBonus = bonusBefore
+                if (wallet.spendAccount === 'BONUS') {
+                    if (bonusBefore.lessThan(debitAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    const spendResult = await BonusService.spend(tx, user.id, debitAmount)
+                    newBonus = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
                 } else {
-                    const fromBonus = debitAmount.minus(realBefore)
-                    newReal = new Decimal(0)
-                    newBonus = bonusBefore.minus(fromBonus)
+                    if (realBefore.lessThan(debitAmount)) throw { code: 'SC_INSUFFICIENT_FUNDS' }
+                    newReal = realBefore.minus(debitAmount)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
                 }
 
                 const balanceAfter = newReal.plus(newBonus)
-
-                await tx.wallet.update({
-                    where: { userId: user.id },
-                    data: { realBalance: newReal, bonusBalance: newBonus },
-                })
 
                 await tx.thirdPartyTransaction.create({
                     data: {
@@ -919,6 +926,7 @@ export class ThirdPartyWalletService {
                         balanceAfter,
                         bonusBalanceBefore: bonusBefore,
                         bonusBalanceAfter: newBonus,
+                        bonusExpiresAtSpend,
                     },
                 })
 
