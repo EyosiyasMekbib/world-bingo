@@ -80,6 +80,32 @@ export const SEGMENT_PRESETS: SegmentPreset[] = [
         description: 'Brought at least one player in. Your cheapest acquisition channel.',
         rules: and({ kind: 'cond', field: 'referralCount', op: 'gte', value: 1 }),
     },
+    {
+        name: 'Micro depositor',
+        description: 'Averaging under 50 ETB/day since their first deposit. Small, frequent top-ups.',
+        rules: and({ kind: 'cond', field: 'avgDailyDeposit', op: 'lt', value: 50 }),
+    },
+    {
+        name: 'Casual depositor',
+        description: 'Averaging 50-200 ETB/day since their first deposit.',
+        rules: and(
+            { kind: 'cond', field: 'avgDailyDeposit', op: 'gte', value: 50 },
+            { kind: 'cond', field: 'avgDailyDeposit', op: 'lt', value: 200 },
+        ),
+    },
+    {
+        name: 'Core depositor',
+        description: 'Averaging 200-1000 ETB/day since their first deposit. The bulk of deposit volume.',
+        rules: and(
+            { kind: 'cond', field: 'avgDailyDeposit', op: 'gte', value: 200 },
+            { kind: 'cond', field: 'avgDailyDeposit', op: 'lt', value: 1000 },
+        ),
+    },
+    {
+        name: 'Whale',
+        description: 'Averaging 1000+ ETB/day since their first deposit. High-value, handle with care.',
+        rules: and({ kind: 'cond', field: 'avgDailyDeposit', op: 'gte', value: 1000 }),
+    },
 ]
 
 /**

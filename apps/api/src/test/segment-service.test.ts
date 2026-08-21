@@ -52,9 +52,9 @@ describe('SEGMENT_PRESETS', () => {
         },
     )
 
-    it('ships exactly the eight documented presets, uniquely named', () => {
-        expect(SEGMENT_PRESETS).toHaveLength(8)
-        expect(new Set(SEGMENT_PRESETS.map((p) => p.name)).size).toBe(8)
+    it('ships exactly the twelve documented presets, uniquely named', () => {
+        expect(SEGMENT_PRESETS).toHaveLength(12)
+        expect(new Set(SEGMENT_PRESETS.map((p) => p.name)).size).toBe(12)
     })
 
     it('every preset actually runs against the database', async () => {
@@ -68,12 +68,12 @@ describe('SEGMENT_PRESETS', () => {
 describe('seedSegmentPresets', () => {
     it('creates the presets once and is idempotent', async () => {
         const first = await seedSegmentPresets()
-        expect(first.created).toBe(8)
+        expect(first.created).toBe(12)
 
         const second = await seedSegmentPresets()
         expect(second.created).toBe(0)
-        expect(second.skipped).toBe(8)
-        expect(await prisma.segment.count()).toBe(8)
+        expect(second.skipped).toBe(12)
+        expect(await prisma.segment.count()).toBe(12)
     })
 
     it('does not overwrite an operator-retuned threshold', async () => {
@@ -88,6 +88,19 @@ describe('seedSegmentPresets', () => {
 
         const after = await prisma.segment.findUnique({ where: { id: vip!.id } })
         expect((after!.rules as never as ReturnType<typeof rules>).root.children[0].value).toBe(99)
+    })
+
+    it('seeds the four avgDailyDeposit presets', async () => {
+        await seedSegmentPresets()
+        const names = (await prisma.segment.findMany({ where: { isPreset: true } })).map((s) => s.name)
+        expect(names).toEqual(
+            expect.arrayContaining([
+                'Micro depositor',
+                'Casual depositor',
+                'Core depositor',
+                'Whale',
+            ]),
+        )
     })
 })
 
@@ -145,6 +158,11 @@ describe('SegmentService — counting and preview', () => {
         await expect(
             SegmentService.create({ name: 'Bad', rules: rules('passwordHash', 'eq', 1) }),
         ).rejects.toThrow()
+    })
+
+    it('avgDailyDeposit is a valid segment field and compiles', async () => {
+        const count = await SegmentService.countRules(rules('avgDailyDeposit', 'gte', 200))
+        expect(typeof count).toBe('number')
     })
 })
 

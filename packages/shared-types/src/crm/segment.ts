@@ -147,6 +147,7 @@ export const SEGMENT_FIELDS = {
     bonusReceived: money('bonusReceived', 'Bonus received (ETB)'),
     realBalance: money('realBalance', 'Real balance (ETB)'),
     bonusBalance: money('bonusBalance', 'Bonus balance (ETB)'),
+    avgDailyDeposit: money('avgDailyDeposit', 'Average daily deposit (ETB)'),
 
     // Counts
     depositCount: int('depositCount', 'Number of deposits'),
