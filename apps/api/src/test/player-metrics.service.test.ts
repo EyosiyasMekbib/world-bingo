@@ -279,3 +279,62 @@ describe('PlayerMetricsService — idempotency and incremental refresh', () => {
         expect(ids).toContain(user.id)
     })
 })
+
+describe('PlayerMetricsService — avgDailyDeposit', () => {
+    it('computes avgDailyDeposit as lifetimeDeposits / days since first deposit', async () => {
+        const user = await makePlayer({ username: 'avgdep1', phone: '+251900000033' })
+        const firstDepositAt = new Date(Date.now() - 300 * 86_400_000) // 300 days ago
+        await prisma.transaction.create({
+            data: {
+                userId: user.id,
+                type: 'DEPOSIT',
+                amount: 6000,
+                status: 'APPROVED',
+                createdAt: firstDepositAt,
+                balanceBefore: 0,
+                balanceAfter: 0,
+                bonusBalanceBefore: 0,
+                bonusBalanceAfter: 0,
+            },
+        })
+
+        await PlayerMetricsService.refreshAll()
+
+        const metrics = await prisma.playerMetrics.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(Number(metrics.avgDailyDeposit)).toBe(20)
+    })
+
+    it('is NULL for a player who has never deposited', async () => {
+        const user = await makePlayer({ username: 'avgdep2', phone: '+251900000034' })
+        await PlayerMetricsService.refreshAll()
+        const metrics = await prisma.playerMetrics.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(metrics.avgDailyDeposit).toBeNull()
+    })
+
+    it('syncAvgDailyDeposit refreshes every row, including players untouched since the watermark', async () => {
+        const user = await makePlayer({ username: 'avgdep3', phone: '+251900000035' })
+        const firstDepositAt = new Date(Date.now() - 10 * 86_400_000) // 10 days ago
+        await prisma.transaction.create({
+            data: {
+                userId: user.id,
+                type: 'DEPOSIT',
+                amount: 1000,
+                status: 'APPROVED',
+                createdAt: firstDepositAt,
+                balanceBefore: 0,
+                balanceAfter: 0,
+                bonusBalanceBefore: 0,
+                bonusBalanceAfter: 0,
+            },
+        })
+        await PlayerMetricsService.refreshAll()
+
+        // Simulate staleness: the stored value is from an earlier "now".
+        await prisma.playerMetrics.update({ where: { userId: user.id }, data: { avgDailyDeposit: 999 } })
+
+        await PlayerMetricsService.syncAvgDailyDeposit()
+
+        const metrics = await prisma.playerMetrics.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(Number(metrics.avgDailyDeposit)).toBe(100)
+    })
+})

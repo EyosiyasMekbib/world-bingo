@@ -36,7 +36,7 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
             "gamesPlayed", "cartelasBought", "firstPlayedAt", "lastPlayedAt",
             "totalStaked", "totalWon", "netLoss",
             "tpStaked", "tpWon", "lastTpPlayedAt",
-            "bonusReceived", "referralCount",
+            "bonusReceived", "referralCount", "avgDailyDeposit",
             "daysSinceLastDeposit", "daysSinceLastPlay", "tenureDays",
             "realBalance", "bonusBalance", "isActive", "registeredAt",
             "serial", "username", "phone", "telegramId",
@@ -74,6 +74,11 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
 
             COALESCE(bonus.total, 0),
             COALESCE(ref.cnt, 0),
+
+            CASE WHEN dep.first_at IS NULL THEN NULL
+                 ELSE COALESCE(dep.total, 0)
+                      / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM (NOW() - dep.first_at)) / 86400))
+            END,
 
             CASE WHEN dep.last_at IS NULL THEN NULL
                  ELSE GREATEST(0, ((NOW() AT TIME ZONE 'UTC')::date - dep.last_at::date)) END,
@@ -131,7 +136,7 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
         LEFT JOIN (
             SELECT "userId", SUM(amount) AS total
             FROM transactions
-            WHERE type IN ('FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_BONUS_ADJUSTMENT')
+            WHERE type IN ('FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_BONUS_ADJUSTMENT', 'DAILY_DEPOSIT_BONUS', 'WEEKLY_DEPOSIT_BONUS')
               AND status = 'APPROVED'
             GROUP BY "userId"
         ) bonus ON bonus."userId" = u.id
@@ -196,6 +201,7 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
             "lastTpPlayedAt"       = EXCLUDED."lastTpPlayedAt",
             "bonusReceived"        = EXCLUDED."bonusReceived",
             "referralCount"        = EXCLUDED."referralCount",
+            "avgDailyDeposit"      = EXCLUDED."avgDailyDeposit",
             "daysSinceLastDeposit" = EXCLUDED."daysSinceLastDeposit",
             "daysSinceLastPlay"    = EXCLUDED."daysSinceLastPlay",
             "tenureDays"           = EXCLUDED."tenureDays",
@@ -298,6 +304,23 @@ export class PlayerMetricsService {
         `
     }
 
+    /**
+     * Full-table refresh of avgDailyDeposit alone. Its denominator (days since
+     * firstDepositAt) grows every day whether or not the player does anything,
+     * so — unlike every other rollup column — it cannot wait for the
+     * watermark-driven incremental pass to notice the player was "touched".
+     * Pure arithmetic over two already-stored columns: no join, cheap enough to
+     * run on every incremental tick.
+     */
+    static async syncAvgDailyDeposit(): Promise<number> {
+        return prisma.$executeRaw`
+            UPDATE player_metrics
+            SET "avgDailyDeposit" = CASE WHEN "firstDepositAt" IS NULL THEN NULL
+                ELSE "lifetimeDeposits" / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM (NOW() - "firstDepositAt")) / 86400))
+            END
+        `
+    }
+
     static async refreshIncremental(): Promise<
         RefreshResult & { candidates: number; livenessChanged: number }
     > {
@@ -308,7 +331,11 @@ export class PlayerMetricsService {
 
         // Always runs, even when nothing else is stale — a freeze is invisible to
         // the watermark, so it cannot be gated behind having found candidates.
-        const livenessChanged = await PlayerMetricsService.syncLiveness()
+        // avgDailyDeposit's denominator grows daily on its own for the same reason.
+        const [livenessChanged] = await Promise.all([
+            PlayerMetricsService.syncLiveness(),
+            PlayerMetricsService.syncAvgDailyDeposit(),
+        ])
 
         if (!userIds.length) {
             await PlayerMetricsService.setWatermark(runAt)
