@@ -82,7 +82,7 @@ const previewSchema = z.object({
  * the UI shows the operator a wall of JSON. Reduce it to the first issue, phrased
  * against the rule path so the builder can still point at the offending row.
  */
-function ruleErrorMessage(err: any): string {
+export function ruleErrorMessage(err: any): string {
     if (Array.isArray(err?.issues) && err.issues.length) {
         const first = err.issues[0]
         const path = Array.isArray(first.path) ? first.path.join('.') : ''
@@ -93,7 +93,7 @@ function ruleErrorMessage(err: any): string {
 }
 
 /** Invalid rules are a client mistake, not a server fault — map them to 400. */
-function isBadRules(err: unknown): boolean {
+export function isBadRules(err: unknown): boolean {
     return (
         err instanceof SegmentCompileError ||
         (err as { name?: string })?.name === 'ZodError' ||

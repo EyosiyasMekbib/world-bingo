@@ -238,6 +238,38 @@ describe('Admin bonus rules', () => {
         expect(await prisma.bonusRule.count({ where: { name: 'Ghost segment' } })).toBe(0)
     })
 
+    it('rejects a create against a segment with malformed rules with a 400, not a 500', async () => {
+        const admin = await mkAdmin()
+        const app = await buildApp(admin.id)
+
+        // Bypass SegmentService's own write-time validation by writing straight
+        // to the DB -- simulates a stale segment row left behind by a
+        // SEGMENT_RULESET_VERSION bump (parseSegmentRuleSet rejects the old
+        // version with a ZodError). BonusRuleService.create doesn't catch this
+        // itself; the route must map it to 400.
+        const segment = await prisma.segment.create({
+            data: {
+                name: 'Stale ruleset',
+                rules: {
+                    version: 999,
+                    root: {
+                        kind: 'group',
+                        op: 'AND',
+                        children: [{ kind: 'cond', field: 'lifetimeDeposits', op: 'gte', value: 1 }],
+                    },
+                },
+            },
+        })
+
+        const res = await app.inject({
+            method: 'POST',
+            url: '/admin/bonus-rules',
+            payload: { ...BASE_RULE_PAYLOAD, name: 'Broken ruleset rule', segmentId: segment.id },
+        })
+        expect(res.statusCode).toBe(400)
+        expect(await prisma.bonusRule.count({ where: { name: 'Broken ruleset rule' } })).toBe(0)
+    })
+
     it('rejects segmentId on PATCH with a clean 400', async () => {
         const admin = await mkAdmin()
         const app = await buildApp(admin.id)

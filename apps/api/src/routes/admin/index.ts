@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
-import crmRoutes from './crm'
+import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
 import { AdminService } from '../../services/admin.service'
 import { BonusService } from '../../services/bonus.service'
 import { GameService } from '../../services/game.service'
@@ -542,6 +542,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 return await BonusRuleService.create({ name, type: type as any, threshold, rewardType: rewardType as any, rewardValue, maxReward, validityHours, startsAt, endsAt, segmentId })
             } catch (err: any) {
                 if (err instanceof SegmentNotFoundError || err instanceof EmptySegmentError) return reply.status(400).send({ error: err.message })
+                if (isBadRules(err)) return reply.status(400).send({ error: ruleErrorMessage(err) })
                 throw err
             }
         })
