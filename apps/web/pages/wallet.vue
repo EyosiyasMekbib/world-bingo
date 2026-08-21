@@ -61,9 +61,9 @@ function formatTimeRemaining(expiresAt: string | null): string {
   const hours = Math.floor(ms / 3_600_000)
   const days = Math.floor(hours / 24)
   let time: string
-  if (days > 0) time = `${days}d ${hours % 24}h`
-  else if (hours > 0) time = `${hours}h`
-  else time = `${Math.floor(ms / 60_000)}m`
+  if (days > 0) time = `${days}${t('prediction.unitDay')} ${hours % 24}${t('prediction.unitHour')}`
+  else if (hours > 0) time = `${hours}${t('prediction.unitHour')}`
+  else time = `${Math.floor(ms / 60_000)}${t('prediction.unitMinute')}`
   return t('wallet.bonusExpiresIn', { time })
 }
 
@@ -195,8 +195,8 @@ function formatRelativeTime(dateStr: string): string {
 
         <!-- Spend account toggle -->
         <div class="spend-account-row">
-          <span class="balance-part-label">Spend From</span>
-          <div class="spend-toggle" role="group" aria-label="Spend from">
+          <span class="balance-part-label">{{ t('wallet.spendFrom') }}</span>
+          <div class="spend-toggle" role="group" :aria-label="t('wallet.spendFrom')">
             <button
               type="button"
               class="spend-toggle-btn"

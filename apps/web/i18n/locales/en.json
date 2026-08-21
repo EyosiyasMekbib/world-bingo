@@ -61,6 +61,7 @@
     "pending": "Pending Review",
     "approved": "Approved",
     "rejected": "Rejected",
+    "spendFrom": "Spend From",
     "spendAccountReal": "Spend Real",
     "spendAccountBonus": "Spend Bonus",
     "activeBonuses": "Active Bonuses",

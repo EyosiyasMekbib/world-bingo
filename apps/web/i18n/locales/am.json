@@ -61,6 +61,7 @@
     "pending": "በሂደት ላይ",
     "approved": "ጸድቋል",
     "rejected": "ተቀባይነት አልነበረም",
+    "spendFrom": "የክፍያ ምንጭ",
     "spendAccountReal": "እውነተኛ ተጠቀም",
     "spendAccountBonus": "ጉርሻ ተጠቀም",
     "activeBonuses": "ንቁ ጉርሻዎች",
