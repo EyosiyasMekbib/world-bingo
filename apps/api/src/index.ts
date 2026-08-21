@@ -58,6 +58,7 @@ import './workers/prune-events.worker.js'
 import './workers/deposit-verification.worker.js'
 import './workers/player-metrics.worker.js'
 import './workers/crm-campaign.worker.js'
+import './workers/bonus-expiry.worker.js'
 import './workers/prediction.worker.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
