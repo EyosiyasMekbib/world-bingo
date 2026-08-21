@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { WalletService } from '../services/wallet.service'
 import { BonusRuleService } from '../services/bonus-rule.service'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 
 describe('WalletService', () => {
@@ -25,6 +25,10 @@ describe('WalletService', () => {
             },
         })
         testUserId = user.id
+    })
+
+    afterEach(async () => {
+        await expectInvariantClean()
     })
 
     describe('getBalance', () => {

@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/library'
 import { CashbackFrequency } from '@world-bingo/shared-types'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { CashbackService, getCurrentPeriod } from '../services/cashback.service'
 
 async function makeUser(username: string, phone: string) {
@@ -17,6 +17,10 @@ async function makeUser(username: string, phone: string) {
 }
 
 describe('CashbackService.checkAndDisburse', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
     it('disburses cashback as a BonusGrant lot', async () => {
         const player = await makeUser('cashbackplayer1', '+251900000021')
 

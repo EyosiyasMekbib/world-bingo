@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/library'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { BonusService } from '../services/bonus.service'
 
 async function makeUser(username: string, phone: string) {
@@ -16,6 +16,10 @@ async function makeUser(username: string, phone: string) {
 // module instead would fire its real top-level Queue/Worker construction
 // against live Redis with no teardown.
 describe('BonusService.sweepExpired', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
     it('expires due lots across multiple users and writes one BONUS_EXPIRED transaction each', async () => {
         const userA = await makeUser('sweep1', '+251900000031')
         const userB = await makeUser('sweep2', '+251900000032')

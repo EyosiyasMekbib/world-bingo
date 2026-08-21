@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { GameService } from '../services/game.service'
 import { BonusService } from '../services/bonus.service'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { GameStatus, PatternType, NotificationType, PaymentStatus, TransactionType } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 
@@ -146,6 +146,15 @@ async function createCartela(serial: string, grid?: number[][]) {
         },
     })
 }
+
+// Applies to every describe block below (this file covers 10+ facets of
+// GameService's lifecycle, several of which touch BonusService — join/leave
+// bonus spend+restore, cancel/auto-cancel refunds, claimBingo payouts).
+// A single file-level afterEach, rather than one per describe, keeps every
+// test in the file covered without repeating the same three lines ten times.
+afterEach(async () => {
+    await expectInvariantClean()
+})
 
 // ─── JoinGame — Extended Tests ────────────────────────────────────────────────
 
@@ -307,14 +316,18 @@ describe('GameService.joinGame — spendAccount defaults to REAL', () => {
 
     it('spends entirely from real balance and leaves bonus untouched (default spendAccount)', async () => {
         // User has 100 bonus + 500 real, spendAccount left at its REAL default. Cost = 50.
+        // Bonus is granted via BonusService (not seeded directly on the wallet) so the
+        // starting state carries a real bonus_grants lot, matching the invariant
+        // wallet.bonusBalance == SUM(bonus_grants.remaining WHERE ACTIVE).
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_first_1',
                 phone: '+251911100001',
                 passwordHash: 'hashed:pass',
-                wallet: { create: { realBalance: 500, bonusBalance: 100 } },
+                wallet: { create: { realBalance: 500, bonusBalance: 0 } },
             },
         })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 100, source: 'ADMIN' }))
         const c = await createCartela('BF-C1')
         await GameService.joinGame(user.id, gameId, [c.serial])
 
@@ -325,14 +338,16 @@ describe('GameService.joinGame — spendAccount defaults to REAL', () => {
 
     it('does not draw from bonus even when bonus balance is smaller than the cost', async () => {
         // User has 30 bonus + 500 real, spendAccount left at its REAL default. Cost = 50.
+        // Bonus granted via BonusService so the starting state carries a real lot.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_first_2',
                 phone: '+251911100002',
                 passwordHash: 'hashed:pass',
-                wallet: { create: { realBalance: 500, bonusBalance: 30 } },
+                wallet: { create: { realBalance: 500, bonusBalance: 0 } },
             },
         })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 30, source: 'ADMIN' }))
         const c = await createCartela('BF-C2')
         await GameService.joinGame(user.id, gameId, [c.serial])
 
@@ -342,14 +357,16 @@ describe('GameService.joinGame — spendAccount defaults to REAL', () => {
     })
 
     it('should record correct balance snapshots in GAME_ENTRY transaction', async () => {
+        // Bonus granted via BonusService so the starting state carries a real lot.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_snap',
                 phone: '+251911100003',
                 passwordHash: 'hashed:pass',
-                wallet: { create: { realBalance: 500, bonusBalance: 100 } },
+                wallet: { create: { realBalance: 500, bonusBalance: 0 } },
             },
         })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 100, source: 'ADMIN' }))
         const c = await createCartela('BF-C3')
         await GameService.joinGame(user.id, gameId, [c.serial])
 
@@ -388,14 +405,16 @@ describe('GameService.joinGame — spendAccount defaults to REAL', () => {
     })
 
     it('should fail when real balance is less than cost (spendAccount defaults to REAL, bonus is never consulted)', async () => {
+        // Bonus granted via BonusService so the starting state carries a real lot.
         const user = await prisma.user.create({
             data: {
                 username: 'bonus_poor',
                 phone: '+251911100005',
                 passwordHash: 'hashed:pass',
-                wallet: { create: { realBalance: 20, bonusBalance: 20 } },
+                wallet: { create: { realBalance: 20, bonusBalance: 0 } },
             },
         })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 20, source: 'ADMIN' }))
         const c = await createCartela('BF-C5')
 
         // realBalance (20) < cost (50) → insufficient. Under the old mixed-spend

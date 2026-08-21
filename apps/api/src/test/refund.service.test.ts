@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { RefundService } from '../services/refund.service'
 import { WalletService } from '../services/wallet.service'
 import { BonusService } from '../services/bonus.service'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { TransactionType, PaymentStatus, GameStatus, PatternType } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 
@@ -75,6 +75,10 @@ describe('RefundService', () => {
         await prisma.wallet.update({ where: { userId: user2Id }, data: { realBalance: { decrement: 100 } } })
         await prisma.gameEntry.create({ data: { gameId, userId: user2Id, cartelaId: cartela2.id } })
         await prisma.gameEntry.create({ data: { gameId, userId: user2Id, cartelaId: cartela3.id } })
+    })
+
+    afterEach(async () => {
+        await expectInvariantClean()
     })
 
     describe('refundGame', () => {

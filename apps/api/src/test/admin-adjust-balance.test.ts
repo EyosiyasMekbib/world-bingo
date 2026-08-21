@@ -8,10 +8,10 @@
  * (they just set request.user — no real JWT is verified), register
  * adminRoutes, and drive it with app.inject.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import Fastify from 'fastify'
 import { Decimal } from '@prisma/client/runtime/library'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 
 vi.mock('../lib/redis', () => ({
@@ -62,6 +62,10 @@ function mk(role: 'PLAYER' | 'ADMIN', bonusBalance = 0) {
 }
 
 describe('POST /admin/players/:id/adjust-balance (bonus branch)', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
     it('positive bonus adjustment creates a BonusGrant lot', async () => {
         const player = await mk('PLAYER')
         const admin = await mk('ADMIN')
