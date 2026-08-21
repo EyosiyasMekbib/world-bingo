@@ -153,7 +153,18 @@ export class PalaceWalletService {
         const existing = await findExisting(params.trans_guid)
         if (existing) {
             if (existing.status === ThirdPartyTxStatus.FAILED) return palaceErr(31, 'BALANCE_NOT_ENOUGH')
-            return ok({ balance: Number(new Decimal(existing.balanceAfter).toFixed(2)) })
+            // `existing.balanceAfter` is the ledger's combined real+bonus total captured
+            // at bet time — correct for audit purposes, but stale for what Palace should
+            // see on a retry (e.g. it timed out waiting for our first response and is
+            // replaying the same trans_guid). Re-read the live wallet and report only the
+            // selected account, same as the fresh-bet paths above/below.
+            const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
+            const current = wallet
+                ? wallet.spendAccount === 'BONUS'
+                    ? new Decimal(wallet.bonusBalance)
+                    : new Decimal(wallet.realBalance)
+                : new Decimal(0)
+            return ok({ balance: Number(current.toFixed(2)) })
         }
 
         try {

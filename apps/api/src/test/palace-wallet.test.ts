@@ -118,20 +118,73 @@ describe('PalaceWalletService', () => {
         expect(fakeTx.wallet.update).not.toHaveBeenCalled() // BONUS branch: BonusService.spend owns the wallet write
     })
 
-    it('processBet is idempotent on duplicate trans_guid (COMPLETED)', async () => {
+    it('processBet is idempotent on duplicate trans_guid (COMPLETED), reporting the live selected-account balance', async () => {
         p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({
-            status: 'COMPLETED', balanceAfter: '90.00',
+            status: 'COMPLETED', balanceAfter: '90.00', // stale combined-total ledger value — must NOT be echoed back
         })
+        // The replay branch re-reads the live wallet rather than trusting the ledger's
+        // `balanceAfter`; this is deliberately a different number than 90 to prove that.
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '77.00', bonusBalance: '0.00', spendAccount: 'REAL' })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.processBet({
             trans_guid: 'tg1', account: 'alice', gplay_id: 'gp1',
             round_id: 'r1', game_code: 'game1', amount: 10,
         })
         expect(res.result).toBe(0)
-        expect((res.data as any).balance).toBe(90)
+        expect((res.data as any).balance).toBe(77)
         expect(p.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('processBet replay (same trans_guid) reports the live selected-account balance, not the stale combined total', async () => {
+        // Regression test: Palace can time out waiting for our response and retry with
+        // the same trans_guid (see apps/api/src/routes/palace/callback.ts). The retry
+        // must report the same single-account balance the original response did — not
+        // the ThirdPartyTransaction ledger's combined real+bonus total, which is what
+        // the pre-Task-18 code (and a naive fix that only touched the fresh-compute path)
+        // would echo back.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+
+        // First call: fresh bet. Wallet starts real=1000, bonus=10, spendAccount=BONUS;
+        // bet of 6 spends entirely out of bonus, leaving bonus=4.
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '10.00', spendAccount: 'BONUS' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn() },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+        vi.mocked(BonusService.spend).mockResolvedValue({
+            spent: new Decimal(6),
+            bonusBalanceBefore: new Decimal(10),
+            bonusBalanceAfter: new Decimal(4),
+            soonestExpiryConsumed: null,
+        } as any)
+
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const first = await PalaceWalletService.processBet({
+            trans_guid: 'replay-1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'c1', amount: 6,
+        })
+        expect(first.result).toBe(0)
+        expect((first.data as any).balance).toBe(4) // bonus-only
+
+        // Simulate Palace not receiving that response and retrying with the same
+        // trans_guid. The ledger legitimately recorded the combined total (1000 real +
+        // 4 bonus = 1004) for audit purposes — the replay must not parrot that back.
+        p.thirdPartyTransaction.findUnique.mockResolvedValue({
+            status: 'COMPLETED',
+            balanceAfter: '1004.00',
+        })
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '1000.00', bonusBalance: '4.00', spendAccount: 'BONUS' })
+
+        const replay = await PalaceWalletService.processBet({
+            trans_guid: 'replay-1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'c1', amount: 6,
+        })
+        expect(replay.result).toBe(0)
+        expect((replay.data as any).balance).toBe(4) // live bonus balance — matches `first`, not the stale 1004 total
     })
 
     it('processBet returns BALANCE_NOT_ENOUGH when $transaction throws it', async () => {
