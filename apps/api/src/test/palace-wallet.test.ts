@@ -22,12 +22,20 @@ vi.mock('../lib/redis.js', () => ({ default: { get: vi.fn().mockResolvedValue(nu
 // when BONUS is selected and only after the pre-check passes, and its
 // `bonusBalanceAfter` becomes the reported balance. Mocked the same way
 // prediction-order.test.ts mocks it against the same underlying module.
-vi.mock('../services/bonus.service.js', () => ({
-    BonusService: { spend: vi.fn(), restore: vi.fn() },
-}))
+// `InsufficientBonusBalanceError` is kept as the REAL class (via importOriginal)
+// so the "instanceof"/`.name` check in processBet's catch block below is
+// exercised against the actual error shape `BonusService.spend` throws, not a
+// test-only stand-in.
+vi.mock('../services/bonus.service.js', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../services/bonus.service.js')>()
+    return {
+        ...actual,
+        BonusService: { spend: vi.fn(), restore: vi.fn() },
+    }
+})
 
 import prisma from '../lib/prisma.js'
-import { BonusService } from '../services/bonus.service.js'
+import { BonusService, InsufficientBonusBalanceError } from '../services/bonus.service.js'
 const p = prisma as any
 
 describe('PalaceWalletService', () => {
@@ -213,6 +221,28 @@ describe('PalaceWalletService', () => {
             round_id: 'r1', game_code: 'game1', amount: 100,
         })
         expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 5 } })
+    })
+
+    it('maps BonusService.spend s InsufficientBonusBalanceError to BALANCE_NOT_ENOUGH, not an unhandled 500', async () => {
+        // The pre-check inside processBet's transaction (`bonusBefore.lessThan
+        // (betAmount)`) throws the plain `{ code: 'BALANCE_NOT_ENOUGH' }` shape
+        // covered by the test above. `BonusService.spend` can ALSO throw its own
+        // `InsufficientBonusBalanceError` (e.g. the cached wallet balance says
+        // enough but the underlying bonus_grants lots come up short) — that
+        // error carries `.statusCode`, not `.code`, so it fell through the old
+        // mapping and would have surfaced as an unhandled 500.
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        p.$transaction.mockRejectedValue(new InsufficientBonusBalanceError())
+        p.wallet.findUnique.mockResolvedValue({ realBalance: '5.00', bonusBalance: '2.00', spendAccount: 'BONUS' })
+        p.thirdPartyTransaction.create.mockResolvedValue({})
+        const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
+        const res = await PalaceWalletService.processBet({
+            trans_guid: 'tg2', account: 'alice', gplay_id: 'gp1',
+            round_id: 'r1', game_code: 'game1', amount: 10,
+        })
+        expect(res).toEqual({ result: 31, status: 'BALANCE_NOT_ENOUGH', data: { balance: 2 } })
     })
 
     it('processWin credits real balance but reports the BONUS account when that is selected — no change from this win', async () => {

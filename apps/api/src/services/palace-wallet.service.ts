@@ -235,7 +235,12 @@ export class PalaceWalletService {
 
             return ok({ balance: Number(balanceAfter.toFixed(2)) })
         } catch (e: any) {
-            if (e?.code === 'BALANCE_NOT_ENOUGH') {
+            // `BonusService.spend` can throw its own `InsufficientBonusBalanceError`
+            // (e.g. the cached wallet balance says enough but the underlying
+            // bonus_grants lots come up short) — it carries `.statusCode`, not
+            // `.code`, so it falls through the plain `{ code: 'BALANCE_NOT_ENOUGH' }`
+            // shape thrown by the pre-check above unless mapped here too.
+            if (e?.code === 'BALANCE_NOT_ENOUGH' || e?.name === 'InsufficientBonusBalanceError') {
                 const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
                 const current = wallet
                     ? wallet.spendAccount === 'BONUS'
