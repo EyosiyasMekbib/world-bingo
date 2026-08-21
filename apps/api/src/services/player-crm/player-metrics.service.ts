@@ -77,7 +77,7 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
 
             CASE WHEN dep.first_at IS NULL THEN NULL
                  ELSE COALESCE(dep.total, 0)
-                      / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM (NOW() - dep.first_at)) / 86400))
+                      / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE 'UTC') - dep.first_at)) / 86400))
             END,
 
             CASE WHEN dep.last_at IS NULL THEN NULL
@@ -316,7 +316,7 @@ export class PlayerMetricsService {
         return prisma.$executeRaw`
             UPDATE player_metrics
             SET "avgDailyDeposit" = CASE WHEN "firstDepositAt" IS NULL THEN NULL
-                ELSE "lifetimeDeposits" / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM (NOW() - "firstDepositAt")) / 86400))
+                ELSE "lifetimeDeposits" / GREATEST(1, FLOOR(EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE 'UTC') - "firstDepositAt")) / 86400))
             END
         `
     }
