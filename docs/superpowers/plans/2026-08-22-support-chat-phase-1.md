@@ -3333,6 +3333,174 @@ git commit -m "feat(support): agent inbox with claimable queue and player contex
 
 ---
 
+## Task 14: Audit trail for staff conversation actions
+
+**Files:**
+- Create: `apps/api/src/services/support/support-audit.ts`
+- Modify: `apps/api/src/gateways/support.gateway.ts`
+- Create: `apps/api/src/test/support-audit.test.ts`
+
+**Interfaces:**
+- Consumes: the `AuditLog` model at `apps/api/prisma/schema.prisma:997`, and the `SocketData` fields `userId` / `username` set in Task 8.
+- Produces: `writeSupportAudit(actor: { userId: string; username?: string }, action: string, conversationId: string, detail?: unknown): Promise<void>`.
+
+The existing `writeAudit` helper at `apps/api/src/routes/admin/crm.ts:58` takes a Fastify request. Support actions arrive on a socket, so they need a request-free variant that writes the same table in the same shape.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/api/src/test/support-audit.test.ts`:
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('../lib/prisma', () => ({
+    default: { auditLog: { create: vi.fn() } },
+}))
+
+import prisma from '../lib/prisma'
+import { writeSupportAudit } from '../services/support/support-audit'
+
+describe('writeSupportAudit', () => {
+    beforeEach(() => vi.clearAllMocks())
+
+    it('writes the action, actor and target in the shape the CRM helper uses', async () => {
+        ;(prisma.auditLog.create as any).mockResolvedValue({})
+
+        await writeSupportAudit({ userId: 'clerk-1', username: 'clerk1' }, 'support.claim', 'conv-1')
+
+        expect(prisma.auditLog.create).toHaveBeenCalledWith({
+            data: {
+                action: 'support.claim',
+                actorId: 'clerk-1',
+                actorName: 'clerk1',
+                target: 'conversation:conv-1',
+                detail: {},
+            },
+        })
+    })
+
+    it('never lets an audit failure reject the action it records', async () => {
+        ;(prisma.auditLog.create as any).mockRejectedValue(new Error('db down'))
+
+        await expect(
+            writeSupportAudit({ userId: 'clerk-1' }, 'support.resolve', 'conv-1'),
+        ).resolves.toBeUndefined()
+    })
+})
+```
+
+- [ ] **Step 2: Run and confirm failure**
+
+```bash
+pnpm --filter @world-bingo/api test -- src/test/support-audit.test.ts
+```
+
+Expected: FAIL — cannot resolve `../services/support/support-audit`.
+
+- [ ] **Step 3: Implement**
+
+Create `apps/api/src/services/support/support-audit.ts`:
+
+```ts
+import prisma from '../../lib/prisma'
+
+/**
+ * Append-only trace of privileged support actions.
+ *
+ * Mirrors writeAudit in routes/admin/crm.ts, minus the Fastify request — these
+ * actions arrive on a socket. Auditing must never block the action it records,
+ * so every failure is swallowed.
+ */
+export async function writeSupportAudit(
+    actor: { userId: string; username?: string },
+    action: string,
+    conversationId: string,
+    detail?: unknown,
+): Promise<void> {
+    await prisma.auditLog
+        .create({
+            data: {
+                action,
+                actorId: actor.userId,
+                actorName: actor.username ?? null,
+                target: `conversation:${conversationId}`,
+                detail: (detail ?? {}) as never,
+            },
+        })
+        .catch(() => {
+            /* auditing must never block the action it records */
+        })
+}
+```
+
+- [ ] **Step 4: Run and confirm passing**
+
+```bash
+pnpm --filter @world-bingo/api test -- src/test/support-audit.test.ts
+```
+
+Expected: PASS, 2 tests.
+
+- [ ] **Step 5: Call it from the three staff handlers**
+
+In `apps/api/src/gateways/support.gateway.ts`, add the import:
+
+```ts
+import { writeSupportAudit } from '../services/support/support-audit.js'
+```
+
+Then add one call in each staff handler, immediately after the successful service call and before the emits.
+
+In `support:claim`, after `const conversation = await SupportService.claim(...)`:
+
+```ts
+                await writeSupportAudit(
+                    { userId: who.userId, username: socket.data.username },
+                    'support.claim',
+                    conversationId,
+                )
+```
+
+In `support:release`, after `const conversation = await SupportService.release(...)`:
+
+```ts
+                await writeSupportAudit(
+                    { userId: who.userId, username: socket.data.username },
+                    'support.release',
+                    conversationId,
+                    { forced: ADMIN_ROLES.has(who.role) },
+                )
+```
+
+In `support:resolve`, after `const conversation = await SupportService.resolve(...)`:
+
+```ts
+                await writeSupportAudit(
+                    { userId: who.userId, username: socket.data.username },
+                    'support.resolve',
+                    conversationId,
+                )
+```
+
+- [ ] **Step 6: Verify a real row lands**
+
+With the stack running, claim a conversation from the admin inbox, then:
+
+```bash
+pnpm --filter @world-bingo/api prisma db execute --stdin <<< "SELECT action, \"actorName\", target FROM audit_logs WHERE action LIKE 'support.%' ORDER BY \"createdAt\" DESC LIMIT 5;"
+```
+
+Expected: a `support.claim` row naming the clerk and `conversation:<id>`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/services/support/support-audit.ts apps/api/src/gateways/support.gateway.ts apps/api/src/test/support-audit.test.ts
+git commit -m "feat(support): audit trail for claim, release and resolve"
+```
+
+---
+
 ## Phase 2 — separate plan
 
 The AI layer is deliberately not in this plan. It ships against the interfaces this phase produces — `SupportService.addMessage`, the `BOT` status, and the `language` / `aiTurnCount` / `lowConfidenceStreak` columns created in Task 1 — and gets its own plan once Phase 1 is merged, so its task code can reference what actually got built rather than what was predicted.
@@ -3356,12 +3524,12 @@ Checked against `docs/superpowers/specs/2026-08-22-support-chat-design.md`:
 | Rate limits (message counter) | Task 6 |
 | Web widget | Tasks 10, 11 |
 | Admin inbox + context panel | Tasks 12, 13 |
-| Security: per-user authorization, text-only rendering | Tasks 8, 11, 13 |
-| Testing | Tasks 3, 4, 5, 6 |
+| Security: per-user authorization, text-only rendering, audit trail | Tasks 8, 11, 13, 14 |
+| Testing | Tasks 3, 4, 5, 6, 14 |
 | Rollout with `SUPPORT_AI_ENABLED=false` | Task 3 Step 4 |
 | AI layer, language handling, KB, AI rate limit | **Phase 2 plan** |
 
 Two spec items are intentionally not implemented here and are recorded rather than dropped:
 
 1. **Server-side 5-minute sweep** — replaced by the client-side reveal in Task 10, because a server interval double-fires across API instances behind the Redis adapter.
-2. **`AuditLog` entries for staff conversation actions** — the spec asks for claim/resolve to be audited. Task 8 does not write them. Add this as a follow-up task before merge, or accept it as a known gap; it is one call inside each of the three staff handlers.
+2. **`AuditLog` entries for staff conversation actions** — found missing during self-review and added as Task 14 rather than deferred.
