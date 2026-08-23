@@ -2742,7 +2742,10 @@ git commit -m "feat(support): player chat widget and live footer contact links"
 
 **Interfaces:**
 - Consumes: `useAdminAuth()` for the access token and API base, the socket events from Task 2.
-- Produces: `useSupportInbox()` returning `{ queue, filter, active, messages, unassignedCount, error, connectInbox, setFilter, watch: watchThread, claim, release, resolve, reply, refreshQueue }`.
+- Produces: `useSupportInbox()` returning `{ queue, filter, active, messages, unassignedCount, error, connectInbox, setFilter, watchThread, claim, release, resolve, reply, refreshQueue }`.
+  The thread-subscribe function is named `watchThread`, NOT `watch` — a page that destructures
+  `watch` from this composable shadows Vue's auto-imported `watch`, and Task 13 destructures it
+  by that name.
 
 `apps/admin` has no socket client today — the admin app has only ever used REST. This task adds one.
 
