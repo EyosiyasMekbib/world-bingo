@@ -53,6 +53,7 @@
 | Path | Change |
 |---|---|
 | `apps/api/prisma/schema.prisma` | Two models, two enums, `SUPPORT_REPLY` notification type, two `User` relations |
+| `packages/shared-types/src/enums/index.ts` | `SUPPORT_REPLY` on the hand-maintained `NotificationType` copy |
 | `packages/shared-types/src/entities/index.ts` | Re-export support types |
 | `packages/shared-types/src/socket/index.ts` | Support events on both event interfaces |
 | `apps/api/src/index.ts` | Register `registerSupportHandlers(io)` and the support routes |
@@ -154,12 +155,25 @@ Inside `model User { ... }` in the same file, alongside the existing relation fi
   supportAssignments   SupportConversation[] @relation("SupportAssignments")
 ```
 
-- [ ] **Step 3: Add the notification type**
+- [ ] **Step 3: Add the notification type — in BOTH places**
 
-In `enum NotificationType`, after `PREDICTION_VOIDED`:
+`NotificationType` exists twice: the Prisma enum, and a hand-maintained TypeScript copy in
+`packages/shared-types/src/enums/index.ts`. They are not generated from each other, so adding
+only the Prisma one leaves the TS enum silently behind and forces consumers into an
+`as never` cast at the call site. (That copy has already drifted this way once —
+`PREDICTION_SETTLED` and `PREDICTION_VOIDED` are in Prisma and missing from TypeScript.)
+
+In `apps/api/prisma/schema.prisma`, in `enum NotificationType`, after `PREDICTION_VOIDED`:
 
 ```prisma
   SUPPORT_REPLY
+```
+
+And in `packages/shared-types/src/enums/index.ts`, in `export enum NotificationType`, after
+`CAMPAIGN_MESSAGE`:
+
+```ts
+    SUPPORT_REPLY = 'SUPPORT_REPLY',
 ```
 
 - [ ] **Step 4: Generate the migration without applying it**
@@ -1763,6 +1777,7 @@ import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
 import { SupportError } from '../services/support/errors.js'
 import { NotificationService } from '../services/notification.service.js'
+import { NotificationType } from '@world-bingo/shared-types'
 
 type SupportSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>
 
@@ -1916,7 +1931,7 @@ export function registerSupportHandlers(io: any) {
                     if (listeners.length === 0) {
                         await NotificationService.create(
                             conversation.userId,
-                            'SUPPORT_REPLY' as never,
+                            NotificationType.SUPPORT_REPLY,
                             'Support replied',
                             message.body.slice(0, 140),
                             { conversationId },
