@@ -129,8 +129,93 @@ describe('POST /support/attachments', () => {
     expect(uploadFile).toHaveBeenCalledTimes(1)
     const [buffer, filename, mimetype] = (uploadFile as any).mock.calls[0]
     expect(Buffer.isBuffer(buffer)).toBe(true)
-    expect(filename).toBe('receipt.png')
+    // The route strips the client-supplied extension before calling
+    // uploadFile (see the extension-spoofing fix below) — the on-disk
+    // extension is derived from the mimetype instead, so the name handed to
+    // uploadFile is the base name with no extension at all.
+    expect(filename).toBe('receipt')
     expect(mimetype).toBe('image/png')
+  })
+
+  // Security fix: validateFile only string-matches the client-supplied
+  // Content-Type — it never inspects bytes — and uploadToLocal derives the
+  // on-disk extension as `path.extname(originalFilename) || mimeToExt(mimetype)`,
+  // meaning the client's filename wins whenever it has an extension. Without
+  // the fix, a part claiming `image/png` but named `evil.html` would be
+  // written as `<ts>-<rand>.html` and served back from /uploads by
+  // @fastify/static as text/html on the API's own origin. These tests assert
+  // on the actual second argument passed to uploadFile — not merely that it
+  // was called — so they fail against the vulnerable code.
+  it('strips a spoofed .html extension from an image/png part before calling uploadFile', async () => {
+    ;(uploadFile as any).mockResolvedValue({
+      url: '/uploads/1234-abcd.png',
+      filename: '1234-abcd.png',
+      size: 3,
+      mimetype: 'image/png',
+    })
+    const app = await buildApp(passAuthenticate)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/support/attachments',
+      headers: multipartHeaders,
+      payload: buildMultipartBody([
+        {
+          name: 'file',
+          filename: 'evil.html',
+          contentType: 'image/png',
+          value: Buffer.from('img'),
+        },
+      ]),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(uploadFile).toHaveBeenCalledTimes(1)
+    const [, filename] = (uploadFile as any).mock.calls[0]
+    expect(filename).toBe('evil')
+    expect(filename).not.toMatch(/\.html$/)
+    expect(filename).not.toContain('.html')
+  })
+
+  it('falls back to a default base name when the part has no filename at all', async () => {
+    ;(uploadFile as any).mockResolvedValue({
+      url: '/uploads/1234-abcd.png',
+      filename: '1234-abcd.png',
+      size: 3,
+      mimetype: 'image/png',
+    })
+    const app = await buildApp(passAuthenticate)
+
+    // busboy (via @fastify/multipart) only treats a part as a *file* part
+    // when the part's Content-Disposition carries a `filename` attribute
+    // (even an empty one) OR its Content-Type is exactly
+    // `application/octet-stream` (see @fastify/busboy's `isPartAFile`). To
+    // get a part whose `filename` property is genuinely `undefined` — not
+    // just an empty string — the Content-Disposition below omits the
+    // `filename` attribute entirely and relies on the octet-stream
+    // Content-Type to still be recognized as a file upload. This exercises
+    // the route's `part.filename ?? 'attachment'` fallback rather than
+    // throwing, without stubbing `req.file()` directly.
+    const body = Buffer.concat([
+      Buffer.from(`--${BOUNDARY}\r\n`, 'utf8'),
+      Buffer.from('Content-Disposition: form-data; name="file"\r\n', 'utf8'),
+      Buffer.from('Content-Type: application/octet-stream\r\n\r\n', 'utf8'),
+      Buffer.from('img', 'utf8'),
+      Buffer.from('\r\n', 'utf8'),
+      Buffer.from(`--${BOUNDARY}--\r\n`, 'utf8'),
+    ])
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/support/attachments',
+      headers: multipartHeaders,
+      payload: body,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(uploadFile).toHaveBeenCalledTimes(1)
+    const [, filename] = (uploadFile as any).mock.calls[0]
+    expect(filename).toBe('attachment')
   })
 
   // The important case: uploadFile (via lib/storage's validateFile) throws
