@@ -1235,7 +1235,26 @@ git commit -m "feat(support): atomic claim, release, resolve and escalate"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `apps/api/src/test/support.service.test.ts`. Extend the `vi.mock` factory at the top of that file first — add `count: vi.fn()` to `supportConversation` and `updateMany: vi.fn()` to `supportMessage`:
+Append to `apps/api/src/test/support.service.test.ts`. Extend the `vi.mock` factory at the top of that file first — `listQueue` calls `findMany` and `unassignedCount` calls `count`, and neither is in Task 3's factory, so the tests fail at the mock before they reach the assertion. The `supportConversation` block must end up as:
+
+```ts
+        supportConversation: {
+            findFirst: vi.fn(),
+            findUnique: vi.fn(),
+            findMany: vi.fn(),
+            count: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            updateMany: vi.fn(),
+        },
+        supportMessage: {
+            create: vi.fn(),
+            findMany: vi.fn(),
+            updateMany: vi.fn(),
+        },
+```
+
+Then append:
 
 ```ts
 describe('SupportService.listQueue', () => {
@@ -1795,13 +1814,14 @@ export function registerSupportHandlers(io: any) {
         const token = socket.handshake.auth?.token
         if (token) {
             try {
+                // The access token carries only { id, role } — see
+                // controllers/auth.controller.ts. There is no username claim, so
+                // anything needing a display name resolves it from the database.
                 const user = jwt.verify(token, jwtPublicKey, { algorithms: ['RS256'] }) as {
                     id: string
-                    username: string
                     role: string
                 }
                 socket.data.userId = user.id
-                socket.data.username = user.username
                 socket.data.role = user.role
             } catch {
                 // Leave socket.data empty; every support handler rejects it.
@@ -2711,6 +2731,18 @@ The queue list loads over REST on page mount and is kept fresh by socket events.
             apiFetch<import('@world-bingo/shared-types').SupportQueueItem[]>(
                 `/admin/support/queue?filter=${filter}`,
             ),
+        getSupportContext: (userId: string) =>
+            apiFetch<{
+                id: string
+                serial: number
+                username: string
+                phone: string
+                isActive: boolean
+                createdAt: string
+                wallet: { realBalance: string; bonusBalance: string } | null
+                deposits: Array<{ id: string; amount: string; status: string; createdAt: string }>
+                withdrawals: Array<{ id: string; amount: string; status: string; createdAt: string }>
+            }>(`/admin/support/context/${userId}`),
         getSupportContact: () =>
             apiFetch<import('@world-bingo/shared-types').SupportContactInfo>('/settings/support'),
         updateSupportContact: (body: {
@@ -2720,9 +2752,16 @@ The queue list loads over REST on page mount and is kept fresh by socket events.
         }) => apiFetch('/settings/support', { method: 'PUT', body }),
 ```
 
-- [ ] **Step 3: Add the queue REST route on the API**
+- [ ] **Step 3: Add the queue and context REST routes on the API**
 
-The gateway pushes updates, but the inbox needs an initial list. Add to `apps/api/src/routes/admin/index.ts`, inside the same authenticated plugin scope as the other `f.get` routes (near the `/players/:id` route at line 391):
+`apps/api/src/routes/admin/index.ts` has **two** plugin scopes, and the difference decides whether support works at all for the people who staff it:
+
+- line 137 — `f.addHook('preValidation', f.requireAdminOrClerk)` — transactions, withdrawals, stats
+- line 218 — `f.addHook('preValidation', f.requireAdmin)` — everything else, including `/players/:id` at line 391
+
+`requireAdmin` rejects `CLERK`. Clerks are the primary support agents, so **both** new routes go in the **line 137 `requireAdminOrClerk` scope**, not beside `/players/:id`.
+
+The gateway pushes updates, but the inbox needs an initial list, and the context panel needs the player's financial picture. Add both inside the line-137 scope:
 
 ```ts
         f.get('/support/queue', async (req: any) => {
@@ -2733,9 +2772,47 @@ The gateway pushes updates, but the inbox needs an initial list. Add to `apps/ap
                 | 'resolved'
             return SupportService.listQueue(filter, req.user.id)
         })
+
+        // A support-scoped projection rather than reusing /admin/players/:id:
+        // that route lives in the requireAdmin scope and 403s for the clerks who
+        // actually answer support. Widening it would hand clerks the full player
+        // record; this returns only what the context panel renders.
+        f.get('/support/context/:userId', async (req: any, reply: any) => {
+            const userId = req.params.userId
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    serial: true,
+                    username: true,
+                    phone: true,
+                    isActive: true,
+                    createdAt: true,
+                    wallet: { select: { realBalance: true, bonusBalance: true } },
+                },
+            })
+            if (!user) return reply.status(404).send({ error: 'Player not found' })
+
+            const [deposits, withdrawals] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: { userId, type: 'DEPOSIT' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { id: true, amount: true, status: true, createdAt: true },
+                }),
+                prisma.transaction.findMany({
+                    where: { userId, type: 'WITHDRAWAL' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { id: true, amount: true, status: true, createdAt: true },
+                }),
+            ])
+
+            return { ...user, deposits, withdrawals }
+        })
 ```
 
-and import the service at the top of that file:
+and import the service at the top of that file (`prisma` is already imported there):
 
 ```ts
 import { SupportService } from '../../services/support/support.service'
@@ -2878,7 +2955,7 @@ git commit -m "feat(support): admin inbox socket client and queue endpoint"
 - Create: `apps/admin/pages/support.vue`
 
 **Interfaces:**
-- Consumes: `useSupportInbox()` from Task 12, `useAdminApi().getPlayer(id)` — the existing `GET /admin/players/:id` at `apps/api/src/routes/admin/index.ts:391`, which already returns the user, wallet balances, the last 50 transactions and aggregate stats. No new endpoint.
+- Consumes: `useSupportInbox()` from Task 12, and `useAdminApi().getSupportContext(userId)` — the clerk-accessible `GET /admin/support/context/:userId` added in Task 12 Step 3. It does **not** use `getPlayer(id)`: that route sits in the `requireAdmin` scope and 403s for clerks, who are the people staffing support.
 - Produces: the `/support` admin page. No exported API.
 
 - [ ] **Step 1: Write the context panel**
@@ -2900,7 +2977,8 @@ const load = async () => {
   }
   loading.value = true
   try {
-    player.value = await api.getPlayer(props.userId)
+    // Clerk-accessible endpoint. getPlayer() would 403 for a CLERK.
+    player.value = await api.getSupportContext(props.userId)
   } catch {
     player.value = null
   } finally {
@@ -2911,13 +2989,9 @@ const load = async () => {
 watch(() => props.userId, load, { immediate: true })
 
 // Deposits and withdrawals are the two questions a support thread is almost
-// always actually about, so they get their own lists rather than one feed.
-const deposits = computed(() =>
-  (player.value?.transactions ?? []).filter((t: any) => t.type === 'DEPOSIT').slice(0, 5),
-)
-const withdrawals = computed(() =>
-  (player.value?.transactions ?? []).filter((t: any) => t.type === 'WITHDRAWAL').slice(0, 5),
-)
+// always actually about, so the endpoint returns them as separate lists.
+const deposits = computed(() => player.value?.deposits ?? [])
+const withdrawals = computed(() => player.value?.withdrawals ?? [])
 </script>
 
 <template>
@@ -3303,7 +3377,7 @@ With infra, API, web and admin all running:
 
 1. As a player in the web app, open the widget and send "my deposit is missing".
 2. In the admin app at `/support`, the Unassigned filter shows the thread with the preview and an unread badge.
-3. Click it. The right panel shows that player's balance and recent deposits.
+3. Click it. The right panel shows that player's balance and recent deposits. Repeat this step signed in as a `CLERK`, not just an admin — the context panel and the queue both have to work for clerks, and an access-scope regression shows up nowhere else.
 4. Click Claim. Status becomes `ASSIGNED`; the player's widget header updates to "Talking to …".
 5. Reply from admin. The message appears in the player's widget without a reload.
 6. Open a second admin session and confirm Claim on an already-claimed thread surfaces `SUPPORT_ALREADY_CLAIMED` rather than stealing it.
@@ -3342,9 +3416,11 @@ git commit -m "feat(support): agent inbox with claimable queue and player contex
 
 **Interfaces:**
 - Consumes: the `AuditLog` model at `apps/api/prisma/schema.prisma:997`, and the `SocketData` fields `userId` / `username` set in Task 8.
-- Produces: `writeSupportAudit(actor: { userId: string; username?: string }, action: string, conversationId: string, detail?: unknown): Promise<void>`.
+- Produces: `writeSupportAudit(actorId: string, action: string, conversationId: string, detail?: unknown): Promise<void>`.
 
 The existing `writeAudit` helper at `apps/api/src/routes/admin/crm.ts:58` takes a Fastify request. Support actions arrive on a socket, so they need a request-free variant that writes the same table in the same shape.
+
+It takes only an actor id, not a name. The access token carries `{ id, role }` and no username, so — exactly as `actorName()` at `apps/api/src/routes/admin/crm.ts:49` does — the helper resolves the display name from the database. Without that, every actor id in the audit trail is an unresolvable UUID at precisely the moment someone is auditing who did what.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3354,7 +3430,10 @@ Create `apps/api/src/test/support-audit.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../lib/prisma', () => ({
-    default: { auditLog: { create: vi.fn() } },
+    default: {
+        auditLog: { create: vi.fn() },
+        user: { findUnique: vi.fn() },
+    },
 }))
 
 import prisma from '../lib/prisma'
@@ -3364,9 +3443,10 @@ describe('writeSupportAudit', () => {
     beforeEach(() => vi.clearAllMocks())
 
     it('writes the action, actor and target in the shape the CRM helper uses', async () => {
+        ;(prisma.user.findUnique as any).mockResolvedValue({ username: 'clerk1' })
         ;(prisma.auditLog.create as any).mockResolvedValue({})
 
-        await writeSupportAudit({ userId: 'clerk-1', username: 'clerk1' }, 'support.claim', 'conv-1')
+        await writeSupportAudit('clerk-1', 'support.claim', 'conv-1')
 
         expect(prisma.auditLog.create).toHaveBeenCalledWith({
             data: {
@@ -3379,12 +3459,20 @@ describe('writeSupportAudit', () => {
         })
     })
 
+    it('still records the action when the actor name cannot be resolved', async () => {
+        ;(prisma.user.findUnique as any).mockRejectedValue(new Error('db blip'))
+        ;(prisma.auditLog.create as any).mockResolvedValue({})
+
+        await writeSupportAudit('clerk-1', 'support.claim', 'conv-1')
+
+        expect((prisma.auditLog.create as any).mock.calls[0][0].data.actorName).toBeNull()
+    })
+
     it('never lets an audit failure reject the action it records', async () => {
+        ;(prisma.user.findUnique as any).mockResolvedValue({ username: 'clerk1' })
         ;(prisma.auditLog.create as any).mockRejectedValue(new Error('db down'))
 
-        await expect(
-            writeSupportAudit({ userId: 'clerk-1' }, 'support.resolve', 'conv-1'),
-        ).resolves.toBeUndefined()
+        await expect(writeSupportAudit('clerk-1', 'support.resolve', 'conv-1')).resolves.toBeUndefined()
     })
 })
 ```
@@ -3412,17 +3500,25 @@ import prisma from '../../lib/prisma'
  * so every failure is swallowed.
  */
 export async function writeSupportAudit(
-    actor: { userId: string; username?: string },
+    actorId: string,
     action: string,
     conversationId: string,
     detail?: unknown,
 ): Promise<void> {
+    // The JWT carries only { id, role }, so the display name comes from the
+    // database — same reason actorName() exists in routes/admin/crm.ts. Without
+    // it the trail records WHAT happened but not WHO, which is most of the point.
+    const actorName = await prisma.user
+        .findUnique({ where: { id: actorId }, select: { username: true } })
+        .then((u) => u?.username ?? null)
+        .catch(() => null)
+
     await prisma.auditLog
         .create({
             data: {
                 action,
-                actorId: actor.userId,
-                actorName: actor.username ?? null,
+                actorId,
+                actorName,
                 target: `conversation:${conversationId}`,
                 detail: (detail ?? {}) as never,
             },
@@ -3439,7 +3535,7 @@ export async function writeSupportAudit(
 pnpm --filter @world-bingo/api test -- src/test/support-audit.test.ts
 ```
 
-Expected: PASS, 2 tests.
+Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Call it from the three staff handlers**
 
@@ -3454,32 +3550,19 @@ Then add one call in each staff handler, immediately after the successful servic
 In `support:claim`, after `const conversation = await SupportService.claim(...)`:
 
 ```ts
-                await writeSupportAudit(
-                    { userId: who.userId, username: socket.data.username },
-                    'support.claim',
-                    conversationId,
-                )
+                await writeSupportAudit(who.userId, 'support.claim', conversationId)
 ```
 
 In `support:release`, after `const conversation = await SupportService.release(...)`:
 
 ```ts
-                await writeSupportAudit(
-                    { userId: who.userId, username: socket.data.username },
-                    'support.release',
-                    conversationId,
-                    { forced: ADMIN_ROLES.has(who.role) },
-                )
+                await writeSupportAudit(who.userId, 'support.release', conversationId, { forced: ADMIN_ROLES.has(who.role) })
 ```
 
 In `support:resolve`, after `const conversation = await SupportService.resolve(...)`:
 
 ```ts
-                await writeSupportAudit(
-                    { userId: who.userId, username: socket.data.username },
-                    'support.resolve',
-                    conversationId,
-                )
+                await writeSupportAudit(who.userId, 'support.resolve', conversationId)
 ```
 
 - [ ] **Step 6: Verify a real row lands**
