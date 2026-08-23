@@ -6,7 +6,12 @@ import type {
   SupportMessage,
   SupportSenderRole,
 } from '@world-bingo/shared-types'
-import { ConversationNotFoundError, NotParticipantError, StaleConversationError } from './errors'
+import {
+  ConversationNotFoundError,
+  ConversationNotOpenError,
+  NotParticipantError,
+  StaleConversationError,
+} from './errors'
 
 /** How much history the widget and the inbox load on open. */
 const HISTORY_LIMIT = 100
@@ -220,5 +225,78 @@ export class SupportService {
     })
 
     return toWireMessage(message as MessageRow)
+  }
+
+  /**
+   * Claim an unassigned thread.
+   *
+   * The guard lives in the WHERE clause, not in a read-then-write: Postgres
+   * serialises the two UPDATEs, so of two clerks pressing Claim at the same
+   * instant, exactly one matches a row and the other matches none. Same
+   * discipline as the cartela HSETNX reservation and the wallet
+   * SELECT FOR UPDATE — no new locking primitive.
+   */
+  static async claim(conversationId: string, agentId: string): Promise<SupportConversation> {
+    const { count } = await prisma.supportConversation.updateMany({
+      where: { id: conversationId, status: 'OPEN' as never },
+      data: { status: 'ASSIGNED' as never, assignedToId: agentId },
+    })
+    if (count === 0) throw new ConversationNotOpenError()
+    return this.getById(conversationId)
+  }
+
+  /** Hand an assigned thread back to the queue. Admins may release any thread. */
+  static async release(
+    conversationId: string,
+    agentId: string,
+    isAdmin: boolean,
+  ): Promise<SupportConversation> {
+    const where = isAdmin
+      ? { id: conversationId, status: 'ASSIGNED' as never }
+      : { id: conversationId, status: 'ASSIGNED' as never, assignedToId: agentId }
+
+    const { count } = await prisma.supportConversation.updateMany({
+      where,
+      data: { status: 'OPEN' as never, assignedToId: null },
+    })
+    if (count === 0) throw new ConversationNotOpenError()
+    return this.getById(conversationId)
+  }
+
+  /**
+   * Close a thread. A clerk may resolve one they hold or one nobody holds;
+   * an admin may resolve any.
+   */
+  static async resolve(
+    conversationId: string,
+    agentId: string,
+    isAdmin: boolean,
+  ): Promise<SupportConversation> {
+    const where: Record<string, unknown> = {
+      id: conversationId,
+      status: { in: ['OPEN', 'ASSIGNED'] },
+    }
+    if (!isAdmin) where.assignedToId = { in: [agentId, null] }
+
+    const { count } = await prisma.supportConversation.updateMany({
+      where: where as never,
+      data: { status: 'RESOLVED' as never, resolvedAt: new Date() },
+    })
+    if (count === 0) throw new ConversationNotOpenError()
+    return this.getById(conversationId)
+  }
+
+  /**
+   * Move a BOT thread into the human queue. Idempotent: a thread already in
+   * OPEN or ASSIGNED is returned unchanged rather than erroring, because in
+   * Phase 1 every thread starts OPEN and the player's "Talk to a person"
+   * button is still visible.
+   */
+  static async escalate(conversationId: string): Promise<SupportConversation> {
+    await prisma.supportConversation.updateMany({
+      where: { id: conversationId, status: 'BOT' as never },
+      data: { status: 'OPEN' as never, escalatedAt: new Date() },
+    })
+    return this.getById(conversationId)
   }
 }
