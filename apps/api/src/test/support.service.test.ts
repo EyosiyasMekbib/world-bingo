@@ -354,6 +354,94 @@ describe('SupportService.addMessage', () => {
     expect(prisma.supportMessage.create).not.toHaveBeenCalled()
   })
 
+  it('reopens a RESOLVED thread to ASSIGNED when an AI message arrives and an assignee still holds it, preserving that assignee', async () => {
+    // Same non-PLAYER reopen path as AGENT, exercised for a role Phase 2
+    // will actually send: AI. The branch is keyed on "not a player", not on
+    // an enumerated role list, so this must behave identically to AGENT.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-6',
+      conversationId: 'conv-1',
+      senderRole: 'AI',
+      senderId: null,
+      body: 'here is what I found',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+    ;(prisma.supportConversation.update as any).mockResolvedValue(
+      conversationRow({ status: 'ASSIGNED', assignedToId: 'clerk-1', resolvedAt: null }),
+    )
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'AI',
+      senderId: null,
+      body: 'here is what I found',
+    })
+
+    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    expect(updateArg.data.status).toBe('ASSIGNED')
+    expect(updateArg.data.resolvedAt).toBeNull()
+    expect(updateArg.data).not.toHaveProperty('assignedToId')
+    expect(LIVE_STATUSES).toContain(updateArg.data.status)
+  })
+
+  it('reopens a RESOLVED thread to OPEN when a SYSTEM message arrives and nobody is assigned', async () => {
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: null }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-7',
+      conversationId: 'conv-1',
+      senderRole: 'SYSTEM',
+      senderId: null,
+      body: 'conversation auto-reopened',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+    ;(prisma.supportConversation.update as any).mockResolvedValue(
+      conversationRow({ status: 'OPEN', assignedToId: null, resolvedAt: null }),
+    )
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'SYSTEM',
+      senderId: null,
+      body: 'conversation auto-reopened',
+    })
+
+    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    expect(updateArg.data.status).toBe('OPEN')
+    expect(updateArg.data.resolvedAt).toBeNull()
+    expect(updateArg.data).not.toHaveProperty('assignedToId')
+  })
+
+  it('refuses an AI reopen when a newer live thread already exists for the player', async () => {
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(
+      conversationRow({ id: 'conv-newer' }),
+    )
+
+    await expect(
+      SupportService.addMessage({
+        conversationId: 'conv-1',
+        senderRole: 'AI',
+        senderId: null,
+        body: 'hi',
+      }),
+    ).rejects.toBeInstanceOf(StaleConversationError)
+
+    expect(prisma.supportMessage.create).not.toHaveBeenCalled()
+  })
+
   it('refuses to reopen a resolved thread when a newer live thread exists', async () => {
     // Reopening here would insert a second live row and trip the partial
     // unique index. Tell the client to re-open instead.

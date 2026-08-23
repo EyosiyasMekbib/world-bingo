@@ -178,15 +178,17 @@ export class SupportService {
    *
    *   - PLAYER: there is no clerk on this yet, so it goes OPEN with
    *     assignedToId cleared, landing back in the unassigned queue.
-   *   - AGENT: an agent replying into a RESOLVED thread is continuing a
-   *     conversation they (or another clerk) already own. RESOLVED is not
-   *     in LIVE_STATUSES, so leaving the thread RESOLVED after the reply
-   *     would strand it out of every queue filter (mine/unassigned/all)
-   *     and out of openForUser — the player would never see the reply and
-   *     no clerk could find the thread again. Reopening must also NOT clear
-   *     assignedToId the way the player path does: that would unassign the
-   *     very clerk who just replied. It goes ASSIGNED if someone still
-   *     holds it, OPEN if nobody does.
+   *   - Anyone else (AGENT today; AI and SYSTEM once Phase 2 ships them):
+   *     the rule is keyed on "not a player" rather than an enumerated list
+   *     of roles, because a message from a role nobody special-cased yet
+   *     must still reopen the thread — RESOLVED is not in LIVE_STATUSES, so
+   *     leaving the thread RESOLVED after the reply would strand it out of
+   *     every queue filter (mine/unassigned/all) and out of openForUser and
+   *     no clerk could find the thread again. Silently stranding a message
+   *     is far worse than an unnecessary reopen. Reopening must also NOT
+   *     clear assignedToId the way the player path does: that would
+   *     unassign the clerk mid-conversation. It goes ASSIGNED if someone
+   *     still holds it, OPEN if nobody does.
    */
   static async addMessage(input: AddMessageInput): Promise<SupportMessage> {
     const body = input.body?.trim() ?? ''
@@ -200,16 +202,16 @@ export class SupportService {
     if (!conversation) throw new ConversationNotFoundError()
 
     const playerReopening = conversation.status === 'RESOLVED' && input.senderRole === 'PLAYER'
-    const agentReopening = conversation.status === 'RESOLVED' && input.senderRole === 'AGENT'
-    const reopening = playerReopening || agentReopening
+    const nonPlayerReopening = conversation.status === 'RESOLVED' && input.senderRole !== 'PLAYER'
+    const reopening = playerReopening || nonPlayerReopening
 
     if (reopening) {
       // Reopening while a newer live thread exists would insert a second
-      // live row and trip the partial unique index. Applies to both paths:
-      // if the player already opened a fresh thread since this one
-      // resolved, flipping this old one back to live — whether the player
-      // followed up or an agent replied into it — would collide with that
-      // newer thread on the userId partial unique index.
+      // live row and trip the partial unique index. Applies to every
+      // reopening path: if the player already opened a fresh thread since
+      // this one resolved, flipping this old one back to live — however it
+      // was reopened — would collide with that newer thread on the userId
+      // partial unique index.
       const newer = await prisma.supportConversation.findFirst({
         where: {
           userId: conversation.userId,
@@ -240,7 +242,7 @@ export class SupportService {
         assignedToId: null,
         escalatedAt: new Date(),
       }
-    } else if (agentReopening) {
+    } else if (nonPlayerReopening) {
       // Deliberately does NOT reuse the player branch's data object: setting
       // assignedToId: null here would unassign the clerk who just sent this
       // very message. Omitting the field entirely — rather than setting it
