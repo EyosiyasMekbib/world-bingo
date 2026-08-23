@@ -37,6 +37,7 @@
 | `apps/api/src/services/support/support-presence.ts` | Redis agent-online set |
 | `apps/api/src/services/support/support-rate-limit.ts` | Redis per-user message counter |
 | `apps/api/src/services/support/errors.ts` | Typed service errors |
+| `apps/api/src/services/support/attachment-url.ts` | Allowlist guard for attachment URLs |
 | `apps/api/src/gateways/support.gateway.ts` | Socket event handlers, rooms, authorization |
 | `apps/api/src/routes/support/index.ts` | Attachment upload, public contact config |
 | `apps/api/src/test/support.service.test.ts` | Lifecycle and status machine tests |
@@ -1775,6 +1776,7 @@ import { SupportService } from '../services/support/support.service.js'
 import { SupportPresence } from '../services/support/support-presence.js'
 import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
+import { isSafeAttachmentUrl } from '../services/support/attachment-url.js'
 import { SupportError } from '../services/support/errors.js'
 import { NotificationService } from '../services/notification.service.js'
 import { NotificationType } from '@world-bingo/shared-types'
@@ -1908,6 +1910,21 @@ export function registerSupportHandlers(io: any) {
 
                 const staff = STAFF_ROLES.has(who.role)
                 if (!staff) await SupportService.assertPlayerOwns(conversationId, who.userId)
+
+                // attachmentUrl arrives on the raw socket payload. Nothing forces a
+                // client to have used the upload route — anyone who can open a socket
+                // can emit support:send with an arbitrary string. The admin inbox
+                // renders it into an <a href>, so a `javascript:` value would execute
+                // in a CLERK's authenticated session on click. Validate server-side:
+                // the client-side guard is defence in depth, this is the real fix.
+                if (attachmentUrl && !isSafeAttachmentUrl(attachmentUrl)) {
+                    socket.emit('support:error', {
+                        conversationId,
+                        code: 'SUPPORT_BAD_ATTACHMENT',
+                        message: 'Attachment rejected',
+                    })
+                    return
+                }
 
                 const message = await SupportService.addMessage({
                     conversationId,
@@ -3049,19 +3066,30 @@ const api = useAdminApi()
 const player = ref<any>(null)
 const loading = ref(false)
 
+// Monotonic request token. Without it, clicking thread A then quickly thread B
+// races the two fetches: if A resolves last it overwrites B's data while the
+// panel header says B, so one player's balance and deposits render under a
+// different player's conversation. Every late response is discarded.
+let requestSeq = 0
+
 const load = async () => {
-  if (!props.userId) {
+  const seq = ++requestSeq
+  const userId = props.userId
+  if (!userId) {
     player.value = null
     return
   }
   loading.value = true
   try {
     // Clerk-accessible endpoint. getPlayer() would 403 for a CLERK.
-    player.value = await api.getSupportContext(props.userId)
+    const result = await api.getSupportContext(userId)
+    if (seq !== requestSeq) return
+    player.value = result
   } catch {
+    if (seq !== requestSeq) return
     player.value = null
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 
