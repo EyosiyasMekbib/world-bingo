@@ -42,6 +42,8 @@ model User {
   predictionPositions   PredictionPosition[]
   bonusGrants           BonusGrant[]
   bonusRuleMemberships  BonusRuleMember[]
+  supportConversations  SupportConversation[]  @relation("SupportConversations")
+  supportAssignments    SupportConversation[]  @relation("SupportAssignments")
 
   @@index([role])
   @@index([referralCode])
@@ -277,6 +279,7 @@ enum NotificationType {
   CAMPAIGN_MESSAGE
   PREDICTION_SETTLED
   PREDICTION_VOIDED
+  SUPPORT_REPLY
 }
 
 model ReferralReward {
@@ -1159,4 +1162,69 @@ model PredictionPosition {
   @@index([userId, status])
   @@index([marketId, status])
   @@map("prediction_positions")
+}
+
+// ─── Support Chat ────────────────────────────────────────────────────────────
+
+enum SupportConversationStatus {
+  BOT
+  OPEN
+  ASSIGNED
+  RESOLVED
+}
+
+enum SupportSenderRole {
+  PLAYER
+  AI
+  AGENT
+  SYSTEM
+}
+
+model SupportConversation {
+  id           String                    @id @default(uuid())
+  userId       String
+  user         User                      @relation("SupportConversations", fields: [userId], references: [id], onDelete: Cascade)
+  status       SupportConversationStatus @default(OPEN)
+  assignedToId String?
+  assignedTo   User?                     @relation("SupportAssignments", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  /// Detected thread language: "en" | "am" | "am-Latn". Phase 1 always writes "en";
+  /// Phase 2's detector owns this column.
+  language String @default("en")
+
+  /// Consecutive AI replies since the last human turn. Phase 2 reads it; Phase 1
+  /// leaves it at 0 so the column exists before the AI service needs it.
+  aiTurnCount         Int @default(0)
+  lowConfidenceStreak Int @default(0)
+
+  lastMessageAt DateTime  @default(now())
+  escalatedAt   DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  messages SupportMessage[]
+
+  @@index([status, lastMessageAt])
+  @@index([userId, lastMessageAt])
+  @@index([assignedToId, status])
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id             String              @id @default(uuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderRole     SupportSenderRole
+  /// User id for PLAYER and AGENT. Null for AI and SYSTEM.
+  senderId       String?
+  body           String              @db.Text
+  attachmentUrl  String?
+  attachmentMime String?
+  readByPlayerAt DateTime?
+  readByAgentAt  DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("support_messages")
 }
