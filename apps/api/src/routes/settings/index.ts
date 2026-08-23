@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../../lib/prisma'
+import { SupportContact } from '../../services/support/support-contact'
 
 /** Default feature flags and game settings — seeded on first read if missing */
 const DEFAULTS: Record<string, string> = {
@@ -19,6 +20,9 @@ const DEFAULTS: Record<string, string> = {
     deposit_auto_verify_max_amount: '0',
     deposit_auto_verify_max_age_hours: '0',
     deposit_auto_verify_require_payer_match: 'true',
+  support_phone: '',
+  support_telegram: '',
+  support_hours: '',
 }
 
 /**
@@ -169,6 +173,33 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         const value = row?.value ?? ''
         return { templateId: value.trim() !== '' ? value : null }
     })
+
+  // ── Public: GET /settings/support ───────────────────────────────────────
+  // No auth — the widget renders these in its footer for signed-out visitors too.
+  fastify.get('/support', async (_req, reply) => {
+    await ensureDefaults()
+    reply.header('Cache-Control', 'public, max-age=60')
+    return SupportContact.get()
+  })
+
+  // ── Admin: PUT /settings/support ────────────────────────────────────────
+  fastify.put('/support', { preValidation: [fastify.requireAdmin] }, async (req) => {
+    const body = (req.body ?? {}) as {
+      support_phone?: string
+      support_telegram?: string
+      support_hours?: string
+    }
+    const updates: Record<string, string> = {}
+    if (body.support_phone !== undefined) updates.support_phone = String(body.support_phone).trim()
+    if (body.support_telegram !== undefined)
+      updates.support_telegram = String(body.support_telegram).trim()
+    if (body.support_hours !== undefined) updates.support_hours = String(body.support_hours).trim()
+
+    for (const [key, value] of Object.entries(updates)) {
+      await prisma.siteSetting.upsert({ where: { key }, update: { value }, create: { key, value } })
+    }
+    return SupportContact.get()
+  })
 }
 
 export default settingsRoutes
