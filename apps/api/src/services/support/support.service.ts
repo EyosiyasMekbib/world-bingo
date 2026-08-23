@@ -131,14 +131,18 @@ export class SupportService {
   }
 
   private static async withHistory(row: ConversationRow): Promise<SupportConversationWithMessages> {
+    // Newest-first in the query, reversed for display. Ordering ascending
+    // and taking 100 would return the OLDEST 100 messages — on a long or
+    // repeatedly-reopened thread that silently hides everything recent,
+    // which is the only part anyone needs.
     const messages = await prisma.supportMessage.findMany({
       where: { conversationId: row.id },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: HISTORY_LIMIT,
     })
     return {
       conversation: toWireConversation(row),
-      messages: (messages as MessageRow[]).map(toWireMessage),
+      messages: (messages as MessageRow[]).reverse().map(toWireMessage),
     }
   }
 

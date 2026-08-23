@@ -67,6 +67,53 @@ describe('SupportService.openForUser', () => {
     expect(result.messages[0].body).toBe('hello')
   })
 
+  it('returns history in ascending order, fetched newest-first under the hood', async () => {
+    // The take(HISTORY_LIMIT) page has to be the newest 100, not the oldest
+    // 100 — otherwise a long or repeatedly-reopened thread would silently
+    // hide everything recent. That means querying desc and reversing for
+    // display, since every caller expects chronological (ascending) order.
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(conversationRow())
+    ;(prisma.supportMessage.findMany as any).mockResolvedValue([
+      {
+        id: 'msg-3',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'third',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: new Date('2026-08-22T10:02:00.000Z'),
+      },
+      {
+        id: 'msg-2',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'second',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: new Date('2026-08-22T10:01:00.000Z'),
+      },
+      {
+        id: 'msg-1',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'first',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: NOW,
+      },
+    ])
+
+    const result = await SupportService.openForUser('user-1')
+
+    expect(prisma.supportMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: 'desc' } }),
+    )
+    expect(result.messages.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3'])
+  })
+
   it('creates a thread when none is live, and it starts OPEN', async () => {
     ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
     ;(prisma.supportConversation.create as any).mockResolvedValue(
