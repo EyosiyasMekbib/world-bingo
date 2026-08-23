@@ -4,6 +4,7 @@ import type {
   SupportConversation,
   SupportConversationWithMessages,
   SupportMessage,
+  SupportQueueItem,
   SupportSenderRole,
 } from '@world-bingo/shared-types'
 import {
@@ -298,5 +299,95 @@ export class SupportService {
       data: { status: 'OPEN' as never, escalatedAt: new Date() },
     })
     return this.getById(conversationId)
+  }
+
+  /** Longest preview the inbox list renders before truncating. */
+  private static readonly PREVIEW_CHARS = 80
+
+  static async listQueue(
+    filter: 'unassigned' | 'mine' | 'all' | 'resolved',
+    agentId: string,
+  ): Promise<SupportQueueItem[]> {
+    const where =
+      filter === 'unassigned'
+        ? { status: 'OPEN', assignedToId: null }
+        : filter === 'mine'
+          ? { status: 'ASSIGNED', assignedToId: agentId }
+          : filter === 'resolved'
+            ? { status: 'RESOLVED' }
+            : { status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } }
+
+    const rows = await prisma.supportConversation.findMany({
+      where: where as never,
+      orderBy: { lastMessageAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { username: true } },
+        assignedTo: { select: { username: true } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+        _count: {
+          select: {
+            messages: { where: { senderRole: 'PLAYER', readByAgentAt: null } },
+          },
+        },
+      },
+    })
+
+    return (rows as never[]).map((row: never) => {
+      const r = row as unknown as ConversationRow & {
+        user: { username: string }
+        messages: MessageRow[]
+        _count: { messages: number }
+      }
+      const last = r.messages[0]
+      const preview = last ? last.body.slice(0, this.PREVIEW_CHARS) : ''
+      return {
+        id: r.id,
+        userId: r.userId,
+        username: r.user.username,
+        status: r.status as SupportQueueItem['status'],
+        assignedToId: r.assignedToId,
+        assignedToUsername: r.assignedTo?.username ?? null,
+        lastMessageAt: r.lastMessageAt.toISOString(),
+        lastMessagePreview: preview,
+        unreadForAgent: r._count.messages,
+      }
+    })
+  }
+
+  static async getForAgent(conversationId: string): Promise<SupportConversationWithMessages> {
+    const row = await prisma.supportConversation.findUnique({
+      where: { id: conversationId },
+      include: { assignedTo: { select: { username: true } } },
+    })
+    if (!row) throw new ConversationNotFoundError()
+    return this.withHistory(row as ConversationRow)
+  }
+
+  /** Called when an agent opens a thread. Only player messages can be unread
+   *  for an agent, so the filter keeps the write narrow. */
+  static async markReadByAgent(conversationId: string): Promise<void> {
+    await prisma.supportMessage.updateMany({
+      where: { conversationId, senderRole: 'PLAYER' as never, readByAgentAt: null },
+      data: { readByAgentAt: new Date() },
+    })
+  }
+
+  static async markReadByPlayer(conversationId: string): Promise<void> {
+    await prisma.supportMessage.updateMany({
+      where: {
+        conversationId,
+        senderRole: { in: ['AGENT', 'AI', 'SYSTEM'] as never },
+        readByPlayerAt: null,
+      },
+      data: { readByPlayerAt: new Date() },
+    })
+  }
+
+  /** Badge count for the agent inbox. */
+  static async unassignedCount(): Promise<number> {
+    return prisma.supportConversation.count({
+      where: { status: 'OPEN' as never, assignedToId: null },
+    })
   }
 }

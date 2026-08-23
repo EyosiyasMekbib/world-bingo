@@ -5,6 +5,8 @@ vi.mock('../lib/prisma', () => ({
     supportConversation: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -12,6 +14,7 @@ vi.mock('../lib/prisma', () => ({
     supportMessage: {
       create: vi.fn(),
       findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }))
@@ -272,5 +275,78 @@ describe('SupportService.assertPlayerOwns', () => {
   it('passes for the owner', async () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(conversationRow())
     await expect(SupportService.assertPlayerOwns('conv-1', 'user-1')).resolves.toBeUndefined()
+  })
+})
+
+describe('SupportService.listQueue', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('unassigned filter asks only for OPEN threads with no assignee', async () => {
+    ;(prisma.supportConversation.findMany as any).mockResolvedValue([])
+    await SupportService.listQueue('unassigned', 'clerk-1')
+
+    const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
+    expect(call.where).toEqual({ status: 'OPEN', assignedToId: null })
+    expect(call.orderBy).toEqual({ lastMessageAt: 'desc' })
+  })
+
+  it('mine filter scopes to the calling agent', async () => {
+    ;(prisma.supportConversation.findMany as any).mockResolvedValue([])
+    await SupportService.listQueue('mine', 'clerk-1')
+
+    const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
+    expect(call.where).toEqual({ status: 'ASSIGNED', assignedToId: 'clerk-1' })
+  })
+
+  it('all filter excludes resolved threads', async () => {
+    ;(prisma.supportConversation.findMany as any).mockResolvedValue([])
+    await SupportService.listQueue('all', 'clerk-1')
+
+    const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
+    expect(call.where).toEqual({ status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } })
+  })
+
+  it('maps a row into a queue item with a preview and unread count', async () => {
+    ;(prisma.supportConversation.findMany as any).mockResolvedValue([
+      {
+        ...conversationRow(),
+        user: { username: 'abebe' },
+        assignedTo: null,
+        messages: [
+          {
+            id: 'm1',
+            conversationId: 'conv-1',
+            senderRole: 'PLAYER',
+            senderId: 'user-1',
+            body: 'my deposit is missing and I want it back today please',
+            attachmentUrl: null,
+            attachmentMime: null,
+            createdAt: NOW,
+          },
+        ],
+        _count: { messages: 3 },
+      },
+    ])
+
+    const [item] = await SupportService.listQueue('unassigned', 'clerk-1')
+
+    expect(item.username).toBe('abebe')
+    expect(item.lastMessagePreview.length).toBeLessThanOrEqual(80)
+    expect(item.unreadForAgent).toBe(3)
+  })
+})
+
+describe('SupportService.markReadByAgent', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('stamps only unread PLAYER messages', async () => {
+    ;(prisma.supportMessage.updateMany as any).mockResolvedValue({ count: 2 })
+
+    await SupportService.markReadByAgent('conv-1')
+
+    expect(prisma.supportMessage.updateMany).toHaveBeenCalledWith({
+      where: { conversationId: 'conv-1', senderRole: 'PLAYER', readByAgentAt: null },
+      data: { readByAgentAt: expect.any(Date) },
+    })
   })
 })
