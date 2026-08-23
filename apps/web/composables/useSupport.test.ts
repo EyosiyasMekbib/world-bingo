@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { contactRevealPlan, CONTACT_REVEAL_MS } from './useSupport'
+import { contactRevealPlan, CONTACT_REVEAL_MS, telHref, telegramHref } from './useSupport'
 
 const NOW = 1_700_000_000_000
 
@@ -56,5 +56,57 @@ describe('contactRevealPlan', () => {
 describe('CONTACT_REVEAL_MS', () => {
   it('is 5 minutes', () => {
     expect(CONTACT_REVEAL_MS).toBe(5 * 60 * 1000)
+  })
+})
+
+describe('telHref', () => {
+  it('builds a tel: href from a normal phone number', () => {
+    expect(telHref('+251911223344')).toBe('tel:+251911223344')
+  })
+
+  it('allows spaces, hyphens, and parentheses', () => {
+    expect(telHref('(0911) 223-344')).toBe('tel:(0911) 223-344')
+  })
+
+  it('returns null for an empty string, so the template hides the channel', () => {
+    expect(telHref('')).toBeNull()
+  })
+
+  it('returns null for a value that is only whitespace', () => {
+    expect(telHref('   ')).toBeNull()
+  })
+
+  it('returns null rather than a usable href for a javascript: scheme', () => {
+    expect(telHref('javascript:alert(1)')).toBeNull()
+  })
+
+  it('returns null for any value containing letters', () => {
+    expect(telHref('call-us-now')).toBeNull()
+  })
+})
+
+describe('telegramHref', () => {
+  it('builds a t.me href from a handle with a leading @', () => {
+    expect(telegramHref('@aradasupport')).toBe('https://t.me/aradasupport')
+  })
+
+  it('builds the same t.me href from the bare handle', () => {
+    expect(telegramHref('aradasupport')).toBe('https://t.me/aradasupport')
+  })
+
+  it('returns null for an empty string, so the template hides the channel', () => {
+    expect(telegramHref('')).toBeNull()
+  })
+
+  it('returns null for a bare "@" with nothing after it', () => {
+    expect(telegramHref('@')).toBeNull()
+  })
+
+  it('returns null rather than a usable href for a javascript: scheme', () => {
+    expect(telegramHref('javascript:alert(1)')).toBeNull()
+  })
+
+  it('returns null for a handle containing a slash, which could smuggle a different path', () => {
+    expect(telegramHref('foo/../evil')).toBeNull()
   })
 })

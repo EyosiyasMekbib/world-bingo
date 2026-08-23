@@ -7,6 +7,7 @@ const { connect } = useSocket()
 const { locale, setLocale } = useI18n()
 const { referralsEnabled, flags } = useFeatureFlags()
 const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
+const { openChat } = useSupport()
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -260,8 +261,8 @@ function submitSearch() {
             </div>
             <div class="ab-footer-col">
               <h4>Support</h4>
-              <a href="#">Help Center</a>
-              <a href="#">Contact Us</a>
+              <a href="#" @click.prevent="openChat">Help Center</a>
+              <a href="#" @click.prevent="openChat">Contact Us</a>
               <a href="#">Terms</a>
               <a href="#">Privacy Policy</a>
             </div>
@@ -281,6 +282,7 @@ function submitSearch() {
       :balance="Number(auth.wallet?.realBalance ?? 0)"
       @withdrawn="auth.fetchWallet(); showWithdrawal = false"
     />
+    <SupportLauncher />
   </div>
 </template>
 

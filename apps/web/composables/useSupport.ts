@@ -35,6 +35,35 @@ export function contactRevealPlan(
   return { reveal: false, delayMs: CONTACT_REVEAL_MS - waited }
 }
 
+// Admin-configured contact fields (Task 7) are stored without format
+// validation, so anything the panel turns into a clickable `href` has to be
+// sanitized here rather than trusted. Both helpers are allowlists — only
+// characters that are legitimate in a phone number / Telegram handle pass —
+// rather than a blocklist for `javascript:`-style schemes, since a blocklist
+// only ever catches the variant you thought of. Non-null returns are the
+// only ones the template renders as a link.
+const TEL_HREF_ALLOWED = /^[0-9+\-() .]+$/
+const TELEGRAM_HANDLE_ALLOWED = /^[A-Za-z0-9_]+$/
+
+/** Build a `tel:` href from an admin-configured phone number, or `null` if
+ *  the stored value contains anything outside digits/+/-/()/space — which
+ *  also rejects a scheme-smuggling value like `javascript:alert(1)`. */
+export function telHref(phone: string): string | null {
+  const trimmed = phone.trim()
+  if (!trimmed || !TEL_HREF_ALLOWED.test(trimmed)) return null
+  return `tel:${trimmed}`
+}
+
+/** Build a `https://t.me/<handle>` href from an admin-configured Telegram
+ *  handle (with or without a leading `@`), or `null` if what remains after
+ *  stripping `@` isn't a plain alphanumeric/underscore handle. */
+export function telegramHref(handle: string): string | null {
+  const trimmed = handle.trim()
+  const withoutAt = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed
+  if (!withoutAt || !TELEGRAM_HANDLE_ALLOWED.test(withoutAt)) return null
+  return `https://t.me/${withoutAt}`
+}
+
 export const useSupport = () => {
   const { socket, connect } = useSocket()
   const auth = useAuth()
