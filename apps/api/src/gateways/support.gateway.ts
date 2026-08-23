@@ -228,7 +228,12 @@ export function registerSupportHandlers(io: any) {
       if (!who) return
       try {
         const conversation = await SupportService.claim(conversationId, who.userId)
-        await writeSupportAudit(who.userId, 'support.claim', conversationId)
+        // writeSupportAudit already swallows its own failures (see
+        // support-audit.ts) so this never rejects in production — but that
+        // guarantee lives in a module this call site doesn't control, so
+        // `.catch()` here too: an audit write must never be able to turn a
+        // successful claim into a SUPPORT_ERROR for the caller.
+        await writeSupportAudit(who.userId, 'support.claim', conversationId).catch(() => {})
         socket.join(convRoom(conversationId))
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
@@ -241,14 +246,15 @@ export function registerSupportHandlers(io: any) {
       const who = staffActor(socket)
       if (!who) return
       try {
-        const conversation = await SupportService.release(
-          conversationId,
-          who.userId,
-          ADMIN_ROLES.has(who.role),
-        )
+        // Hoisted so the service call and the audit detail provably see the
+        // same value — two separate `ADMIN_ROLES.has(who.role)` calls can
+        // never disagree, but they also can't be *proven* to agree by
+        // reading the code, since `who.role` doesn't change between them.
+        const isAdmin = ADMIN_ROLES.has(who.role)
+        const conversation = await SupportService.release(conversationId, who.userId, isAdmin)
         await writeSupportAudit(who.userId, 'support.release', conversationId, {
-          forced: ADMIN_ROLES.has(who.role),
-        })
+          forced: isAdmin,
+        }).catch(() => {})
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
       } catch (err) {
@@ -265,7 +271,7 @@ export function registerSupportHandlers(io: any) {
           who.userId,
           ADMIN_ROLES.has(who.role),
         )
-        await writeSupportAudit(who.userId, 'support.resolve', conversationId)
+        await writeSupportAudit(who.userId, 'support.resolve', conversationId).catch(() => {})
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
       } catch (err) {

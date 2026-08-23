@@ -37,20 +37,27 @@ const send = () => {
 }
 
 // Defence in depth. The real fix lives server-side (support.gateway.ts
-// rejects an unsafe attachmentUrl before it's ever persisted or broadcast),
-// but this renders whatever it's handed, so the same shape check runs again
-// here: `<a href>` executes a `javascript:` value on click, in this clerk's
-// authenticated admin session. Mirrors isSafeAttachmentUrl in
-// apps/api/src/services/support/attachment-url.ts.
+// rejects an unsafe attachmentUrl before it's ever persisted or broadcast
+// unless its host is on an exact allowlist built from configuration — see
+// apps/api/src/services/support/attachment-url.ts), but this renders
+// whatever it's handed, so `<a href>` would execute a `javascript:` value
+// on click, in this clerk's authenticated admin session.
+//
+// This client-side copy is deliberately STRICTER than the server, not a
+// mirror of it: the server's allowlist is built from env config (MinIO
+// endpoint, GCS bucket, SUPPORT_ATTACHMENT_HOSTS) that this page has no way
+// to read, so it cannot reproduce that exact-host check. Rather than trust
+// "any http(s) URL" here — which is what let a PLAYER-planted phishing link
+// render as a bare clickable thumbnail in the first place — only the
+// same-origin relative `/uploads/` shape is treated as clickable. Anything
+// else (including a legitimate absolute MinIO/GCS URL the server accepted)
+// still renders as an inert `<img>`: never inside an `<a href>`. The server
+// is the authority on what's safe to persist; being stricter client-side
+// costs nothing and can only ever reject something the server allowed, not
+// accept something the server would have rejected.
 const isSafeAttachmentUrl = (url: string): boolean => {
   if (!url) return false
-  if (url.startsWith('/uploads/')) return true
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
-  }
+  return url.startsWith('/uploads/')
 }
 
 const threadStatusVariant = (status: string) => {

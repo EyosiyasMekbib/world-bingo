@@ -47,12 +47,21 @@ vi.mock('../services/notification.service.js', () => ({
   },
 }))
 
+// Task 14's whole point: writeSupportAudit(...) calls at the claim/release/
+// resolve sites. A reviewer once deleted all three call sites and the rest
+// of this suite still passed 78/78 — mocking the module and asserting on it
+// directly is what makes that deletion fail a test.
+vi.mock('../services/support/support-audit.js', () => ({
+  writeSupportAudit: vi.fn(),
+}))
+
 import { registerSupportHandlers } from '../gateways/support.gateway.js'
 import { SupportService } from '../services/support/support.service.js'
 import { SupportPresence } from '../services/support/support-presence.js'
 import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
 import { NotificationService } from '../services/notification.service.js'
+import { writeSupportAudit } from '../services/support/support-audit.js'
 // Real error classes — `fail()` branches on `instanceof SupportError`, so a
 // plain mock object would not exercise that path.
 import { NotParticipantError } from '../services/support/errors.js'
@@ -128,6 +137,11 @@ async function setup(data: Record<string, unknown> = {}) {
 describe('support.gateway', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: audit writes succeed. `.catch(() => {})` at each call site
+    // needs something thenable to call `.catch` on, and this is the
+    // production-representative default (writeSupportAudit swallows its own
+    // failures) — the audit-failure-is-non-fatal test below overrides it.
+    ;(writeSupportAudit as any).mockResolvedValue(undefined)
   })
 
   describe('authentication', () => {
@@ -433,6 +447,105 @@ describe('support.gateway', () => {
       const { socket: adminSocket } = await setup({ userId: 'admin-1', role: 'ADMIN' })
       await adminSocket.__handlers['support:release']({ conversationId: 'conv-1' })
       expect(SupportService.release).toHaveBeenLastCalledWith('conv-1', 'admin-1', true)
+    })
+  })
+
+  describe('audit trail (Task 14)', () => {
+    // Deleting a `writeSupportAudit(...)` call site must fail one of these —
+    // that is the entire reason this describe block exists. See the manual
+    // "delete the call sites, confirm this suite goes red" check documented
+    // in the phase-1 final-fixes report.
+
+    it('writes a support.claim audit row with the conversation id on a successful claim', async () => {
+      ;(SupportService.claim as any).mockResolvedValue({ id: 'conv-1', status: 'ASSIGNED' })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(0)
+
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:claim']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).toHaveBeenCalledWith('clerk-1', 'support.claim', 'conv-1')
+    })
+
+    it('writes a support.release audit row with detail {forced:false} for a CLERK', async () => {
+      ;(SupportService.release as any).mockResolvedValue({ id: 'conv-1', status: 'OPEN' })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(0)
+
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:release']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).toHaveBeenCalledWith('clerk-1', 'support.release', 'conv-1', {
+        forced: false,
+      })
+    })
+
+    it('writes a support.release audit row with detail {forced:true} for an ADMIN', async () => {
+      ;(SupportService.release as any).mockResolvedValue({ id: 'conv-1', status: 'OPEN' })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(0)
+
+      const { socket } = await setup({ userId: 'admin-1', role: 'ADMIN' })
+      await socket.__handlers['support:release']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).toHaveBeenCalledWith('admin-1', 'support.release', 'conv-1', {
+        forced: true,
+      })
+    })
+
+    it('writes a support.resolve audit row with the conversation id on a successful resolve', async () => {
+      ;(SupportService.resolve as any).mockResolvedValue({ id: 'conv-1', status: 'RESOLVED' })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(0)
+
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:resolve']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).toHaveBeenCalledWith('clerk-1', 'support.resolve', 'conv-1')
+    })
+
+    it('writes no audit row when the service call throws — a rejected claim is never recorded as if it happened', async () => {
+      ;(SupportService.claim as any).mockRejectedValue(new Error('cartela already claimed'))
+
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:claim']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).not.toHaveBeenCalled()
+      expect(socket.emit).toHaveBeenCalledWith(
+        'support:error',
+        expect.objectContaining({ conversationId: 'conv-1' }),
+      )
+    })
+
+    it('writes no audit row when a conditional update matches nothing (release rejected)', async () => {
+      // Modelled on the service throwing when its conditional WHERE matches
+      // zero rows — e.g. someone else already released/claimed it.
+      ;(SupportService.release as any).mockRejectedValue(new Error('not currently assigned'))
+
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:release']({ conversationId: 'conv-1' })
+
+      expect(writeSupportAudit).not.toHaveBeenCalled()
+    })
+
+    it('an audit write failure does not break the action: success events still fire and no support:error is emitted', async () => {
+      ;(SupportService.claim as any).mockResolvedValue({ id: 'conv-1', status: 'ASSIGNED' })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(3)
+      ;(writeSupportAudit as any).mockRejectedValue(new Error('audit db unreachable'))
+
+      const { socket, io } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:claim']({ conversationId: 'conv-1' })
+
+      // The claim itself still succeeded and broadcast normally...
+      expect(io.__toEmit).toHaveBeenCalledWith(
+        'support:conv:conv-1',
+        'support:status',
+        expect.objectContaining({ id: 'conv-1' }),
+      )
+      expect(io.__toEmit).toHaveBeenCalledWith(
+        'support:agents',
+        'support:queue-update',
+        expect.objectContaining({ unassignedCount: 3 }),
+      )
+      // ...and the caller never sees an error for a purely internal audit
+      // failure — a broken audit log must not read as a broken claim.
+      expect(socket.emit).not.toHaveBeenCalledWith('support:error', expect.anything())
     })
   })
 })
