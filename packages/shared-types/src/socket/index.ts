@@ -1,4 +1,10 @@
 import type { Game, Cartela, User, Notification } from '../entities'
+import type {
+    SupportConversation,
+    SupportConversationWithMessages,
+    SupportMessage,
+    SupportContactInfo,
+} from '../entities/support'
 
 export interface ServerToClientEvents {
     // ── Lobby ────────────────────────────────────────────────────────────────
@@ -47,6 +53,20 @@ export interface ServerToClientEvents {
     'tournament:round-started': (payload: { tournamentId: string; round: number; gameId: string }) => void
     'tournament:eliminated': (payload: { tournamentId: string; userId: string }) => void
     'tournament:winner': (payload: { tournamentId: string; winnerId: string; username: string; prizeAmount: number }) => void
+
+    // ── Support Chat ─────────────────────────────────────────────────────────
+    /** The live thread, sent in reply to support:open */
+    'support:thread': (payload: SupportConversationWithMessages) => void
+    /** A persisted message on a thread the socket is subscribed to */
+    'support:message': (message: SupportMessage) => void
+    /** Status or assignment changed */
+    'support:status': (conversation: SupportConversation) => void
+    /** Queue changed — emitted to the support:agents room only */
+    'support:queue-update': (payload: { conversationId: string; unassignedCount: number }) => void
+    /** Real phone/Telegram contact, pushed when no agent is online */
+    'support:contact-fallback': (payload: { conversationId: string } & SupportContactInfo) => void
+    'support:error': (payload: { conversationId?: string; code: string; message: string }) => void
+
     error: (payload: { message: string; code: string }) => void
 }
 
@@ -62,6 +82,24 @@ export interface ClientToServerEvents {
     'lobby:subscribe': () => void
     'lobby:unsubscribe': () => void
     'notification:mark-read': (payload: { notificationId: string }) => void
+
+    // ── Support Chat ─────────────────────────────────────────────────────────
+    /** Fetch or create the caller's live thread */
+    'support:open': () => void
+    'support:send': (payload: {
+        conversationId: string
+        body: string
+        attachmentUrl?: string
+        attachmentMime?: string
+    }) => void
+    'support:escalate': (payload: { conversationId: string }) => void
+    /** Staff only */
+    'support:claim': (payload: { conversationId: string }) => void
+    'support:release': (payload: { conversationId: string }) => void
+    'support:resolve': (payload: { conversationId: string }) => void
+    /** Staff subscribes to a specific thread to watch it */
+    'support:watch': (payload: { conversationId: string }) => void
+    'support:read': (payload: { conversationId: string }) => void
 }
 
 export interface InterServerEvents {
@@ -72,6 +110,8 @@ export interface SocketData {
     userId: string
     username: string
     gameId?: string
+    /** Role from the JWT claims. The support gateway authorizes staff events off this. */
+    role?: string
 }
 
 export interface TypedSocket {

@@ -138,3 +138,4 @@ export interface BotActivityRow {
     isActive: boolean
 }
 
+export * from './support'
