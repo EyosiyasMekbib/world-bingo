@@ -2901,9 +2901,33 @@ export const useSupportInbox = () => {
         await refreshQueue()
         if (socket.value?.connected) return
 
+        // `auth` as a CALLBACK, not a literal. Admin access tokens expire in 15
+        // minutes; a literal snapshots the token at connect time, so the first
+        // reconnect after expiry re-presents a dead token and the socket drops out
+        // silently — the clerk keeps staring at a queue that stopped updating.
+        // The callback form is re-invoked on every reconnect attempt.
         socket.value = io(config.public.wsUrl as string, {
-            auth: { token: accessToken.value },
+            auth: (cb: (data: { token: string | null | undefined }) => void) =>
+                cb({ token: accessToken.value }),
             transports: ['polling', 'websocket'],
+        })
+
+        // A silently dead socket is the failure mode that actually hurts here, so
+        // surface it rather than letting the queue quietly freeze.
+        socket.value.on('connect_error', (err: Error) => {
+            error.value = `Live updates disconnected (${err.message}). Reload if the queue looks stale.`
+        })
+
+        socket.value.on('disconnect', (reason: string) => {
+            // 'io client disconnect' is our own teardown; anything else is unplanned.
+            if (reason !== 'io client disconnect') {
+                error.value = 'Live updates disconnected. Reconnecting…'
+            }
+        })
+
+        socket.value.on('connect', () => {
+            error.value = null
+            refreshQueue()
         })
 
         socket.value.on('support:thread', (payload: SupportConversationWithMessages) => {
@@ -2924,14 +2948,24 @@ export const useSupportInbox = () => {
             refreshQueue()
         })
 
-        socket.value.on('support:queue-update', (payload: { unassignedCount: number }) => {
-            unassignedCount.value = payload.unassignedCount
-            refreshQueue()
-        })
+        // Payload types come from shared-types. Hand-typing a narrower shape here
+        // silently drops fields — an inlined `{ message: string }` for support:error
+        // discards `code`, so nothing downstream can ever tell a rate-limit from a
+        // permission denial.
+        socket.value.on(
+            'support:queue-update',
+            (payload: { conversationId: string; unassignedCount: number }) => {
+                unassignedCount.value = payload.unassignedCount
+                refreshQueue()
+            },
+        )
 
-        socket.value.on('support:error', (payload: { message: string }) => {
-            error.value = payload.message
-        })
+        socket.value.on(
+            'support:error',
+            (payload: { conversationId?: string; code: string; message: string }) => {
+                error.value = payload.message
+            },
+        )
     }
 
     const setFilter = async (next: typeof filter.value) => {
@@ -2939,6 +2973,9 @@ export const useSupportInbox = () => {
         await refreshQueue()
     }
 
+    // Named watchThread, and returned under that exact name. Returning it as
+    // `watch` would let a page destructure `watch` and shadow Vue's auto-imported
+    // `watch()`, silently breaking every watcher in that component.
     const watchThread = (conversationId: string) => {
         error.value = null
         socket.value?.emit('support:watch', { conversationId })
