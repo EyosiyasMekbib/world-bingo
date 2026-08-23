@@ -454,7 +454,7 @@ vi.mock('../lib/prisma', () => ({
 }))
 
 import prisma from '../lib/prisma'
-import { SupportService } from '../services/support/support.service'
+import { SupportService, LIVE_STATUSES } from '../services/support/support.service'
 import { ConversationNotFoundError, StaleConversationError } from '../services/support/errors'
 
 const NOW = new Date('2026-08-22T10:00:00.000Z')
@@ -692,8 +692,9 @@ import {
 const HISTORY_LIMIT = 100
 
 /** Statuses that count as "live" — exactly the set the partial unique index
- *  covers, so this constant and the migration must not drift apart. */
-const LIVE_STATUSES = ['BOT', 'OPEN', 'ASSIGNED'] as const
+ *  covers, so this constant and the migration must not drift apart. Exported so
+ *  tests assert against it rather than against a second copy of the same list. */
+export const LIVE_STATUSES = ['BOT', 'OPEN', 'ASSIGNED'] as const
 
 export interface AddMessageInput {
     conversationId: string
@@ -1281,12 +1282,16 @@ describe('SupportService.listQueue', () => {
         expect(call.where).toEqual({ status: 'ASSIGNED', assignedToId: 'clerk-1' })
     })
 
-    it('all filter excludes resolved threads', async () => {
+    it('all filter covers exactly the live statuses, sourced from LIVE_STATUSES', async () => {
         ;(prisma.supportConversation.findMany as any).mockResolvedValue([])
         await SupportService.listQueue('all', 'clerk-1')
 
         const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
-        expect(call.where).toEqual({ status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } })
+        // Asserted against the constant, not a copy of it. The DB's partial unique
+        // index is `WHERE status <> 'RESOLVED'`; if this filter kept its own literal
+        // list, adding a status would silently drop it from the "all" queue.
+        expect(call.where).toEqual({ status: { in: LIVE_STATUSES } })
+        expect(LIVE_STATUSES).not.toContain('RESOLVED')
     })
 
     it('maps a row into a queue item with a preview and unread count', async () => {
@@ -1362,7 +1367,7 @@ Add `SupportQueueItem` to the type import at the top of `support.service.ts`, th
                   ? { status: 'ASSIGNED', assignedToId: agentId }
                   : filter === 'resolved'
                     ? { status: 'RESOLVED' }
-                    : { status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } }
+                    : { status: { in: LIVE_STATUSES } }
 
         const rows = await prisma.supportConversation.findMany({
             where: where as never,
