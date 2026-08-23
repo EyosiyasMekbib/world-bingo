@@ -5,6 +5,7 @@ import {
   ServerToClientEvents,
   InterServerEvents,
   SocketData,
+  NotificationType,
 } from '@world-bingo/shared-types'
 import { jwtPublicKey } from '../lib/jwt-keys.js'
 import { SupportService } from '../services/support/support.service.js'
@@ -171,7 +172,7 @@ export function registerSupportHandlers(io: any) {
           if (listeners.length === 0) {
             await NotificationService.create(
               conversation.userId,
-              'SUPPORT_REPLY' as never,
+              NotificationType.SUPPORT_REPLY,
               'Support replied',
               message.body.slice(0, 140),
               { conversationId },
