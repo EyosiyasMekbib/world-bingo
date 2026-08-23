@@ -46,6 +46,7 @@ import adminPredictionRoutes from './routes/admin/prediction/index.js'
 import './@types/fastify.d.ts'
 import { registerGameHandlers } from './gateways/game.gateway'
 import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
+import { registerSupportHandlers } from './gateways/support.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 
 // Import workers so they auto-start with the server process
@@ -367,6 +368,7 @@ try {
     // Without this nothing can join `prediction:<marketId>`, so every book,
     // trade and status broadcast would be emitted into an empty room.
     registerPredictionHandlers(io)
+    registerSupportHandlers(io)
 
     await server.listen({ port, host })
 
