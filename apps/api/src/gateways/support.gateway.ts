@@ -15,6 +15,7 @@ import { SupportContact } from '../services/support/support-contact.js'
 import { SupportError } from '../services/support/errors.js'
 import { NotificationService } from '../services/notification.service.js'
 import { isSafeAttachmentUrl } from '../services/support/attachment-url.js'
+import { writeSupportAudit } from '../services/support/support-audit.js'
 
 type SupportSocket = Socket<
   ClientToServerEvents,
@@ -227,6 +228,7 @@ export function registerSupportHandlers(io: any) {
       if (!who) return
       try {
         const conversation = await SupportService.claim(conversationId, who.userId)
+        await writeSupportAudit(who.userId, 'support.claim', conversationId)
         socket.join(convRoom(conversationId))
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
@@ -244,6 +246,9 @@ export function registerSupportHandlers(io: any) {
           who.userId,
           ADMIN_ROLES.has(who.role),
         )
+        await writeSupportAudit(who.userId, 'support.release', conversationId, {
+          forced: ADMIN_ROLES.has(who.role),
+        })
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
       } catch (err) {
@@ -260,6 +265,7 @@ export function registerSupportHandlers(io: any) {
           who.userId,
           ADMIN_ROLES.has(who.role),
         )
+        await writeSupportAudit(who.userId, 'support.resolve', conversationId)
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
       } catch (err) {
