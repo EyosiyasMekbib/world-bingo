@@ -32,6 +32,7 @@ const allNavGroups = [
     label: 'Finance',
     adminOnly: false,
     items: [
+      { label: 'Support',      icon: 'i-heroicons:chat-bubble-left-right', to: '/support',  adminOnly: false },
       { label: 'Deposits',     icon: 'i-heroicons:arrow-down-tray',   to: '/deposits',     adminOnly: false },
       { label: 'Withdrawals',  icon: 'i-heroicons:arrow-up-tray',     to: '/withdrawals',  adminOnly: false },
       { label: 'Corrections',  icon: 'i-heroicons:wrench-screwdriver', to: '/corrections', adminOnly: false },
