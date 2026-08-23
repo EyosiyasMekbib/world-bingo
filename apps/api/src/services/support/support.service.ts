@@ -18,8 +18,9 @@ import {
 const HISTORY_LIMIT = 100
 
 /** Statuses that count as "live" — exactly the set the partial unique index
- *  covers, so this constant and the migration must not drift apart. */
-const LIVE_STATUSES = [
+ *  covers, so this constant and the migration must not drift apart. Exported so
+ *  tests assert against it rather than against a second copy of the same list. */
+export const LIVE_STATUSES = [
   'BOT',
   'OPEN',
   'ASSIGNED',
@@ -315,7 +316,7 @@ export class SupportService {
           ? { status: 'ASSIGNED', assignedToId: agentId }
           : filter === 'resolved'
             ? { status: 'RESOLVED' }
-            : { status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } }
+            : { status: { in: LIVE_STATUSES as unknown as PrismaSupportConversationStatus[] } }
 
     const rows = await prisma.supportConversation.findMany({
       where: where as never,

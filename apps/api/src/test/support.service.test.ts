@@ -20,7 +20,7 @@ vi.mock('../lib/prisma', () => ({
 }))
 
 import prisma from '../lib/prisma'
-import { SupportService } from '../services/support/support.service'
+import { SupportService, LIVE_STATUSES } from '../services/support/support.service'
 import { ConversationNotFoundError, StaleConversationError } from '../services/support/errors'
 
 const NOW = new Date('2026-08-22T10:00:00.000Z')
@@ -298,12 +298,16 @@ describe('SupportService.listQueue', () => {
     expect(call.where).toEqual({ status: 'ASSIGNED', assignedToId: 'clerk-1' })
   })
 
-  it('all filter excludes resolved threads', async () => {
+  it('all filter covers exactly the live statuses, sourced from LIVE_STATUSES', async () => {
     ;(prisma.supportConversation.findMany as any).mockResolvedValue([])
     await SupportService.listQueue('all', 'clerk-1')
 
     const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
-    expect(call.where).toEqual({ status: { in: ['BOT', 'OPEN', 'ASSIGNED'] } })
+    // Asserted against the constant, not a copy of it. The DB's partial unique
+    // index is `WHERE status <> 'RESOLVED'`; if this filter kept its own literal
+    // list, adding a status would silently drop it from the "all" queue.
+    expect(call.where).toEqual({ status: { in: LIVE_STATUSES } })
+    expect(LIVE_STATUSES).not.toContain('RESOLVED')
   })
 
   it('maps a row into a queue item with a preview and unread count', async () => {
@@ -333,6 +337,58 @@ describe('SupportService.listQueue', () => {
     expect(item.username).toBe('abebe')
     expect(item.lastMessagePreview.length).toBeLessThanOrEqual(80)
     expect(item.unreadForAgent).toBe(3)
+  })
+})
+
+describe('SupportService.getForAgent', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns history in ascending order, fetched newest-first under the hood', async () => {
+    // Same discipline as openForUser's equivalent test: getForAgent delegates to
+    // the private withHistory, which once shipped a bug returning the OLDEST 100
+    // messages instead of the newest. Assert both the query direction and the
+    // returned order — asserting only the orderBy argument would still pass if
+    // the .reverse() were removed.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(conversationRow())
+    ;(prisma.supportMessage.findMany as any).mockResolvedValue([
+      {
+        id: 'msg-3',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'third',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: new Date('2026-08-22T10:02:00.000Z'),
+      },
+      {
+        id: 'msg-2',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'second',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: new Date('2026-08-22T10:01:00.000Z'),
+      },
+      {
+        id: 'msg-1',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'first',
+        attachmentUrl: null,
+        attachmentMime: null,
+        createdAt: NOW,
+      },
+    ])
+
+    const result = await SupportService.getForAgent('conv-1')
+
+    expect(prisma.supportMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: 'desc' } }),
+    )
+    expect(result.messages.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3'])
   })
 })
 
