@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../../lib/prisma'
-import { SupportContact } from '../../services/support/support-contact'
+import { SupportContact, buildContactUpdates } from '../../services/support/support-contact'
 
 /** Default feature flags and game settings — seeded on first read if missing */
 const DEFAULTS: Record<string, string> = {
@@ -184,16 +184,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Admin: PUT /settings/support ────────────────────────────────────────
   fastify.put('/support', { preValidation: [fastify.requireAdmin] }, async (req) => {
-    const body = (req.body ?? {}) as {
-      support_phone?: string
-      support_telegram?: string
-      support_hours?: string
-    }
-    const updates: Record<string, string> = {}
-    if (body.support_phone !== undefined) updates.support_phone = String(body.support_phone).trim()
-    if (body.support_telegram !== undefined)
-      updates.support_telegram = String(body.support_telegram).trim()
-    if (body.support_hours !== undefined) updates.support_hours = String(body.support_hours).trim()
+    const updates = buildContactUpdates((req.body ?? {}) as Record<string, unknown>)
 
     for (const [key, value] of Object.entries(updates)) {
       await prisma.siteSetting.upsert({ where: { key }, update: { value }, create: { key, value } })
