@@ -192,9 +192,36 @@ const threadStatusVariant = (status: string) => {
         </div>
 
         <form class="compose" @submit.prevent="send">
-          <UInput v-model="draft" placeholder="Reply…" size="sm" class="compose-input" />
-          <UButton type="submit" color="primary" size="sm">Send</UButton>
+          <UInput
+            v-model="draft"
+            placeholder="Reply…"
+            size="sm"
+            class="compose-input"
+            :disabled="active.status === 'RESOLVED'"
+            :title="
+              active.status === 'RESOLVED'
+                ? 'Resolved conversations are read-only — claim or reopen from the queue first'
+                : undefined
+            "
+          />
+          <UButton
+            type="submit"
+            color="primary"
+            size="sm"
+            :disabled="active.status === 'RESOLVED'"
+            :title="
+              active.status === 'RESOLVED'
+                ? 'Resolved conversations are read-only — claim or reopen from the queue first'
+                : undefined
+            "
+          >
+            Send
+          </UButton>
         </form>
+        <p v-if="active.status === 'RESOLVED'" class="compose-hint">
+          This conversation is resolved, so replying here is disabled. A player message will
+          still reopen it automatically.
+        </p>
       </template>
 
       <p v-else class="empty">Pick a conversation from the queue.</p>
@@ -348,6 +375,12 @@ const threadStatusVariant = (status: string) => {
 }
 .compose-input {
   flex: 1;
+}
+.compose-hint {
+  margin: 0;
+  padding: 0 0.8rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
 }
 .empty {
   margin: auto;

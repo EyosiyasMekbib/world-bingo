@@ -128,6 +128,11 @@ export function registerSupportHandlers(io: any) {
         socket.join(convRoom(conversationId))
         await SupportService.markReadByAgent(conversationId)
         socket.emit('support:thread', thread)
+        // markReadByAgent just cleared this thread's unread count in the DB —
+        // every other staff handler broadcasts the queue after a mutation
+        // like this; without it every clerk's badge stays stale until some
+        // unrelated event fires.
+        await broadcastQueue(conversationId)
       } catch (err) {
         fail(socket, conversationId, err)
       }

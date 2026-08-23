@@ -1180,6 +1180,18 @@ enum SupportSenderRole {
   SYSTEM
 }
 
+/// One-live-conversation-per-player is enforced by a PARTIAL UNIQUE INDEX,
+/// support_conversations_one_live_per_user ON ("userId") WHERE status <>
+/// 'RESOLVED', hand-written as raw SQL at the end of migration
+/// 20260822000000_add_support_chat/migration.sql. Prisma cannot express a
+/// partial index in schema.prisma, so nothing below declares it — which
+/// means `prisma migrate dev` has NO IDEA it exists and will happily emit a
+/// DROP INDEX for it the next time this model's migration diff is
+/// generated, silently disabling the invariant this whole feature relies
+/// on (a double-tapped widget button creating two live threads, one of
+/// which is invisible to its own author). This is documentation only — do
+/// not attempt to express the partial index in Prisma. Any migration that
+/// touches support_conversations must re-add it by hand afterward.
 model SupportConversation {
   id           String                    @id @default(uuid())
   userId       String

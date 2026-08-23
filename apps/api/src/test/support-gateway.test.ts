@@ -170,6 +170,47 @@ describe('support.gateway', () => {
       )
       expect(SupportService.claim).not.toHaveBeenCalled()
     })
+
+    it('rejects support:watch from a PLAYER and never calls SupportService.getForAgent', async () => {
+      // support:watch hands over a player's FULL message history and is
+      // staff-only by design. Its siblings' guards are all tested; this one
+      // wasn't.
+      const { socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+
+      await socket.__handlers['support:watch']({ conversationId: 'conv-1' })
+
+      expect(socket.emit).toHaveBeenCalledWith(
+        'support:error',
+        expect.objectContaining({ code: 'SUPPORT_FORBIDDEN' }),
+      )
+      expect(SupportService.getForAgent).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('support:watch', () => {
+    it('broadcasts a queue update after marking the thread read, like every other staff handler', async () => {
+      // markReadByAgent() clears this thread's unread count in the DB. Every
+      // other staff handler (claim/release/resolve/send) calls
+      // broadcastQueue() after a mutation like that; support:watch used to
+      // skip it, leaving every clerk's badge stale until some unrelated
+      // event happened to fire.
+      ;(SupportService.getForAgent as any).mockResolvedValue({
+        conversation: { id: 'conv-1', status: 'ASSIGNED' },
+        messages: [],
+      })
+      ;(SupportService.markReadByAgent as any).mockResolvedValue(undefined)
+      ;(SupportService.unassignedCount as any).mockResolvedValue(2)
+
+      const { socket, io } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+      await socket.__handlers['support:watch']({ conversationId: 'conv-1' })
+
+      expect(SupportService.markReadByAgent).toHaveBeenCalledWith('conv-1')
+      expect(io.__toEmit).toHaveBeenCalledWith(
+        'support:agents',
+        'support:queue-update',
+        expect.objectContaining({ conversationId: 'conv-1', unassignedCount: 2 }),
+      )
+    })
   })
 
   describe('ownership enforcement', () => {

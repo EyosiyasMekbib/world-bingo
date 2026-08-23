@@ -215,6 +215,145 @@ describe('SupportService.addMessage', () => {
     expect(updateArg.data.assignedToId).toBeNull()
   })
 
+  it('reopens a RESOLVED thread to ASSIGNED when an AGENT replies and an assignee still holds it, preserving that assignee', async () => {
+    // The merge-blocker this guards: addMessage used to reopen only for
+    // senderRole === 'PLAYER'. An AGENT writing into a RESOLVED thread was
+    // persisted while the conversation stayed RESOLVED — which is not in
+    // LIVE_STATUSES, so the thread vanished from every queue filter and
+    // from openForUser. The player never saw the reply and no clerk could
+    // find the thread again.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-4',
+      conversationId: 'conv-1',
+      senderRole: 'AGENT',
+      senderId: 'clerk-1',
+      body: 'following up on this',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+    ;(prisma.supportConversation.update as any).mockResolvedValue(
+      conversationRow({ status: 'ASSIGNED', assignedToId: 'clerk-1', resolvedAt: null }),
+    )
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'AGENT',
+      senderId: 'clerk-1',
+      body: 'following up on this',
+    })
+
+    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    expect(updateArg.data.status).toBe('ASSIGNED')
+    expect(updateArg.data.resolvedAt).toBeNull()
+    // The assignee must be PRESERVED, not nulled — nulling it here would
+    // unassign the very clerk who just replied. "Preserved" means the field
+    // is left out of the update entirely, not re-set to its old value.
+    expect(updateArg.data).not.toHaveProperty('assignedToId')
+    // Whatever status this lands on must actually be visible again: RESOLVED
+    // is excluded from every queue filter, so the fix only counts if the
+    // resulting status is one listQueue's 'all'/'mine'/'unassigned' filters
+    // (built from LIVE_STATUSES) still match.
+    expect(LIVE_STATUSES).toContain(updateArg.data.status)
+  })
+
+  it('reopens a RESOLVED thread to OPEN (not ASSIGNED) when an AGENT replies and nobody is assigned', async () => {
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: null }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-5',
+      conversationId: 'conv-1',
+      senderRole: 'AGENT',
+      senderId: 'clerk-2',
+      body: 'reopening this for you',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+    ;(prisma.supportConversation.update as any).mockResolvedValue(
+      conversationRow({ status: 'OPEN', assignedToId: null, resolvedAt: null }),
+    )
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'AGENT',
+      senderId: 'clerk-2',
+      body: 'reopening this for you',
+    })
+
+    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    expect(updateArg.data.status).toBe('OPEN')
+    expect(updateArg.data.resolvedAt).toBeNull()
+    expect(updateArg.data).not.toHaveProperty('assignedToId')
+  })
+
+  it('an AGENT reopen is visible to listQueue afterward, unlike a thread left RESOLVED', async () => {
+    // Direct proof of "the thread is subsequently visible to listQueue":
+    // feed listQueue a row shaped exactly like what the AGENT-reopen update
+    // above produces (status ASSIGNED, assignedToId 'clerk-1') and confirm
+    // the 'mine' filter — which excludes RESOLVED by construction — returns
+    // it, where it would have found nothing had the thread stayed RESOLVED.
+    ;(prisma.supportConversation.findMany as any).mockResolvedValue([
+      {
+        ...conversationRow({ status: 'ASSIGNED', assignedToId: 'clerk-1' }),
+        user: { username: 'abebe' },
+        assignedTo: { username: 'clerk-1' },
+        messages: [
+          {
+            id: 'm-4',
+            conversationId: 'conv-1',
+            senderRole: 'AGENT',
+            senderId: 'clerk-1',
+            body: 'following up on this',
+            attachmentUrl: null,
+            attachmentMime: null,
+            createdAt: NOW,
+          },
+        ],
+        _count: { messages: 0 },
+      },
+    ])
+
+    const items = await SupportService.listQueue('mine', 'clerk-1')
+
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('conv-1')
+    expect(items[0].status).toBe('ASSIGNED')
+
+    const call = (prisma.supportConversation.findMany as any).mock.calls[0][0]
+    expect(call.where).toEqual({ status: 'ASSIGNED', assignedToId: 'clerk-1' })
+    expect(call.where.status).not.toBe('RESOLVED')
+  })
+
+  it('refuses an AGENT reopen when a newer live thread already exists for the player', async () => {
+    // Same StaleConversationError guard the player path has: agent-triggered
+    // reopen must still throw rather than crash on the DB's P2002 when a
+    // newer live thread for this user already exists.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
+    )
+    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(
+      conversationRow({ id: 'conv-newer' }),
+    )
+
+    await expect(
+      SupportService.addMessage({
+        conversationId: 'conv-1',
+        senderRole: 'AGENT',
+        senderId: 'clerk-1',
+        body: 'hi',
+      }),
+    ).rejects.toBeInstanceOf(StaleConversationError)
+
+    expect(prisma.supportMessage.create).not.toHaveBeenCalled()
+  })
+
   it('refuses to reopen a resolved thread when a newer live thread exists', async () => {
     // Reopening here would insert a second live row and trip the partial
     // unique index. Tell the client to re-open instead.
