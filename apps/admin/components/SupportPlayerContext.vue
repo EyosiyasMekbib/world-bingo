@@ -7,7 +7,14 @@ type SupportContext = Awaited<ReturnType<typeof api.getSupportContext>>
 const player = ref<SupportContext | null>(null)
 const loading = ref(false)
 
+// Monotonic request token. Without it, clicking thread A then quickly thread B
+// races the two fetches: if A resolves last it overwrites B's data while the
+// panel header says B, so one player's balance and deposits render under a
+// different player's conversation. Every late response is discarded.
+let requestSeq = 0
+
 const load = async () => {
+  const seq = ++requestSeq
   const userId = props.userId
   if (!userId) {
     player.value = null
@@ -17,11 +24,14 @@ const load = async () => {
   try {
     // Clerk-accessible endpoint. getPlayer() would 403 for a CLERK, and
     // clerks are exactly who staffs this inbox.
-    player.value = await api.getSupportContext(userId)
+    const result = await api.getSupportContext(userId)
+    if (seq !== requestSeq) return
+    player.value = result
   } catch {
+    if (seq !== requestSeq) return
     player.value = null
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 

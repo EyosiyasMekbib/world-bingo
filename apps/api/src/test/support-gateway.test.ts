@@ -258,6 +258,81 @@ describe('support.gateway', () => {
     })
   })
 
+  describe('attachmentUrl validation', () => {
+    beforeEach(() => {
+      ;(SupportRateLimit.checkMessage as any).mockResolvedValue(true)
+    })
+
+    it('rejects a javascript: attachmentUrl with SUPPORT_BAD_ATTACHMENT and never calls addMessage', async () => {
+      const { socket } = await setup({ userId: 'clerk-1', role: 'CLERK' })
+
+      // attachmentUrl arrives on the raw socket payload — nothing forces the
+      // client to have gone through the upload route. The admin inbox
+      // renders it into an <a href>, so this must be rejected before the
+      // message is ever persisted or broadcast.
+      await socket.__handlers['support:send']({
+        conversationId: 'conv-1',
+        body: 'hi',
+        attachmentUrl: 'javascript:alert(1)',
+      })
+
+      expect(socket.emit).toHaveBeenCalledWith(
+        'support:error',
+        expect.objectContaining({ conversationId: 'conv-1', code: 'SUPPORT_BAD_ATTACHMENT' }),
+      )
+      expect(SupportService.addMessage).not.toHaveBeenCalled()
+    })
+
+    it('rejects javascript:/uploads/x.png — the string that defeats naive prefix matching', async () => {
+      const { socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+      ;(SupportService.assertPlayerOwns as any).mockResolvedValue(undefined)
+
+      await socket.__handlers['support:send']({
+        conversationId: 'conv-1',
+        body: 'hi',
+        attachmentUrl: 'javascript:/uploads/x.png',
+      })
+
+      expect(socket.emit).toHaveBeenCalledWith(
+        'support:error',
+        expect.objectContaining({ conversationId: 'conv-1', code: 'SUPPORT_BAD_ATTACHMENT' }),
+      )
+      expect(SupportService.addMessage).not.toHaveBeenCalled()
+    })
+
+    it('allows a real /uploads/ attachmentUrl through to addMessage', async () => {
+      ;(SupportService.assertPlayerOwns as any).mockResolvedValue(undefined)
+      ;(SupportService.addMessage as any).mockResolvedValue({
+        id: 'msg-1',
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'player-1',
+        body: 'receipt attached',
+        attachmentUrl: '/uploads/1234-abcd.png',
+        attachmentMime: 'image/png',
+        createdAt: new Date().toISOString(),
+      })
+      ;(SupportService.getById as any).mockResolvedValue({
+        id: 'conv-1',
+        userId: 'player-1',
+        status: 'OPEN',
+      })
+      ;(SupportService.unassignedCount as any).mockResolvedValue(0)
+
+      const { socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+      await socket.__handlers['support:send']({
+        conversationId: 'conv-1',
+        body: 'receipt attached',
+        attachmentUrl: '/uploads/1234-abcd.png',
+        attachmentMime: 'image/png',
+      })
+
+      expect(SupportService.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ attachmentUrl: '/uploads/1234-abcd.png' }),
+      )
+    })
+  })
+
   describe('offline notification on an agent reply', () => {
     beforeEach(() => {
       ;(SupportRateLimit.checkMessage as any).mockResolvedValue(true)

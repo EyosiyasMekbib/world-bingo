@@ -36,6 +36,23 @@ const send = () => {
   draft.value = ''
 }
 
+// Defence in depth. The real fix lives server-side (support.gateway.ts
+// rejects an unsafe attachmentUrl before it's ever persisted or broadcast),
+// but this renders whatever it's handed, so the same shape check runs again
+// here: `<a href>` executes a `javascript:` value on click, in this clerk's
+// authenticated admin session. Mirrors isSafeAttachmentUrl in
+// apps/api/src/services/support/attachment-url.ts.
+const isSafeAttachmentUrl = (url: string): boolean => {
+  if (!url) return false
+  if (url.startsWith('/uploads/')) return true
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 const threadStatusVariant = (status: string) => {
   switch (status) {
     case 'RESOLVED':
@@ -144,15 +161,26 @@ const threadStatusVariant = (status: string) => {
                  browser is authenticated to the admin app. -->
             <p v-if="message.body">{{ message.body }}</p>
             <!-- rel + referrerpolicy: a hostile attachment URL must not be able
-                 to learn this admin page's URL or open a same-tab redirect. -->
-            <a
-              v-if="message.attachmentUrl"
-              :href="message.attachmentUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img :src="message.attachmentUrl" alt="Attachment" referrerpolicy="no-referrer" />
-            </a>
+                 to learn this admin page's URL or open a same-tab redirect.
+                 The server already rejects a `javascript:`/`data:` attachmentUrl
+                 before persisting it, but this is the anchor that would execute
+                 one on click — only make it clickable when it re-checks safe. -->
+            <template v-if="message.attachmentUrl">
+              <a
+                v-if="isSafeAttachmentUrl(message.attachmentUrl)"
+                :href="message.attachmentUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img :src="message.attachmentUrl" alt="Attachment" referrerpolicy="no-referrer" />
+              </a>
+              <img
+                v-else
+                :src="message.attachmentUrl"
+                alt="Attachment"
+                referrerpolicy="no-referrer"
+              />
+            </template>
           </article>
         </div>
 

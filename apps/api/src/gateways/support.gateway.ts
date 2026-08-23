@@ -14,6 +14,7 @@ import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
 import { SupportError } from '../services/support/errors.js'
 import { NotificationService } from '../services/notification.service.js'
+import { isSafeAttachmentUrl } from '../services/support/attachment-url.js'
 
 type SupportSocket = Socket<
   ClientToServerEvents,
@@ -143,6 +144,21 @@ export function registerSupportHandlers(io: any) {
             conversationId,
             code: 'SUPPORT_RATE_LIMITED',
             message: 'Too many messages. Wait a moment.',
+          })
+          return
+        }
+
+        // attachmentUrl arrives on the raw socket payload. Nothing forces a
+        // client to have used the upload route — anyone who can open a socket
+        // can emit support:send with an arbitrary string. The admin inbox
+        // renders it into an <a href>, so a `javascript:` value would execute
+        // in a CLERK's authenticated session on click. Validate server-side:
+        // the client-side guard is defence in depth, this is the real fix.
+        if (attachmentUrl && !isSafeAttachmentUrl(attachmentUrl)) {
+          socket.emit('support:error', {
+            conversationId,
+            code: 'SUPPORT_BAD_ATTACHMENT',
+            message: 'Attachment rejected',
           })
           return
         }
