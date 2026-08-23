@@ -1698,10 +1698,14 @@ and add both routes inside `settingsRoutes`:
             support_telegram?: string
             support_hours?: string
         }
+        // `typeof === 'string'`, not `!== undefined`. The cast above is compile-time
+        // only, and JSON `null` is the usual way a client says "clear this field" —
+        // `String(null).trim()` would persist the literal text "null" and the public
+        // GET would then serve it to players as their support phone number.
         const updates: Record<string, string> = {}
-        if (body.support_phone !== undefined) updates.support_phone = String(body.support_phone).trim()
-        if (body.support_telegram !== undefined) updates.support_telegram = String(body.support_telegram).trim()
-        if (body.support_hours !== undefined) updates.support_hours = String(body.support_hours).trim()
+        if (typeof body.support_phone === 'string') updates.support_phone = body.support_phone.trim()
+        if (typeof body.support_telegram === 'string') updates.support_telegram = body.support_telegram.trim()
+        if (typeof body.support_hours === 'string') updates.support_hours = body.support_hours.trim()
 
         for (const [key, value] of Object.entries(updates)) {
             await prisma.siteSetting.upsert({ where: { key }, update: { value }, create: { key, value } })
