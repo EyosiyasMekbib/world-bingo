@@ -14,6 +14,7 @@ import { CashbackService } from '../../services/cashback.service'
 import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
+import { SupportService } from '../../services/support/support.service'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -211,6 +212,54 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             })
             NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
             return result
+        })
+
+        // ── Support inbox ───────────────────────────────────────────────────
+        f.get('/support/queue', async (req: any) => {
+            const filter = (req.query?.filter ?? 'unassigned') as
+                | 'unassigned'
+                | 'mine'
+                | 'all'
+                | 'resolved'
+            return SupportService.listQueue(filter, req.user.id)
+        })
+
+        // A support-scoped projection rather than reusing /admin/players/:id:
+        // that route lives in the requireAdmin scope and 403s for the clerks who
+        // actually answer support. Widening it would hand clerks the full player
+        // record; this returns only what the context panel renders.
+        f.get('/support/context/:userId', async (req: any, reply: any) => {
+            const userId = req.params.userId
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    serial: true,
+                    username: true,
+                    phone: true,
+                    isActive: true,
+                    createdAt: true,
+                    wallet: { select: { realBalance: true, bonusBalance: true } },
+                },
+            })
+            if (!user) return reply.status(404).send({ error: 'Player not found' })
+
+            const [deposits, withdrawals] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: { userId, type: 'DEPOSIT' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { id: true, amount: true, status: true, createdAt: true },
+                }),
+                prisma.transaction.findMany({
+                    where: { userId, type: 'WITHDRAWAL' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { id: true, amount: true, status: true, createdAt: true },
+                }),
+            ])
+
+            return { ...user, deposits, withdrawals }
         })
     })
 

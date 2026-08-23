@@ -512,6 +512,31 @@ export const useAdminApi = () => {
         toggleBonusRule: (id: string, isActive: boolean) =>
             apiFetch(`/admin/bonus-rules/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
         getBonusReconciliation: () => apiFetch<Array<{ userId: string; cachedBalance: number; lotSum: number }>>('/admin/bonus-reconciliation'),
+
+        // ── Support ───────────────────────────────────────────────────────
+        getSupportQueue: (filter: 'unassigned' | 'mine' | 'all' | 'resolved') =>
+            apiFetch<import('@world-bingo/shared-types').SupportQueueItem[]>(
+                `/admin/support/queue?filter=${filter}`,
+            ),
+        getSupportContext: (userId: string) =>
+            apiFetch<{
+                id: string
+                serial: number
+                username: string
+                phone: string
+                isActive: boolean
+                createdAt: string
+                wallet: { realBalance: string; bonusBalance: string } | null
+                deposits: Array<{ id: string; amount: string; status: string; createdAt: string }>
+                withdrawals: Array<{ id: string; amount: string; status: string; createdAt: string }>
+            }>(`/admin/support/context/${userId}`),
+        getSupportContact: () =>
+            apiFetch<import('@world-bingo/shared-types').SupportContactInfo>('/settings/support'),
+        updateSupportContact: (body: {
+            support_phone?: string
+            support_telegram?: string
+            support_hours?: string
+        }) => apiFetch('/settings/support', { method: 'PUT', body }),
     }
 }
 

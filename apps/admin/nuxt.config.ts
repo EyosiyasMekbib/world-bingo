@@ -58,6 +58,7 @@ export default defineNuxtConfig({
         apiBaseServer: 'http://localhost:8080',
         public: {
             apiBase: 'http://localhost:8080',
+            wsUrl: 'http://localhost:8080',
             // Sentry/GlitchTip — populated from NUXT_PUBLIC_SENTRY_* env vars (Nuxt auto-maps).
             // Empty dsn => Sentry stays inert (see sentry.client.config.ts / sentry.server.config.ts).
             sentry: {
