@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const ROOTS = [join(__dirname, '..', 'components', 'brand')]
+const ROOTS = [
+  join(__dirname, '..', 'components', 'brand'),
+  join(__dirname, '..', 'components', 'shells'),
+]
 const HEX = /#[0-9a-fA-F]{3,8}\b/
 const FONT_FAMILY = /font-family\s*:/i
 

@@ -1,0 +1,611 @@
+/* Arada shell + skin. Moved from the old layouts/default.vue scoped block and
+   prefixed with [data-theme='arada'] so a second theme does not have to
+   out-specify it. Structure for shared wb-* classes lives in components.css. */
+
+/* Keyboard users get nothing from :hover. One ring for every element. */
+[data-theme='arada'] :focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+[data-theme='arada'] .ab-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+[data-theme='arada'] .noscroll::-webkit-scrollbar {
+  display: none;
+}
+[data-theme='arada'] .noscroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* breakpoint matches the design's 860px swap */
+[data-theme='arada'] .ab-mobile {
+  display: none;
+}
+@media (max-width: 860px) {
+  [data-theme='arada'] .ab-desktop {
+    display: none !important;
+  }
+  [data-theme='arada'] .ab-mobile {
+    display: flex !important;
+  }
+}
+
+/* ── Header shell ── */
+[data-theme='arada'] .ab-header {
+  flex-direction: column;
+  background: var(--surface-raised);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+[data-theme='arada'] .ab-desktop {
+  display: flex;
+}
+
+/* ── Logo ── */
+[data-theme='arada'] .ab-logo {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  text-decoration: none;
+  flex: none;
+}
+[data-theme='arada'] .ab-logo-1, [data-theme='arada'] .ab-logo-2 {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+[data-theme='arada'] .ab-logo-1 {
+  color: var(--text-primary);
+}
+[data-theme='arada'] .ab-logo-2 {
+  color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-logo-sm .ab-logo-1, [data-theme='arada'] .ab-logo-sm .ab-logo-2 {
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Utility bar ── */
+[data-theme='arada'] .ab-util {
+  max-width: 1480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+[data-theme='arada'] .ab-spacer {
+  flex: 1;
+}
+[data-theme='arada'] .ab-search {
+  flex: 1;
+  max-width: 360px;
+  position: relative;
+  display: flex;
+}
+[data-theme='arada'] .ab-search input {
+  width: 100%;
+  height: 38px;
+  background: var(--surface-base);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 0 38px 0 14px;
+  outline: none;
+}
+[data-theme='arada'] .ab-search input:focus {
+  border-color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-search-ico {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-theme='arada'] .ab-search-ico svg {
+  width: 17px;
+  height: 17px;
+}
+[data-theme='arada'] .ab-balance {
+  text-align: right;
+  flex: none;
+  line-height: 1.2;
+}
+[data-theme='arada'] .ab-balance-amt {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-balance-amt span {
+  font-size: 11px;
+}
+[data-theme='arada'] .ab-balance-id {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Buttons ── */
+[data-theme='arada'] .ab-btn-primary {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  border: none;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 11px 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  text-decoration: none;
+  transition: box-shadow 0.12s, transform 0.12s, background 0.12s;
+}
+[data-theme='arada'] .ab-btn-primary:hover {
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+  transform: translateY(-1px);
+}
+[data-theme='arada'] .ab-btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+[data-theme='arada'] .ab-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+[data-theme='arada'] .ab-icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  background: var(--surface-base);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.12s, color 0.12s;
+}
+[data-theme='arada'] .ab-icon-btn:hover {
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+}
+[data-theme='arada'] .ab-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+[data-theme='arada'] .ab-account-round {
+  border-radius: 50%;
+}
+[data-theme='arada'] .ab-lang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+[data-theme='arada'] .ab-lang svg {
+  width: 16px;
+  height: 16px;
+}
+[data-theme='arada'] .ab-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ── Account dropdown ── */
+[data-theme='arada'] .ab-account {
+  position: relative;
+  flex: none;
+}
+[data-theme='arada'] .ab-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 168px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: var(--shadow-modal);
+  padding: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.15s;
+  z-index: 60;
+}
+[data-theme='arada'] .ab-account:hover .ab-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+[data-theme='arada'] .ab-menu hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 6px 4px;
+}
+[data-theme='arada'] .ab-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+[data-theme='arada'] .ab-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+[data-theme='arada'] .ab-menu-danger {
+  color: var(--status-error);
+}
+[data-theme='arada'] .ab-menu-danger:hover {
+  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  color: var(--status-error);
+}
+
+/* ── Primary nav ── */
+[data-theme='arada'] .ab-nav {
+  max-width: 1480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+[data-theme='arada'] .ab-nav-link {
+  position: relative;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 14px 18px;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+[data-theme='arada'] .ab-nav-link:hover {
+  color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-nav-active {
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-new {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ── Mobile header ── */
+[data-theme='arada'] .ab-mtop {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+[data-theme='arada'] .ab-micon {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+[data-theme='arada'] .ab-micon svg {
+  width: 22px;
+  height: 22px;
+}
+[data-theme='arada'] .ab-btn-sm {
+  font-size: 13px;
+  padding: 9px 14px;
+  letter-spacing: 0.4px;
+}
+[data-theme='arada'] .ab-balance-sm .ab-balance-amt {
+  font-size: 14px;
+}
+[data-theme='arada'] .ab-balance-sm .ab-balance-id {
+  font-size: 10px;
+}
+[data-theme='arada'] .ab-mnav {
+  display: flex;
+  overflow-x: auto;
+  background: color-mix(in srgb, var(--surface-raised) 80%, var(--surface-base));
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+[data-theme='arada'] .ab-mtab {
+  flex: none;
+  min-width: 84px;
+  padding: 10px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 3px solid transparent;
+}
+[data-theme='arada'] .ab-mtab svg {
+  width: 22px;
+  height: 22px;
+}
+[data-theme='arada'] .ab-mtab span {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+[data-theme='arada'] .ab-mtab-active {
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
+}
+
+/* ── Mobile drawer ── */
+[data-theme='arada'] .ab-drawer-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+[data-theme='arada'] .ab-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+[data-theme='arada'] .ab-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 82%;
+  max-width: 320px;
+  background: var(--surface-raised);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-modal);
+}
+[data-theme='arada'] .ab-drawer-head {
+  height: 60px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+[data-theme='arada'] .ab-drawer-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+[data-theme='arada'] .ab-drawer-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface-base);
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+[data-theme='arada'] .ab-drawer-balance strong {
+  color: var(--brand-primary);
+  font-size: 16px;
+}
+[data-theme='arada'] .ab-drawer-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+[data-theme='arada'] .ab-drawer-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+[data-theme='arada'] .ab-drawer-danger {
+  color: var(--status-error);
+  margin-top: 6px;
+}
+[data-theme='arada'] .ab-drawer-cta {
+  text-align: center;
+  margin-bottom: 6px;
+}
+[data-theme='arada'] .ab-drawer-enter {
+  animation: ab-fade 0.15s ease;
+}
+[data-theme='arada'] .ab-drawer-enter .ab-drawer {
+  animation: ab-slide 0.2s var(--wb-ease-out);
+}
+[data-theme='arada'] .ab-drawer-leave {
+  animation: ab-fade 0.12s ease reverse;
+}
+@keyframes ab-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ab-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ── Main ── */
+[data-theme='arada'] .ab-main {
+  flex: 1;
+}
+
+/* ── Footer ── */
+[data-theme='arada'] .ab-footer {
+  background: var(--surface-raised);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+[data-theme='arada'] .ab-footer-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 44px 28px 30px;
+}
+[data-theme='arada'] .ab-footer-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+[data-theme='arada'] .ab-footer-brand {
+  max-width: 300px;
+}
+[data-theme='arada'] .ab-footer-brand .ab-logo {
+  margin-bottom: 14px;
+}
+[data-theme='arada'] .ab-footer-brand p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.6;
+}
+[data-theme='arada'] .ab-footer-cols {
+  display: flex;
+  gap: 56px;
+  flex-wrap: wrap;
+}
+[data-theme='arada'] .ab-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+[data-theme='arada'] .ab-footer-col h4 {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin-bottom: 4px;
+}
+[data-theme='arada'] .ab-footer-col a {
+  text-decoration: none;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.15s;
+}
+[data-theme='arada'] .ab-footer-col a:hover {
+  color: var(--brand-primary);
+}
+[data-theme='arada'] .ab-footer-bottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 34px;
+  padding-top: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+[data-theme='arada'] .ab-footer-bottom p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.6;
+  max-width: 760px;
+}
+[data-theme='arada'] .ab-18 {
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  flex: none;
+}
+
+/* ── Page transition ── */
+[data-theme='arada'] .page-fade-enter-active, [data-theme='arada'] .page-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+[data-theme='arada'] .page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+[data-theme='arada'] .page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
