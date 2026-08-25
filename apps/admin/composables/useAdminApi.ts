@@ -537,6 +537,28 @@ export const useAdminApi = () => {
             support_telegram?: string
             support_hours?: string
         }) => apiFetch('/settings/support', { method: 'PUT', body }),
+
+        // ── Branding ──────────────────────────────────────────────────────
+        // pages/settings/branding.vue has always destructured these four off
+        // useAdminApi, but they were never defined here, so every call threw
+        // "getBrand is not a function" and the page could not load or save.
+        getBrand: () =>
+            apiFetch<import('@world-bingo/shared-types').BrandConfig>('/brand'),
+        updateBrand: (body: import('@world-bingo/shared-types').BrandConfigUpdate) =>
+            apiFetch<import('@world-bingo/shared-types').BrandConfig>('/brand', {
+                method: 'PUT',
+                body,
+            }),
+        uploadBrandLogo: (file: File) => {
+            const form = new FormData()
+            form.append('file', file)
+            return apiFetch<{ url: string }>('/brand/logo', { method: 'POST', body: form })
+        },
+        uploadBrandFavicon: (file: File) => {
+            const form = new FormData()
+            form.append('file', file)
+            return apiFetch<{ url: string }>('/brand/favicon', { method: 'POST', body: form })
+        },
     }
 }
 

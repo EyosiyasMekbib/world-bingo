@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { BRAND_TOKEN_CSS_VARS, DEFAULT_BRAND, type BrandConfig, type BrandTokenKey } from '@world-bingo/shared-types'
+import {
+  BRAND_TOKEN_CSS_VARS,
+  DEFAULT_BRAND,
+  themes,
+  resolveTheme,
+  type BrandConfig,
+  type BrandTokenKey,
+  type ThemeId,
+} from '@world-bingo/shared-types'
 
 const { getBrand, updateBrand, uploadBrandLogo, uploadBrandFavicon } = useAdminApi()
 const toast = useToast()
@@ -12,8 +20,14 @@ const form = reactive({
   shortName: DEFAULT_BRAND.shortName,
   logoUrl: DEFAULT_BRAND.logoUrl as string | null,
   faviconUrl: DEFAULT_BRAND.faviconUrl as string | null,
+  themeId: DEFAULT_BRAND.themeId as ThemeId,
   tokens: { ...DEFAULT_BRAND.tokens },
 })
+
+/** Theme id as loaded from the server — used to detect an unsaved theme switch. */
+const savedThemeId = ref<ThemeId>(DEFAULT_BRAND.themeId as ThemeId)
+
+const themeOptions = Object.values(themes).map((t) => ({ label: t.name, value: t.id }))
 
 const GROUPS: { title: string; icon: string; match: (k: BrandTokenKey) => boolean }[] = [
   { title: 'Brand', icon: 'i-heroicons:swatch', match: (k) => k.startsWith('brand') },
@@ -42,6 +56,36 @@ function keysFor(group: (typeof GROUPS)[number]) {
 // Pre-compute group keys once (reactive computed would re-run; call once at setup)
 const groupKeys = GROUPS.map((g) => ({ group: g, keys: keysFor(g) }))
 
+/** The active theme's palette — the baseline every token is diffed against. */
+const themeDefaults = computed(() => resolveTheme(form.themeId).defaultTokens)
+
+/** Keys the admin has explicitly moved off the theme default. */
+const overriddenKeys = computed(() =>
+  tokenKeys.filter((k) => form.tokens[k] !== themeDefaults.value[k]),
+)
+
+// Mirrors the server: switching theme discards colour overrides.
+//
+// Guarded because this watcher is pre-flush, so it fires AFTER the synchronous
+// block in load() finishes. Without the flag it would run once on load and
+// overwrite the freshly-fetched overrides with bare theme defaults.
+let applyingServerState = false
+watch(
+  () => form.themeId,
+  (next) => {
+    if (applyingServerState) return
+    form.tokens = { ...resolveTheme(next).defaultTokens }
+  },
+)
+
+function resetToken(k: BrandTokenKey) {
+  form.tokens[k] = themeDefaults.value[k]
+}
+
+function resetAllTokens() {
+  form.tokens = { ...themeDefaults.value }
+}
+
 const previewStyle = computed(() =>
   Object.fromEntries(
     tokenKeys.flatMap((k) => BRAND_TOKEN_CSS_VARS[k].map((v) => [v, form.tokens[k]])),
@@ -56,7 +100,13 @@ async function load() {
     form.shortName = b.shortName
     form.logoUrl = b.logoUrl
     form.faviconUrl = b.faviconUrl
-    form.tokens = { ...DEFAULT_BRAND.tokens, ...b.tokens }
+    applyingServerState = true
+    form.themeId = b.themeId
+    savedThemeId.value = b.themeId
+    // b.tokens is already the theme palette with overrides applied server-side.
+    form.tokens = { ...resolveTheme(b.themeId).defaultTokens, ...b.tokens }
+    await nextTick()
+    applyingServerState = false
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load branding', color: 'error' })
   } finally {
@@ -91,14 +141,26 @@ async function onFavicon(e: Event) {
 async function save() {
   saving.value = true
   try {
+    // Send ONLY real overrides. Posting the full palette every save is what
+    // previously made a stored row mask whatever theme was active.
+    const sparseTokens = Object.fromEntries(
+      overriddenKeys.value.map((k) => [k, form.tokens[k]]),
+    ) as Partial<BrandConfig['tokens']>
+
     await updateBrand({
       displayName: form.displayName,
       shortName: form.shortName,
       logoUrl: form.logoUrl,
       faviconUrl: form.faviconUrl,
-      tokens: form.tokens,
+      themeId: form.themeId,
+      tokens: sparseTokens,
     })
-    toast.add({ title: 'Branding saved ✅', description: 'Reload the player app to see changes.', color: 'success' })
+    savedThemeId.value = form.themeId
+    toast.add({
+      title: 'Branding saved',
+      description: 'Reload the player app to see changes.',
+      color: 'success',
+    })
   } catch (err: any) {
     toast.add({ title: 'Save failed', description: err?.data?.error ?? 'Invalid values', color: 'error' })
   } finally {
@@ -122,6 +184,35 @@ onMounted(load)
     </div>
 
     <template v-else>
+      <!-- ── Theme ── -->
+      <div class="space-y-4">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <UIcon name="i-heroicons:paint-brush" class="w-5 h-5 text-yellow-500" />
+          Theme
+        </h2>
+
+        <div
+          class="rounded-2xl border border-(--surface-border) p-5 shadow-lg"
+          style="background: var(--surface-raised);"
+        >
+          <p class="text-sm font-bold text-white mb-1.5">Active theme</p>
+          <p class="text-xs text-white/40 mb-2 font-medium">
+            Controls typography, density and page layout in the player app, and supplies the default
+            colours below.
+          </p>
+          <USelect v-model="form.themeId" :items="themeOptions" class="w-full sm:w-64" />
+
+          <p
+            v-if="form.themeId !== savedThemeId"
+            class="text-xs mt-3 font-semibold"
+            style="color: var(--status-warning);"
+          >
+            Switching theme resets your colour overrides. Saving will apply
+            {{ themes[form.themeId].name }}'s palette.
+          </p>
+        </div>
+      </div>
+
       <!-- ── Identity ── -->
       <div class="space-y-4">
         <h2 class="text-base font-bold text-white flex items-center gap-2">
@@ -213,7 +304,16 @@ onMounted(load)
           >
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div v-for="k in keys" :key="k" class="flex flex-col gap-1.5">
-                <p class="text-xs font-semibold text-white/70">{{ k }}</p>
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-white/70">{{ k }}</p>
+                  <button
+                    v-if="form.tokens[k] !== themeDefaults[k]"
+                    class="text-[10px] font-bold uppercase tracking-wide text-yellow-500 hover:text-yellow-400"
+                    @click="resetToken(k)"
+                  >
+                    Reset
+                  </button>
+                </div>
                 <div class="flex items-center gap-2">
                   <!-- Color picker (hex only — rgba tokens will show black but text input is source of truth) -->
                   <input
@@ -301,7 +401,19 @@ onMounted(load)
       </div>
 
       <!-- ── Save ── -->
-      <div class="flex justify-end pt-2">
+      <div class="flex justify-end items-center gap-3 pt-2">
+        <span class="text-xs text-white/40 font-medium mr-auto">
+          {{ overriddenKeys.length }} colour override{{ overriddenKeys.length === 1 ? '' : 's' }}
+        </span>
+        <UButton
+          v-if="overriddenKeys.length > 0"
+          color="neutral"
+          variant="ghost"
+          icon="i-heroicons:arrow-uturn-left"
+          @click="resetAllTokens"
+        >
+          Reset colours to theme default
+        </UButton>
         <UButton
           color="primary"
           :loading="saving"
