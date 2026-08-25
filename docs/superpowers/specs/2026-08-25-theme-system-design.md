@@ -98,7 +98,7 @@ Type is Roboto Condensed, with bold delivered as a **separate face**
 
 `dash5.bet` carries hundreds of ad-hoc legacy custom properties (PrimeVue + Bootstrap + several
 generations of per-product prefixes). It is not a design system to copy literally. The values below
-are the identity distilled into our existing 29-key vocabulary.
+are the identity distilled into our existing 30-key vocabulary.
 
 | Token | Value |
 |---|---|
@@ -157,7 +157,7 @@ export interface ThemeDensity {
 export interface ThemeDefinition {
   id: ThemeId
   name: string                // admin dropdown label
-  defaultTokens: BrandTokens  // reuses the existing 29-key colour vocabulary
+  defaultTokens: BrandTokens  // reuses the existing 30-key colour vocabulary
   typography: ThemeTypography
   density: ThemeDensity
 }
