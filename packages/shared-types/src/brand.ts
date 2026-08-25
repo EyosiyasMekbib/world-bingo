@@ -1,4 +1,7 @@
 import { z } from 'zod'
+// Import from './themes/types', never './themes': the barrel pulls in arada.ts,
+// which imports DEFAULT_BRAND from this file. types.ts has no runtime imports.
+import { THEME_IDS } from './themes/types'
 
 // Accept hex (#rgb / #rrggbb / #rrggbbaa) or rgb()/rgba() strings.
 const colorValue = z
@@ -68,6 +71,7 @@ export const BrandConfigSchema = z
     shortName: z.string().min(1).max(30),
     logoUrl: assetUrl.nullable(),
     faviconUrl: assetUrl.nullable(),
+    themeId: z.enum(THEME_IDS).default('arada'),
     tokens: BrandTokensSchema,
   })
   .strict()
@@ -80,6 +84,7 @@ export const BrandConfigUpdateSchema = z
     shortName: z.string().min(1).max(30),
     logoUrl: assetUrl.nullable(),
     faviconUrl: assetUrl.nullable(),
+    themeId: z.enum(THEME_IDS),
     tokens: BrandTokensSchema.partial(),
   })
   .partial()
@@ -91,6 +96,7 @@ export const DEFAULT_BRAND: BrandConfig = {
   shortName: 'World',
   logoUrl: null,
   faviconUrl: null,
+  themeId: 'arada',
   tokens: {
     surfaceBase: '#0a0f1e',
     surfaceRaised: '#111827',

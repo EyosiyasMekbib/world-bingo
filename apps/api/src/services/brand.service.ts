@@ -4,26 +4,34 @@ import {
   BrandConfigUpdate,
   BrandConfigUpdateSchema,
   DEFAULT_BRAND,
+  resolveTheme,
 } from '@world-bingo/shared-types'
 
 const SINGLETON_ID = 'default'
 
-/** Deep-merge a stored row over DEFAULT_BRAND. Missing token keys fall back. */
+/**
+ * Merge a stored row over its theme's default palette. The stored `tokens` blob
+ * holds only the keys an admin explicitly overrode; everything else comes from
+ * the active theme.
+ */
 function mergeBrand(row: {
   displayName: string
   shortName: string
   logoUrl: string | null
   faviconUrl: string | null
+  themeId: string | null
   tokens: unknown
 } | null): BrandConfig {
   if (!row) return DEFAULT_BRAND
+  const theme = resolveTheme(row.themeId ?? undefined)
   const rowTokens = (row.tokens ?? {}) as Partial<BrandConfig['tokens']>
   return {
     displayName: row.displayName ?? DEFAULT_BRAND.displayName,
     shortName: row.shortName ?? DEFAULT_BRAND.shortName,
     logoUrl: row.logoUrl ?? DEFAULT_BRAND.logoUrl,
     faviconUrl: row.faviconUrl ?? DEFAULT_BRAND.faviconUrl,
-    tokens: { ...DEFAULT_BRAND.tokens, ...rowTokens },
+    themeId: theme.id,
+    tokens: { ...theme.defaultTokens, ...rowTokens },
   }
 }
 
@@ -44,15 +52,25 @@ export class BrandService {
 
     const existing = await prisma.brandSetting.findUnique({ where: { id: SINGLETON_ID } })
     const existingTokens = ((existing?.tokens ?? {}) as Record<string, string>) || {}
+    const existingThemeId = existing?.themeId ?? DEFAULT_BRAND.themeId
+    const nextThemeId = patch.themeId ?? existingThemeId
+
+    // Switching theme discards colour overrides — otherwise the previous theme's
+    // palette would fully mask the new one and the switch would be invisible.
+    // An explicit `tokens` payload in the same request wins over the reset.
+    const themeChanged = nextThemeId !== existingThemeId
     const mergedTokens = patch.tokens
-      ? { ...existingTokens, ...patch.tokens }
-      : existingTokens
+      ? { ...(themeChanged ? {} : existingTokens), ...patch.tokens }
+      : themeChanged
+        ? {}
+        : existingTokens
 
     const data = {
       displayName: patch.displayName ?? existing?.displayName ?? DEFAULT_BRAND.displayName,
       shortName: patch.shortName ?? existing?.shortName ?? DEFAULT_BRAND.shortName,
       logoUrl: patch.logoUrl !== undefined ? patch.logoUrl : existing?.logoUrl ?? null,
       faviconUrl: patch.faviconUrl !== undefined ? patch.faviconUrl : existing?.faviconUrl ?? null,
+      themeId: nextThemeId,
       tokens: mergedTokens,
     }
 
