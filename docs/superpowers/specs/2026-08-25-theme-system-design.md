@@ -299,17 +299,22 @@ Both files load unconditionally; the `data-theme` attribute on `<html>` selects 
 SSR-rendered by `useHead`, so there is no flash — including on the `ssr: false` routes, where a
 dynamic `import()` would have flashed. Cost is a few KB of unused CSS.
 
-Specificity: `themeToCssVars` emits at plain `:root`. Brand colours keep their existing `:root:root`
-block and so continue to win over both the static token CSS and the theme block. The two do not
-compete — themes never emit colour tokens, brand never emits typography or density.
+Specificity: `themeToCssVars` emits at **`:root:root`**, the same 0,2,0 the brand block already uses.
+Plain `:root` would not be enough — `packages/ui/src/theme/tokens.base.css` defines `--radius-sm/md/lg`
+at `:root`, and a theme must outrank it deterministically rather than depending on stylesheet order.
+The two `:root:root` blocks do not compete: themes never emit colour tokens, brand never emits
+typography or density. The plugin injects theme first, brand second.
 
 ---
 
 ## 7. Migration & backward compatibility
 
 - Existing `BrandSetting` singletons keep their full token set and receive `themeId = 'arada'`.
-- `arada.defaultTokens` is `DEFAULT_BRAND.tokens` verbatim, so the merged output is **byte-identical**
-  to today for every existing deployment. No visual change on deploy.
+- `arada.defaultTokens` is `DEFAULT_BRAND.tokens` verbatim, so the merged **colour** output is
+  byte-identical to today for every existing deployment.
+- Typography is the deliberate exception. Fixing Defect B means `arada` starts defining `--font-ui`
+  and loading Oswald / Barlow Condensed / Inter, so text that silently rendered in Space Grotesk will
+  change. That is the bug being fixed, not a regression.
 - The stored `tokens` column changes semantics from "complete palette" to "sparse overrides". Existing
   rows remain valid — a complete set is simply a sparse set that happens to cover every key.
 - **Accepted trade-off:** a retinted deployment (e.g. betbawa) that switches to `dash5` loses its
