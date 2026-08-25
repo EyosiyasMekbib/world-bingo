@@ -1181,8 +1181,10 @@ modals live in the dispatcher.
 
 **Interfaces:**
 - Consumes: `useAuthStore` from `~/store/auth`, `useSocket`, `useFeatureFlags`, `useSupport`
-- Produces: `formatBalance(realBalance, bonusBalance): string`, and `useAppShell()` returning
-  `{ auth, locale, showDeposit, showWithdrawal, mobileNavOpen, search, predictionsEnabled, referralsEnabled, formattedBalance, playerId, toggleLocale, submitSearch, handleLogout, openChat }`
+- Produces:
+  - `formatBalance(realBalance, bonusBalance): string`
+  - `useAppShell()` returning `{ auth, locale, showDeposit, showWithdrawal, mobileNavOpen, search, predictionsEnabled, referralsEnabled, formattedBalance, playerId, toggleLocale, submitSearch, handleLogout, openChat }` — **side-effect free**, safe to call from any number of components
+  - `useShellBootstrap(): void` — the mount effects, called **exactly once**, by the layout dispatcher only
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1243,11 +1245,14 @@ export function formatBalance(realBalance: Money, bonusBalance: Money): string {
 /**
  * Shared chrome state for the layout shells. Every theme's shell renders the
  * same data through this composable, so adding a theme never duplicates wiring.
+ *
+ * Deliberately side-effect free: the layout dispatcher AND the active shell both
+ * call this, so registering onMounted here would fire every effect twice. Mount
+ * effects live in useShellBootstrap, which the dispatcher calls exactly once.
  */
 export function useAppShell() {
   const auth = useAuthStore()
   const router = useRouter()
-  const { connect } = useSocket()
   const { locale, setLocale } = useI18n()
   const { referralsEnabled, flags } = useFeatureFlags()
   const { openChat } = useSupport()
@@ -1280,20 +1285,6 @@ export function useAppShell() {
     await router.push('/auth/login')
   }
 
-  onMounted(async () => {
-    if (auth.isAuthenticated) {
-      await auth.fetchWallet()
-      connect()
-    }
-  })
-
-  watch(
-    () => auth.isAuthenticated,
-    (val) => {
-      if (val) connect()
-    },
-  )
-
   return {
     auth,
     locale,
@@ -1310,6 +1301,32 @@ export function useAppShell() {
     handleLogout,
     openChat,
   }
+}
+
+/**
+ * Mount-time side effects for the shell. Call this from the layout dispatcher
+ * and nowhere else — useAppShell is called by both the dispatcher and the active
+ * shell, so anything registered there would run twice and fire a duplicate
+ * fetchWallet on every page load. (connect() self-guards on an open socket;
+ * fetchWallet does not.)
+ */
+export function useShellBootstrap() {
+  const auth = useAuthStore()
+  const { connect } = useSocket()
+
+  onMounted(async () => {
+    if (auth.isAuthenticated) {
+      await auth.fetchWallet()
+      connect()
+    }
+  })
+
+  watch(
+    () => auth.isAuthenticated,
+    (val) => {
+      if (val) connect()
+    },
+  )
 }
 ```
 
@@ -1486,6 +1503,9 @@ import { shells, pickShell } from '~/theme/shells'
 const route = useRoute()
 const brand = useBrand()
 const { auth, showDeposit, showWithdrawal } = useAppShell()
+
+// Exactly one caller, by contract — see the comment on useShellBootstrap.
+useShellBootstrap()
 
 const shell = computed(() =>
   pickShell(shells, resolveTheme(brand.value.themeId).id, route.meta.shell),
@@ -2153,6 +2173,7 @@ Full-bleed, rail-free shell for the games grid — dash5's second layout.
 - Modify: `apps/web/assets/css/themes/dash5.css`
 - Modify: `apps/web/theme/shells.ts`
 - Modify: `apps/web/pages/games/index.vue`, `apps/web/pages/games/[category].vue`
+- Note: Task 11 adds `apps/web/test/page-shells.test.ts`, which asserts these declarations exist
 
 **Interfaces:**
 - Consumes: `useAppShell` (Task 6); `shells` registry (Task 7)
@@ -2285,16 +2306,55 @@ shell delegates to its rails shell since arada has no rails."
 ### Task 11: End-to-end coverage
 
 **Files:**
+- Create: `apps/web/test/page-shells.test.ts`
 - Create: `apps/web/e2e/theme.spec.ts`
 
 **Interfaces:**
 - Consumes: everything above
 - Produces: nothing
 
-- [ ] **Step 1: Write the spec**
+- [ ] **Step 1: Guard the page-meta declarations**
 
-Create `apps/web/e2e/theme.spec.ts`. The brand payload is stubbed at the network layer so the test
-does not need a seeded database.
+`page.route` cannot stub the brand on an SSR route: `00.brand.ts` fetches `/brand` inside Nitro and
+serializes the result into the payload, and the client-side `loaded` guard stops it refetching.
+`/` is `ssr: false` (see `routeRules` in `nuxt.config.ts`) so stubbing works there, but `/games`
+is not, so the wide shell cannot be asserted from a stubbed e2e run.
+
+Cover it with a filesystem guard instead — the same technique
+`apps/web/test/no-hardcoded-theme.test.ts` already uses. Create
+`apps/web/test/page-shells.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const PAGES = join(__dirname, '..', 'pages')
+
+describe('page shell declarations', () => {
+  it.each(['games/index.vue', 'games/[category].vue'])(
+    '%s opts into the wide shell',
+    (rel) => {
+      const src = readFileSync(join(PAGES, rel), 'utf8')
+      expect(src).toMatch(/definePageMeta\(\s*\{[^}]*shell:\s*'wide'/)
+    },
+  )
+})
+```
+
+Run: `pnpm --filter @world-bingo/web test -- page-shells`
+Expected: PASS (Task 10 added the declarations).
+
+- [ ] **Step 2: Write the spec**
+
+Create `apps/web/e2e/theme.spec.ts`. Every test targets `/`, which is `ssr: false`, so the brand
+fetch happens in the browser and `page.route` can stub it — no seeded database required.
+
+> **Known repo issue, not introduced here:** `playwright.config.ts` sets `baseURL` and
+> `webServer.url` to `http://localhost:3000`, but `pnpm --filter @world-bingo/web dev` serves on
+> **3002**. Every existing e2e spec has the same mismatch. Use relative `page.goto('/')` so this
+> spec picks up whatever `baseURL` resolves to, and run with
+> `BASE_URL=http://localhost:3002` until the config is corrected separately.
 
 ```ts
 import { test, expect } from '@playwright/test'
@@ -2335,14 +2395,6 @@ test.describe('theme system', () => {
     await expect(page.locator('.d5-aside')).toBeVisible()
   })
 
-  test('dash5 drops the rails on the wide shell', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await stubBrand(page, 'dash5')
-    await page.goto('/games')
-    await expect(page.locator('.d5-wide')).toBeVisible()
-    await expect(page.locator('.d5-rail')).toHaveCount(0)
-  })
-
   test('dash5 collapses to one column on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await stubBrand(page, 'dash5')
@@ -2372,17 +2424,17 @@ test.describe('theme system', () => {
 })
 ```
 
-- [ ] **Step 2: Run the spec**
+- [ ] **Step 3: Run the spec**
 
-Run: `pnpm --filter @world-bingo/web test:e2e -- theme.spec.ts`
-Expected: 5 passed.
+Run: `BASE_URL=http://localhost:3002 pnpm --filter @world-bingo/web test:e2e -- theme.spec.ts`
+Expected: 4 passed.
 
-- [ ] **Step 3: Run the full suite**
+- [ ] **Step 4: Run the full suite**
 
 Run: `pnpm --filter @world-bingo/shared-types test && pnpm --filter @world-bingo/api test && pnpm --filter @world-bingo/web test`
 Expected: all PASS. Read the per-file output for `apps/web` rather than trusting the exit code.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add apps/web/e2e/theme.spec.ts
@@ -2398,7 +2450,7 @@ Stubs GET /brand so the specs run without a seeded database."
 - `pnpm build` succeeds across the monorepo
 - `pnpm --filter @world-bingo/shared-types test`, `--filter @world-bingo/api test`,
   `--filter @world-bingo/web test` all pass
-- `pnpm --filter @world-bingo/web test:e2e -- theme.spec.ts` passes
+- `BASE_URL=http://localhost:3002 pnpm --filter @world-bingo/web test:e2e -- theme.spec.ts` passes
 - An existing deployment upgraded with no admin action renders **identically** in colour to before —
   `themeId` defaults to `arada` and `arada.defaultTokens` is `DEFAULT_BRAND.tokens`
 - `--font-ui` resolves to a real family in `apps/web` (Defect B closed)
