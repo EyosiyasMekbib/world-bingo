@@ -21,6 +21,7 @@ describe('theme registry', () => {
 
   it('keeps arada identical to the shipped brand defaults', () => {
     expect(themes.arada.defaultTokens).toEqual(DEFAULT_BRAND.tokens)
+    expect(themes.arada.defaultTokens).toBe(DEFAULT_BRAND.tokens)
   })
 
   it('gives dash5 its own palette', () => {
