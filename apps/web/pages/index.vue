@@ -113,8 +113,6 @@ interface HeroSlide {
    * Drop the files in apps/web/public/ads/hero/.
    */
   image?: { desktop: string; mobile?: string; alt: string }
-  /** External destination. Takes precedence over `action` when set. */
-  href?: string
   /* Coded slide. Required unless `image` is set. */
   badge?: string
   title?: string
@@ -164,11 +162,10 @@ const IMAGE_SLIDES: HeroSlide[] = [
     image: { desktop: '/ads/hero/sport-cashback.webp', alt: '1000% Cashback in Sport' },
   },
   {
-    id: 'join-bot',
-    cta: 'Open Telegram',
-    action: 'promotions',
-    href: 'https://t.me/dash_et_bot',
-    image: { desktop: '/ads/hero/join-bot.webp', alt: 'Join the Telegram bot @dash_et_bot' },
+    id: 'we-are-back',
+    cta: 'Play Now',
+    action: 'games',
+    image: { desktop: '/ads/hero/we-are-back.webp', alt: 'We are back — dash1.games' },
   },
 ]
 
@@ -276,12 +273,6 @@ function onTouchEnd(e: TouchEvent) {
 }
 
 function heroAction(slide: HeroSlide) {
-  // External artwork destinations open in a new tab; noopener so the target
-  // cannot reach back into this window.
-  if (slide.href) {
-    window.open(slide.href, '_blank', 'noopener,noreferrer')
-    return
-  }
   const action = slide.action
   if (action === 'predictions') {
     track('hero_predictions_click')
