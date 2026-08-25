@@ -104,14 +104,22 @@ const winners = computed(() => WINNERS[activeWinnerTab.value] ?? [])
 /* ── Hero carousel (coded slides) ───────────────────────────────────────── */
 interface HeroSlide {
   id: string
-  badge: string
-  title: string
-  sub: string
   cta: string
-  watermark: string
-  gradient: string
-  accent: string
-  action: 'games' | 'rooms' | 'deposit' | 'predictions'
+  action: 'games' | 'rooms' | 'deposit' | 'predictions' | 'promotions'
+  /**
+   * Artwork slide. When set, the banner renders full-bleed and the coded
+   * fields below are ignored — these designs carry their own typography, so
+   * overlaying our text on them would double up.
+   * Drop the files in apps/web/public/ads/hero/.
+   */
+  image?: { desktop: string; mobile: string; alt: string }
+  /* Coded slide. Required unless `image` is set. */
+  badge?: string
+  title?: string
+  sub?: string
+  watermark?: string
+  gradient?: string
+  accent?: string
 }
 
 /**
@@ -134,6 +142,34 @@ const PREDICTION_SLIDE: HeroSlide = {
   accent: '#fb7185',
   action: 'predictions',
 }
+
+/**
+ * Artwork banners. The images are the whole slide — no gradient, no overlay.
+ * Sized ~2.47:1; the mobile crop is a separate file so the subject is not
+ * squeezed on a narrow viewport.
+ */
+const IMAGE_SLIDES: HeroSlide[] = [
+  {
+    id: 'multi-bonus',
+    cta: 'Claim Bonus',
+    action: 'deposit',
+    image: {
+      desktop: '/ads/hero/multi-bonus-desktop.jpg',
+      mobile: '/ads/hero/multi-bonus-mobile.jpg',
+      alt: '500% Multi Bonus',
+    },
+  },
+  {
+    id: 'sport-cashback',
+    cta: 'See Promotions',
+    action: 'promotions',
+    image: {
+      desktop: '/ads/hero/sport-cashback-desktop.jpg',
+      mobile: '/ads/hero/sport-cashback-mobile.jpg',
+      alt: '1000% Cashback in Sport',
+    },
+  },
+]
 
 const BASE_SLIDES: HeroSlide[] = [
   {
@@ -176,9 +212,22 @@ const BASE_SLIDES: HeroSlide[] = [
  * platform and the only one with a deadline, so it earns the first impression
  * over an evergreen bonus offer.
  */
-const heroSlides = computed<HeroSlide[]>(() =>
-  predictionsEnabled.value ? [PREDICTION_SLIDE, ...BASE_SLIDES] : BASE_SLIDES,
-)
+/**
+ * Artwork slides whose file failed to load. A missing or misnamed upload must
+ * not leave a broken image sitting in the first slot of the hero, so the slide
+ * drops out of rotation instead — the coded slides always remain.
+ */
+const brokenSlides = ref(new Set<string>())
+function onSlideImageError(id: string) {
+  brokenSlides.value = new Set(brokenSlides.value).add(id)
+}
+
+const heroSlides = computed<HeroSlide[]>(() => {
+  const art = IMAGE_SLIDES.filter((s) => !brokenSlides.value.has(s.id))
+  return predictionsEnabled.value
+    ? [...art, PREDICTION_SLIDE, ...BASE_SLIDES]
+    : [...art, ...BASE_SLIDES]
+})
 
 const currentSlide = ref(0)
 
@@ -232,6 +281,8 @@ function heroAction(action: HeroSlide['action']) {
   } else if (action === 'rooms') {
     document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
     selectCategory('BINGO')
+  } else if (action === 'promotions') {
+    navigateTo('/promotions')
   } else if (action === 'deposit') {
     if (!auth.isAuthenticated) showAuthPrompt.value = true
     else navigateTo('/wallet')
@@ -559,20 +610,41 @@ onUnmounted(() => {
     <section class="max-wrap">
       <div
         class="hero"
-        :style="{ background: activeSlide.gradient }"
+        :class="{ 'hero--image': !!activeSlide.image }"
+        :style="activeSlide.gradient ? { background: activeSlide.gradient } : undefined"
         @touchstart.passive="onTouchStart"
         @touchend.passive="onTouchEnd"
       >
-        <div :key="activeSlide.id" class="hero-content">
-          <span class="hero-badge">{{ activeSlide.badge }}</span>
-          <h1 class="hero-title">{{ activeSlide.title }}</h1>
-          <p class="hero-sub">{{ activeSlide.sub }}</p>
-          <button class="hero-cta" @click="heroAction(activeSlide.action)">{{ activeSlide.cta }}</button>
-        </div>
+        <!-- Artwork slide. No `type` sources: the banner is whatever format was
+             dropped in, and a 404 on a typed <source> does not fall back. -->
+        <template v-if="activeSlide.image">
+          <picture :key="activeSlide.id" class="hero-img">
+            <source media="(max-width: 767px)" :srcset="activeSlide.image.mobile" />
+            <img
+              :src="activeSlide.image.desktop"
+              :alt="activeSlide.image.alt"
+              @error="onSlideImageError(activeSlide.id)"
+            />
+          </picture>
+          <button
+            class="hero-img-hit"
+            :aria-label="activeSlide.cta"
+            @click="heroAction(activeSlide.action)"
+          />
+        </template>
 
-        <div class="hero-watermark" :style="{ color: activeSlide.accent }" aria-hidden="true">
-          {{ activeSlide.watermark }}
-        </div>
+        <template v-else>
+          <div :key="activeSlide.id" class="hero-content">
+            <span class="hero-badge">{{ activeSlide.badge }}</span>
+            <h1 class="hero-title">{{ activeSlide.title }}</h1>
+            <p class="hero-sub">{{ activeSlide.sub }}</p>
+            <button class="hero-cta" @click="heroAction(activeSlide.action)">{{ activeSlide.cta }}</button>
+          </div>
+
+          <div class="hero-watermark" :style="{ color: activeSlide.accent }" aria-hidden="true">
+            {{ activeSlide.watermark }}
+          </div>
+        </template>
 
         <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
@@ -804,6 +876,36 @@ onUnmounted(() => {
   color: #fff;
   isolation: isolate;
 }
+.hero--image {
+  padding: 0;
+  min-height: 0;
+  background: var(--surface-raised);
+}
+/* The artwork owns the box; no overlay wash over someone's finished design. */
+.hero--image::after { content: none; }
+
+.hero-img {
+  display: block;
+  width: 100%;
+  animation: hero-in 0.4s ease both;
+}
+.hero-img img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* Whole banner is the click target. Sits under the arrows and dots. */
+.hero-img-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.hero-arrow, .hero-dots { z-index: 3; }
+
 .hero::after {
   content: '';
   position: absolute;
