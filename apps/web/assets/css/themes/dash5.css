@@ -1,0 +1,247 @@
+/* Dash skin. Structure lives in components.css; typography and density tokens
+   come from themeToCssVars (packages/shared-types/src/themes). Literal colours
+   here are theme constants with no token equivalent — do not "fix" them to
+   tokens, and do not desaturate them: this theme reproduces a reference. */
+
+[data-theme='dash5'] .d5-shell {
+  /* dvh, not vh — vh jumps when iOS Safari collapses its URL bar. */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Keyboard users get nothing from :hover. One ring for every element. */
+[data-theme='dash5'] :focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+/* ── Utility bar ── */
+[data-theme='dash5'] .d5-util {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: var(--util-h);
+  padding: 0 25px;
+  background: var(--surface-raised);
+}
+[data-theme='dash5'] .d5-logo { display: inline-flex; align-items: center; }
+
+[data-theme='dash5'] .d5-search {
+  flex: 1;
+  max-width: 320px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  background: #02191e;
+  border-radius: var(--radius-sm);
+}
+[data-theme='dash5'] .d5-search-input {
+  flex: 1;
+  min-width: 0;
+  height: var(--input-h);
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  outline: none;
+}
+[data-theme='dash5'] .d5-search-btn {
+  flex: none;
+  width: 32px;
+  height: var(--input-h);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+[data-theme='dash5'] .d5-search-btn svg { width: 16px; height: 16px; }
+
+[data-theme='dash5'] .d5-util-end { display: flex; align-items: center; gap: 10px; }
+[data-theme='dash5'] .d5-balance { display: flex; flex-direction: column; line-height: 1.15; }
+[data-theme='dash5'] .d5-balance strong {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--brand-primary);
+  /* Digits stop jittering as the balance updates. */
+  font-variant-numeric: tabular-nums;
+}
+[data-theme='dash5'] .d5-balance small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='dash5'] .d5-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s, filter 0.12s;
+}
+[data-theme='dash5'] .d5-btn--primary {
+  background: linear-gradient(var(--brand-primary-dim), #1b4334);
+  color: var(--text-primary);
+}
+[data-theme='dash5'] .d5-btn--ghost {
+  background: transparent;
+  border: var(--border-w) solid var(--surface-border);
+  color: var(--text-primary);
+}
+[data-theme='dash5'] .d5-btn:hover { filter: brightness(1.08); }
+/* Tactile press. transform only — never a layout property. */
+[data-theme='dash5'] .d5-btn:active { transform: scale(0.98); }
+
+[data-theme='dash5'] .d5-lang {
+  height: var(--control-h);
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* ── Nav strip ── */
+[data-theme='dash5'] .d5-nav {
+  display: flex;
+  align-items: stretch;
+  height: var(--nav-h);
+  padding: 0 25px;
+  background: linear-gradient(var(--surface-raised), #0f5149);
+  overflow-x: auto;
+}
+[data-theme='dash5'] .d5-burger {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+[data-theme='dash5'] .d5-burger svg { width: 20px; height: 20px; }
+[data-theme='dash5'] .d5-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+[data-theme='dash5'] .d5-nav-link:hover { background: rgba(255, 255, 255, 0.06); }
+[data-theme='dash5'] .d5-nav-active {
+  background: var(--surface-base);
+  color: var(--brand-primary);
+}
+
+/* ── Three-column body ── */
+[data-theme='dash5'] .d5-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--aside-w);
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface-base);
+}
+[data-theme='dash5'] .d5-main { min-width: 0; }
+[data-theme='dash5'] .d5-wide {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-base);
+}
+
+[data-theme='dash5'] .d5-panel {
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+[data-theme='dash5'] .d5-panel-head {
+  margin: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: #0f5149;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+[data-theme='dash5'] .d5-rail-row {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 10px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--text-primary);
+  border-bottom: var(--border-w) solid rgba(255, 255, 255, 0.06);
+}
+[data-theme='dash5'] .d5-rail-row:hover { background: rgba(255, 255, 255, 0.06); }
+[data-theme='dash5'] .d5-aside-empty {
+  margin: 0;
+  padding: 24px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Footer ── */
+[data-theme='dash5'] .d5-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 25px;
+  background: var(--surface-raised);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+[data-theme='dash5'] .d5-footer p { margin: 0; flex: 1; }
+[data-theme='dash5'] .d5-18 {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full, 9999px);
+  border: var(--border-w) solid var(--surface-border);
+  font-weight: 700;
+}
+
+/* ── Responsive: collapse the rails ── */
+@media (max-width: 1279px) {
+  [data-theme='dash5'] .d5-body { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+  [data-theme='dash5'] .d5-aside { display: none; }
+}
+@media (max-width: 900px) {
+  [data-theme='dash5'] .d5-body { grid-template-columns: minmax(0, 1fr); }
+  [data-theme='dash5'] .d5-rail { display: none; }
+  [data-theme='dash5'] .d5-body--nav-open .d5-rail { display: block; }
+  [data-theme='dash5'] .d5-burger { display: inline-flex; align-items: center; padding: 0 12px; }
+  [data-theme='dash5'] .d5-search { display: none; }
+
+  /* The util bar's 25px gutters and full-size controls do not fit a 375px
+     viewport — the end group overflowed the page by 4px and scrolled the body. */
+  [data-theme='dash5'] .d5-util { padding: 0 10px; gap: 8px; }
+  [data-theme='dash5'] .d5-util-end { min-width: 0; gap: 6px; }
+  [data-theme='dash5'] .d5-btn { padding: 0 12px; font-size: 14px; }
+  [data-theme='dash5'] .d5-lang { padding: 0 6px; }
+  [data-theme='dash5'] .d5-nav { padding: 0 10px; }
+  [data-theme='dash5'] .d5-footer { padding: 14px 10px; }
+}

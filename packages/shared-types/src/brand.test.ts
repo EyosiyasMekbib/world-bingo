@@ -71,3 +71,36 @@ describe('brandTokensToCss', () => {
     expect(css).toContain('--wb-text-primary: #f1f5f9;')
   })
 })
+
+describe('themeId on the brand contract', () => {
+  it('defaults DEFAULT_BRAND to arada', () => {
+    expect(DEFAULT_BRAND.themeId).toBe('arada')
+  })
+
+  it('accepts a known theme id', () => {
+    expect(() => BrandConfigSchema.parse({ ...DEFAULT_BRAND, themeId: 'dash5' })).not.toThrow()
+  })
+
+  it('rejects an unknown theme id', () => {
+    expect(() => BrandConfigSchema.parse({ ...DEFAULT_BRAND, themeId: 'nope' })).toThrow()
+  })
+
+  it('defaults themeId when the field is absent', () => {
+    const { themeId, ...withoutTheme } = DEFAULT_BRAND
+    expect(BrandConfigSchema.parse(withoutTheme).themeId).toBe('arada')
+  })
+
+  it('accepts a themeId-only update payload', () => {
+    expect(() => BrandConfigUpdateSchema.parse({ themeId: 'dash5' })).not.toThrow()
+  })
+
+  it('rejects an unknown themeId in an update payload', () => {
+    expect(() => BrandConfigUpdateSchema.parse({ themeId: 'nope' })).toThrow()
+  })
+
+  it('does not inject a themeId default into an unrelated partial save', () => {
+    // .partial() + .default() would silently reset every deployment's theme
+    // whenever someone saved only a display name. It must stay absent.
+    expect(BrandConfigUpdateSchema.parse({ displayName: 'X' }).themeId).toBeUndefined()
+  })
+})

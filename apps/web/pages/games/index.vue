@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ shell: 'wide' })
+
 import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'

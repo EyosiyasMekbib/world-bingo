@@ -13,7 +13,7 @@
     "scripts": {
         "typecheck": "vue-tsc --noEmit",
         "lint": "eslint .",
-        "test": "vitest run",
+        "test": "vitest run --passWithNoTests",
         "dev": "echo 'UI package \u2014 consumed directly by Nuxt apps via workspace link'"
     },
     "dependencies": {

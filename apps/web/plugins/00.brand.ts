@@ -1,5 +1,5 @@
-import { type BrandConfig, DEFAULT_BRAND } from '@world-bingo/shared-types'
-import { buildBrandStyle, useBrand } from '~/composables/useBrand'
+import { type BrandConfig, DEFAULT_BRAND, resolveTheme } from '@world-bingo/shared-types'
+import { buildBrandStyle, buildThemeStyle, useBrand } from '~/composables/useBrand'
 
 export default defineNuxtPlugin(async () => {
   const config = useRuntimeConfig()
@@ -23,11 +23,29 @@ export default defineNuxtPlugin(async () => {
   }
 
   const b = brand.value
+  const theme = resolveTheme(b.themeId)
+
   useHead({
     title: b.displayName,
     titleTemplate: (t) => (t && t !== b.displayName ? `${t} · ${b.displayName}` : b.displayName),
-    style: [{ id: 'brand-tokens', innerHTML: buildBrandStyle(b.tokens) }],
-    link: b.faviconUrl ? [{ rel: 'icon', href: b.faviconUrl }] : [],
+    // Selects which [data-theme='...'] skin block applies. SSR-rendered, so there
+    // is no flash — including on the ssr:false routes.
+    htmlAttrs: { 'data-theme': theme.id },
+    style: [
+      // Theme first, brand second: brand colours must land after so an override wins.
+      { id: 'theme-tokens', innerHTML: buildThemeStyle(theme) },
+      { id: 'brand-tokens', innerHTML: buildBrandStyle(b.tokens) },
+    ],
+    link: [
+      ...(theme.typography.googleHref
+        ? [
+            { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+            { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+            { rel: 'stylesheet', href: theme.typography.googleHref },
+          ]
+        : []),
+      ...(b.faviconUrl ? [{ rel: 'icon', href: b.faviconUrl }] : []),
+    ],
     meta: [{ name: 'application-name', content: b.displayName }],
   })
 })

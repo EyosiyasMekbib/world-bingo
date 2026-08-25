@@ -13,6 +13,7 @@
 
 body {
   font-family: var(--font-body);
+  font-size: var(--wb-font-size-base);
   background: var(--surface-base);
   color: var(--text-primary);
 }

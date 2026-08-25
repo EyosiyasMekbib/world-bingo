@@ -522,6 +522,7 @@ model BrandSetting {
   shortName   String
   logoUrl     String?
   faviconUrl  String?
+  themeId     String   @default("arada")
   tokens      Json
   updatedAt   DateTime @updatedAt
 
