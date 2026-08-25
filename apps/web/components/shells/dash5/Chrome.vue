@@ -27,7 +27,7 @@ const {
         v-model="search"
         class="d5-search-input"
         type="search"
-        :placeholder="$t('common.search')"
+        placeholder="Search Games"
         @keyup.enter="submitSearch"
       />
       <button class="d5-search-btn" aria-label="Search" @click="submitSearch">

@@ -4,20 +4,32 @@
     {
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@world-bingo/api", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@world-bingo/api",
+        "dev"
+      ],
       "port": 8080
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@world-bingo/web", "exec", "nuxt", "dev"],
-      "autoPort": true
+      "runtimeArgs": [
+        "--filter",
+        "@world-bingo/web",
+        "dev"
+      ],
+      "port": 3002
     },
     {
       "name": "admin",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@world-bingo/admin", "exec", "nuxt", "dev"],
-      "autoPort": true
+      "runtimeArgs": [
+        "--filter",
+        "@world-bingo/admin",
+        "dev"
+      ],
+      "port": 3001
     }
   ]
 }

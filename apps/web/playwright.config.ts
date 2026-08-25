@@ -8,7 +8,7 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: 'html',
     use: {
-        baseURL: process.env.BASE_URL || 'http://localhost:3000',
+        baseURL: process.env.BASE_URL || 'http://localhost:3002',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
@@ -37,7 +37,9 @@ export default defineConfig({
     ],
     webServer: {
         command: 'pnpm --filter @world-bingo/web dev',
-        url: 'http://localhost:3000',
+        // The web dev script serves on 3002 (nuxt dev --port 3002). This said
+        // 3000, so every spec pointed at a port nothing was listening on.
+        url: 'http://localhost:3002',
         reuseExistingServer: !process.env.CI,
         timeout: 120000,
     },

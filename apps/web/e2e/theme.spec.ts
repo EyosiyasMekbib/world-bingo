@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
-import { DEFAULT_BRAND, themes } from '@world-bingo/shared-types'
+// Relative source import, not the package name: Playwright resolves through
+// the package `exports` map to dist/, which is not guaranteed to be built when
+// the e2e suite runs.
+import { DEFAULT_BRAND, themes } from '../../../packages/shared-types/src/index'
 
 // Every test targets '/', which is ssr:false (see routeRules in nuxt.config).
 // The brand fetch therefore happens in the browser and page.route can stub it.

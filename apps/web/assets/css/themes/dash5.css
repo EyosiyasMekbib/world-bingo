@@ -235,4 +235,13 @@
   [data-theme='dash5'] .d5-body--nav-open .d5-rail { display: block; }
   [data-theme='dash5'] .d5-burger { display: inline-flex; align-items: center; padding: 0 12px; }
   [data-theme='dash5'] .d5-search { display: none; }
+
+  /* The util bar's 25px gutters and full-size controls do not fit a 375px
+     viewport — the end group overflowed the page by 4px and scrolled the body. */
+  [data-theme='dash5'] .d5-util { padding: 0 10px; gap: 8px; }
+  [data-theme='dash5'] .d5-util-end { min-width: 0; gap: 6px; }
+  [data-theme='dash5'] .d5-btn { padding: 0 12px; font-size: 14px; }
+  [data-theme='dash5'] .d5-lang { padding: 0 6px; }
+  [data-theme='dash5'] .d5-nav { padding: 0 10px; }
+  [data-theme='dash5'] .d5-footer { padding: 14px 10px; }
 }
