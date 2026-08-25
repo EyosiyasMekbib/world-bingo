@@ -754,7 +754,7 @@ than the previous theme's colours masking it."
 ### Task 4: Admin theme picker and sparse token writes
 
 Fixes the write half of the masking defect: the branding page currently seeds from
-`DEFAULT_BRAND.tokens` and POSTs all 29 keys on every save.
+`DEFAULT_BRAND.tokens` and POSTs all 30 keys on every save.
 
 **Files:**
 - Modify: `apps/admin/pages/settings/branding.vue`
@@ -969,7 +969,7 @@ Expected: no output (no errors mentioning `branding.vue`).
 git add apps/admin/pages/settings/branding.vue
 git commit -m "feat(theme): add theme picker and sparse token writes to branding
 
-The page previously POSTed all 29 token keys on every save, so a stored row
+The page previously POSTed all 30 token keys on every save, so a stored row
 always masked the theme palette. It now diffs against the active theme and
 sends only real overrides, with per-token and global reset controls."
 ```

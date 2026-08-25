@@ -8,7 +8,7 @@
 
 ## 1. Problem
 
-`world-bingo` already has a **brand** system: an admin-editable, DB-backed set of 29 colour tokens plus
+`world-bingo` already has a **brand** system: an admin-editable, DB-backed set of 30 colour tokens plus
 logo/display name, served by `GET /brand` and injected as CSS custom properties at boot
 (`packages/shared-types/src/brand.ts`, `apps/api/src/services/brand.service.ts`,
 `apps/web/plugins/00.brand.ts`, `apps/admin/pages/settings/branding.vue`).
@@ -25,7 +25,7 @@ the visual language of `dash5.bet`.
 
 **Defect A — brand rows mask any theme palette.**
 `apps/admin/pages/settings/branding.vue:15` seeds its form from the complete `DEFAULT_BRAND.tokens`
-and line 99 POSTs `tokens: form.tokens` — all 29 keys, every save. `mergeBrand` then spreads that row
+and line 99 POSTs `tokens: form.tokens` — all 30 keys, every save. `mergeBrand` then spreads that row
 over the defaults, so for any deployment that has ever opened the branding page, the stored row is a
 *complete* palette. Changing the merge base from `DEFAULT_BRAND.tokens` to a theme's `defaultTokens`
 would therefore have **no visible effect**. The write path must be fixed, not just the read path.
