@@ -18,6 +18,28 @@
 - `themeToCssVars` output is injected at **`:root:root`** (specificity 0,2,0). This is required: `packages/ui/src/theme/tokens.base.css` defines `--radius-sm/md/lg` at plain `:root`, and a theme must outrank it regardless of stylesheet order. Brand colours keep their existing `:root:root` block. The two never emit the same property — themes emit no colours, brand emits no typography or density.
 - Verification: per repo memory, `apps/admin` typecheck, `apps/web` `pnpm test` and `pnpm lint` are red or blind by default in this repo. **Confirm results by reading the per-file output, not the exit code.** `apps/api` is the exception and its exit codes can be trusted.
 
+### Design quality constraints
+
+These apply to every stylesheet and shell in this plan.
+
+- **No emojis** in code, markup, copy, or alt text — including toast messages. Use an inline SVG or an
+  icon component. Where you touch a string that already contains one, remove it.
+- **Viewport stability:** full-height shells use `min-height: 100dvh`, never `100vh`. `100vh` jumps
+  catastrophically on iOS Safari when the URL bar collapses.
+- **Grid, not flex math:** multi-column layout uses CSS Grid with `fr` units. Never
+  `width: calc(33% - 1rem)`.
+- **Every interactive element needs four states:** rest, `:hover`, `:active` (tactile — `scale(0.98)`
+  or a 1px translate), and `:focus-visible` (a visible ring; keyboard users currently get nothing).
+- **Animate `transform` and `opacity` only.** Never `top`/`left`/`width`/`height`. No
+  `window.addEventListener('scroll')`. `tokens.base.css` already honours `prefers-reduced-motion`.
+- **Z-index restraint:** only for systemic layers (sticky chrome, modal, toast) using the existing
+  `--z-*` tokens. No arbitrary `z-50`.
+- **Numeric readouts** (balances, counts, odds) get `font-variant-numeric: tabular-nums` so digits
+  stop jittering as values update.
+- **Fidelity beats house style where they conflict.** `dash5` deliberately uses a near-black ground,
+  a highly saturated accent and 13px/27px density because it is reproducing a specific reference.
+  Do not desaturate, loosen, or "improve" those values. `arada`'s palette is likewise frozen.
+
 ---
 
 ### Task 1: Theme contract and registry
@@ -843,6 +865,17 @@ Replace the `updateBrand` call in `save()` (lines 94-100):
     savedThemeId.value = form.themeId
 ```
 
+While you are in this function, drop the emoji from the success toast (line 101) — emojis are banned
+in copy, and it renders inconsistently across platforms:
+
+```ts
+    toast.add({
+      title: 'Branding saved',
+      description: 'Reload the player app to see changes.',
+      color: 'success',
+    })
+```
+
 - [ ] **Step 5: Add the theme picker and reset controls to the template**
 
 Insert a new section immediately before the `<!-- ── Identity ── -->` block (line 125):
@@ -1531,6 +1564,20 @@ Then delete the `<style scoped>` block from the shell:
 perl -0pi -e 's/\n<style scoped>.*?<\/style>\n//s' "$SHELL"
 ```
 
+While reviewing, make two corrections to the moved CSS. Neither changes a colour, so arada's
+byte-identical colour guarantee holds:
+
+- `.ab-shell { min-height: 100vh }` → `min-height: 100dvh`. `100vh` overflows on iOS Safari when the
+  URL bar collapses, which is the mobile layout jump this shell has today.
+- Add a focus ring — the layout currently gives keyboard users no visible focus anywhere:
+
+  ```css
+  [data-theme='arada'] :focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+  }
+  ```
+
 Review the appended CSS by hand afterwards. Two things the regex cannot do:
 - `@media` and `@keyframes` blocks must **not** be prefixed. Move the `[data-theme='arada']` prefix
   onto the selectors *inside* each `@media` block, and leave `@keyframes` names untouched.
@@ -1823,9 +1870,16 @@ and metrics read from the density tokens the theme already emits.
    Literal colours here are intentional theme constants with no token equivalent. */
 
 [data-theme='dash5'] .d5-shell {
-  min-height: 100vh;
+  /* dvh, not vh — vh jumps when iOS Safari collapses its URL bar. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* Keyboard users get nothing from :hover. One ring for every interactive element. */
+[data-theme='dash5'] :focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* ── Utility bar ── */
@@ -1875,8 +1929,14 @@ and metrics read from the density tokens the theme already emits.
   font-family: var(--font-ui);
   font-size: 15px;
   color: var(--brand-primary);
+  /* Digits stop jittering as the balance updates. */
+  font-variant-numeric: tabular-nums;
 }
-[data-theme='dash5'] .d5-balance small { font-size: 11px; color: var(--text-secondary); }
+[data-theme='dash5'] .d5-balance small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 
 [data-theme='dash5'] .d5-btn {
   display: inline-flex;
@@ -1903,6 +1963,10 @@ and metrics read from the density tokens the theme already emits.
   border: var(--border-w) solid var(--surface-border);
   color: var(--text-primary);
 }
+[data-theme='dash5'] .d5-btn:hover { filter: brightness(1.08); }
+/* Tactile press. transform only — no layout properties. */
+[data-theme='dash5'] .d5-btn:active { transform: scale(0.98); }
+[data-theme='dash5'] .d5-btn { transition: transform 0.12s, filter 0.12s; }
 [data-theme='dash5'] .d5-lang {
   height: var(--control-h);
   padding: 0 12px;
