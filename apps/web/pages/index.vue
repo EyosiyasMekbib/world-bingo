@@ -112,7 +112,9 @@ interface HeroSlide {
    * overlaying our text on them would double up.
    * Drop the files in apps/web/public/ads/hero/.
    */
-  image?: { desktop: string; mobile: string; alt: string }
+  image?: { desktop: string; mobile?: string; alt: string }
+  /** External destination. Takes precedence over `action` when set. */
+  href?: string
   /* Coded slide. Required unless `image` is set. */
   badge?: string
   title?: string
@@ -153,21 +155,20 @@ const IMAGE_SLIDES: HeroSlide[] = [
     id: 'multi-bonus',
     cta: 'Claim Bonus',
     action: 'deposit',
-    image: {
-      desktop: '/ads/hero/multi-bonus-desktop.jpg',
-      mobile: '/ads/hero/multi-bonus-mobile.jpg',
-      alt: '500% Multi Bonus',
-    },
+    image: { desktop: '/ads/hero/multi-bonus.webp', alt: '500% Multi Bonus' },
   },
   {
     id: 'sport-cashback',
     cta: 'See Promotions',
     action: 'promotions',
-    image: {
-      desktop: '/ads/hero/sport-cashback-desktop.jpg',
-      mobile: '/ads/hero/sport-cashback-mobile.jpg',
-      alt: '1000% Cashback in Sport',
-    },
+    image: { desktop: '/ads/hero/sport-cashback.webp', alt: '1000% Cashback in Sport' },
+  },
+  {
+    id: 'join-bot',
+    cta: 'Open Telegram',
+    action: 'promotions',
+    href: 'https://t.me/dash_et_bot',
+    image: { desktop: '/ads/hero/join-bot.webp', alt: 'Join the Telegram bot @dash_et_bot' },
   },
 ]
 
@@ -274,7 +275,14 @@ function onTouchEnd(e: TouchEvent) {
   else prevSlide()
 }
 
-function heroAction(action: HeroSlide['action']) {
+function heroAction(slide: HeroSlide) {
+  // External artwork destinations open in a new tab; noopener so the target
+  // cannot reach back into this window.
+  if (slide.href) {
+    window.open(slide.href, '_blank', 'noopener,noreferrer')
+    return
+  }
+  const action = slide.action
   if (action === 'predictions') {
     track('hero_predictions_click')
     navigateTo('/predictions')
@@ -619,7 +627,11 @@ onUnmounted(() => {
              dropped in, and a 404 on a typed <source> does not fall back. -->
         <template v-if="activeSlide.image">
           <picture :key="activeSlide.id" class="hero-img">
-            <source media="(max-width: 767px)" :srcset="activeSlide.image.mobile" />
+            <source
+              v-if="activeSlide.image.mobile"
+              media="(max-width: 767px)"
+              :srcset="activeSlide.image.mobile"
+            />
             <img
               :src="activeSlide.image.desktop"
               :alt="activeSlide.image.alt"
@@ -629,7 +641,7 @@ onUnmounted(() => {
           <button
             class="hero-img-hit"
             :aria-label="activeSlide.cta"
-            @click="heroAction(activeSlide.action)"
+            @click="heroAction(activeSlide)"
           />
         </template>
 
@@ -638,7 +650,7 @@ onUnmounted(() => {
             <span class="hero-badge">{{ activeSlide.badge }}</span>
             <h1 class="hero-title">{{ activeSlide.title }}</h1>
             <p class="hero-sub">{{ activeSlide.sub }}</p>
-            <button class="hero-cta" @click="heroAction(activeSlide.action)">{{ activeSlide.cta }}</button>
+            <button class="hero-cta" @click="heroAction(activeSlide)">{{ activeSlide.cta }}</button>
           </div>
 
           <div class="hero-watermark" :style="{ color: activeSlide.accent }" aria-hidden="true">
