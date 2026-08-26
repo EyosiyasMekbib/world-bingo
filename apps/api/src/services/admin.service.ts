@@ -258,6 +258,17 @@ export class AdminService {
                 return await WalletService.approveDeposit(transactionId, adjustedAmount, reviewerId)
             }
 
+            // A gatewayRef means this withdrawal was submitted to ZareCash and is
+            // gateway-managed from here — it settles or refunds via webhook, not this
+            // route. A manual approve here would double-pay a payout ZareCash is
+            // about to settle (or already has). Refuse before the containment check
+            // and the approval claim below.
+            if (tx.type === TransactionType.WITHDRAWAL && tx.gatewayRef) {
+                throw new Error(
+                    'This payout is managed by ZareCash and will settle or refund automatically via webhook — it cannot be approved manually',
+                )
+            }
+
             // Containment: never pay out a withdrawal for a frozen/under-review account.
             // Freezing (isActive=false) a flagged account therefore holds any balance
             // sitting in its wallet — the pending withdrawal cannot be approved.
@@ -299,6 +310,17 @@ export class AdminService {
         }
 
         if (existing.type === TransactionType.WITHDRAWAL) {
+            // Same gateway-managed guard as the approve path above: a payout ZareCash
+            // is settling must not be rejected-and-refunded here — that could
+            // double-pay a payout that lands anyway, or fight a genuine webhook
+            // rejection that is about to arrive. WalletService.rejectWithdrawal itself
+            // stays reachable for the worker's own terminal-refund and permanent-error
+            // paths, which call it directly — only this manual admin route is guarded.
+            if (existing.gatewayRef) {
+                throw new Error(
+                    'This payout is managed by ZareCash and will settle or refund automatically via webhook — it cannot be rejected manually',
+                )
+            }
             return await WalletService.rejectWithdrawal(transactionId, note, reviewerId)
         }
 

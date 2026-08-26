@@ -46,6 +46,17 @@ export const QUEUE_NAMES = {
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]
 
+/**
+ * Retry budget for ZareCash withdrawal submission, before the worker's terminal
+ * refund fires. Exported so the producer (wallet.service.ts, which enqueues the
+ * job) and the consumer (zarecash-withdrawal.worker.ts, which compares
+ * attemptsMade against it) read the exact same number — the queue's
+ * `defaultJobOptions.attempts` below (3) is too short for an irreversible refund
+ * decision, so this job overrides `attempts` explicitly on `.add()` rather than
+ * relying on the queue default.
+ */
+export const ZARECASH_WITHDRAWAL_ATTEMPTS = Number(process.env.ZARECASH_WITHDRAWAL_ATTEMPTS || '8')
+
 // Singleton map of Queue instances
 const queues = new Map<string, Queue>()
 

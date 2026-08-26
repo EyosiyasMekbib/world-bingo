@@ -8,7 +8,8 @@ import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
 import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
-import { getQueue, QUEUE_NAMES } from '../lib/queue'
+import { getQueue, QUEUE_NAMES, ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
+import { reportError } from '../lib/sentry'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -359,12 +360,29 @@ export class WalletService {
             // Submit AFTER the DB transaction commits — never hold the wallet lock
             // across a network call. Routing data travels on the job rather than
             // being parsed back out of the free-form `note` string.
-            if (await isZareCashMethod(data.paymentMethod)) {
-                await getQueue(QUEUE_NAMES.ZARECASH_WITHDRAWAL).add('submit', {
-                    transactionId: transaction.id,
-                    methodCode: data.paymentMethod,
-                    destinationAccount: data.accountNumber,
-                })
+            //
+            // The debit and PENDING_REVIEW row are already committed by this point,
+            // so a failure here (Redis down, DB blip on the isZareCashMethod read)
+            // must not surface as a request error — the player would see a failed
+            // withdrawal while actually being debited, with no way to retry (the
+            // single-pending guard blocks a resubmit). The row is already in the
+            // exact state the manual admin path knows how to handle, so swallow and
+            // report instead of throwing.
+            try {
+                if (await isZareCashMethod(data.paymentMethod)) {
+                    await getQueue(QUEUE_NAMES.ZARECASH_WITHDRAWAL).add(
+                        'submit',
+                        {
+                            transactionId: transaction.id,
+                            methodCode: data.paymentMethod,
+                            destinationAccount: data.accountNumber,
+                        },
+                        { attempts: ZARECASH_WITHDRAWAL_ATTEMPTS },
+                    )
+                }
+            } catch (err) {
+                console.error('[WalletService] failed to enqueue ZareCash withdrawal submit:', (err as Error).message)
+                reportError(err, { service: 'wallet', phase: 'zarecash-withdrawal-enqueue', transactionId: transaction.id })
             }
             return transaction
         })
