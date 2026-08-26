@@ -50,6 +50,7 @@ import { registerGameHandlers } from './gateways/game.gateway'
 import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
 import { registerSupportHandlers } from './gateways/support.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
+import { isZareCashEnabled } from './gateways/payment/zarecash/config.js'
 
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
@@ -66,6 +67,9 @@ import './workers/prediction.worker.js'
 import './workers/zarecash-deposit.worker.js'
 import './workers/zarecash-event.worker.js'
 import './workers/zarecash-withdrawal.worker.js'
+import './workers/zarecash-sweep.worker.js'
+import { scheduleZareCashSweep } from './workers/zarecash-sweep.worker.js'
+import { ZareCashService } from './services/zarecash.service.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
@@ -376,6 +380,13 @@ try {
     // trade and status broadcast would be emitted into an empty room.
     registerPredictionHandlers(io)
     registerSupportHandlers(io)
+
+    // Refuse to bind the port if we're talking to the wrong ZareCash keyspace —
+    // a mismatch here must abort startup, not degrade into a warning.
+    if (isZareCashEnabled()) {
+        await ZareCashService.assertMode()
+        await scheduleZareCashSweep()
+    }
 
     await server.listen({ port, host })
 

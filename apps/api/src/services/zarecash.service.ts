@@ -9,11 +9,15 @@
 import prisma from '../lib/prisma.js'
 import { zarecashClient } from '../gateways/payment/zarecash/client.js'
 import { resolveMethod } from '../gateways/payment/zarecash/method-config.js'
+import { zarecashConfig } from '../gateways/payment/zarecash/config.js'
 import { WalletService } from './wallet.service.js'
 import { PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { ZareCashError } from '../gateways/payment/zarecash/types.js'
 import { NotificationService } from './notification.service.js'
 import { wbWithdrawalsTotal } from '../lib/metrics.js'
+import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
+
+const CURSOR_KEY = 'zarecash_events_cursor'
 
 export class ZareCashService {
     /** Idempotency keys are derived from our own row, so every retry is safe. */
@@ -23,6 +27,66 @@ export class ZareCashService {
 
     static withdrawalKey(transactionId: string): string {
         return `wd_${transactionId}`
+    }
+
+    /**
+     * Refuse to run against the wrong keyspace. Contract checklist item 9 — the
+     * cheapest guard against a test key in production, or a live key in CI.
+     */
+    static async assertMode(): Promise<void> {
+        const cfg = zarecashConfig()
+        if (!cfg.enabled) return
+        const float = await zarecashClient().getFloat()
+        if (float.mode !== cfg.mode) {
+            throw new Error(
+                `ZareCash mode mismatch: ZARECASH_MODE=${cfg.mode} but the API key reports "${float.mode}". Refusing to start.`,
+            )
+        }
+        console.log('[ZareCash] connected in %s mode (available float: %s ETB)', float.mode, float.available)
+    }
+
+    /**
+     * Backfill anything a webhook outage lost. Events carry full payloads, so no
+     * follow-up fetch is needed, and processing is keyed on the event id, so a
+     * replay of something already handled is a no-op.
+     */
+    static async sweepEvents(): Promise<{ scanned: number; replayed: number }> {
+        const cursorRow = await prisma.siteSetting.findUnique({ where: { key: CURSOR_KEY } })
+        const page = await zarecashClient().listEvents({
+            cursor: cursorRow?.value ?? undefined,
+            limit: 100,
+        })
+
+        const scanned = page.data.length
+        let replayed = 0
+
+        if (scanned > 0) {
+            const ids = page.data.map((e) => e.id)
+            const known = await prisma.zareCashEvent.findMany({
+                where: { id: { in: ids } },
+                select: { id: true },
+            })
+            const knownIds = new Set(known.map((k) => k.id))
+
+            for (const evt of page.data) {
+                if (knownIds.has(evt.id)) continue
+                await prisma.zareCashEvent.create({
+                    data: { id: evt.id, type: evt.type, payload: evt as unknown as object },
+                })
+                await getQueue(QUEUE_NAMES.ZARECASH_EVENT).add('process', { eventId: evt.id })
+                replayed++
+            }
+        }
+
+        if (page.nextCursor) {
+            await prisma.siteSetting.upsert({
+                where: { key: CURSOR_KEY },
+                create: { key: CURSOR_KEY, value: page.nextCursor },
+                update: { value: page.nextCursor },
+            })
+        }
+
+        return { scanned, replayed }
     }
 
     static async submitDeposit(transactionId: string): Promise<void> {
