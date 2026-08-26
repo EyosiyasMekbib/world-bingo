@@ -130,4 +130,12 @@ describe('ZareCashService.submitDeposit', () => {
 
     expect(approveDeposit).toHaveBeenCalledWith('tx1', 0)
   })
+
+  it('rethrows when approveDeposit fails with a genuine error', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createDeposit.mockResolvedValue({ id: 'dp_7', status: 'APPROVED', approvedAmount: 500 })
+    approveDeposit.mockRejectedValueOnce(new Error('Wallet not found'))
+
+    await expect(ZareCashService.submitDeposit('tx1')).rejects.toThrow('Wallet not found')
+  })
 })

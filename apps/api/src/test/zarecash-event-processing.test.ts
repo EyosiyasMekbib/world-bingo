@@ -25,7 +25,7 @@ describe('ZareCashService.processEvent', () => {
     ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
       event('deposit.approved', { id: 'dp_1', approvedAmount: 480, statedAmount: 500 }),
     )
-    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500' })
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'PENDING_REVIEW' })
 
     await ZareCashService.processEvent('evt_1')
 
@@ -40,7 +40,7 @@ describe('ZareCashService.processEvent', () => {
     ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
       event('deposit.approved', { id: 'dp_1', approvedAmount: null }),
     )
-    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500' })
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'PENDING_REVIEW' })
     await ZareCashService.processEvent('evt_1')
     expect(approveDeposit).toHaveBeenCalledWith('tx1', 500)
   })
@@ -49,7 +49,51 @@ describe('ZareCashService.processEvent', () => {
     ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
       event('deposit.approved', { id: 'dp_1', approvedAmount: 500 }),
     )
-    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500' })
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'PENDING_REVIEW' })
+    approveDeposit.mockRejectedValueOnce(new Error('Invalid transaction'))
+
+    await expect(ZareCashService.processEvent('evt_1')).resolves.toBeUndefined()
+    expect((prisma as any).zareCashEvent.update).toHaveBeenCalledWith({
+      where: { id: 'evt_1' }, data: { processedAt: expect.any(Date), error: null },
+    })
+  })
+
+  it('skips a redelivery when the transaction status is already terminal', async () => {
+    ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
+      event('deposit.approved', { id: 'dp_1', approvedAmount: 500 }),
+    )
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'APPROVED' })
+
+    await ZareCashService.processEvent('evt_1')
+
+    expect(approveDeposit).not.toHaveBeenCalled()
+    expect((prisma as any).zareCashEvent.update).toHaveBeenCalledWith({
+      where: { id: 'evt_1' }, data: { processedAt: expect.any(Date), error: null },
+    })
+  })
+
+  it('rethrows a genuine approveDeposit failure and records it on the event row without stamping processedAt', async () => {
+    ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
+      event('deposit.approved', { id: 'dp_1', approvedAmount: 500 }),
+    )
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'PENDING_REVIEW' })
+    approveDeposit.mockRejectedValueOnce(new Error('Wallet not found'))
+
+    await expect(ZareCashService.processEvent('evt_1')).rejects.toThrow('Wallet not found')
+
+    expect((prisma as any).zareCashEvent.update).toHaveBeenCalledWith({
+      where: { id: 'evt_1' }, data: { error: 'Wallet not found' },
+    })
+    expect((prisma as any).zareCashEvent.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ processedAt: expect.anything() }) }),
+    )
+  })
+
+  it('swallows a concurrent-race Invalid transaction when the row was still PENDING_REVIEW', async () => {
+    ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
+      event('deposit.approved', { id: 'dp_1', approvedAmount: 500 }),
+    )
+    ;(prisma as any).transaction.findUnique.mockResolvedValue({ id: 'tx1', amount: '500', status: 'PENDING_REVIEW' })
     approveDeposit.mockRejectedValueOnce(new Error('Invalid transaction'))
 
     await expect(ZareCashService.processEvent('evt_1')).resolves.toBeUndefined()

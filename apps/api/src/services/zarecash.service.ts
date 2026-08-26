@@ -69,7 +69,16 @@ export class ZareCashService {
             try {
                 await WalletService.approveDeposit(transactionId, res.approvedAmount ?? Number(tx.amount))
             } catch (err) {
-                console.warn('[ZareCash] deposit %s not credited inline: %s', transactionId, (err as Error).message)
+                const message = (err as Error).message
+                // Only these two are the known, non-retryable shapes: a redelivery
+                // that already credited the row, or ZareCash's own 0-amount
+                // contract violation. Anything else (Wallet not found, a Prisma
+                // error, …) is a genuine failure and must not be swallowed.
+                if (message === 'Invalid transaction' || message === 'Adjusted amount must be a positive number') {
+                    console.warn('[ZareCash] deposit %s not credited inline: %s', transactionId, message)
+                } else {
+                    throw err
+                }
             }
         }
     }
@@ -122,13 +131,25 @@ export class ZareCashService {
             console.warn('[ZareCash] deposit.approved for unknown gatewayRef %s', data.id)
             return
         }
+        if (tx.status !== PaymentStatus.PENDING_REVIEW) {
+            // Already terminal — this is an at-least-once redelivery, not a failure.
+            console.log('[ZareCash] deposit %s already %s, skipping redelivery', tx.id, tx.status)
+            return
+        }
         const amount = data.approvedAmount ?? Number(tx.amount)
         try {
             await WalletService.approveDeposit(tx.id, amount)
         } catch (err) {
-            // approveDeposit throws when the row is no longer PENDING_REVIEW, which
-            // is exactly what a redelivery looks like. Not an error.
-            console.log('[ZareCash] deposit %s not credited: %s', tx.id, (err as Error).message)
+            const message = (err as Error).message
+            if (message === 'Invalid transaction') {
+                // Lost a race with a concurrent worker that credited it first.
+                // approveDeposit's row lock is what makes that safe.
+                console.log('[ZareCash] deposit %s credited concurrently, skipping', tx.id)
+                return
+            }
+            // Anything else is a real failure: let processEvent record it on the
+            // event row and let BullMQ retry.
+            throw err
         }
     }
 
