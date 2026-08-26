@@ -10,8 +10,10 @@ import prisma from '../lib/prisma.js'
 import { zarecashClient } from '../gateways/payment/zarecash/client.js'
 import { resolveMethod } from '../gateways/payment/zarecash/method-config.js'
 import { WalletService } from './wallet.service.js'
-import { PaymentStatus } from '@world-bingo/shared-types'
+import { PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { ZareCashError } from '../gateways/payment/zarecash/types.js'
+import { NotificationService } from './notification.service.js'
+import { wbWithdrawalsTotal } from '../lib/metrics.js'
 
 export class ZareCashService {
     /** Idempotency keys are derived from our own row, so every retry is safe. */
@@ -157,6 +159,28 @@ export class ZareCashService {
                 case 'deposit.rejected':
                     await ZareCashService.onDepositRejected(data)
                     break
+                case 'withdrawal.approved':
+                    await ZareCashService.onWithdrawalApproved(data)
+                    break
+                case 'withdrawal.rejected':
+                    await ZareCashService.onWithdrawalRefunded(data, 'ZareCash rejected the payout')
+                    break
+                case 'withdrawal.cancelled':
+                    await ZareCashService.onWithdrawalRefunded(data, 'Payout was cancelled at ZareCash')
+                    break
+                case 'withdrawal.queued_float':
+                    await ZareCashService.onWithdrawalQueued(data)
+                    break
+                case 'withdrawal.risk_hold':
+                    console.warn('[ZareCash] withdrawal %s placed on risk hold', data.id)
+                    break
+                case 'float.low':
+                    console.warn(
+                        '[ZareCash] float low: available=%s threshold=%s',
+                        data.available,
+                        data.lowFloatThreshold,
+                    )
+                    break
                 default:
                     console.log('[ZareCash] unhandled event type %s (%s)', row.type, eventId)
             }
@@ -220,5 +244,68 @@ export class ZareCashService {
                 note: `Rejected by ZareCash${data.verdict ? `: ${data.verdict}` : ''}`,
             },
         })
+    }
+
+    private static async onWithdrawalApproved(data: Record<string, any>): Promise<void> {
+        const tx = await ZareCashService.findByGatewayRef(data.id)
+        if (!tx) {
+            console.warn('[ZareCash] withdrawal.approved for unknown gatewayRef %s', data.id)
+            return
+        }
+        const claim = await prisma.transaction.updateMany({
+            where: { id: tx.id, status: PaymentStatus.PENDING_REVIEW },
+            data: {
+                status: PaymentStatus.APPROVED,
+                note: `Settled by ZareCash${data.settlementRef ? ` (ref ${data.settlementRef})` : ''}`,
+            },
+        })
+        if (claim.count === 0) return // redelivery
+
+        await NotificationService.create(
+            tx.userId,
+            NotificationType.WITHDRAWAL_PROCESSED,
+            'Withdrawal Processed ✅',
+            `Your withdrawal of ${Number(tx.amount).toFixed(2)} ETB has been transferred.`,
+            { transactionId: tx.id, amount: Number(tx.amount) },
+        ).catch(() => {})
+        wbWithdrawalsTotal.labels('approved').inc()
+    }
+
+    private static async onWithdrawalRefunded(data: Record<string, any>, reason: string): Promise<void> {
+        const tx = await ZareCashService.findByGatewayRef(data.id)
+        if (!tx) {
+            console.warn('[ZareCash] withdrawal refund for unknown gatewayRef %s', data.id)
+            return
+        }
+        try {
+            await WalletService.rejectWithdrawal(tx.id, reason)
+        } catch (err) {
+            const message = (err as Error).message
+            if (message === 'Transaction is not pending review') {
+                // rejectWithdrawal's claim found nothing — already terminal, which is
+                // exactly what a redelivery looks like. Not an error.
+                console.log('[ZareCash] withdrawal %s already resolved, skipping redelivery', tx.id)
+                return
+            }
+            // Anything else (Transaction not found, Wallet not found, a Prisma
+            // error, …) is a genuine failure: let processEvent record it on the
+            // event row and let BullMQ retry, per the house pattern from Task 8
+            // (see onDepositApproved) — a blanket catch here would silently lose
+            // a player's refund.
+            throw err
+        }
+    }
+
+    private static async onWithdrawalQueued(data: Record<string, any>): Promise<void> {
+        const tx = await ZareCashService.findByGatewayRef(data.id)
+        if (!tx) return
+        // Stays PENDING_REVIEW — queued_float is a normal state, not a fault.
+        await NotificationService.create(
+            tx.userId,
+            NotificationType.WITHDRAWAL_PROCESSED,
+            'Withdrawal Processing',
+            `Your withdrawal of ${Number(tx.amount).toFixed(2)} ETB is queued and will be paid shortly.`,
+            { transactionId: tx.id, amount: Number(tx.amount) },
+        ).catch(() => {})
     }
 }
