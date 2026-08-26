@@ -63,6 +63,8 @@ payout. That edge gets a retrying job and an automatic local refund on permanent
 | Verification | Skip `DepositVerificationService` for zarecash-routed methods | ZareCash owns verification for those. Scraping the same receipt twice wastes the rate limit and invites two engines disagreeing. See *Live phase* for the wrinkle. |
 | `playerRef` | `user.id` (uuid) | Opaque and stable, which is all the contract asks. |
 | Method codes | Explicit `PaymentMethod.gatewayMethodCode` column | Our codes (`telebirr`, `cbe`) do not all match ZareCash's enum (`telebirr`, `cbe_birr`, `bank_transfer`). Map explicitly rather than guessing. |
+| Method config | Add `GET /v1/methods` to ZareCash; consume it here | Collection accounts and per-method limits are otherwise unreachable over the API. Agreed 2026-08-26. |
+| Webhook dispatch | Switch on the envelope `type`, never on `data.status` | Verified: the withdrawal payload carries no `status` field at all. See *Webhook handling*. |
 
 ## Data model
 
@@ -220,6 +222,22 @@ Event mapping:
 Every handler resolves our row by `gatewayRef`, and every handler is idempotent because
 the underlying status transitions are already atomic conditional claims.
 
+**Dispatch on the envelope `type`, never on `data.status`.** Verified against the emitters:
+`DepositsService.summary()` (`deposits.service.ts:641`) returns `status` and `mode`, but
+`WithdrawalsService.payload()` (`withdrawals.service.ts:55`) returns neither — only a
+display `state`. A handler keyed on `data.status` therefore works for deposits and breaks
+silently on withdrawals. The envelope `type` is present on every event and is mirrored in
+the `pmv2-event-type` header.
+
+Two payload fields this design depends on, both verified present:
+
+- `deposit.approved` → `data.approvedAmount` (`deposits.service.ts:651`), nullable, falling
+  back to `statedAmount`. This is the amount to credit, not the one we submitted.
+- `withdrawal.approved` → `data.settlementRef` (`withdrawals.service.ts:65`).
+
+`data.id` is the ZareCash `publicId` in both directions, which is what we store as
+`gatewayRef`.
+
 ## Freeze sync
 
 When an admin sets `user.isActive = false`, call `POST /v1/players/{userId}/freeze` with
@@ -281,32 +299,59 @@ of the same deposit, submit-failure → auto-refund on the withdrawal path, and 
 Existing tests live in `apps/api/src/test/`; `gasea-wallet.test.ts` is the closest model
 for signature and raw-body coverage.
 
-## Open decision — method configuration
+## Method configuration
 
-ZareCash holds `collectionAccount`, `minDeposit`, `maxDeposit`, `minWithdrawal` and
-`maxWithdrawal` on its `PaymentMethod` model, with per-tenant overrides in
-`TenantMethodConfig`. **None of it is exposed on `/v1`.** The published OpenAPI surface is
-deposits, withdrawals, transactions, events, float, sandbox and players — there is no
-`GET /v1/methods`.
+ZareCash holds `collectionAccount` on its global `PaymentMethod` model, and per-method
+limits on `PaymentMethod` with per-tenant overrides in `TenantMethodConfig`. None of it is
+exposed on `/v1`: the published surface is deposits, withdrawals, transactions, events,
+float, sandbox and players. `GET dashboard/methods` exists but is session-authenticated and
+— per `MethodLimitsService.forTenant` — does not return `collectionAccount` either.
 
-This matters twice:
+This matters twice. A player routed to ZareCash must pay into *ZareCash's* collection
+account, not our `PaymentMethod.merchantAccount`; if ZareCash rotates it while we mirror by
+hand, players keep paying a dead account and deposits fail silently. And we validate against
+`min_deposit_amount` / `max_deposit_amount` in `SiteSetting` while ZareCash enforces its own
+and returns `400 amount_out_of_range` — two sources of truth, so a player can pass our
+validation and be rejected downstream.
 
-- **Collection account.** A player routed to ZareCash must pay into *ZareCash's* collection
-  account, not our own `PaymentMethod.merchantAccount`. If ZareCash rotates that account
-  and we are mirroring it by hand, players keep paying a dead account and deposits fail
-  silently. Note the stored format is `"Name · 0911552200"` — see
-  `deposits.service.ts:allowedReceiver`.
-- **Limits.** We read `min_deposit_amount` / `max_deposit_amount` from `SiteSetting`;
-  ZareCash enforces its own and returns `400 amount_out_of_range`. Two sources of truth
-  means a player can pass our validation and be rejected downstream.
+**Decision (2026-08-26): add `GET /v1/methods` to ZareCash and consume it here.** It reuses
+`MethodLimitsService.forTenant()`, so it is a small addition to a repo we own, and it
+removes the whole drift class. Because `collectionAccount` lives on the global
+`PaymentMethod` rather than per tenant, a rotation hits every tenant at once — which is
+exactly why polling beats mirroring.
 
-**Recommendation:** add `GET /v1/methods` to ZareCash returning `code`, `name`,
-`collectionAccount` and tenant-resolved min/max. It is a small addition to a repo we own
-and it removes the entire drift class.
+Agreed response shape:
 
-**Not blocking:** the design puts method config behind a `MethodConfigSource` interface
-with a hand-mirrored implementation, so the test phase proceeds today and swapping in the
-endpoint later is a one-file change.
+```json
+[{ "code": "telebirr", "name": "TeleBirr",
+   "collectionAccount": { "receiverName": "ZareCash Merchant", "account": "0911552200" },
+   "minDeposit": 10, "maxDeposit": 50000,
+   "minWithdrawal": 100, "maxWithdrawal": 100000 }]
+```
+
+Two deliberate departures from the dashboard shape. The collection account is returned
+**pre-split**: it is stored as `"Name · 0911552200"` and split on a non-ASCII middle dot by
+`allowedReceiver`, which every tenant would otherwise reimplement against a separator that
+copy-paste and encoding mangle easily. And limits are **effective** rather than
+`platform` + `limits` side by side — the dashboard shape is right for an editing UI that
+must show an override against its default, but for an integrator it exports precedence
+logic they will get wrong.
+
+World-bingo consumes it through a `MethodConfigSource` interface, cached, refreshed on a
+timer, with the last good response retained if a refresh fails. Stale config beats no
+config: a cached account number is still the right account number.
+
+### ZareCash-side prerequisites
+
+Tracked in `paymentmgmtv2`, not here. Only the first blocks the live phase.
+
+| # | Change | Blocks |
+|---|---|---|
+| 1 | `GET /v1/methods` as specified above | Live phase. Test phase can hand-mirror. |
+| 2 | Add `receipt` to the `@ApiBody` schema on `POST /v1/deposits` — the DTO accepts it, the decorator omits it, so an OpenAPI-driven integrator silently gets manual review instead of auto-verification | Nothing here; highest damage-to-effort ratio on the list |
+| 3 | Add `status` and `mode` to the withdrawal webhook payload, so one handler shape serves both directions | Nothing — worked around below |
+| 4 | `POST /v1/withdrawals/{id}/cancel`, so a tenant can cause the `withdrawal.cancelled` event it can already receive | Nothing today; needed if we add player-facing cancel |
+| 5 | Refresh `GAP-ANALYSIS.md` | Nothing — but it lists rate limiting, CI, tests and a ~1-minute webhook window as release-blocking, and all four are fixed. It reads as a set of contract violations that no longer exist. |
 
 ## Live phase (out of scope, noted so the design does not preclude it)
 
