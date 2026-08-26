@@ -252,11 +252,77 @@ describe('AdminService.reviewTransaction', () => {
         })
     })
 
-    // The gatewayRef guard above must not touch the manual path (gatewayRef
-    // null) at all — a manual withdrawal (cash sent by hand, no ZareCash
-    // involved) must approve and reject-with-refund exactly as it did before
-    // this task.
-    describe('WITHDRAWAL — manual (gatewayRef null)', () => {
+    // Final-review Critical 2. The guard above was armed by `gatewayRef`, which
+    // is only written AFTER createWithdrawal returns. Between the local debit and
+    // that write the payout POST is in flight — ZARECASH_TIMEOUT_MS per attempt,
+    // several attempts — and during that whole window the row is PENDING_REVIEW
+    // with gatewayRef still null. A clerk working the queue sailed straight
+    // through the guard. `gateway` is written in the same transaction as the
+    // debit, so there is no window at all.
+    describe('WITHDRAWAL — ZareCash-routed, submit still in flight (gateway set, gatewayRef null)', () => {
+        beforeEach(async () => {
+            // Exactly the state requestWithdrawal commits: routed and debited, job
+            // enqueued, worker's POST not yet answered.
+            await prisma.transaction.update({
+                where: { id: withdrawalTxId },
+                data: { gateway: 'zarecash', gatewayRef: null },
+            })
+        })
+
+        it('refuses to reject-and-refund a payout whose submission is still in flight', async () => {
+            await expect(
+                AdminService.reviewTransaction(withdrawalTxId, PaymentStatus.REJECTED, 'clerk rejected'),
+            ).rejects.toThrow('managed by ZareCash')
+
+            const tx = await prisma.transaction.findUnique({ where: { id: withdrawalTxId } })
+            expect(tx!.status).toBe(PaymentStatus.PENDING_REVIEW)
+
+            // The money assertion: no re-credit. Under the gatewayRef-keyed guard
+            // this was 1000 — refunded locally while ZareCash went on to settle.
+            const wallet = await WalletService.getBalance(userId)
+            expect(Number(wallet.realBalance)).toBe(700)
+
+            // And no REFUND compensation row was written.
+            const refunds = await prisma.transaction.findMany({
+                where: { userId, type: TransactionType.REFUND },
+            })
+            expect(refunds).toHaveLength(0)
+        })
+
+        it('refuses to hand-approve a payout whose submission is still in flight', async () => {
+            await expect(
+                AdminService.reviewTransaction(withdrawalTxId, PaymentStatus.APPROVED, 'paid by hand'),
+            ).rejects.toThrow('managed by ZareCash')
+
+            const tx = await prisma.transaction.findUnique({ where: { id: withdrawalTxId } })
+            expect(tx!.status).toBe(PaymentStatus.PENDING_REVIEW)
+        })
+
+        it('releases the row to admins once the payout has failed permanently and been refunded', async () => {
+            // The worker's permanent-failure path refunds through
+            // WalletService.rejectWithdrawal, leaving the row REJECTED but still
+            // carrying gateway='zarecash'. That must NOT read as "still managed" —
+            // it is settled business, and an admin asking about it deserves the
+            // ordinary answer, not "wait for a webhook" forever.
+            await WalletService.rejectWithdrawal(withdrawalTxId, 'ZareCash refused the payout')
+
+            const tx = await prisma.transaction.findUnique({ where: { id: withdrawalTxId } })
+            expect(tx!.status).toBe(PaymentStatus.REJECTED)
+            expect(tx!.gateway).toBe('zarecash')
+
+            const wallet = await WalletService.getBalance(userId)
+            expect(Number(wallet.realBalance)).toBe(1000) // refunded
+
+            await expect(
+                AdminService.reviewTransaction(withdrawalTxId, PaymentStatus.APPROVED),
+            ).rejects.toThrow(/not pending review/i)
+        })
+    })
+
+    // The guard above must not touch the manual path (no gateway, no gatewayRef)
+    // at all — a manual withdrawal (cash sent by hand, no ZareCash involved) must
+    // approve and reject-with-refund exactly as it did before this task.
+    describe('WITHDRAWAL — manual (gateway and gatewayRef null)', () => {
         it('still approves normally', async () => {
             const updated = await AdminService.reviewTransaction(withdrawalTxId, PaymentStatus.APPROVED, 'paid by hand')
             expect(updated.status).toBe(PaymentStatus.APPROVED)

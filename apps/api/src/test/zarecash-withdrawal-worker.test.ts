@@ -26,9 +26,21 @@ vi.mock('../services/zarecash.service', () => ({
 }))
 
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }))
-vi.mock('../lib/sentry', () => ({ reportError }))
+vi.mock('../lib/sentry', () => ({ reportError, reportWarning: vi.fn() }))
 
-import { handleWithdrawalFailure, ZareCashWithdrawalJobData } from '../workers/zarecash-withdrawal.worker'
+const { add } = vi.hoisted(() => ({ add: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../lib/queue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/queue')>()
+  return { ...actual, getQueue: () => ({ add }) }
+})
+
+import {
+  handleWithdrawalFailure,
+  processWithdrawalJob,
+  TERMINAL_REFUND_JOB,
+  ZareCashWithdrawalJobData,
+} from '../workers/zarecash-withdrawal.worker'
+import { ZareCashService } from '../services/zarecash.service'
 import { ZareCashError } from '../gateways/payment/zarecash/types'
 import { ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
 import type { Job } from 'bullmq'
@@ -37,16 +49,22 @@ function makeJob(overrides: {
   attemptsMade: number
   attempts: number | undefined
   transactionId?: string
+  sawWithdrawalPending?: boolean
+  name?: string
+  updateData?: (d: unknown) => Promise<void>
 }): Job<ZareCashWithdrawalJobData> {
   return {
     id: 'job1',
+    name: overrides.name ?? 'submit',
     data: {
       transactionId: overrides.transactionId ?? 'tx1',
       methodCode: 'telebirr',
       destinationAccount: '0912345678',
+      ...(overrides.sawWithdrawalPending ? { sawWithdrawalPending: true } : {}),
     },
     attemptsMade: overrides.attemptsMade,
     opts: { attempts: overrides.attempts },
+    updateData: overrides.updateData ?? vi.fn().mockResolvedValue(undefined),
   } as unknown as Job<ZareCashWithdrawalJobData>
 }
 
@@ -113,5 +131,118 @@ describe('zarecash-withdrawal worker — handleWithdrawalFailure', () => {
     const exhausted = makeJob({ attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS })
     await handleWithdrawalFailure(exhausted, WITHDRAWAL_PENDING())
     expect(rejectWithdrawal).not.toHaveBeenCalled()
+  })
+
+  // ── Final-review Important 5: the marker must survive the attempt ──────────
+
+  it('does NOT refund when an earlier attempt saw withdrawal_pending, even though the FINAL error is a network error', async () => {
+    // Seven attempts of 409 withdrawal_pending, then one network_error on the
+    // last. Gating on the final error alone refunds here — refunding a payout
+    // ZareCash has genuinely open, which is the exact double-pay this gate
+    // exists to prevent. Network errors are common during precisely the
+    // provider trouble that produces state disagreement.
+    const job = makeJob({
+      attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS,
+      attempts: ZARECASH_WITHDRAWAL_ATTEMPTS,
+      sawWithdrawalPending: true,
+    })
+
+    await handleWithdrawalFailure(job, NETWORK_ERROR())
+
+    expect(rejectWithdrawal).not.toHaveBeenCalled()
+    expect(reportError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ phase: 'withdrawal-pending-exhausted', stickyMarker: true }),
+    )
+  })
+
+  it('sets the sticky marker on the job the first time an attempt sees withdrawal_pending', async () => {
+    const updateData = vi.fn().mockResolvedValue(undefined)
+    const job = makeJob({ attemptsMade: 1, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS, updateData })
+    vi.spyOn(ZareCashService, 'submitWithdrawal').mockRejectedValueOnce(WITHDRAWAL_PENDING())
+
+    await expect(processWithdrawalJob(job)).rejects.toThrow('open payout')
+
+    expect(updateData).toHaveBeenCalledWith(expect.objectContaining({ sawWithdrawalPending: true }))
+  })
+
+  it('rethrows the ORIGINAL failure even when persisting the marker fails', async () => {
+    // The failure handler has to see the real error, not a bookkeeping one.
+    const updateData = vi.fn().mockRejectedValue(new Error('redis gone'))
+    const job = makeJob({ attemptsMade: 1, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS, updateData })
+    vi.spyOn(ZareCashService, 'submitWithdrawal').mockRejectedValueOnce(WITHDRAWAL_PENDING())
+
+    await expect(processWithdrawalJob(job)).rejects.toThrow('open payout')
+  })
+
+  it('does not touch the job data for an ordinary failure', async () => {
+    const updateData = vi.fn().mockResolvedValue(undefined)
+    const job = makeJob({ attemptsMade: 1, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS, updateData })
+    vi.spyOn(ZareCashService, 'submitWithdrawal').mockRejectedValueOnce(NETWORK_ERROR())
+
+    await expect(processWithdrawalJob(job)).rejects.toThrow('ECONNREFUSED')
+    expect(updateData).not.toHaveBeenCalled()
+  })
+
+  // ── Final-review Critical 3 (second instance): the terminal refund ─────────
+
+  it('re-enqueues the terminal refund when it fails, instead of swallowing it', async () => {
+    // A blanket catch here left the player permanently debited for a payout that
+    // was never sent, with nothing anywhere that would ever try again.
+    rejectWithdrawal.mockRejectedValueOnce(new Error('Timed out fetching a new connection from the pool'))
+    const job = makeJob({ attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS })
+
+    await handleWithdrawalFailure(job, NETWORK_ERROR())
+
+    expect(add).toHaveBeenCalledWith(
+      TERMINAL_REFUND_JOB,
+      expect.objectContaining({ transactionId: 'tx1' }),
+      expect.objectContaining({ attempts: ZARECASH_WITHDRAWAL_ATTEMPTS }),
+    )
+  })
+
+  it('does not re-enqueue when the terminal refund succeeds', async () => {
+    const job = makeJob({ attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS })
+    await handleWithdrawalFailure(job, NETWORK_ERROR())
+    expect(rejectWithdrawal).toHaveBeenCalledTimes(1)
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('treats an already-resolved row as benign — no retry job for a refund that is not needed', async () => {
+    rejectWithdrawal.mockRejectedValueOnce(new Error('Transaction is not pending review'))
+    const job = makeJob({ attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS })
+
+    await handleWithdrawalFailure(job, NETWORK_ERROR())
+
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('runs the refund when a terminal-refund job is processed, and lets BullMQ retry a genuine failure', async () => {
+    const job = makeJob({ attemptsMade: 1, attempts: ZARECASH_WITHDRAWAL_ATTEMPTS, name: TERMINAL_REFUND_JOB })
+    ;(job as any).data = { transactionId: 'tx1', reason: 'refunded' }
+
+    await processWithdrawalJob(job)
+    expect(rejectWithdrawal).toHaveBeenCalledWith('tx1', 'refunded')
+
+    rejectWithdrawal.mockRejectedValueOnce(new Error('db down'))
+    await expect(processWithdrawalJob(job)).rejects.toThrow('db down')
+  })
+
+  it('a terminal-refund job that exhausts its own retries does not recurse into another refund', async () => {
+    const job = makeJob({
+      attemptsMade: ZARECASH_WITHDRAWAL_ATTEMPTS,
+      attempts: ZARECASH_WITHDRAWAL_ATTEMPTS,
+      name: TERMINAL_REFUND_JOB,
+    })
+    ;(job as any).data = { transactionId: 'tx1', reason: 'refunded' }
+
+    await handleWithdrawalFailure(job, new Error('db down'))
+
+    expect(rejectWithdrawal).not.toHaveBeenCalled()
+    expect(add).not.toHaveBeenCalled()
+    expect(reportError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ phase: 'terminal-refund-exhausted' }),
+    )
   })
 })

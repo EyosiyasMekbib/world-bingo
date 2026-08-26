@@ -1,4 +1,4 @@
-import { initSentry, Sentry } from './lib/sentry.js'
+import { initSentry, Sentry, reportError } from './lib/sentry.js'
 
 // Initialise error reporting before anything else so early failures are captured.
 // No-op when SENTRY_DSN is unset.
@@ -69,7 +69,7 @@ import './workers/zarecash-event.worker.js'
 import './workers/zarecash-withdrawal.worker.js'
 import './workers/zarecash-sweep.worker.js'
 import { scheduleZareCashSweep } from './workers/zarecash-sweep.worker.js'
-import { ZareCashService } from './services/zarecash.service.js'
+import { ZareCashService, ZareCashModeMismatchError } from './services/zarecash.service.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
@@ -382,10 +382,23 @@ try {
     registerSupportHandlers(io)
 
     // Refuse to bind the port if we're talking to the wrong ZareCash keyspace —
-    // a mismatch here must abort startup, not degrade into a warning.
+    // a genuine mode mismatch must abort startup, not degrade into a warning.
+    //
+    // ONLY that. This block sits inside the try whose catch calls process.exit(1),
+    // so anything else escaping here kills the API over a payment provider. Two
+    // paths used to do exactly that: a truncated 200 from GET /v1/float (now
+    // rejected at the source in client.ts, but still not a mode mismatch), and
+    // scheduleZareCashSweep's getQueue().add() when Redis is down at startup.
+    // Bingo games have nothing to do with ZareCash's — or Redis's — uptime.
     if (isZareCashEnabled()) {
-        await ZareCashService.assertMode()
-        await scheduleZareCashSweep()
+        try {
+            await ZareCashService.assertMode()
+            await scheduleZareCashSweep()
+        } catch (err) {
+            if (err instanceof ZareCashModeMismatchError) throw err
+            console.error('[ZareCash] boot setup failed (continuing without it):', (err as Error)?.message)
+            reportError(err, { phase: 'zarecash-boot' })
+        }
     }
 
     await server.listen({ port, host })

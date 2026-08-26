@@ -145,6 +145,60 @@ describe('ZareCashClient', () => {
     })
   })
 
+  /**
+   * Final-review Important 4 / deferred minor T4. `request()` returned
+   * `null as T` for a 2xx with an empty or unparseable body, and every caller
+   * then acted on a lie. `assertMode` read `float.mode` off that null OUTSIDE the
+   * try wrapping getFloat(), so a truncated 200 threw a TypeError — inside
+   * index.ts's exit-on-throw block, taking the entire API down over a payment
+   * provider's bad response. Fail here, at the source.
+   */
+  describe('a 2xx with no usable body', () => {
+    it('raises a retryable ZareCashError instead of returning null for getFloat', async () => {
+      // A fresh Response per call — a body can only be consumed once.
+      fetchMock.mockImplementation(async () => new Response('', { status: 200 }))
+      const client = new ZareCashClient(CFG)
+
+      await expect(client.getFloat()).rejects.toBeInstanceOf(ZareCashError)
+      await expect(client.getFloat()).rejects.toMatchObject({
+        code: 'invalid_response',
+        permanent: false,
+      })
+    })
+
+    it('raises on an unparseable (truncated) 200 body', async () => {
+      fetchMock.mockResolvedValue(
+        new Response('{"mode":"te', { status: 200, headers: { 'content-type': 'application/json' } }),
+      )
+      const client = new ZareCashClient(CFG)
+      await expect(client.getFloat()).rejects.toMatchObject({ code: 'invalid_response' })
+    })
+
+    it('raises on an empty body from a mutating call too', async () => {
+      fetchMock.mockResolvedValue(new Response('', { status: 201 }))
+      const client = new ZareCashClient(CFG)
+      await expect(
+        client.createWithdrawal(
+          { playerRef: 'u1', amount: 500, methodCode: 'telebirr', destinationAccount: '0911' },
+          'wd_tx1',
+        ),
+      ).rejects.toMatchObject({ code: 'invalid_response' })
+    })
+
+    it('still tolerates an empty body on freeze/unfreeze, whose response we never read', async () => {
+      fetchMock.mockImplementation(async () => new Response('', { status: 200 }))
+      const client = new ZareCashClient(CFG)
+      await expect(client.freezePlayer('u1', 'fraud review')).resolves.toBeNull()
+      await expect(client.unfreezePlayer('u1', 'cleared')).resolves.toBeNull()
+    })
+
+    it('still surfaces a non-2xx as its own error, not invalid_response', async () => {
+      fetchMock.mockResolvedValue(new Response('', { status: 503 }))
+      const client = new ZareCashClient(CFG)
+      await expect(client.getFloat()).rejects.toMatchObject({ code: 'http_503' })
+    })
+  })
+
   it('reads float without an idempotency key', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, {

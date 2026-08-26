@@ -33,7 +33,7 @@ export class ZareCashClient {
   private async request<T>(
     method: 'GET' | 'POST',
     path: string,
-    opts: { body?: unknown; idempotencyKey?: string } = {},
+    opts: { body?: unknown; idempotencyKey?: string; expectBody?: boolean } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { 'x-api-key': this.cfg.apiKey }
     if (opts.body !== undefined) headers['content-type'] = 'application/json'
@@ -77,6 +77,21 @@ export class ZareCashClient {
       })
     }
 
+    // A 2xx whose body is empty or unparseable is NOT a success we can act on.
+    // Returning `null as T` here pushed a lie into every caller: `assertMode`
+    // read `float.mode` off it and died on a TypeError, which — sitting inside
+    // index.ts's exit-on-throw block — took the whole API down over a truncated
+    // response from a payment provider. Fail here, at the source, as the
+    // retryable transport fault it actually is.
+    if (parsed === null && opts.expectBody !== false) {
+      throw new ZareCashError({
+        code: 'invalid_response',
+        message: `ZareCash ${method} ${path} returned ${res.status} with an empty or unparseable body`,
+        status: res.status,
+        permanent: false,
+      })
+    }
+
     return parsed as T
   }
 
@@ -111,10 +126,14 @@ export class ZareCashClient {
     return this.request('GET', `/v1/events?${qs.toString()}`)
   }
 
+  // Freeze/unfreeze are fire-and-forget containment calls whose response body we
+  // never read, so an empty one is genuinely fine — they opt out of the
+  // empty-body check the value-returning calls above depend on.
   freezePlayer(ref: string, reason: string): Promise<unknown> {
     return this.request('POST', `/v1/players/${encodeURIComponent(ref)}/freeze`, {
       body: { reason },
       idempotencyKey: `freeze_${ref}_${Date.now()}`,
+      expectBody: false,
     })
   }
 
@@ -122,6 +141,7 @@ export class ZareCashClient {
     return this.request('POST', `/v1/players/${encodeURIComponent(ref)}/unfreeze`, {
       body: { reason },
       idempotencyKey: `unfreeze_${ref}_${Date.now()}`,
+      expectBody: false,
     })
   }
 }

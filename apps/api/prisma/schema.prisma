@@ -162,6 +162,12 @@ model Transaction {
   bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
   bonusExpiresAtSpend  DateTime?
   paymentTransactionId String?              @unique
+  /// Which payment gateway owns this row, recorded at creation time (e.g. "zarecash").
+  /// Null means the manual/admin-reviewed flow. This is the ROUTING DECISION and is
+  /// set the moment we decide to route — unlike `gatewayRef`, which is the upstream
+  /// id and only exists once the provider has told us what it is. The admin
+  /// double-pay guard keys on this, because `gatewayRef` arrives too late to be safe.
+  gateway              String?
   gatewayRef           String?              @unique
   senderName           String?
   senderAccount        String?
@@ -175,6 +181,7 @@ model Transaction {
   @@index([userId, type])
   @@index([createdAt])
   @@index([reviewedById])
+  @@index([gateway, status])
   @@map("transactions")
 }
 

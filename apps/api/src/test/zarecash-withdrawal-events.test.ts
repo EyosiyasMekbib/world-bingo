@@ -4,8 +4,12 @@ vi.mock('../lib/prisma', () => ({
   default: {
     zareCashEvent: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) },
     transaction: { findUnique: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    // risk_hold and float.low now raise a durable admin alert, not a console line.
+    auditLog: { create: vi.fn().mockResolvedValue({}) },
   },
 }))
+const { reportWarning } = vi.hoisted(() => ({ reportWarning: vi.fn() }))
+vi.mock('../lib/sentry', () => ({ reportError: vi.fn(), reportWarning }))
 const { rejectWithdrawal } = vi.hoisted(() => ({ rejectWithdrawal: vi.fn().mockResolvedValue({}) }))
 vi.mock('../services/wallet.service', () => ({
   WalletService: { rejectWithdrawal, approveDeposit: vi.fn() },
@@ -19,7 +23,10 @@ import prisma from '../lib/prisma'
 import { ZareCashService } from '../services/zarecash.service'
 
 function event(type: string, data: Record<string, unknown>) {
-  return { id: 'evt_x', type, payload: { id: 'evt_x', type, created: 1, data }, processedAt: null }
+  return {
+    id: 'evt_x', type, payload: { id: 'evt_x', type, created: 1, data },
+    processedAt: null, receivedAt: new Date(),
+  }
 }
 const TX = { id: 'tx1', userId: 'u1', amount: '500', status: 'PENDING_REVIEW' }
 
@@ -64,12 +71,16 @@ describe('withdrawal webhook events', () => {
     expect(create).toHaveBeenCalled()
   })
 
-  it('keeps risk_hold pending without notifying the player', async () => {
+  it('keeps risk_hold pending without notifying the player, but does alert an operator', async () => {
     ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(event('withdrawal.risk_hold', { id: 'wd_5' }))
     ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
     await ZareCashService.processEvent('evt_x')
     expect(rejectWithdrawal).not.toHaveBeenCalled()
+    // Still nothing player-facing — a risk hold is not news for the player.
     expect(create).not.toHaveBeenCalled()
+    // But an operator has to know a payout is parked (spec: "raise an admin alert").
+    expect(reportWarning).toHaveBeenCalled()
+    expect((prisma as any).auditLog.create).toHaveBeenCalled()
   })
 
   it('tolerates a refund replay for an already-rejected withdrawal', async () => {
@@ -79,11 +90,15 @@ describe('withdrawal webhook events', () => {
     await expect(ZareCashService.processEvent('evt_x')).resolves.toBeUndefined()
   })
 
-  it('logs float.low without touching any transaction', async () => {
+  it('alerts on float.low without touching any transaction', async () => {
     ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue(
       event('float.low', { available: 5000, lowFloatThreshold: 100000 }),
     )
     await ZareCashService.processEvent('evt_x')
     expect((prisma as any).transaction.findUnique).not.toHaveBeenCalled()
+    // Operational, not player-facing (spec: "Admin notification + Sentry warning").
+    expect(create).not.toHaveBeenCalled()
+    expect(reportWarning).toHaveBeenCalled()
+    expect((prisma as any).auditLog.create).toHaveBeenCalled()
   })
 })

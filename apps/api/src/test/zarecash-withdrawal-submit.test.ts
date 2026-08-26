@@ -1,8 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../lib/prisma', () => ({
-  default: { transaction: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) } },
+  default: {
+    transaction: {
+      findUnique: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    auditLog: { create: vi.fn().mockResolvedValue({}) },
+  },
 }))
+vi.mock('../services/notification.service', () => ({
+  NotificationService: { create: vi.fn().mockResolvedValue({}) },
+}))
+const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }))
+vi.mock('../lib/sentry', () => ({ reportError, reportWarning: vi.fn() }))
 const { createWithdrawal } = vi.hoisted(() => ({ createWithdrawal: vi.fn() }))
 vi.mock('../gateways/payment/zarecash/client', () => ({ zarecashClient: () => ({ createWithdrawal }) }))
 const { rejectWithdrawal } = vi.hoisted(() => ({ rejectWithdrawal: vi.fn().mockResolvedValue({}) }))
@@ -87,5 +99,67 @@ describe('ZareCashService.submitWithdrawal', () => {
     ;(prisma as any).transaction.findUnique.mockResolvedValue({ ...TX, status: 'REJECTED' })
     await ZareCashService.submitWithdrawal(JOB)
     expect(createWithdrawal).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Final-review Important 2. Terminal states can arrive INLINE, not only as a
+ * webhook. Verified against the emitter: WithdrawalsService.create settles the
+ * sandbox happy path immediately and returns state 'approved' — recording AND
+ * enqueuing withdrawal.approved before the HTTP response reaches us. Handling
+ * only 'rejected' left an approved payout stuck in PENDING_REVIEW.
+ */
+describe('submitWithdrawal — inline terminal states', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(prisma as any).transaction.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('settles a payout ZareCash approved inline instead of leaving it PENDING_REVIEW', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createWithdrawal.mockResolvedValue({ id: 'wd_a', state: 'approved', settlementRef: 'SBX1234' })
+
+    await ZareCashService.submitWithdrawal(JOB)
+
+    expect((prisma as any).transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: 'tx1', status: 'PENDING_REVIEW' },
+      data: { status: 'APPROVED', note: expect.stringContaining('SBX1234') },
+    })
+    expect(rejectWithdrawal).not.toHaveBeenCalled()
+  })
+
+  it('refunds a payout ZareCash cancelled inline', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createWithdrawal.mockResolvedValue({ id: 'wd_c', state: 'cancelled' })
+
+    await ZareCashService.submitWithdrawal(JOB)
+
+    expect(rejectWithdrawal).toHaveBeenCalledWith('tx1', expect.stringContaining('cancelled'))
+  })
+
+  it('tolerates the webhook winning the race — a duplicate inline refund is not an error', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createWithdrawal.mockResolvedValue({ id: 'wd_r', state: 'rejected' })
+    rejectWithdrawal.mockRejectedValueOnce(new Error('Transaction is not pending review'))
+
+    await expect(ZareCashService.submitWithdrawal(JOB)).resolves.toBeUndefined()
+  })
+
+  it('still propagates a genuine refund failure on the inline path', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createWithdrawal.mockResolvedValue({ id: 'wd_r', state: 'rejected' })
+    rejectWithdrawal.mockRejectedValueOnce(new Error('Wallet not found'))
+
+    await expect(ZareCashService.submitWithdrawal(JOB)).rejects.toThrow('Wallet not found')
+  })
+
+  it('leaves risk_hold pending — a human at ZareCash decides', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createWithdrawal.mockResolvedValue({ id: 'wd_h', state: 'risk_hold' })
+
+    await ZareCashService.submitWithdrawal(JOB)
+
+    expect(rejectWithdrawal).not.toHaveBeenCalled()
+    expect((prisma as any).transaction.updateMany).not.toHaveBeenCalled()
   })
 })
