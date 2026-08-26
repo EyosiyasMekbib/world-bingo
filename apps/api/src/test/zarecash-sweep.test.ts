@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('../lib/prisma', () => ({
   default: {
-    zareCashEvent: { findMany: vi.fn(), create: vi.fn().mockResolvedValue({}) },
+    zareCashEvent: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn().mockResolvedValue({}) },
     siteSetting: { findUnique: vi.fn(), upsert: vi.fn().mockResolvedValue({}) },
   },
 }))
@@ -37,6 +37,11 @@ describe('ZareCashService.assertMode', () => {
     getFloat.mockResolvedValue({ mode: 'live', balance: 1, reserved: 0, available: 1, lowFloatThreshold: 0, queuedWithdrawals: 0 })
     await expect(ZareCashService.assertMode()).rejects.toThrow(/mode mismatch/i)
   })
+
+  it('does not throw when ZareCash is unreachable — only a genuine mismatch is fatal', async () => {
+    getFloat.mockRejectedValue(new Error('network error'))
+    await expect(ZareCashService.assertMode()).resolves.toBeUndefined()
+  })
 })
 
 describe('ZareCashService.sweepEvents', () => {
@@ -51,7 +56,7 @@ describe('ZareCashService.sweepEvents', () => {
       ],
       nextCursor: null,
     })
-    ;(prisma as any).zareCashEvent.findMany.mockResolvedValue([{ id: 'evt_1' }])
+    ;(prisma as any).zareCashEvent.findMany.mockResolvedValue([{ id: 'evt_1', processedAt: new Date() }])
 
     const result = await ZareCashService.sweepEvents()
 
@@ -60,6 +65,64 @@ describe('ZareCashService.sweepEvents', () => {
     expect((prisma as any).zareCashEvent.create).toHaveBeenCalledWith({
       data: { id: 'evt_2', type: 'deposit.rejected', payload: expect.objectContaining({ id: 'evt_2' }) },
     })
+    expect(add).toHaveBeenCalledWith('process', { eventId: 'evt_2' })
+  })
+
+  it('re-enqueues a known-but-unprocessed event without inserting a duplicate', async () => {
+    // Simulates a row a previous sweep (or webhook delivery) inserted but never
+    // got to enqueue — e.g. a transient Redis blip right after the create. The
+    // row exists, so an existence-only dedup would skip it forever.
+    ;(prisma as any).siteSetting.findUnique.mockResolvedValue(null)
+    listEvents.mockResolvedValue({
+      data: [{ id: 'evt_1', type: 'deposit.approved', created: 1, data: { id: 'dp_1' } }],
+      nextCursor: null,
+    })
+    ;(prisma as any).zareCashEvent.findMany.mockResolvedValue([{ id: 'evt_1', processedAt: null }])
+
+    const result = await ZareCashService.sweepEvents()
+
+    expect(result).toEqual({ scanned: 1, replayed: 1 })
+    expect((prisma as any).zareCashEvent.create).not.toHaveBeenCalled()
+    expect(add).toHaveBeenCalledWith('process', { eventId: 'evt_1' })
+  })
+
+  it('skips a known-and-processed event entirely — no insert, no enqueue', async () => {
+    ;(prisma as any).siteSetting.findUnique.mockResolvedValue(null)
+    listEvents.mockResolvedValue({
+      data: [{ id: 'evt_1', type: 'deposit.approved', created: 1, data: { id: 'dp_1' } }],
+      nextCursor: null,
+    })
+    ;(prisma as any).zareCashEvent.findMany.mockResolvedValue([{ id: 'evt_1', processedAt: new Date() }])
+
+    const result = await ZareCashService.sweepEvents()
+
+    expect(result).toEqual({ scanned: 1, replayed: 0 })
+    expect((prisma as any).zareCashEvent.create).not.toHaveBeenCalled()
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('a P2002 on insert does not abort the sweep — later events in the page still process', async () => {
+    // A webhook delivery (or an overlapping sweep) can insert the same id
+    // between our findMany snapshot and this create call. That must not blow
+    // up the whole page — it must be handled exactly like the known-row case.
+    ;(prisma as any).siteSetting.findUnique.mockResolvedValue(null)
+    listEvents.mockResolvedValue({
+      data: [
+        { id: 'evt_1', type: 'deposit.approved', created: 1, data: { id: 'dp_1' } },
+        { id: 'evt_2', type: 'deposit.rejected', created: 2, data: { id: 'dp_2' } },
+      ],
+      nextCursor: null,
+    })
+    ;(prisma as any).zareCashEvent.findMany.mockResolvedValue([])
+    const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`id`)'), { code: 'P2002' })
+    ;(prisma as any).zareCashEvent.create.mockRejectedValueOnce(p2002).mockResolvedValueOnce({})
+    ;(prisma as any).zareCashEvent.findUnique.mockResolvedValue({ processedAt: null })
+
+    const result = await ZareCashService.sweepEvents()
+
+    expect(result).toEqual({ scanned: 2, replayed: 2 })
+    expect((prisma as any).zareCashEvent.create).toHaveBeenCalledTimes(2)
+    expect(add).toHaveBeenCalledWith('process', { eventId: 'evt_1' })
     expect(add).toHaveBeenCalledWith('process', { eventId: 'evt_2' })
   })
 

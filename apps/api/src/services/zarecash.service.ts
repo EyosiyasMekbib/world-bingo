@@ -16,6 +16,7 @@ import { ZareCashError } from '../gateways/payment/zarecash/types.js'
 import { NotificationService } from './notification.service.js'
 import { wbWithdrawalsTotal } from '../lib/metrics.js'
 import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
+import { reportError } from '../lib/sentry.js'
 
 const CURSOR_KEY = 'zarecash_events_cursor'
 
@@ -32,11 +33,35 @@ export class ZareCashService {
     /**
      * Refuse to run against the wrong keyspace. Contract checklist item 9 — the
      * cheapest guard against a test key in production, or a live key in CI.
+     *
+     * Two distinct failure modes here, deliberately handled differently — do not
+     * collapse them back into a single throw:
+     *  - We reached ZareCash and it told us the wrong keyspace: FATAL. This is
+     *    the guard's entire reason to exist.
+     *  - We could not reach ZareCash at all (network error, timeout, 401, 5xx —
+     *    see client.ts, which wraps all of these in ZareCashError): NOT fatal.
+     *    That tells us nothing about whether the key is correct, only that the
+     *    provider is unavailable right now, and bingo games have nothing to do
+     *    with ZareCash's uptime. Log it loudly, report it, and let boot continue
+     *    unverified rather than taking the whole API down over a payment
+     *    provider blip.
      */
     static async assertMode(): Promise<void> {
         const cfg = zarecashConfig()
         if (!cfg.enabled) return
-        const float = await zarecashClient().getFloat()
+
+        let float
+        try {
+            float = await zarecashClient().getFloat()
+        } catch (err) {
+            console.error(
+                '[ZareCash] could not verify keyspace at boot (continuing unverified):',
+                (err as Error)?.message,
+            )
+            reportError(err, { phase: 'zarecash-assert-mode' })
+            return
+        }
+
         if (float.mode !== cfg.mode) {
             throw new Error(
                 `ZareCash mode mismatch: ZARECASH_MODE=${cfg.mode} but the API key reports "${float.mode}". Refusing to start.`,
@@ -49,6 +74,15 @@ export class ZareCashService {
      * Backfill anything a webhook outage lost. Events carry full payloads, so no
      * follow-up fetch is needed, and processing is keyed on the event id, so a
      * replay of something already handled is a no-op.
+     *
+     * Dedup is processedAt-aware, not existence-only — mirrors webhook.ts's
+     * P2002 handling. A row can exist with processedAt still null (the insert
+     * that created it succeeded but the enqueue right after it threw — a
+     * transient Redis blip is enough), and unlike a webhook-delivered event,
+     * there is no redelivery to rescue a sweep-discovered one: ZareCash only
+     * redelivers webhooks, and these events are by definition ones that were
+     * never delivered as a webhook. So "exists" alone must never mean "skip" —
+     * only "exists AND processedAt is set" does.
      */
     static async sweepEvents(): Promise<{ scanned: number; replayed: number }> {
         const cursorRow = await prisma.siteSetting.findUnique({ where: { key: CURSOR_KEY } })
@@ -64,15 +98,45 @@ export class ZareCashService {
             const ids = page.data.map((e) => e.id)
             const known = await prisma.zareCashEvent.findMany({
                 where: { id: { in: ids } },
-                select: { id: true },
+                select: { id: true, processedAt: true },
             })
-            const knownIds = new Set(known.map((k) => k.id))
+            const knownProcessedAt = new Map(known.map((k) => [k.id, k.processedAt]))
 
             for (const evt of page.data) {
-                if (knownIds.has(evt.id)) continue
-                await prisma.zareCashEvent.create({
-                    data: { id: evt.id, type: evt.type, payload: evt as unknown as object },
-                })
+                if (knownProcessedAt.has(evt.id)) {
+                    // Exists already. Only re-enqueue if it was never processed —
+                    // otherwise this is a genuine repeat and must stay a no-op.
+                    if (knownProcessedAt.get(evt.id) === null) {
+                        await getQueue(QUEUE_NAMES.ZARECASH_EVENT).add('process', { eventId: evt.id })
+                        replayed++
+                    }
+                    continue
+                }
+
+                try {
+                    await prisma.zareCashEvent.create({
+                        data: { id: evt.id, type: evt.type, payload: evt as unknown as object },
+                    })
+                } catch (err: any) {
+                    // P2002 = unique violation = someone else (a webhook delivery
+                    // racing this sweep, or an overlapping sweep run) inserted this
+                    // id between our findMany snapshot and this create. Same rule
+                    // as above: re-enqueue only if it landed unprocessed. Any other
+                    // error is a genuine failure and must propagate — but must not
+                    // abort the events already handled earlier in this page.
+                    if (err?.code === 'P2002') {
+                        const existing = await prisma.zareCashEvent.findUnique({
+                            where: { id: evt.id },
+                            select: { processedAt: true },
+                        })
+                        if (existing && existing.processedAt === null) {
+                            await getQueue(QUEUE_NAMES.ZARECASH_EVENT).add('process', { eventId: evt.id })
+                            replayed++
+                        }
+                        continue
+                    }
+                    throw err
+                }
                 await getQueue(QUEUE_NAMES.ZARECASH_EVENT).add('process', { eventId: evt.id })
                 replayed++
             }
