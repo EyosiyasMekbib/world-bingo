@@ -65,6 +65,30 @@ describe('method routing', () => {
     expect((await resolveMethod('telebirr'))?.gatewayMethodCode).toBe('telebirr')
   })
 
+  it('falls back to the local code when gatewayMethodCode is an empty string', async () => {
+    ;(prisma as any).paymentMethod.findUnique.mockResolvedValue({
+      code: 'telebirr',
+      name: 'TeleBirr',
+      gateway: 'zarecash',
+      gatewayMethodCode: '',
+      merchantAccount: '0911',
+      merchantName: null,
+    })
+    expect((await resolveMethod('telebirr'))?.gatewayMethodCode).toBe('telebirr')
+  })
+
+  it('falls back to the local code when gatewayMethodCode is whitespace-only', async () => {
+    ;(prisma as any).paymentMethod.findUnique.mockResolvedValue({
+      code: 'telebirr',
+      name: 'TeleBirr',
+      gateway: 'zarecash',
+      gatewayMethodCode: '   ',
+      merchantAccount: '0911',
+      merchantName: null,
+    })
+    expect((await resolveMethod('telebirr'))?.gatewayMethodCode).toBe('telebirr')
+  })
+
   it('caches within the TTL and refetches after clearing', async () => {
     ;(prisma as any).paymentMethod.findUnique.mockResolvedValue({
       code: 'telebirr',

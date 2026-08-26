@@ -39,7 +39,7 @@ class MirroredMethodConfigSource implements MethodConfigSource {
       code: row.code,
       name: row.name,
       gateway: row.gateway ?? 'manual',
-      gatewayMethodCode: row.gatewayMethodCode ?? row.code,
+      gatewayMethodCode: row.gatewayMethodCode?.trim() || row.code,
       collectionAccount: { receiverName: row.merchantName, account: row.merchantAccount },
     }
   }
