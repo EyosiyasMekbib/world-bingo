@@ -37,6 +37,7 @@ import paymentMethodRoutes from './routes/payment-methods/index.js'
 import { registerBullBoard } from './routes/bull-board.js'
 import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
 import { palaceCallbackRoute } from './routes/palace/callback.js'
+import zarecashWebhookRoute from './routes/zarecash/webhook.js'
 import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
@@ -284,6 +285,7 @@ await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
+await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
 }
