@@ -108,4 +108,26 @@ describe('ZareCashService.submitDeposit', () => {
     )
     await expect(ZareCashService.submitDeposit('tx1')).rejects.toThrow('ECONNREFUSED')
   })
+
+  it('resolves without retrying when approveDeposit rejects a redelivery (already credited)', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createDeposit.mockResolvedValue({ id: 'dp_5', status: 'APPROVED', approvedAmount: 480 })
+    approveDeposit.mockRejectedValueOnce(new Error('Invalid transaction'))
+
+    await expect(ZareCashService.submitDeposit('tx1')).resolves.toBeUndefined()
+
+    expect((prisma as any).transaction.update).toHaveBeenCalledWith({
+      where: { id: 'tx1' }, data: { gatewayRef: 'dp_5' },
+    })
+  })
+
+  it('resolves and passes a real zero through when approvedAmount is 0 and approveDeposit rejects it', async () => {
+    ;(prisma as any).transaction.findUnique.mockResolvedValue(TX)
+    createDeposit.mockResolvedValue({ id: 'dp_6', status: 'APPROVED', approvedAmount: 0 })
+    approveDeposit.mockRejectedValueOnce(new Error('Adjusted amount must be a positive number'))
+
+    await expect(ZareCashService.submitDeposit('tx1')).resolves.toBeUndefined()
+
+    expect(approveDeposit).toHaveBeenCalledWith('tx1', 0)
+  })
 })

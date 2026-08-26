@@ -60,10 +60,17 @@ export class ZareCashService {
         await prisma.transaction.update({ where: { id: transactionId }, data: { gatewayRef: res.id } })
 
         // Test mode approves clean refs inline. Credit now rather than waiting for
-        // the webhook; the webhook still arrives and the PENDING_REVIEW guard in
-        // approveDeposit makes it a no-op.
+        // the webhook. approveDeposit can throw here — the row is no longer
+        // PENDING_REVIEW (a redelivery of this same job after an earlier run already
+        // credited it) or the amount is not positive (approvedAmount === 0 from
+        // ZareCash). Neither case is retryable, so swallow it: leave the row for the
+        // webhook (or a human) rather than failing the BullMQ job and retrying.
         if (res.status === 'APPROVED') {
-            await WalletService.approveDeposit(transactionId, res.approvedAmount ?? Number(tx.amount))
+            try {
+                await WalletService.approveDeposit(transactionId, res.approvedAmount ?? Number(tx.amount))
+            } catch (err) {
+                console.warn('[ZareCash] deposit %s not credited inline: %s', transactionId, (err as Error).message)
+            }
         }
     }
 }
