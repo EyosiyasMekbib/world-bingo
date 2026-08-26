@@ -3,7 +3,7 @@ import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@w
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
-import { wbDepositsTotal } from '../lib/metrics'
+import { wbDepositsTotal, wbWithdrawalsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
@@ -343,6 +343,83 @@ export class WalletService {
             NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
             return transaction
         })
+    }
+
+    /**
+     * Reject a pending withdrawal and refund the player.
+     *
+     * Extracted from AdminService so both a human reviewer and the ZareCash
+     * withdrawal worker can reach it. The claim is an atomic conditional update:
+     * two concurrent rejects serialize on the row and the loser aborts BEFORE
+     * crediting, so the wallet can never be double-refunded.
+     */
+    static async rejectWithdrawal(transactionId: string, note?: string, reviewerId?: string) {
+        const existing = await prisma.transaction.findUnique({ where: { id: transactionId } })
+        if (!existing) throw new Error('Transaction not found')
+        if (existing.type !== TransactionType.WITHDRAWAL) {
+            throw new Error('rejectWithdrawal only applies to withdrawals')
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            const claim = await tx.transaction.updateMany({
+                where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
+                data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
+            })
+            if (claim.count === 0) {
+                throw new Error('Transaction is not pending review')
+            }
+            const updated = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } })
+
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${existing.userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            if (!wallet) throw new Error('Wallet not found')
+
+            const realBefore = new Decimal(wallet.realBalance)
+            const realAfter = realBefore.plus(new Decimal(existing.amount))
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+
+            await tx.wallet.update({
+                where: { userId: existing.userId },
+                data: { realBalance: { increment: existing.amount } },
+            })
+
+            await tx.transaction.create({
+                data: {
+                    userId: existing.userId,
+                    type: TransactionType.REFUND,
+                    amount: existing.amount,
+                    status: PaymentStatus.APPROVED,
+                    referenceId: transactionId,
+                    note: `Refund for rejected withdrawal${note ? `: ${note}` : ''}`,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
+                },
+            })
+
+            return { updated, realAfter, bonusBefore }
+        })
+
+        NotificationService.pushWalletUpdate(
+            existing.userId,
+            result.realAfter.toNumber(),
+            result.bonusBefore.toNumber(),
+        )
+
+        await NotificationService.create(
+            existing.userId,
+            NotificationType.WITHDRAWAL_PROCESSED,
+            'Withdrawal Rejected',
+            `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
+            { transactionId, amount: Number(existing.amount), note },
+        ).catch(() => {})
+
+        wbWithdrawalsTotal.labels('rejected').inc()
+
+        return result.updated
     }
 
     static async getTransactions(

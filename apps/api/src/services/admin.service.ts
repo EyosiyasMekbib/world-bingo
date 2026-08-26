@@ -2,7 +2,6 @@ import prisma from '../lib/prisma'
 import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
-import { Decimal } from '@prisma/client/runtime/library'
 import { HouseWalletService } from './house-wallet.service'
 import { wbWithdrawalsTotal } from '../lib/metrics'
 
@@ -300,80 +299,7 @@ export class AdminService {
         }
 
         if (existing.type === TransactionType.WITHDRAWAL) {
-            // Withdrawal rejection must:
-            // 1. Mark the withdrawal REJECTED
-            // 2. Re-credit the wallet using SELECT FOR UPDATE (was deducted on request)
-            // 3. Create a REFUND compensation transaction for the audit trail
-            // All in one DB transaction to prevent partial state on crash.
-            const result = await prisma.$transaction(async (tx) => {
-                // Atomically claim the withdrawal: flip PENDING_REVIEW→REJECTED only if
-                // still pending. Two concurrent rejects (double-click) serialize on this
-                // row; the loser sees count === 0 and aborts BEFORE crediting, so the
-                // wallet can never be double-refunded (fixes the TOCTOU).
-                const claim = await tx.transaction.updateMany({
-                    where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
-                    data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
-                })
-                if (claim.count === 0) {
-                    throw new Error('Transaction is not pending review')
-                }
-                const updated = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } })
-
-                // Lock wallet row before reading balance
-                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${existing.userId} FOR UPDATE
-                `
-                const wallet = wallets[0]
-                if (!wallet) throw new Error('Wallet not found')
-
-                const realBefore = new Decimal(wallet.realBalance)
-                const realAfter = realBefore.plus(new Decimal(existing.amount))
-                const bonusBefore = new Decimal(wallet.bonusBalance)
-
-                // Re-credit wallet
-                await tx.wallet.update({
-                    where: { userId: existing.userId },
-                    data: { realBalance: { increment: existing.amount } },
-                })
-
-                // Create compensation transaction so audit trail shows the wallet credit
-                await tx.transaction.create({
-                    data: {
-                        userId: existing.userId,
-                        type: TransactionType.REFUND,
-                        amount: existing.amount,
-                        status: PaymentStatus.APPROVED,
-                        referenceId: transactionId,
-                        note: `Refund for rejected withdrawal${note ? `: ${note}` : ''}`,
-                        balanceBefore: realBefore,
-                        balanceAfter: realAfter,
-                        bonusBalanceBefore: bonusBefore,
-                        bonusBalanceAfter: bonusBefore,
-                    },
-                })
-
-                return { updated, realAfter, bonusBefore }
-            })
-
-            // Push real-time balance update after commit
-            NotificationService.pushWalletUpdate(
-                existing.userId,
-                result.realAfter.toNumber(),
-                result.bonusBefore.toNumber(),
-            )
-
-            await NotificationService.create(
-                existing.userId,
-                NotificationType.WITHDRAWAL_PROCESSED,
-                'Withdrawal Rejected',
-                `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
-                { transactionId, amount: Number(existing.amount), note },
-            ).catch(() => {})
-
-            // Metric: withdrawal rejected + refunded (post-commit).
-            wbWithdrawalsTotal.labels('rejected').inc()
-
-            return result.updated
+            return await WalletService.rejectWithdrawal(transactionId, note, reviewerId)
         }
 
         // DEPOSIT rejection — no wallet change (balance was never credited)
