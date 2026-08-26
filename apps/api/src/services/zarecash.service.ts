@@ -9,7 +9,7 @@
 import prisma from '../lib/prisma.js'
 import { zarecashClient } from '../gateways/payment/zarecash/client.js'
 import { resolveMethod } from '../gateways/payment/zarecash/method-config.js'
-import { zarecashConfig } from '../gateways/payment/zarecash/config.js'
+import { zarecashConfig, isZareCashEnabled } from '../gateways/payment/zarecash/config.js'
 import { WalletService } from './wallet.service.js'
 import { PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { ZareCashError } from '../gateways/payment/zarecash/types.js'
@@ -435,5 +435,23 @@ export class ZareCashService {
             `Your withdrawal of ${Number(tx.amount).toFixed(2)} ETB is queued and will be paid shortly.`,
             { transactionId: tx.id, amount: Number(tx.amount) },
         ).catch(() => {})
+    }
+
+    /**
+     * Mirror a local freeze upstream. Best-effort by design: the LOCAL freeze is
+     * the one that protects our own balance (enforced in WalletService.requestWithdrawal
+     * and AdminService.reviewTransaction), so a failed sync must never block it —
+     * unlike the deposit/withdrawal paths, a blanket catch here is correct.
+     * Deposits are unaffected on both sides — a frozen player can still fund.
+     */
+    static async syncPlayerFreeze(userId: string, frozen: boolean, reason: string): Promise<void> {
+        if (!isZareCashEnabled()) return
+        try {
+            const client = zarecashClient()
+            if (frozen) await client.freezePlayer(userId, reason)
+            else await client.unfreezePlayer(userId, reason)
+        } catch (err) {
+            console.error('[ZareCash] freeze sync failed for %s: %s', userId, (err as Error).message)
+        }
     }
 }
