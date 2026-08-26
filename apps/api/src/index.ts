@@ -62,6 +62,7 @@ import './workers/player-metrics.worker.js'
 import './workers/crm-campaign.worker.js'
 import './workers/bonus-expiry.worker.js'
 import './workers/prediction.worker.js'
+import './workers/zarecash-deposit.worker.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')

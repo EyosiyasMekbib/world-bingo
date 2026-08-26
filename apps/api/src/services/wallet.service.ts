@@ -7,6 +7,8 @@ import { wbDepositsTotal, wbWithdrawalsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
+import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
+import { getQueue, QUEUE_NAMES } from '../lib/queue'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -62,6 +64,18 @@ export class WalletService {
                 ...(data.methodCode ? { note: data.methodCode } : {}),
             },
         })
+        // Route to ZareCash when the method has opted in; otherwise keep the
+        // manual flow untouched, including local auto-verification.
+        if (await isZareCashMethod(data.methodCode)) {
+            // Submit on a queue, not inline: it buys retries for free, and it
+            // keeps wallet.service from importing zarecash.service (which imports
+            // WalletService back — a cycle that leaves one of them undefined at
+            // module init). A failed submit leaves the deposit PENDING_REVIEW,
+            // which is a safe state: no money has moved.
+            await getQueue(QUEUE_NAMES.ZARECASH_DEPOSIT).add('submit', { transactionId: transaction.id })
+            return transaction
+        }
+
         // Best-effort: kick off async auto-verification. Swallows its own errors so a
         // queue hiccup can never break deposit submission — the deposit still goes to manual.
         await DepositVerificationService.enqueue(transaction.id)
