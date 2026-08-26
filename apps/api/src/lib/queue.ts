@@ -38,6 +38,10 @@ export const QUEUE_NAMES = {
     CRM_CAMPAIGN: 'crm-campaign',
     PREDICTION: 'prediction',
     BONUS_EXPIRY: 'bonus-expiry',
+    ZARECASH_DEPOSIT: 'zarecash-deposit',
+    ZARECASH_EVENT: 'zarecash-event',
+    ZARECASH_WITHDRAWAL: 'zarecash-withdrawal',
+    ZARECASH_SWEEP: 'zarecash-sweep',
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

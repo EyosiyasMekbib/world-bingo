@@ -162,6 +162,7 @@ model Transaction {
   bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
   bonusExpiresAtSpend  DateTime?
   paymentTransactionId String?              @unique
+  gatewayRef           String?              @unique
   senderName           String?
   senderAccount        String?
   reviewedById         String? // admin/clerk who approved or rejected (audit + separation-of-duties)
@@ -538,19 +539,21 @@ enum PaymentMethodType {
 }
 
 model PaymentMethod {
-  id              String            @id @default(uuid())
-  code            String            @unique // e.g. "telebirr", "cbe", "awash"
-  name            String // display name, e.g. "TeleBirr"
-  type            PaymentMethodType
-  merchantAccount String? // account/phone number for deposit methods
-  merchantName    String? // recipient name shown before account number (e.g. "John Doe")
-  instructions    String? // shown to users during deposit flow
-  icon            String? // emoji or icon identifier, e.g. "📱"
-  enabled         Boolean           @default(true)
-  autoVerify      Boolean           @default(false) // opt this method into deposit auto-verification
-  sortOrder       Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                String            @id @default(uuid())
+  code              String            @unique // e.g. "telebirr", "cbe", "awash"
+  name              String // display name, e.g. "TeleBirr"
+  type              PaymentMethodType
+  merchantAccount   String? // account/phone number for deposit methods
+  merchantName      String? // recipient name shown before account number (e.g. "John Doe")
+  instructions      String? // shown to users during deposit flow
+  icon              String? // emoji or icon identifier, e.g. "📱"
+  enabled           Boolean           @default(true)
+  autoVerify        Boolean           @default(false) // opt this method into deposit auto-verification
+  gateway           String            @default("manual") // "manual" | "zarecash"
+  gatewayMethodCode String? // ZareCash methodCode when gateway = "zarecash"
+  sortOrder         Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@map("payment_methods")
 }
@@ -791,6 +794,21 @@ enum DepositVerificationStatus {
 
 enum DepositVerificationSource {
   RECEIPT_FETCH
+}
+
+/// One row per received ZareCash webhook delivery. Delivery is at-least-once,
+/// so this table is both the dedupe key and the audit trail.
+model ZareCashEvent {
+  id          String    @id // evt_… assigned by ZareCash
+  type        String
+  payload     Json
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@index([type])
+  @@index([processedAt])
+  @@map("zarecash_events")
 }
 
 // ─── Player CRM ───────────────────────────────────────────────────────────────
