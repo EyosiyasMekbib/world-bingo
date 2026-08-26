@@ -22,15 +22,20 @@
  *
  * The reason is required and is never defaulted — a containment action with
  * no recorded reason is how audit trails rot. The user may be identified by
- * id, username, or phone (whichever is cheapest to have on hand); all three
- * are unique columns, so a single lookup resolves any of them.
+ * id, username, or phone (whichever is cheapest to have on hand). All three
+ * are unique columns, but username/phone are independently unique free-form
+ * strings, so one user's username CAN collide with a different user's phone
+ * — if the identifier matches more than one row, this script refuses to
+ * guess: it prints every match and exits non-zero without touching anyone.
+ * Re-run with the printed `id=` value to disambiguate.
  *
  * The ZareCash mirror is best-effort: it is a no-op when ZARECASH_ENABLED is
  * not "true", and if it fails, this script still exits 0 — the LOCAL freeze
  * (the one that actually protects our balance, enforced in
  * WalletService.requestWithdrawal and AdminService.reviewTransaction) already
  * stands by the time the mirror is attempted. Only a failure to write the
- * local isActive flag is treated as a real failure (exit 1).
+ * local isActive flag, or an ambiguous/missing identifier, is treated as a
+ * real failure (exit 1).
  *
  * The argument parsing and user lookup below are thin wrappers around
  * ../src/lib/freeze-player-args.ts, which holds the actual logic and is unit
@@ -42,8 +47,7 @@
 
 import prisma from '../src/lib/prisma.js'
 import { ZareCashService } from '../src/services/zarecash.service.js'
-import { isZareCashEnabled } from '../src/gateways/payment/zarecash/config.js'
-import { parseArgs, resolveUser, type ParsedArgs } from '../src/lib/freeze-player-args.js'
+import { parseArgs, resolveUser, matchedFields, type ParsedArgs } from '../src/lib/freeze-player-args.js'
 
 async function main(): Promise<void> {
     let parsed: ParsedArgs
@@ -58,12 +62,30 @@ async function main(): Promise<void> {
     const { action, identifier, reason } = parsed
     const frozen = action === 'freeze'
 
-    const user = await resolveUser(prisma, identifier)
-    if (!user) {
+    const lookup = await resolveUser(prisma, identifier)
+
+    if (lookup.status === 'not_found') {
         console.error(`Player not found: ${identifier} (checked id, username, and phone)`)
         process.exitCode = 1
         return
     }
+
+    if (lookup.status === 'ambiguous') {
+        console.error(
+            `Ambiguous identifier "${identifier}" matches ${lookup.matches.length} players — refusing to guess. No changes were made.`,
+        )
+        for (const row of lookup.matches) {
+            const fields = matchedFields(row, identifier).join(', ')
+            console.error(
+                `  - id=${row.id} serial=${row.serial} username=${row.username ?? '(none)'} phone=${row.phone ?? '(none)'} (matched on: ${fields})`,
+            )
+        }
+        console.error('Re-run this script with the exact "id=" value above to disambiguate.')
+        process.exitCode = 1
+        return
+    }
+
+    const user = lookup.user
 
     // ── Step 1: LOCAL freeze, through Prisma so @updatedAt fires. This is the
     // freeze that actually protects our balance — it must land before the
@@ -82,25 +104,10 @@ async function main(): Promise<void> {
     }
 
     // ── Step 2: mirror to ZareCash, best-effort, local-first. syncPlayerFreeze
-    // never throws by design (a failed mirror must never undo or block the
-    // local freeze), so the only way this script can report whether the
-    // mirror actually succeeded is by watching for the specific failure log
-    // it emits internally — briefly intercepting console.error to catch it,
-    // without changing syncPlayerFreeze's contract or its passing test suite.
-    const mirrorAttempted = isZareCashEnabled()
-    let mirrorFailed = false
-    if (mirrorAttempted) {
-        const originalError = console.error
-        console.error = (...args: unknown[]) => {
-            if (String(args[0] ?? '').includes('[ZareCash] freeze sync failed')) mirrorFailed = true
-            originalError(...args)
-        }
-        try {
-            await ZareCashService.syncPlayerFreeze(updated.id, frozen, reason)
-        } finally {
-            console.error = originalError
-        }
-    }
+    // never throws, and now reports its outcome directly ({ ok, skipped, error }
+    // — see zarecash.service.ts) instead of only logging it, so this script can
+    // tell the operator what actually happened rather than assuming success.
+    const mirror = await ZareCashService.syncPlayerFreeze(updated.id, frozen, reason)
 
     const label = updated.username ?? updated.phone ?? updated.id
     console.log('──────────────────────────────────────────────')
@@ -110,11 +117,11 @@ async function main(): Promise<void> {
     console.log(`Local:    OK — isActive=${updated.isActive} (written via Prisma, updatedAt bumped)`)
     console.log(
         `ZareCash: ${
-            !mirrorAttempted
+            mirror.skipped
                 ? 'not attempted (ZARECASH_ENABLED is not "true")'
-                : mirrorFailed
-                  ? 'attempted — FAILED (see [ZareCash] log above; local freeze still stands)'
-                  : 'attempted — OK'
+                : mirror.ok
+                  ? 'attempted — OK'
+                  : `attempted — FAILED (${mirror.error}; local freeze still stands)`
         }`,
     )
     console.log('──────────────────────────────────────────────')

@@ -51,22 +51,48 @@ export interface UserLookupRow {
 /** The minimal slice of PrismaClient this needs — narrow on purpose so tests can pass a fake instead of a real client. */
 export interface UserLookupClient {
     user: {
-        findFirst(args: unknown): Promise<UserLookupRow | null>
+        findMany(args: unknown): Promise<UserLookupRow[]>
     }
 }
 
+export type ResolveUserResult =
+    | { status: 'found'; user: UserLookupRow }
+    | { status: 'not_found' }
+    | { status: 'ambiguous'; matches: UserLookupRow[] }
+
 /**
  * Resolve a user by id, username, or phone — whichever the identifier matches.
- * All three are unique columns, so one OR-lookup covers all of them. Returns
- * null (never throws) when nothing matches, so the caller can report a clean
- * "not found" instead of letting a Prisma error escape raw.
+ *
+ * Uses findMany, not findFirst: id/username/phone are three independently
+ * unique columns, but nothing stops one user's username from equalling a
+ * DIFFERENT user's phone (both are free-form strings with no shared format
+ * constraint). An OR across all three can therefore match more than one row.
+ * findFirst would silently pick one of them — for a login that just fails
+ * closed on the wrong candidate, but for this script it would freeze an
+ * innocent player. So every match is fetched and the ambiguous case is
+ * reported back explicitly instead of being resolved by accident. The
+ * exact-equality filters themselves are not the risk (no partial matching is
+ * done) — only the cross-field collision is.
  */
 export async function resolveUser(
     client: UserLookupClient,
     identifier: string,
-): Promise<UserLookupRow | null> {
-    return client.user.findFirst({
+): Promise<ResolveUserResult> {
+    const matches = await client.user.findMany({
         where: { OR: [{ id: identifier }, { username: identifier }, { phone: identifier }] },
         select: { id: true, username: true, phone: true, serial: true, isActive: true },
     })
+
+    if (matches.length === 0) return { status: 'not_found' }
+    if (matches.length > 1) return { status: 'ambiguous', matches }
+    return { status: 'found', user: matches[0] }
+}
+
+/** Which of id/username/phone a given row actually matched the identifier on — for the ambiguous-match report. */
+export function matchedFields(row: UserLookupRow, identifier: string): Array<'id' | 'username' | 'phone'> {
+    const fields: Array<'id' | 'username' | 'phone'> = []
+    if (row.id === identifier) fields.push('id')
+    if (row.username === identifier) fields.push('username')
+    if (row.phone === identifier) fields.push('phone')
+    return fields
 }

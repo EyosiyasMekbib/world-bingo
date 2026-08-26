@@ -440,18 +440,34 @@ export class ZareCashService {
     /**
      * Mirror a local freeze upstream. Best-effort by design: the LOCAL freeze is
      * the one that protects our own balance (enforced in WalletService.requestWithdrawal
-     * and AdminService.reviewTransaction), so a failed sync must never block it —
-     * unlike the deposit/withdrawal paths, a blanket catch here is correct.
-     * Deposits are unaffected on both sides — a frozen player can still fund.
+     * and AdminService.reviewTransaction), so a failed sync must never block or
+     * undo it — unlike the deposit/withdrawal paths, a blanket catch here is
+     * correct. Deposits are unaffected on both sides — a frozen player can still
+     * fund.
+     *
+     * NEVER throws, on any path — including zarecashClient() construction or
+     * zarecashConfig() throwing (both are exercised inside the try below). That
+     * is what lets a caller sequence this strictly after the local freeze
+     * without risking the containment action itself. The outcome is reported
+     * back instead of being swallowed into a log line, so a caller that needs
+     * to know whether the mirror actually landed (e.g. an operator-facing
+     * script) can — while a caller that doesn't care can still just await it.
      */
-    static async syncPlayerFreeze(userId: string, frozen: boolean, reason: string): Promise<void> {
-        if (!isZareCashEnabled()) return
+    static async syncPlayerFreeze(
+        userId: string,
+        frozen: boolean,
+        reason: string,
+    ): Promise<{ ok: boolean; skipped: boolean; error?: string }> {
         try {
+            if (!isZareCashEnabled()) return { ok: true, skipped: true }
             const client = zarecashClient()
             if (frozen) await client.freezePlayer(userId, reason)
             else await client.unfreezePlayer(userId, reason)
+            return { ok: true, skipped: false }
         } catch (err) {
-            console.error('[ZareCash] freeze sync failed for %s: %s', userId, (err as Error).message)
+            const message = (err as Error)?.message ?? String(err)
+            console.error('[ZareCash] freeze sync failed for %s: %s', userId, message)
+            return { ok: false, skipped: false, error: message }
         }
     }
 }
