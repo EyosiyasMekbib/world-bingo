@@ -73,4 +73,78 @@ export class ZareCashService {
             }
         }
     }
+
+    /**
+     * Dispatch a received webhook.
+     *
+     * Keyed on the envelope `type`, never on `data.status`: the withdrawal payload
+     * (WithdrawalsService.payload) carries no status field at all.
+     */
+    static async processEvent(eventId: string): Promise<void> {
+        const row = await prisma.zareCashEvent.findUnique({ where: { id: eventId } })
+        if (!row || row.processedAt) return
+
+        const envelope = row.payload as { type?: string; data?: Record<string, any> }
+        const data = envelope?.data ?? {}
+
+        try {
+            switch (row.type) {
+                case 'deposit.approved':
+                    await ZareCashService.onDepositApproved(data)
+                    break
+                case 'deposit.rejected':
+                    await ZareCashService.onDepositRejected(data)
+                    break
+                default:
+                    console.log('[ZareCash] unhandled event type %s (%s)', row.type, eventId)
+            }
+            await prisma.zareCashEvent.update({
+                where: { id: eventId },
+                data: { processedAt: new Date(), error: null },
+            })
+        } catch (err) {
+            await prisma.zareCashEvent.update({
+                where: { id: eventId },
+                data: { error: (err as Error).message },
+            })
+            throw err
+        }
+    }
+
+    private static async findByGatewayRef(gatewayRef: unknown) {
+        if (!gatewayRef) return null
+        return prisma.transaction.findUnique({ where: { gatewayRef: String(gatewayRef) } })
+    }
+
+    private static async onDepositApproved(data: Record<string, any>): Promise<void> {
+        const tx = await ZareCashService.findByGatewayRef(data.id)
+        if (!tx) {
+            console.warn('[ZareCash] deposit.approved for unknown gatewayRef %s', data.id)
+            return
+        }
+        const amount = data.approvedAmount ?? Number(tx.amount)
+        try {
+            await WalletService.approveDeposit(tx.id, amount)
+        } catch (err) {
+            // approveDeposit throws when the row is no longer PENDING_REVIEW, which
+            // is exactly what a redelivery looks like. Not an error.
+            console.log('[ZareCash] deposit %s not credited: %s', tx.id, (err as Error).message)
+        }
+    }
+
+    private static async onDepositRejected(data: Record<string, any>): Promise<void> {
+        const tx = await ZareCashService.findByGatewayRef(data.id)
+        if (!tx) {
+            console.warn('[ZareCash] deposit.rejected for unknown gatewayRef %s', data.id)
+            return
+        }
+        // No wallet change — a deposit is never credited before approval.
+        await prisma.transaction.updateMany({
+            where: { id: tx.id, status: PaymentStatus.PENDING_REVIEW },
+            data: {
+                status: PaymentStatus.REJECTED,
+                note: `Rejected by ZareCash${data.verdict ? `: ${data.verdict}` : ''}`,
+            },
+        })
+    }
 }
