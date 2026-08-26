@@ -84,6 +84,59 @@ export class ZareCashService {
     }
 
     /**
+     * Submit a payout the player has ALREADY been debited for.
+     *
+     * A permanent failure must refund, or the player stays debited for a payout
+     * that was never accepted. A retryable failure must NOT refund — the job
+     * retries. `withdrawal_pending` is classified retryable on purpose: it means
+     * our state and ZareCash's disagree, and refunding could double-pay a payout
+     * that is genuinely in flight. The sweep resolves it.
+     */
+    static async submitWithdrawal(job: {
+        transactionId: string
+        methodCode: string
+        destinationAccount: string
+        destinationName?: string
+    }): Promise<void> {
+        const tx = await prisma.transaction.findUnique({ where: { id: job.transactionId } })
+        if (!tx || tx.status !== PaymentStatus.PENDING_REVIEW) return
+
+        const method = await resolveMethod(job.methodCode)
+
+        let res
+        try {
+            res = await zarecashClient().createWithdrawal(
+                {
+                    playerRef: tx.userId,
+                    amount: Number(tx.amount),
+                    methodCode: method?.gatewayMethodCode ?? job.methodCode,
+                    destinationAccount: job.destinationAccount,
+                    destinationName: job.destinationName,
+                },
+                ZareCashService.withdrawalKey(job.transactionId),
+            )
+        } catch (err) {
+            const zc = err as ZareCashError
+            if (zc?.permanent) {
+                await WalletService.rejectWithdrawal(
+                    job.transactionId,
+                    `ZareCash refused the payout (${zc.code}): ${zc.message}`,
+                )
+                return
+            }
+            throw err
+        }
+
+        await prisma.transaction.update({ where: { id: job.transactionId }, data: { gatewayRef: res.id } })
+
+        if (res.state === 'rejected') {
+            await WalletService.rejectWithdrawal(job.transactionId, 'ZareCash rejected the payout')
+        }
+        // pending / queued_float / risk_hold all stay PENDING_REVIEW here; the
+        // terminal state arrives as a webhook.
+    }
+
+    /**
      * Dispatch a received webhook.
      *
      * Keyed on the envelope `type`, never on `data.status`: the withdrawal payload

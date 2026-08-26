@@ -355,6 +355,17 @@ export class WalletService {
         }).then(async ({ transaction, realAfter, bonusBefore }) => {
             // Push balance update
             NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
+
+            // Submit AFTER the DB transaction commits — never hold the wallet lock
+            // across a network call. Routing data travels on the job rather than
+            // being parsed back out of the free-form `note` string.
+            if (await isZareCashMethod(data.paymentMethod)) {
+                await getQueue(QUEUE_NAMES.ZARECASH_WITHDRAWAL).add('submit', {
+                    transactionId: transaction.id,
+                    methodCode: data.paymentMethod,
+                    destinationAccount: data.accountNumber,
+                })
+            }
             return transaction
         })
     }

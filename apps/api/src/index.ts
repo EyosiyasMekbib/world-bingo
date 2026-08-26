@@ -65,6 +65,7 @@ import './workers/bonus-expiry.worker.js'
 import './workers/prediction.worker.js'
 import './workers/zarecash-deposit.worker.js'
 import './workers/zarecash-event.worker.js'
+import './workers/zarecash-withdrawal.worker.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
