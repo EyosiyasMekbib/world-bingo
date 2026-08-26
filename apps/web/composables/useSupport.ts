@@ -64,6 +64,53 @@ export function telegramHref(handle: string): string | null {
   return `https://t.me/${withoutAt}`
 }
 
+/** The full set of support events this app listens for. Kept as one list so
+ *  the rebinding below can't drift out of sync with what `bind` registers. */
+export const SUPPORT_EVENTS = [
+  'support:thread',
+  'support:message',
+  'support:status',
+  'support:contact-fallback',
+  'support:error',
+] as const
+
+export type SupportEvent = (typeof SUPPORT_EVENTS)[number]
+
+/**
+ * Attach the support listeners to `socket`, first dropping any this app
+ * attached to it before. No Nuxt runtime deps — testable with a fake socket
+ * outside a Nuxt context, mirroring `contactRevealPlan` above.
+ *
+ * `useSocket().connect()` builds a BRAND NEW Socket whenever the current one
+ * isn't connected, and a dropped transport, a sleeping tab or an explicit
+ * `disconnect()` all leave the player with a different instance. Binding once
+ * behind a sticky `bound` flag therefore left every socket after the first
+ * with no support listeners at all: `support:open` still went out, the server
+ * still answered with `support:thread`, and nothing caught it — so
+ * `conversation` stayed null, `send()` bailed on its `!conversation.value`
+ * guard, and support chat was dead until a full page reload.
+ *
+ * Clearing each event before re-adding keeps this idempotent per socket, so
+ * `openChat` can bind unconditionally without tracking instances or stacking
+ * duplicate handlers onto a socket it already bound.
+ */
+export function bindSupportListeners<
+  S extends { on(event: any, handler: any): unknown; off(event: any): unknown },
+>(socket: S, handlers: Array<[SupportEvent, (payload: any) => void]>) {
+  for (const [event, handler] of handlers) {
+    socket.off(event)
+    socket.on(event, handler)
+  }
+}
+
+/** Module scope, not per-`useSupport()` call. `bind` now re-runs on every
+ *  `openChat`, possibly from a different component's composable instance, and
+ *  a per-call `let` meant each instance cleared only its OWN pending reveal —
+ *  a timer armed by an earlier instance would still fire and flash the phone
+ *  number at a thread a clerk had since claimed. One shared handle can't be
+ *  orphaned that way. Client-only: nothing arms it during SSR. */
+let revealTimer: ReturnType<typeof setTimeout> | null = null
+
 export const useSupport = () => {
   const { socket, connect } = useSocket()
   const auth = useAuth()
@@ -77,9 +124,6 @@ export const useSupport = () => {
   const unread = useState('support_unread', () => 0)
   const error = useState<string | null>('support_error', () => null)
   const sending = useState('support_sending', () => false)
-  const bound = useState('support_bound', () => false)
-
-  let revealTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Reveal contact details once the thread has waited long enough. Re-armed
    *  on every status change so a claim cancels a pending reveal. Always
@@ -110,40 +154,54 @@ export const useSupport = () => {
     }
   }
 
+  /** Re-bound on every `openChat`, because `connect()` may well have handed
+   *  us a different Socket than the one we bound last time. */
   const bind = () => {
-    if (bound.value || !socket.value) return
-    bound.value = true
+    if (!socket.value) return
 
-    socket.value.on('support:thread', (payload: SupportConversationWithMessages) => {
-      conversation.value = payload.conversation
-      messages.value = payload.messages
-      unread.value = 0
-      armContactReveal()
-    })
-
-    socket.value.on('support:message', (message: SupportMessage) => {
-      if (message.conversationId !== conversation.value?.id) return
-      messages.value = [...messages.value, message]
-      if (!isOpen.value && message.senderRole !== 'PLAYER') unread.value += 1
-    })
-
-    socket.value.on('support:status', (updated: SupportConversation) => {
-      if (updated.id !== conversation.value?.id) return
-      conversation.value = updated
-      // A claimed thread is being handled — stop counting down to the
-      // phone number.
-      if (updated.status === 'ASSIGNED') showContact.value = false
-      armContactReveal()
-    })
-
-    socket.value.on('support:contact-fallback', (payload) => {
-      contact.value = { phone: payload.phone, telegram: payload.telegram, hours: payload.hours }
-      showContact.value = true
-    })
-
-    socket.value.on('support:error', (payload: { code: string; message: string }) => {
-      error.value = payload.message
-    })
+    bindSupportListeners(socket.value, [
+      [
+        'support:thread',
+        (payload: SupportConversationWithMessages) => {
+          conversation.value = payload.conversation
+          messages.value = payload.messages
+          unread.value = 0
+          armContactReveal()
+        },
+      ],
+      [
+        'support:message',
+        (message: SupportMessage) => {
+          if (message.conversationId !== conversation.value?.id) return
+          messages.value = [...messages.value, message]
+          if (!isOpen.value && message.senderRole !== 'PLAYER') unread.value += 1
+        },
+      ],
+      [
+        'support:status',
+        (updated: SupportConversation) => {
+          if (updated.id !== conversation.value?.id) return
+          conversation.value = updated
+          // A claimed thread is being handled — stop counting down to the
+          // phone number.
+          if (updated.status === 'ASSIGNED') showContact.value = false
+          armContactReveal()
+        },
+      ],
+      [
+        'support:contact-fallback',
+        (payload: SupportContactInfo) => {
+          contact.value = { phone: payload.phone, telegram: payload.telegram, hours: payload.hours }
+          showContact.value = true
+        },
+      ],
+      [
+        'support:error',
+        (payload: { code: string; message: string }) => {
+          error.value = payload.message
+        },
+      ],
+    ])
   }
 
   const openChat = async () => {
