@@ -237,12 +237,11 @@ Both are logged by `processSweepJob` (`zarecash-sweep.worker.ts:18-34`):
 [ZareCashSweep] stranded found=<N> requeued=<N>
 ```
 
-**Triggering by hand.** The queue `zarecash-sweep` is **not** registered on
-the BullMQ dashboard — `registerBullBoard` only lists `REFUND`,
-`NOTIFICATION`, `GAME_ENGINE`, `WITHDRAWAL`, and `DEPOSIT_VERIFICATION`
-(`apps/api/src/routes/bull-board.ts:23-30`). None of the four
-`zarecash-*` queues appear at `/admin/queues`. To run either pass on demand,
-call the underlying service function directly from `apps/api/`:
+**Triggering by hand.** All four `zarecash-*` queues are registered on the
+BullMQ dashboard at `/admin/queues` (behind admin auth), so you can inspect
+jobs and promote a delayed repeatable there. If you would rather not go
+through the UI — or the dashboard is unreachable — call the underlying
+service function directly from `apps/api/`:
 
 ```bash
 # Reconciliation sweep
