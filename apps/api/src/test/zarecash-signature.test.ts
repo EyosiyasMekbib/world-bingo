@@ -61,6 +61,7 @@ describe('verifyWebhookSignature', () => {
     ['missing t', 'v1=abc'],
     ['non-numeric t', 't=abc,v1=deadbeef'],
     ['v1 not hex', 't=1785840764,v1=zzzz'],
+    ['v1 right length but not hex', `t=1785840764,v1=${'z'.repeat(64)}`],
   ])('rejects a malformed header (%s)', (_label, header) => {
     expect(
       verifyWebhookSignature({ secret: SECRET, rawBody: BODY, header: header as any, nowMs: now }),
