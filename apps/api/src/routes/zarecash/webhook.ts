@@ -23,7 +23,7 @@ const zarecashWebhookRoute: FastifyPluginAsync = async (fastify) => {
     // Route-scoped raw-body capture — same pattern as routes/hub/spoke-callback.ts.
     fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
         try {
-            done(null, { __rawBody: body as string, ...JSON.parse(body as string) })
+            done(null, { ...JSON.parse(body as string), __rawBody: body as string })
         } catch (e) {
             done(e as Error, undefined)
         }
@@ -51,7 +51,16 @@ const zarecashWebhookRoute: FastifyPluginAsync = async (fastify) => {
             })
         } catch (err: any) {
             // P2002 = unique violation = at-least-once redelivery. Already have it.
-            if (err?.code === 'P2002') return reply.code(200).send({ received: true, duplicate: true })
+            if (err?.code === 'P2002') {
+                // If a prior delivery inserted the row but crashed (or the enqueue
+                // itself threw) before the job was created, processedAt is still null
+                // and no job exists — re-enqueue now so the event isn't stranded.
+                const existing = await prisma.zareCashEvent.findUnique({ where: { id: String(envelope.id) } })
+                if (existing && existing.processedAt === null) {
+                    await getQueue(QUEUE_NAMES.ZARECASH_EVENT).add('process', { eventId: String(envelope.id) })
+                }
+                return reply.code(200).send({ received: true, duplicate: true })
+            }
             throw err
         }
 
