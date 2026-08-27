@@ -4,6 +4,7 @@ import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
+import { heroArtworkFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
@@ -15,6 +16,7 @@ const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
 const { track } = useAnalytics()
 const { flags } = useFeatureFlags()
+const brand = useBrand()
 
 /** Gates the fight-markets hero slide and the lobby entry point. */
 const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
@@ -105,14 +107,14 @@ const winners = computed(() => WINNERS[activeWinnerTab.value] ?? [])
 interface HeroSlide {
   id: string
   cta: string
-  action: 'games' | 'rooms' | 'deposit' | 'predictions' | 'promotions'
+  action: HeroAction
   /**
    * Artwork slide. When set, the banner renders full-bleed and the coded
    * fields below are ignored — these designs carry their own typography, so
    * overlaying our text on them would double up.
-   * Drop the files in apps/web/public/ads/hero/.
+   * The per-brand artwork list lives in utils/hero-artwork.ts.
    */
-  image?: { desktop: string; mobile?: string; alt: string }
+  image?: HeroArtwork['image']
   /* Coded slide. Required unless `image` is set. */
   badge?: string
   title?: string
@@ -142,32 +144,6 @@ const PREDICTION_SLIDE: HeroSlide = {
   accent: '#fb7185',
   action: 'predictions',
 }
-
-/**
- * Artwork banners. The images are the whole slide — no gradient, no overlay.
- * Sized ~2.47:1; the mobile crop is a separate file so the subject is not
- * squeezed on a narrow viewport.
- */
-const IMAGE_SLIDES: HeroSlide[] = [
-  {
-    id: 'multi-bonus',
-    cta: 'Claim Bonus',
-    action: 'deposit',
-    image: { desktop: '/ads/hero/multi-bonus.webp', alt: '500% Multi Bonus' },
-  },
-  {
-    id: 'sport-cashback',
-    cta: 'See Promotions',
-    action: 'promotions',
-    image: { desktop: '/ads/hero/sport-cashback.webp', alt: '1000% Cashback in Sport' },
-  },
-  {
-    id: 'we-are-back',
-    cta: 'Play Now',
-    action: 'games',
-    image: { desktop: '/ads/hero/we-are-back.webp', alt: 'We are back — dash1.games' },
-  },
-]
 
 const BASE_SLIDES: HeroSlide[] = [
   {
@@ -221,7 +197,9 @@ function onSlideImageError(id: string) {
 }
 
 const heroSlides = computed<HeroSlide[]>(() => {
-  const art = IMAGE_SLIDES.filter((s) => !brokenSlides.value.has(s.id))
+  // Artwork carries its brand in the pixels, so only the deployment it was drawn
+  // for gets it. Brands with none run on the coded slides alone.
+  const art = heroArtworkFor(brand.value.themeId).filter((s) => !brokenSlides.value.has(s.id))
   return predictionsEnabled.value
     ? [...art, PREDICTION_SLIDE, ...BASE_SLIDES]
     : [...art, ...BASE_SLIDES]
