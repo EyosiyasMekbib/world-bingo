@@ -30,9 +30,9 @@
               >
                 <header class="method-card__logo">
                   <img v-if="m.logoUrl" :src="m.logoUrl" :alt="m.name" />
-                  <span v-else class="method-card__fallback">
-                    <span aria-hidden="true">{{ m.icon || '💳' }}</span> {{ m.name }}
-                  </span>
+                  <!-- No emoji fallback: a payment brand rendered as a phone
+                       glyph reads as a placeholder, not a mark. Name only. -->
+                  <span v-else class="method-card__fallback">{{ m.name }}</span>
                 </header>
 
                 <div class="method-card__body">
