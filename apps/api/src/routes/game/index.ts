@@ -28,6 +28,7 @@ const gameRoutes: FastifyPluginAsync = async (fastify) => {
 
     fastify.post('/:id/join', {
         preValidation: [fastify.authenticate],
+        preHandler: fastify.requireActiveAccount,
         schema: {
             body: zodToJsonSchema(JoinGameSchema),
         },

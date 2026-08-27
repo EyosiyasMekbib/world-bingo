@@ -49,7 +49,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('getBalance returns USER_INACTIVE for inactive user', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: false })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'SUSPENDED' })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getBalance('alice')
         expect(res).toEqual({ result: 22, status: 'USER_INACTIVE', data: null })
@@ -59,7 +59,7 @@ describe('PalaceWalletService', () => {
         // Task 18: getBalance now reports only the selected account, not real+bonus
         // combined — a wallet with no explicit spendAccount defaults to REAL
         // (schema default), so only realBalance should be reported here.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.wallet.findUnique.mockResolvedValue({ realBalance: '100.00', bonusBalance: '50.00', spendAccount: 'REAL' })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
         const res = await PalaceWalletService.getBalance('alice')
@@ -69,7 +69,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('authenticate/getBalance report only the selected account balance, not the combined total', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.wallet.findUnique.mockResolvedValue({ realBalance: '1000.00', bonusBalance: '40.00', spendAccount: 'BONUS' })
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
 
@@ -83,7 +83,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processBet spends entirely from BONUS when selected, and rejects rather than dipping into real', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         // Catch-block fallback read (on rejection) hits `prisma.wallet.findUnique` directly.
@@ -140,7 +140,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processBet is idempotent on duplicate trans_guid (COMPLETED), reporting the live selected-account balance', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({
             status: 'COMPLETED', balanceAfter: '90.00', // stale combined-total ledger value — must NOT be echoed back
@@ -165,7 +165,7 @@ describe('PalaceWalletService', () => {
         // the ThirdPartyTransaction ledger's combined real+bonus total, which is what
         // the pre-Task-18 code (and a naive fix that only touched the fresh-compute path)
         // would echo back.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
 
         // First call: fresh bet. Wallet starts real=1000, bonus=10, spendAccount=BONUS;
@@ -209,7 +209,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processBet returns BALANCE_NOT_ENOUGH when $transaction throws it', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         p.$transaction.mockRejectedValue({ code: 'BALANCE_NOT_ENOUGH' })
@@ -231,7 +231,7 @@ describe('PalaceWalletService', () => {
         // enough but the underlying bonus_grants lots come up short) — that
         // error carries `.statusCode`, not `.code`, so it fell through the old
         // mapping and would have surfaced as an unhandled 500.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         p.$transaction.mockRejectedValue(new InsufficientBonusBalanceError())
@@ -249,7 +249,7 @@ describe('PalaceWalletService', () => {
         // Task 32: a win always credits REAL only (see the R1 guard comment in
         // the service). With BONUS selected, the reported balance must reflect
         // the (untouched) bonus account, not the combined total.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // no existing win row for this trans_guid
         p.thirdPartyTransaction.aggregate.mockResolvedValue({ _sum: { betAmount: '10.00' }, _count: 1 }) // R1 guard: a prior bet exists
@@ -276,7 +276,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processWin reports the REAL account balance (post-win) when that is selected', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         p.thirdPartyTransaction.aggregate.mockResolvedValue({ _sum: { betAmount: '10.00' }, _count: 1 })
@@ -301,7 +301,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processWin replay (same trans_guid) reports the live selected-account balance, not the stale combined total', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({
             // Ledger legitimately recorded the combined total (real 1025 + bonus 40).
@@ -326,7 +326,7 @@ describe('PalaceWalletService', () => {
         // (bonusExpiresAtSpend, now stamped on the TP_BET row by processBet), not a
         // never-expiring lot.
         const originalExpiry = new Date(Date.now() + 1_800_000)
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // no existing rollback row for this cancel id
 
@@ -407,7 +407,7 @@ describe('PalaceWalletService', () => {
         // Old data: the paired TP_BET row exists but has no bonusExpiresAtSpend
         // (predates Task 31's stamping). Must still restore the bonus portion,
         // just without an original expiry to preserve.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
 
@@ -458,7 +458,7 @@ describe('PalaceWalletService', () => {
     it('processCancel restores a real-funded bet to real, unchanged from before', async () => {
         // Original bet spent 15 out of real (bonus never touched); the cancel must
         // still restore it to real, exactly as before this fix — no regression.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
 
@@ -511,7 +511,7 @@ describe('PalaceWalletService', () => {
     it('processCancel R5 guard: no matching completed bet credits nothing and settles nothing', async () => {
         // Forged/unmatched cancel — the fraud guard this fix builds on top of must
         // still reject crediting anything, regardless of the real/bonus split logic.
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
 
@@ -545,7 +545,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('processCancel replay (same cancel id) reports the live selected-account balance, not the stale combined total', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({
             balanceAfter: '1020.00', // stale combined-total ledger value — must NOT be echoed back
@@ -571,7 +571,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('getStatus returns 42 when trans_guid does not exist', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
         const { PalaceWalletService } = await import('../services/palace-wallet.service.js')
@@ -580,7 +580,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('getStatus returns OK with account/trans_guid/trans_status when tx exists', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({ id: 'some-tx' })
         p.wallet.findUnique.mockResolvedValue({ realBalance: '100.00', bonusBalance: '0.00' })
@@ -593,7 +593,7 @@ describe('PalaceWalletService', () => {
     })
 
     it('getStatus reports only the selected account balance, not the combined total', async () => {
-        p.user.findUnique.mockResolvedValue({ id: 'uid1', isActive: true })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.thirdPartyTransaction.findUnique.mockResolvedValue({ id: 'some-tx' })
         p.wallet.findUnique.mockResolvedValue({ realBalance: '1000.00', bonusBalance: '40.00', spendAccount: 'BONUS' })

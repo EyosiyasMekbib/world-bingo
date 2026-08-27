@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import prisma from '../../lib/prisma'
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
+import { AccountStatus } from '@world-bingo/shared-types'
 import { compileSegment } from './segment-compiler'
 import { parseSegmentRuleSet } from '@world-bingo/shared-types'
 import { NotificationType, TransactionType, PaymentStatus } from '@world-bingo/shared-types'
@@ -248,6 +249,9 @@ export class CampaignService {
             })
 
             const candidates = await prisma.playerMetrics.findMany({
+                // PlayerMetrics.isActive — the derived mirror on the metrics
+                // table, not User.accountStatus. It now sources from the status
+                // enum (see player-metrics.service.ts), so this stays a boolean.
                 where: { ...where, isActive: true },
                 select: { userId: true },
                 orderBy: { userId: 'asc' },
@@ -375,12 +379,12 @@ export class CampaignService {
                 // raw UPDATE that bumps no timestamp, so the rollup copy can lag.
                 const user = await tx.user.findUnique({
                     where: { id: userId },
-                    select: { isActive: true, role: true, passwordHash: true, username: true },
+                    select: { accountStatus: true, role: true, passwordHash: true, username: true },
                 })
 
                 const excluded =
                     !user ||
-                    !user.isActive ||
+                    user.accountStatus !== AccountStatus.ACTIVE ||
                     user.role !== 'PLAYER' ||
                     user.passwordHash === 'BOT_ACCOUNT' ||
                     (user.username?.startsWith('bot_t') ?? false)

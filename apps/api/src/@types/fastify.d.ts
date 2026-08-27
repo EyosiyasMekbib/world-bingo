@@ -6,6 +6,8 @@ declare module 'fastify' {
         requireAdmin: (request: any, reply: any) => Promise<void>
         requireSuperAdmin: (request: any, reply: any) => Promise<void>
         requireAdminOrClerk: (request: any, reply: any) => Promise<void>
+        /** Refuses anything other than AccountStatus.ACTIVE. Runs after authenticate. */
+        requireActiveAccount: (request: any, reply: any) => Promise<void>
     }
 }
 

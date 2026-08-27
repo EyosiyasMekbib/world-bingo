@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma'
-import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@world-bingo/shared-types'
+import { DepositDto, TransactionType, PaymentStatus, NotificationType, AccountStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
@@ -292,12 +292,17 @@ export class WalletService {
     }
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
-        // Frozen/suspended accounts cannot withdraw. isActive=false is the fraud-freeze
-        // switch used for containment; enforce it here so a freeze actually blocks the
-        // withdrawal of any balance sitting in a flagged wallet.
-        const account = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } })
+        // Anything other than ACTIVE cannot withdraw. The route already carries
+        // requireActiveAccount; this is the deliberate duplicate, because it is
+        // the last check before money moves and must not depend on a caller
+        // having remembered a preHandler.
+        //
+        // Reads the column directly rather than going through
+        // AccountStatusService: that service imports ZareCashService, which
+        // imports this one, and the cycle is not worth a cache hit here.
+        const account = await prisma.user.findUnique({ where: { id: userId }, select: { accountStatus: true } })
         if (!account) throw new Error('User not found')
-        if (!account.isActive) {
+        if (account.accountStatus !== AccountStatus.ACTIVE) {
             throw Object.assign(
                 new Error('This account is under review. Withdrawals are temporarily disabled — please contact support.'),
                 { statusCode: 403 },

@@ -413,7 +413,7 @@ describe('CampaignService — exclusions and stop', () => {
         await CampaignService.launch(campaign.id)
 
         // Raw UPDATE, exactly as freeze_flagged.sql does — bumps no timestamp.
-        await prisma.$executeRaw`UPDATE users SET "isActive" = false WHERE id = ${players[0].id}`
+        await prisma.$executeRaw`UPDATE users SET "accountStatus" = 'SUSPENDED' WHERE id = ${players[0].id}`
 
         await runToCompletion(campaign.id)
 

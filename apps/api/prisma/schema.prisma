@@ -19,6 +19,12 @@ model User {
   lastName              String?
   photoUrl              String?
   role                  UserRole               @default(PLAYER)
+  /// Whether this account may act. Covers staff as well as players: a disabled
+  /// clerk is SUSPENDED. Written ONLY by AccountStatusService.
+  accountStatus         AccountStatus          @default(ACTIVE)
+  /// Superseded by accountStatus. Read and written by nothing; dropped by a
+  /// follow-up migration once a rollback to the previous release is no longer
+  /// plausible.
   isActive              Boolean                @default(true)
   avatarUrl             String?
   referralCode          String?                @unique
@@ -45,6 +51,7 @@ model User {
   supportConversations  SupportConversation[]  @relation("SupportConversations")
   supportAssignments    SupportConversation[]  @relation("SupportAssignments")
   zarecashCheckoutSessions ZareCashCheckoutSession[]
+  statusChanges         AccountStatusChange[]
 
   @@index([role])
   @@index([referralCode])
@@ -289,6 +296,7 @@ enum NotificationType {
   PREDICTION_SETTLED
   PREDICTION_VOIDED
   SUPPORT_REPLY
+  ACCOUNT_STATUS_CHANGED
 }
 
 model ReferralReward {
@@ -1299,4 +1307,37 @@ model ZareCashCheckoutSession {
   @@index([userId, status])
   @@index([status, expiresAt])
   @@map("zarecash_checkout_sessions")
+}
+
+/// ACTIVE   — normal.
+/// RESTRICTED — under investigation: can log in and see their balance and talk
+///   to support, but cannot deposit, withdraw or join a game. The middle state
+///   exists so containment does not make the player unreachable.
+/// SUSPENDED — login refused outright.
+enum AccountStatus {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+}
+
+/// One row per account-status transition. Current status lives on User; how it
+/// got there lives here. Append-only — never updated.
+model AccountStatusChange {
+  id        String        @id @default(cuid())
+  userId    String
+  from      AccountStatus
+  to        AccountStatus
+  reason    String
+  /// RECEIPT_FRAUD | CHARGEBACK | BONUS_ABUSE | MULTI_ACCOUNT | OTHER
+  category  String?
+  /// Staff account that made the change; null when the expiry pass did.
+  actorId   String?
+  /// When set, the expiry pass returns the account to ACTIVE at this time.
+  expiresAt DateTime?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("account_status_changes")
 }

@@ -70,6 +70,8 @@ import './workers/zarecash-withdrawal.worker.js'
 import './workers/zarecash-sweep.worker.js'
 import { scheduleZareCashSweep } from './workers/zarecash-sweep.worker.js'
 import { ZareCashService, ZareCashModeMismatchError } from './services/zarecash.service.js'
+import { AccountStatusService } from './services/account-status.service.js'
+import { AccountStatus } from '@world-bingo/shared-types'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
@@ -238,7 +240,33 @@ server.decorate('authenticate', async function (request: any, reply: any) {
     try {
         await request.jwtVerify()
     } catch (err) {
-        reply.send(err)
+        return reply.send(err)
+    }
+
+    // A JWT proves who you are, not that you are still allowed in. Without this
+    // a suspension would only take effect whenever the token happened to
+    // expire, which is not a containment window anyone would choose. Status is
+    // read through a 30s Redis cache, so this is not a per-request query.
+    const status = await AccountStatusService.current(request.user.id)
+    if (status === AccountStatus.SUSPENDED) {
+        return reply
+            .status(401)
+            .send({ error: 'This account has been suspended. Please contact support.', code: 'account_suspended' })
+    }
+})
+
+/**
+ * Blocks anything other than ACTIVE. Applied to the routes that move money or
+ * enter a game — RESTRICTED accounts pass `authenticate` deliberately, so this
+ * is what stops them doing those things.
+ */
+server.decorate('requireActiveAccount', async function (request: any, reply: any) {
+    const status = await AccountStatusService.current(request.user?.id)
+    if (status !== AccountStatus.ACTIVE) {
+        return reply.status(403).send({
+            error: 'Your account is under review. Deposits, withdrawals and games are paused — please contact support.',
+            code: 'account_restricted',
+        })
     }
 })
 

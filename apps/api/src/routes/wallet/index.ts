@@ -12,10 +12,12 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
 
     // T16: Accept both multipart/form-data (with receipt file) and JSON body
     fastify.post('/deposit', {
+        preHandler: fastify.requireActiveAccount,
         handler: WalletController.deposit,
     })
 
     fastify.post('/deposit/checkout', {
+        preHandler: fastify.requireActiveAccount,
         schema: {
             body: zodToJsonSchema(CheckoutSessionSchema),
         },
@@ -23,6 +25,7 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     fastify.post('/deposit/checkout/claim', {
+        preHandler: fastify.requireActiveAccount,
         schema: {
             body: zodToJsonSchema(ClaimCheckoutSchema),
         },
@@ -30,6 +33,7 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     fastify.post('/withdraw', {
+        preHandler: fastify.requireActiveAccount,
         schema: {
             body: zodToJsonSchema(WithdrawalSchema),
         },
