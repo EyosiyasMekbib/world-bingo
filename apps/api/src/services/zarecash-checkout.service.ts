@@ -35,8 +35,14 @@ const SWEEP_BATCH = 200
  */
 const RESOLVE_CANDIDATES = 5
 
-function httpError(statusCode: number, message: string): Error {
-    return Object.assign(new Error(message), { statusCode })
+/**
+ * `code` is a stable, non-secret discriminator echoed to the caller. Two very
+ * different operational faults produce the same 503 here — the gateway switched
+ * off, versus a returnUrl the provider rejects — and telling them apart used to
+ * require container logs. It names the fault, never the values behind it.
+ */
+function httpError(statusCode: number, message: string, code?: string): Error {
+    return Object.assign(new Error(message), { statusCode, code })
 }
 
 function webBaseUrl(): string {
@@ -80,7 +86,7 @@ export class ZareCashCheckoutService {
                 '[ZareCashCheckout] refused: ZARECASH_ENABLED is not "true" (got %j). The hosted-checkout payment method is enabled in the database but the gateway is switched off in the environment.',
                 process.env.ZARECASH_ENABLED ?? null,
             )
-            throw httpError(503, 'Deposits are temporarily unavailable')
+            throw httpError(503, 'Deposits are temporarily unavailable', 'gateway_disabled')
         }
 
         // Validate before creating. The contract warns that an amount outside every
@@ -132,7 +138,7 @@ export class ZareCashCheckoutService {
             if (err instanceof ZareCashError && err.code === 'invalid_return_url') {
                 console.error('[ZareCashCheckout] returnUrl %s rejected by ZareCash', returnUrl)
                 reportError(err, { phase: 'zarecash-checkout-return-url', returnUrl })
-                throw httpError(503, 'Deposits are temporarily unavailable')
+                throw httpError(503, 'Deposits are temporarily unavailable', 'return_url_rejected')
             }
             if (err instanceof ZareCashError && err.code === 'rate_limited') {
                 throw httpError(429, 'Too many attempts — please try again shortly')

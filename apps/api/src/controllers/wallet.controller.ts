@@ -34,7 +34,7 @@ export class WalletController {
         } catch (err: any) {
             return reply
                 .status(err?.statusCode ?? 500)
-                .send({ error: err?.message ?? 'Could not start the deposit' })
+                .send({ error: err?.message ?? 'Could not start the deposit', code: err?.code })
         }
     }
 

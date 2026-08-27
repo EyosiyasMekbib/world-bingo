@@ -242,3 +242,33 @@ describe('ZareCashCheckoutService.sweepSessions', () => {
     expect((prisma as any).transaction.create).not.toHaveBeenCalled()
   })
 })
+
+describe('checkout 503s name their cause', () => {
+  it('tags a disabled gateway as gateway_disabled', async () => {
+    vi.resetModules()
+    vi.doMock('../gateways/payment/zarecash/config', () => ({ isZareCashEnabled: () => false }))
+    const { ZareCashCheckoutService: Svc } = await import('../services/zarecash-checkout.service')
+
+    const err: any = await Svc.createSession('u1', 500, 'zarecash').catch((e) => e)
+
+    expect(err.statusCode).toBe(503)
+    expect(err.code).toBe('gateway_disabled')
+    vi.doUnmock('../gateways/payment/zarecash/config')
+  })
+
+  it('tags a rejected returnUrl as return_url_rejected', async () => {
+    createCheckoutSession.mockRejectedValue(
+      new ZareCashError({
+        code: 'invalid_return_url',
+        message: 'origin mismatch',
+        status: 400,
+        permanent: true,
+      }),
+    )
+
+    const err: any = await ZareCashCheckoutService.createSession('u1', 500, 'zarecash').catch((e) => e)
+
+    expect(err.statusCode).toBe(503)
+    expect(err.code).toBe('return_url_rejected')
+  })
+})
