@@ -121,6 +121,24 @@ export class ZareCashService {
             )
         }
         console.log('[ZareCash] connected in %s mode (available float: %s ETB)', float.mode, float.available)
+
+        // Hosted checkout builds its returnUrl from WEB_BASE_URL, and ZareCash
+        // refuses any returnUrl whose origin differs from the tenant's Custom
+        // URL. That mismatch is invisible until a player presses Continue and
+        // gets a generic 503, so state the origin at boot where it can be
+        // compared against the console in one glance.
+        const returnOrigin = (process.env.WEB_BASE_URL || '').trim().replace(/\/+$/, '')
+        if (returnOrigin) {
+            console.log(
+                '[ZareCash] hosted checkout will return players to %s/wallet — this origin MUST match the Custom URL configured for this tenant',
+                returnOrigin,
+            )
+            if (!returnOrigin.startsWith('https://')) {
+                console.error('[ZareCash] WEB_BASE_URL is not https — ZareCash will reject it as invalid_return_url')
+            }
+        } else {
+            console.error('[ZareCash] WEB_BASE_URL is unset — hosted checkout cannot build a returnUrl')
+        }
     }
 
     /**

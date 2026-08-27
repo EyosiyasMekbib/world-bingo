@@ -29,10 +29,15 @@
                 :class="{ 'method-card--open': openMethod === m.code }"
               >
                 <header class="method-card__logo">
-                  <img v-if="m.logoUrl" :src="m.logoUrl" :alt="m.name" />
-                  <span v-else class="method-card__fallback">
-                    <span aria-hidden="true">{{ m.icon || '💳' }}</span> {{ m.name }}
-                  </span>
+                  <img
+                    v-if="m.logoUrl && !logoFailed.includes(m.code)"
+                    :src="m.logoUrl"
+                    :alt="m.name"
+                    @error="logoFailed.push(m.code)"
+                  />
+                  <!-- No emoji fallback: a payment brand rendered as a phone
+                       glyph reads as a placeholder, not a mark. Name only. -->
+                  <span v-else class="method-card__fallback">{{ m.name }}</span>
                 </header>
 
                 <div class="method-card__body">
@@ -42,7 +47,7 @@
                        account and the receipt all live on ZareCash's page. -->
                   <template v-if="m.hostedCheckout">
                     <div class="wb-field">
-                      <label class="wb-label">{{ t('wallet.amount') }} (ETB)</label>
+                      <label class="wb-label">{{ t('wallet.amount') }}</label>
                       <input
                         v-model.number="checkoutAmount"
                         type="number"
@@ -267,6 +272,11 @@ function toggleMethod(m: DepositMethod) {
   openMethod.value = openMethod.value === m.code ? null : m.code
   if (openMethod.value) track('deposit_method_selected', { paymentMethod: m.code })
 }
+
+// A logoUrl that 404s must not leave a broken-image glyph sitting on the card:
+// the asset and the database row that points at it ship separately, so any
+// deploy ordering can produce that gap. Fall back to the name instead.
+const logoFailed = ref<string[]>([])
 
 // ── Hosted checkout (ZareCash) ────────────────────────────────────
 const checkoutAmount = ref(0)

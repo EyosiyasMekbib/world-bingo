@@ -193,7 +193,7 @@ async function main() {
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')
     const defaultMethods = [
-        { code: 'telebirr', name: 'TeleBirr', type: 'DEPOSIT' as const, merchantAccount: '', instructions: 'Send via TeleBirr to the merchant number. Complete within 15 minutes.', icon: '📱', enabled: true, sortOrder: 0 },
+        { code: 'telebirr', name: 'TeleBirr', type: 'DEPOSIT' as const, merchantAccount: '', instructions: 'Send via TeleBirr to the merchant number. Complete within 15 minutes.', icon: '📱', logoUrl: '/payment-logos/telebirr.svg', enabled: true, sortOrder: 0 },
         { code: 'telebirr_withdrawal', name: 'TeleBirr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '📱', enabled: true, sortOrder: 0 },
         { code: 'cbe', name: 'CBE Birr', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 1 },
         { code: 'awash', name: 'Awash Bank', type: 'WITHDRAWAL' as const, merchantAccount: null, instructions: null, icon: '🏦', enabled: true, sortOrder: 2 },
@@ -220,6 +220,9 @@ async function main() {
             gateway: 'zarecash',
             hostedCheckout: true,
             icon: '⚡',
+            // The card prefers this over `icon`; the emoji stays as the fallback
+            // for any deployment that has not shipped the asset.
+            logoUrl: '/payment-logos/zarecash.svg',
             instructions: 'Pay on the ZareCash page — we confirm your deposit automatically.',
             sortOrder: -1,
             enabled: false,

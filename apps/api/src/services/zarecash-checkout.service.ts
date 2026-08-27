@@ -72,7 +72,14 @@ export class ZareCashCheckoutService {
         amount: number,
         methodCode: string,
     ): Promise<{ url: string; expiresAt: Date; localId: string }> {
+        // Same player-facing message as the misconfiguration path below, because
+        // neither is the player's problem — but they are very different problems
+        // for whoever is on call, so say which one in the log.
         if (!isZareCashEnabled()) {
+            console.error(
+                '[ZareCashCheckout] refused: ZARECASH_ENABLED is not "true" (got %j). The hosted-checkout payment method is enabled in the database but the gateway is switched off in the environment.',
+                process.env.ZARECASH_ENABLED ?? null,
+            )
             throw httpError(503, 'Deposits are temporarily unavailable')
         }
 

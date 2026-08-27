@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 44" role="img" aria-label="ZareCash">
+  <title>ZareCash</title>
+  <!--
+    The ZareCash mark is set type, not a drawn glyph — zarecash.com renders it
+    as text, so this reproduces it rather than approximating artwork. Two tones:
+    "Zare" in the near-black, "Cash" in the brand blue.
+
+    Text-based, so it inherits whatever of the stack the viewer has. Replace
+    with an outlined version from the brand source when there is one.
+  -->
+  <text
+    x="0"
+    y="33"
+    font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="34"
+    font-weight="700"
+    letter-spacing="-1"
+  ><tspan fill="#0B1020">Zare</tspan><tspan fill="#2C3AF5">Cash</tspan></text>
+</svg>

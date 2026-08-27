@@ -99,6 +99,20 @@ const bonusRuleUpdateSchema = bonusRuleFields.partial().extend({
     isActive: z.boolean().optional(),
 })
 
+/**
+ * A payment method's card image: either an absolute URL on some CDN, or a
+ * root-relative path into the web app's own /public (which is how the bundled
+ * brand assets ship). z.string().url() rejects the second, which would have
+ * made the shipped defaults unsaveable from the admin panel.
+ */
+const logoUrlSchema = z
+    .string()
+    .trim()
+    .refine((v) => v === '' || v.startsWith('/') || /^https?:\/\//.test(v), {
+        message: 'Must be an absolute http(s) URL or a root-relative path such as /payment-logos/x.svg',
+    })
+    .nullish()
+
 const paymentMethodCreateSchema = z.object({
     code: z.string().min(1),
     name: z.string().min(1),
@@ -107,7 +121,7 @@ const paymentMethodCreateSchema = z.object({
     merchantAccount: z.string().nullish(),
     instructions: z.string().nullish(),
     icon: z.string().nullish(),
-    logoUrl: z.string().url().nullish(),
+    logoUrl: logoUrlSchema,
     enabled: z.boolean().default(true),
     autoVerify: z.boolean().default(false),
     sortOrder: z.number().int().default(0),
@@ -121,7 +135,7 @@ const paymentMethodUpdateSchema = z.object({
     merchantAccount: z.string().nullish(),
     instructions: z.string().nullish(),
     icon: z.string().nullish(),
-    logoUrl: z.string().url().nullish(),
+    logoUrl: logoUrlSchema,
     enabled: z.boolean().optional(),
     autoVerify: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
