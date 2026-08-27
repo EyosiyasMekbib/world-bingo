@@ -348,3 +348,71 @@ retry.
   by hand (normal admin approve/reject — deposits have no gateway-managed
   guard, unlike withdrawals, since `WalletService.approveDeposit` is always
   safe to call and never double-pays).
+
+## 9. Hosted checkout
+
+Hosted checkout is the second way a deposit can reach ZareCash. Instead of us
+collecting the transaction number and posting `/v1/deposits`, we create a
+session, redirect the player to ZareCash's own page, and they collect the
+method choice, the collection account and the receipt — in English or Amharic,
+picked from the player's `Accept-Language`.
+
+### Turning it on
+
+1. **Console:** set this tenant's **Custom URL** (API & webhooks page) to the
+   same origin as `WEB_BASE_URL`. A `returnUrl` on any other origin is refused
+   with `invalid_return_url`, and that is not relaxable per tenant.
+2. **Database:** the seed ships a `zarecash` DEPOSIT method with
+   `hostedCheckout = true` and `enabled = false`. Flip `enabled` on in
+   Settings → Payment Methods. That toggle is the kill switch.
+
+```sql
+UPDATE payment_methods SET enabled = true WHERE code = 'zarecash';
+```
+
+The card appears at the top of the deposit modal (`sortOrder = -1`), above the
+manual methods, which keep working unchanged.
+
+### Walking the flow
+
+With a `pk_test_` key, deposit from the player app and follow the redirect. On
+the hosted page the receipt reference decides the outcome, using the same
+trigger table as section 4:
+
+| Reference you paste | What to expect back here |
+|---|---|
+| anything ordinary | `deposit.approved` → wallet credited, bonuses evaluated |
+| `TEST-REJECT-…` | `deposit.rejected` → row `REJECTED`, no wallet change |
+| `TEST-REVIEW-…` | stays `PENDING_REVIEW`; the "confirming your deposit" banner stays up |
+
+Three things worth verifying deliberately, because each has its own code path:
+
+- **The normal return.** You land on `/wallet?deposit=dp_…&status=pending`, the
+  query is stripped, and a `PENDING_REVIEW` row appears with
+  `gateway = 'zarecash'` and `gatewayRef = dp_…`. **Nothing is credited yet** —
+  `pending` means the receipt was accepted, not that money arrived.
+- **The player who never comes back.** Submit the receipt, then close the tab
+  instead of following the redirect. The `deposit.approved` webhook adopts the
+  open session by `playerRef` and creates the row itself. This is routine, not
+  an edge case.
+- **The abandoned session.** Open a session and never pay. No `Transaction` is
+  ever created, so nothing reaches the admin deposit queue. The hourly
+  `sweep-checkout-sessions` job marks it `dead` once it is 24 hours past
+  `expiresAt`.
+
+```sql
+SELECT id, "sessionId", "depositId", "transactionId", status, "expiresAt"
+FROM zarecash_checkout_sessions ORDER BY "createdAt" DESC LIMIT 10;
+```
+
+### Expected, not bugs
+
+- **A session is `open` for only 20 minutes**, but the page keeps accepting a
+  receipt for a further 24 hours from a player who already sent money. A return
+  long after the redirect is normal.
+- **Re-creating a session with the same idempotency key returns the same
+  session with a *fresh* URL**, and the previous link stops working. The modal
+  always redirects to the URL from the current response for this reason.
+- **`invalid_return_url` surfaces to the player as a generic 503**, not a form
+  error, and is reported to Sentry. It is a misconfiguration that fails every
+  attempt until the console is fixed — check the Custom URL first.

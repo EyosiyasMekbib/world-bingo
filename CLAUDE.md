@@ -63,6 +63,10 @@ pnpm --filter @world-bingo/game-logic test
 - **Fastify v5** with plugins: JWT auth, rate-limit (100 req/min), Helmet, CORS, Swagger at `/docs`
 - **Socket.io v4** with Redis adapter for horizontal scaling
 - **BullMQ** workers (3): `game-countdown`, `game-scheduler`, `game-engine` — auto-started on server boot
+- ZareCash queues run alongside them: deposit/withdrawal submission, webhook event
+  processing, and a sweep queue carrying three recurring passes — the nightly
+  `/v1/events` reconciliation, a 15-minute stranded-event requeue, and an hourly
+  `sweep-checkout-sessions` pass that links or retires hosted-checkout sessions
 - **Prisma 5** with PostgreSQL; all wallet mutations use `SELECT FOR UPDATE` to prevent race conditions
 - **Redlock** for distributed leader election (prevents duplicate game-engine processing)
 - **Redis** stores live game state; DB is source of truth for completed games

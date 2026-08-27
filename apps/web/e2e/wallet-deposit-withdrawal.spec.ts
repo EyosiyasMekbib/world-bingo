@@ -56,6 +56,15 @@ test.describe('Lobby page', () => {
 
 // ─── Deposit Flow ─────────────────────────────────────────────────────────────
 
+/**
+ * The deposit modal is a stack of method cards, collapsed to a Continue button.
+ * The manual (receipt) form only exists once its card is expanded.
+ */
+async function openManualDepositCard(page: Page) {
+    await page.getByRole('button', { name: /^continue$/i }).first().click()
+    await expect(page.locator('input[placeholder*="Transaction ID"]')).toBeVisible()
+}
+
 test.describe('Deposit flow', () => {
     test('deposit modal shows TeleBirr instructions and merchant number', async ({ page }) => {
         await registerAndLogin(
@@ -69,6 +78,8 @@ test.describe('Deposit flow', () => {
         const depositBtn = page.getByRole('button', { name: /deposit/i })
         await expect(depositBtn).toBeVisible({ timeout: 8000 })
         await depositBtn.click()
+
+        await openManualDepositCard(page)
 
         // Merchant number should be visible
         await expect(page.getByText('0901977670')).toBeVisible()
@@ -89,6 +100,7 @@ test.describe('Deposit flow', () => {
 
         await page.goto('/')
         await page.getByRole('button', { name: /deposit/i }).click()
+        await openManualDepositCard(page)
 
         // Fill amount but leave TeleBirr fields empty — submit button should be disabled
         await page.fill('input[type="number"]', '100')
@@ -105,6 +117,7 @@ test.describe('Deposit flow', () => {
 
         await page.goto('/')
         await page.getByRole('button', { name: /deposit/i }).click()
+        await openManualDepositCard(page)
 
         // Fill all required fields
         await page.fill('input[type="number"]', '200')
@@ -127,6 +140,47 @@ test.describe('Deposit flow', () => {
         // Submit should now be enabled
         const submitBtn = page.getByRole('button', { name: /submit deposit/i })
         await expect(submitBtn).toBeEnabled()
+    })
+
+    test('hosted-checkout card redirects to the ZareCash payment page', async ({ page }) => {
+        await registerAndLogin(
+            page,
+            `dep4_${Date.now()}`,
+            `+251915${Date.now().toString().slice(-6)}`,
+        )
+
+        // The seeded ZareCash method ships disabled, so serve the catalog with it
+        // enabled — this test is about the card's behaviour, not the operator toggle.
+        await page.route('**/api/payment-methods**', (route) =>
+            route.fulfill({
+                json: [
+                    {
+                        id: 'zc',
+                        code: 'zarecash',
+                        name: 'ZareCash',
+                        type: 'DEPOSIT',
+                        merchantName: null,
+                        merchantAccount: null,
+                        instructions: null,
+                        icon: '⚡',
+                        logoUrl: null,
+                        gateway: 'zarecash',
+                        hostedCheckout: true,
+                        sortOrder: -1,
+                    },
+                ],
+            }),
+        )
+        await page.route('**/api/wallet/deposit/checkout', (route) =>
+            route.fulfill({ json: { url: 'https://api.zarecash.com/pay/e2e-token' } }),
+        )
+
+        await page.goto('/')
+        await page.getByRole('button', { name: /deposit/i }).click()
+        await page.fill('input[type="number"]', '500')
+        await page.getByRole('button', { name: /^continue$/i }).first().click()
+
+        await page.waitForURL(/api\.zarecash\.com\/pay\//, { timeout: 8000 })
     })
 })
 
