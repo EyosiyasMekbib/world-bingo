@@ -6,6 +6,7 @@
 import { Worker, Job } from 'bullmq'
 import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
 import { ZareCashService } from '../services/zarecash.service.js'
+import { ZareCashCheckoutService } from '../services/zarecash-checkout.service.js'
 import { isZareCashEnabled } from '../gateways/payment/zarecash/config.js'
 import { reportError } from '../lib/sentry.js'
 
@@ -14,11 +15,20 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 /** Job name for the frequent stranded-event pass. */
 export const STRANDED_REQUEUE_JOB = 'requeue-stranded'
 
+/** Job name for the hosted-checkout session pass. */
+export const CHECKOUT_SWEEP_JOB = 'sweep-checkout-sessions'
+
 /** Exported for unit tests — dispatching on job name without a live Worker. */
 export async function processSweepJob(job: Job): Promise<unknown> {
     if (job.name === STRANDED_REQUEUE_JOB) {
         const result = await ZareCashService.requeueStrandedEvents()
         console.log('[ZareCashSweep] stranded found=%d requeued=%d', result.found, result.requeued)
+        return result
+    }
+
+    if (job.name === CHECKOUT_SWEEP_JOB) {
+        const result = await ZareCashCheckoutService.sweepSessions()
+        console.log('[ZareCashSweep] checkout dead=%d linked=%d', result.dead, result.linked)
         return result
     }
 
@@ -72,6 +82,13 @@ export async function scheduleZareCashSweep(): Promise<void> {
         STRANDED_REQUEUE_JOB,
         {},
         { repeat: { pattern: '*/15 * * * *' }, jobId: 'zarecash-stranded-requeue' },
+    )
+    // Hourly, not nightly: a session ZareCash has a deposit for but we have not
+    // linked is a player waiting on money they have already sent.
+    await queue.add(
+        CHECKOUT_SWEEP_JOB,
+        {},
+        { repeat: { pattern: '7 * * * *' }, jobId: 'zarecash-checkout-sweep' },
     )
 }
 

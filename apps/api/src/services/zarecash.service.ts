@@ -14,6 +14,7 @@ import { WalletService } from './wallet.service.js'
 import { PaymentStatus, NotificationType } from '@world-bingo/shared-types'
 import { ZareCashError } from '../gateways/payment/zarecash/types.js'
 import { NotificationService } from './notification.service.js'
+import { ZareCashCheckoutService } from './zarecash-checkout.service.js'
 import { wbWithdrawalsTotal } from '../lib/metrics.js'
 import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
 import { reportError, reportWarning } from '../lib/sentry.js'
@@ -577,6 +578,26 @@ export class ZareCashService {
      * Resolve the local row a terminal event refers to, or refuse to consume the
      * event. See the UnknownGatewayRefError handling in processEvent.
      */
+    /**
+     * Resolve the local row a DEPOSIT event refers to.
+     *
+     * Two legitimate ways a deposit row can be missing, and only one is a problem:
+     * a hosted-checkout deposit whose player never returned to our site has no row
+     * yet and we can build one from the session; anything else is genuinely
+     * unknown and must not consume the event.
+     */
+    private static async requireDepositRow(eventType: string, data: Record<string, any>) {
+        const direct = await ZareCashService.findByGatewayRef(data.id)
+        if (direct) return direct
+
+        const adoptedId = await ZareCashCheckoutService.adoptFromWebhook(data)
+        if (adoptedId) {
+            const adopted = await prisma.transaction.findUnique({ where: { id: adoptedId } })
+            if (adopted) return adopted
+        }
+        throw new UnknownGatewayRefError(eventType, data.id)
+    }
+
     private static async requireByGatewayRef(eventType: string, gatewayRef: unknown) {
         const tx = await ZareCashService.findByGatewayRef(gatewayRef)
         if (!tx) throw new UnknownGatewayRefError(eventType, gatewayRef)
@@ -603,7 +624,7 @@ export class ZareCashService {
     }
 
     private static async onDepositApproved(data: Record<string, any>): Promise<void> {
-        const tx = await ZareCashService.requireByGatewayRef('deposit.approved', data.id)
+        const tx = await ZareCashService.requireDepositRow('deposit.approved', data)
         if (tx.status !== PaymentStatus.PENDING_REVIEW) {
             // Already terminal — this is an at-least-once redelivery, not a failure.
             console.log('[ZareCash] deposit %s already %s, skipping redelivery', tx.id, tx.status)
@@ -627,7 +648,7 @@ export class ZareCashService {
     }
 
     private static async onDepositRejected(data: Record<string, any>): Promise<void> {
-        const tx = await ZareCashService.requireByGatewayRef('deposit.rejected', data.id)
+        const tx = await ZareCashService.requireDepositRow('deposit.rejected', data)
         // No wallet change — a deposit is never credited before approval.
         await prisma.transaction.updateMany({
             where: { id: tx.id, status: PaymentStatus.PENDING_REVIEW },

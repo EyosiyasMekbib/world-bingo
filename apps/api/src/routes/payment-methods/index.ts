@@ -22,6 +22,9 @@ const paymentMethodRoutes: FastifyPluginAsync = async (fastify) => {
         merchantAccount: true,
         instructions: true,
         icon: true,
+        logoUrl: true,
+        gateway: true,
+        hostedCheckout: true,
         sortOrder: true,
       },
     })

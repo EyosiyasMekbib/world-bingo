@@ -4,6 +4,7 @@ import type { DepositDto, WithdrawalDto } from '@world-bingo/shared-types'
 import { uploadFile, validateFile } from '../lib/storage'
 import { EventService } from '../services/event.service.js'
 import { BonusGrantQueryService } from '../services/bonus-grant-query.service'
+import { ZareCashCheckoutService } from '../services/zarecash-checkout.service.js'
 
 export class WalletController {
     static async getBalance(request: FastifyRequest, reply: FastifyReply) {
@@ -17,6 +18,39 @@ export class WalletController {
         // @ts-ignore
         const userId = request.user.id
         return BonusGrantQueryService.listActiveForUser(userId)
+    }
+
+    /**
+     * Start a ZareCash hosted-checkout deposit. Returns where to redirect the
+     * player; creates no Transaction — see ZareCashCheckoutService.
+     */
+    static async createCheckoutSession(request: FastifyRequest, reply: FastifyReply) {
+        // @ts-ignore
+        const userId = request.user.id
+        const { amount, methodCode } = request.body as { amount: number; methodCode: string }
+        try {
+            const session = await ZareCashCheckoutService.createSession(userId, amount, methodCode)
+            return { url: session.url, expiresAt: session.expiresAt }
+        } catch (err: any) {
+            return reply
+                .status(err?.statusCode ?? 500)
+                .send({ error: err?.message ?? 'Could not start the deposit' })
+        }
+    }
+
+    /**
+     * The player is back from ZareCash with ?deposit=dp_… — record the pending
+     * deposit. Never credits: the deposit.approved webhook does that.
+     */
+    static async claimCheckoutDeposit(request: FastifyRequest, reply: FastifyReply) {
+        // @ts-ignore
+        const userId = request.user.id
+        const { depositId } = request.body as { depositId: string }
+        try {
+            return await ZareCashCheckoutService.claimDeposit(userId, depositId)
+        } catch (err: any) {
+            return reply.status(err?.statusCode ?? 500).send({ error: err?.message ?? 'Claim failed' })
+        }
     }
 
     /**

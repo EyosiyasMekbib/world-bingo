@@ -16,6 +16,8 @@ import {
   type ZareCashWithdrawal,
   type ZareCashFloat,
   type ZareCashEventEnvelope,
+  type CreateCheckoutSessionInput,
+  type ZareCashCheckoutSession,
 } from './types.js'
 
 /** Drops undefined values so we never send `"destinationName": undefined`. */
@@ -110,6 +112,33 @@ export class ZareCashClient {
       body: compact(input as any),
       idempotencyKey,
     })
+  }
+
+  createCheckoutSession(
+    input: CreateCheckoutSessionInput,
+    idempotencyKey: string,
+  ): Promise<ZareCashCheckoutSession> {
+    return this.request<ZareCashCheckoutSession>('POST', '/v1/checkout/sessions', {
+      body: compact(input as any),
+      idempotencyKey,
+    })
+  }
+
+  getCheckoutSession(id: string): Promise<ZareCashCheckoutSession> {
+    return this.request<ZareCashCheckoutSession>(
+      'GET',
+      `/v1/checkout/sessions/${encodeURIComponent(id)}`,
+    )
+  }
+
+  // Mutating, so the contract requires a key. Deterministic from the session id:
+  // cancelling twice is the same logical request, not two of them.
+  cancelCheckoutSession(id: string): Promise<ZareCashCheckoutSession> {
+    return this.request<ZareCashCheckoutSession>(
+      'POST',
+      `/v1/checkout/sessions/${encodeURIComponent(id)}/cancel`,
+      { idempotencyKey: `cancel_${id}` },
+    )
   }
 
   getFloat(): Promise<ZareCashFloat> {

@@ -66,6 +66,29 @@ export interface ZareCashEventEnvelope {
   data: Record<string, unknown>
 }
 
+export type ZareCashCheckoutStatus = 'open' | 'submitted' | 'expired' | 'cancelled'
+
+export interface CreateCheckoutSessionInput {
+  playerRef: string
+  amount: number
+  returnUrl: string
+}
+
+export interface ZareCashCheckoutSession {
+  id: string
+  /**
+   * Redirect the player here. A repeated Idempotency-Key mints a FRESH url and
+   * kills the previous one, so never cache or reuse an older value.
+   */
+  url: string
+  status: ZareCashCheckoutStatus
+  amount: number
+  playerRef: string
+  expiresAt: string
+  /** dp_… once the player has submitted a receipt on the hosted page. */
+  depositId: string | null
+}
+
 /**
  * `permanent` means retrying is pointless — the request will never succeed as
  * written. Workers refund a debited player on a permanent withdrawal failure and
@@ -107,4 +130,7 @@ export const PERMANENT_ERROR_CODES = new Set([
   'player_frozen',
   'duplicate_receipt',
   'not_live',
+  // A returnUrl whose origin does not match the tenant's configured Custom URL
+  // fails identically on every retry until an operator changes the console.
+  'invalid_return_url',
 ])
