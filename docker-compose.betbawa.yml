@@ -52,7 +52,10 @@ services:
       HUB_DEPLOYMENTS: ${HUB_DEPLOYMENTS:-}
       HUB_URL: ${HUB_URL:-}
       HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
-      WEB_BASE_URL: ${WEB_BASE_URL:-https://www.betbawa.bet}
+      # Must be an origin that actually serves TLS, and must match the Custom URL
+      # configured for this tenant at any payment provider — hosted checkout
+      # builds its returnUrl from it and the provider rejects a mismatched origin.
+      WEB_BASE_URL: ${WEB_BASE_URL:-https://dash1.games}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
       # ─── Observability (env-gated; no-op when unset) ───
       SENTRY_DSN: ${SENTRY_DSN:-}
