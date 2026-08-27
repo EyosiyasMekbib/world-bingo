@@ -1,17 +1,20 @@
 /**
  * Freeze or unfreeze a player's account, and mirror the action to ZareCash.
  *
- * WHY THIS SCRIPT EXISTS (instead of the raw SQL that has been used so far):
- * Nothing in the app writes User.isActive for a player — containment has
- * historically meant an operator running `UPDATE users SET "isActive" = false`
- * directly against the database (see the comment at
- * apps/api/src/services/player-crm/player-metrics.service.ts:288-293 for the
- * fallout: Prisma's `@updatedAt` never fires on a raw UPDATE, so the CRM
- * liveness rollup goes stale and a frozen fraud account can still look live).
- * This script goes through `prisma.user.update` instead, so the ORM sees the
- * change, and — because it's now real application code — it can actually call
- * `ZareCashService.syncPlayerFreeze` afterwards. Before this script there was
- * no call site for that sync to hook into at all.
+ * WHY THIS SCRIPT EXISTS: containment used to mean an operator running
+ * `UPDATE users SET "isActive" = false` straight against the database, which
+ * left no reason, no actor and no audit trail, and never fired Prisma's
+ * `@updatedAt` — so the CRM liveness rollup went stale and a frozen fraud
+ * account could still look live.
+ *
+ * It now delegates to AccountStatusService, the single writer of
+ * accountStatus. The history row, the audit log, the player notification and
+ * the ZareCash mirror are all guaranteed by that service rather than being
+ * remembered here, so this script and the admin panel cannot drift apart.
+ *
+ * `freeze` maps to SUSPENDED. RESTRICTED — the review state that still lets a
+ * player reach support — is a considered decision that belongs in the admin
+ * panel, where a category and an expiry can be set alongside it.
  *
  * USAGE (run from apps/api/)
  *   pnpm exec tsx --env-file ../../.env scripts/freeze-player.ts <freeze|unfreeze> <userId|username|phone> <reason...>
@@ -29,13 +32,10 @@
  * guess: it prints every match and exits non-zero without touching anyone.
  * Re-run with the printed `id=` value to disambiguate.
  *
- * The ZareCash mirror is best-effort: it is a no-op when ZARECASH_ENABLED is
- * not "true", and if it fails, this script still exits 0 — the LOCAL freeze
- * (the one that actually protects our balance, enforced in
- * WalletService.requestWithdrawal and AdminService.reviewTransaction) already
- * stands by the time the mirror is attempted. Only a failure to write the
- * local isActive flag, or an ambiguous/missing identifier, is treated as a
- * real failure (exit 1).
+ * The ZareCash mirror is best-effort and happens inside the service: it is a
+ * no-op when ZARECASH_ENABLED is not "true", and a failure there never undoes
+ * the local transition — the local status is what protects our balance. Only a
+ * failed transition, or an ambiguous/missing identifier, exits non-zero.
  *
  * The argument parsing and user lookup below are thin wrappers around
  * ../src/lib/freeze-player-args.ts, which holds the actual logic and is unit
@@ -46,7 +46,7 @@
  */
 
 import prisma from '../src/lib/prisma.js'
-import { ZareCashService } from '../src/services/zarecash.service.js'
+import { AccountStatusService } from '../src/services/account-status.service.js'
 import { parseArgs, resolveUser, matchedFields, type ParsedArgs } from '../src/lib/freeze-player-args.js'
 
 async function main(): Promise<void> {
@@ -87,43 +87,45 @@ async function main(): Promise<void> {
 
     const user = lookup.user
 
-    // ── Step 1: LOCAL freeze, through Prisma so @updatedAt fires. This is the
-    // freeze that actually protects our balance — it must land before the
-    // upstream mirror is even attempted.
-    let updated: { id: string; username: string | null; phone: string | null; serial: number; isActive: boolean }
+    // ── The transition itself goes through AccountStatusService, which is the
+    // only writer of accountStatus in the codebase. This script used to write
+    // the flag directly; that made it a second path with its own semantics, and
+    // the audit row, the player notification and the ZareCash mirror all had to
+    // be remembered here rather than being guaranteed by the service.
+    //
+    // `freeze` maps to SUSPENDED rather than RESTRICTED: this is the blunt
+    // operator-facing containment tool, and someone reaching for a shell script
+    // at 2am means it, whereas RESTRICTED is a considered review state that
+    // belongs in the admin panel where a category and an expiry can be set.
     try {
-        updated = await prisma.user.update({
-            where: { id: user.id },
-            data: { isActive: !frozen },
-            select: { id: true, username: true, phone: true, serial: true, isActive: true },
-        })
+        if (frozen) {
+            await AccountStatusService.suspend(user.id, { reason, actorId: null })
+        } else {
+            await AccountStatusService.reinstate(user.id, { reason, actorId: null })
+        }
     } catch (err) {
         console.error(`Local ${action} FAILED for ${identifier}: ${(err as Error).message}`)
         process.exitCode = 1
         return
     }
 
-    // ── Step 2: mirror to ZareCash, best-effort, local-first. syncPlayerFreeze
-    // never throws, and now reports its outcome directly ({ ok, skipped, error }
-    // — see zarecash.service.ts) instead of only logging it, so this script can
-    // tell the operator what actually happened rather than assuming success.
-    const mirror = await ZareCashService.syncPlayerFreeze(updated.id, frozen, reason)
+    const updated = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true, username: true, phone: true, serial: true, accountStatus: true },
+    })
+    if (!updated) {
+        console.error(`Player vanished mid-${action}: ${identifier}`)
+        process.exitCode = 1
+        return
+    }
 
     const label = updated.username ?? updated.phone ?? updated.id
     console.log('──────────────────────────────────────────────')
     console.log(`Action:   ${action.toUpperCase()}`)
     console.log(`User:     ${label} (id=${updated.id}, serial=${updated.serial})`)
     console.log(`Reason:   ${reason}`)
-    console.log(`Local:    OK — isActive=${updated.isActive} (written via Prisma, updatedAt bumped)`)
-    console.log(
-        `ZareCash: ${
-            mirror.skipped
-                ? 'not attempted (ZARECASH_ENABLED is not "true")'
-                : mirror.ok
-                  ? 'attempted — OK'
-                  : `attempted — FAILED (${mirror.error}; local freeze still stands)`
-        }`,
-    )
+    console.log(`Local:    OK — accountStatus=${updated.accountStatus} (history row and audit log written)`)
+    console.log('ZareCash: mirrored by AccountStatusService (best-effort; see the API log for the outcome)')
     console.log('──────────────────────────────────────────────')
 }
 

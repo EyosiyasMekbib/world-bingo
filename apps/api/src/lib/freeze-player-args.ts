@@ -45,7 +45,7 @@ export interface UserLookupRow {
     username: string | null
     phone: string | null
     serial: number
-    isActive: boolean
+    accountStatus: string
 }
 
 /** The minimal slice of PrismaClient this needs — narrow on purpose so tests can pass a fake instead of a real client. */
@@ -80,7 +80,7 @@ export async function resolveUser(
 ): Promise<ResolveUserResult> {
     const matches = await client.user.findMany({
         where: { OR: [{ id: identifier }, { username: identifier }, { phone: identifier }] },
-        select: { id: true, username: true, phone: true, serial: true, isActive: true },
+        select: { id: true, username: true, phone: true, serial: true, accountStatus: true },
     })
 
     if (matches.length === 0) return { status: 'not_found' }

@@ -444,6 +444,19 @@ export const useAdminApi = () => {
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
 
+        // ── Account status ────────────────────────────────────────────────
+        // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and
+        // will 403 for a clerk. The buttons are hidden by role too, but the
+        // server is what enforces it.
+        restrictPlayer: (id: string, body: { reason: string; category?: string; expiresAt?: string }) =>
+            apiFetch(`/admin/players/${id}/restrict`, { method: 'POST', body }),
+        suspendPlayer: (id: string, body: { reason: string; category?: string; expiresAt?: string }) =>
+            apiFetch(`/admin/players/${id}/suspend`, { method: 'POST', body }),
+        reinstatePlayer: (id: string, body: { reason: string }) =>
+            apiFetch(`/admin/players/${id}/reinstate`, { method: 'POST', body }),
+        getPlayerStatusHistory: (id: string) =>
+            apiFetch<any[]>(`/admin/players/${id}/status-history`),
+
         // ── Game Providers ────────────────────────────────────────────────
         getProviders: () => apiFetch<any[]>('/admin/providers'),
         updateProviderStatus: (id: string, status: string) =>

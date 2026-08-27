@@ -187,3 +187,33 @@ describe('AccountStatusService.findExpired', () => {
     expect(await AccountStatusService.findExpired()).toEqual([USER])
   })
 })
+
+describe('the expiry pass', () => {
+  it('lifts what is due and survives one that fails', async () => {
+    vi.resetModules()
+    const reinstate = vi.fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('gone'))
+      .mockResolvedValueOnce({})
+    vi.doMock('../services/account-status.service', () => ({
+      AccountStatusService: {
+        findExpired: vi.fn().mockResolvedValue(['a', 'b', 'c']),
+        reinstate,
+      },
+    }))
+    vi.doMock('bullmq', () => ({
+      Worker: class { on() {} },
+      Queue: class { add() { return Promise.resolve() } },
+      Job: class {},
+    }))
+
+    const { processAccountStatusExpiry } = await import('../workers/account-status-expiry.worker')
+    const result = await processAccountStatusExpiry()
+
+    expect(result).toEqual({ lifted: 2, failed: 1 })
+    expect(reinstate).toHaveBeenCalledTimes(3)
+    expect(reinstate).toHaveBeenCalledWith('c', { reason: 'Restriction expired', actorId: null })
+    vi.doUnmock('../services/account-status.service')
+    vi.doUnmock('bullmq')
+  })
+})

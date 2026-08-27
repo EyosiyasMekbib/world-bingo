@@ -299,7 +299,10 @@ async function startCheckout(m: DepositMethod) {
     // fresh link upstream and kills the previous one.
     window.location.assign(res.url)
   } catch (e: any) {
-    checkoutError.value = e?.data?.error ?? t('wallet.checkoutFailed')
+    checkoutError.value =
+      e?.data?.code === 'account_restricted'
+        ? t('wallet.accountRestricted')
+        : (e?.data?.error ?? t('wallet.checkoutFailed'))
     redirecting.value = false
   }
 }
@@ -437,6 +440,9 @@ async function submit() {
     if (status === 409) {
       fieldError.value = 'transactionId'
       error.value = serverMsg ?? 'Transaction ID already used.'
+    } else if (e?.data?.code === 'account_restricted') {
+      fieldError.value = ''
+      error.value = t('wallet.accountRestricted')
     } else {
       fieldError.value = ''
       error.value = serverMsg ?? 'Deposit failed. Please try again.'
