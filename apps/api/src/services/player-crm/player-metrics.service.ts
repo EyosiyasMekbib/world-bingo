@@ -88,7 +88,10 @@ function rollupSql(userFilter: Prisma.Sql): Prisma.Sql {
 
             COALESCE(w."realBalance", 0),
             COALESCE(w."bonusBalance", 0),
-            u."isActive",
+            -- PlayerMetrics.isActive stays a boolean; its source is now the
+            -- account status enum. Raw SQL, so nothing warns you here if that
+            -- column changes — see the spec's call-site table.
+            (u."accountStatus" = 'ACTIVE'),
             u."createdAt",
             u.serial,
             u.username,

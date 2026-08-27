@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
-const { getPlayer, adjustPlayerBalance } = useAdminApi()
+const { getPlayer, adjustPlayerBalance, restrictPlayer, suspendPlayer, reinstatePlayer, getPlayerStatusHistory } = useAdminApi()
 const toast = useToast()
 
 const player = ref<any>(null)
@@ -35,10 +35,80 @@ const adjustForm = reactive({
   note: '',
 })
 
+// ── Account status ────────────────────────────────────────────────────
+const STATUS_CATEGORIES = ['RECEIPT_FRAUD', 'CHARGEBACK', 'BONUS_ABUSE', 'MULTI_ACCOUNT', 'OTHER']
+
+const statusHistory = ref<any[]>([])
+const showStatus = ref(false)
+const savingStatus = ref(false)
+/** Which transition the dialog is about: 'RESTRICTED' | 'SUSPENDED' | 'ACTIVE'. */
+const statusTarget = ref<'RESTRICTED' | 'SUSPENDED' | 'ACTIVE'>('RESTRICTED')
+
+const statusForm = reactive({ reason: '', category: '', expiresAt: '' })
+
+const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+  ACTIVE: { label: 'Active', color: 'success' },
+  RESTRICTED: { label: 'Restricted', color: 'warning' },
+  SUSPENDED: { label: 'Suspended', color: 'error' },
+}
+
+const currentStatus = computed(() => player.value?.accountStatus ?? 'ACTIVE')
+
+function openStatus(target: 'RESTRICTED' | 'SUSPENDED' | 'ACTIVE') {
+  statusTarget.value = target
+  statusForm.reason = ''
+  statusForm.category = ''
+  statusForm.expiresAt = ''
+  showStatus.value = true
+}
+
+async function fetchStatusHistory() {
+  try {
+    statusHistory.value = await getPlayerStatusHistory(route.params.id as string)
+  } catch {
+    // The history is context, not the page: a failure here should not blank
+    // out the player's balances and transactions.
+    statusHistory.value = []
+  }
+}
+
+async function submitStatus() {
+  const reason = statusForm.reason.trim()
+  if (reason.length < 3) {
+    toast.add({ title: 'A reason is required', description: 'At least 3 characters.', color: 'error' })
+    return
+  }
+  savingStatus.value = true
+  const id = route.params.id as string
+  try {
+    if (statusTarget.value === 'ACTIVE') {
+      await reinstatePlayer(id, { reason })
+    } else {
+      const body: { reason: string; category?: string; expiresAt?: string } = { reason }
+      if (statusForm.category) body.category = statusForm.category
+      if (statusForm.expiresAt) body.expiresAt = new Date(statusForm.expiresAt).toISOString()
+      if (statusTarget.value === 'RESTRICTED') await restrictPlayer(id, body)
+      else await suspendPlayer(id, body)
+    }
+    showStatus.value = false
+    await Promise.all([fetchPlayer(), fetchStatusHistory()])
+    toast.add({ title: 'Account status updated', color: 'success' })
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not update status',
+      description: err?.data?.error ?? 'Request failed',
+      color: 'error',
+    })
+  } finally {
+    savingStatus.value = false
+  }
+}
+
 async function fetchPlayer() {
   loading.value = true
   try {
     player.value = await getPlayer(route.params.id as string)
+    await fetchStatusHistory()
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load player', color: 'error' })
   } finally {
@@ -86,6 +156,14 @@ onMounted(fetchPlayer)
         <UButton icon="i-heroicons:arrow-left" color="neutral" variant="ghost" size="sm" />
       </NuxtLink>
       <h1 class="text-2xl font-bold text-white tracking-tight">Player Detail</h1>
+      <UBadge
+        v-if="player"
+        :color="STATUS_STYLE[currentStatus]?.color ?? 'neutral'"
+        variant="soft"
+        size="sm"
+      >
+        {{ STATUS_STYLE[currentStatus]?.label ?? currentStatus }}
+      </UBadge>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-16 text-zinc-500">
@@ -205,6 +283,40 @@ onMounted(fetchPlayer)
           </div>
         </div>
       </div>
+
+      <!-- Account status -->
+      <div class="p-4 rounded-2xl border border-(--surface-border) shadow-lg space-y-4" style="background:var(--surface-raised);">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Account status</p>
+            <p class="font-bold text-white">{{ STATUS_STYLE[currentStatus]?.label ?? currentStatus }}</p>
+          </div>
+          <div class="flex gap-2">
+            <UButton v-if="currentStatus !== 'RESTRICTED'" size="sm" color="warning" variant="soft" @click="openStatus('RESTRICTED')">Restrict</UButton>
+            <UButton v-if="currentStatus !== 'SUSPENDED'" size="sm" color="error" variant="soft" @click="openStatus('SUSPENDED')">Suspend</UButton>
+            <UButton v-if="currentStatus !== 'ACTIVE'" size="sm" color="success" variant="soft" @click="openStatus('ACTIVE')">Reinstate</UButton>
+          </div>
+        </div>
+
+        <p class="text-xs text-white/40 leading-relaxed">
+          <span class="text-white/60 font-semibold">Restricted</span> holds deposits, withdrawals and joining
+          games while leaving the player able to log in and reach support.
+          <span class="text-white/60 font-semibold">Suspended</span> refuses login outright.
+        </p>
+
+        <div v-if="statusHistory.length" class="border-t border-(--surface-border) pt-3 space-y-2">
+          <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest">History</p>
+          <div v-for="row in statusHistory" :key="row.id" class="text-xs text-white/50 flex flex-wrap items-baseline gap-x-2">
+            <span class="font-mono text-white/30">{{ new Date(row.createdAt).toLocaleString() }}</span>
+            <span class="text-white/70">{{ row.from }} &rarr; {{ row.to }}</span>
+            <span>{{ row.reason }}</span>
+            <span v-if="row.category" class="text-white/30">({{ row.category }})</span>
+            <span v-if="!row.actorId" class="text-white/30">&middot; automatic</span>
+            <span v-if="row.expiresAt" class="text-white/30">&middot; lifts {{ new Date(row.expiresAt).toLocaleString() }}</span>
+          </div>
+        </div>
+      </div>
+
     </template>
 
     <!-- Adjust Balance Modal -->
@@ -234,5 +346,34 @@ onMounted(fetchPlayer)
         </div>
       </template>
     </UModal>
+
+    <UModal v-model:open="showStatus">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <h3 class="text-lg font-bold text-white">
+            {{ statusTarget === 'ACTIVE' ? 'Reinstate account' : statusTarget === 'RESTRICTED' ? 'Restrict account' : 'Suspend account' }}
+          </h3>
+
+          <UFormField label="Reason" hint="Recorded permanently and shown in the history" required>
+            <UTextarea v-model="statusForm.reason" :rows="3" placeholder="e.g. duplicate receipts across three accounts" class="w-full" />
+          </UFormField>
+
+          <template v-if="statusTarget !== 'ACTIVE'">
+            <UFormField label="Category">
+              <USelect v-model="statusForm.category" :items="STATUS_CATEGORIES" placeholder="Optional" class="w-full" />
+            </UFormField>
+            <UFormField label="Lift automatically at" hint="Leave empty to hold until someone lifts it">
+              <UInput v-model="statusForm.expiresAt" type="datetime-local" class="w-full" />
+            </UFormField>
+          </template>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton color="neutral" variant="ghost" label="Cancel" @click="showStatus = false" />
+            <UButton color="primary" :loading="savingStatus" label="Confirm" @click="submitStatus" />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
   </div>
 </template>

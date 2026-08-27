@@ -170,13 +170,6 @@
                             <span>Click or drag &amp; drop receipt (JPG/PNG/HEIC, max 5MB)</span>
                           </div>
                         </div>
-                        <input
-                          ref="fileInputRef"
-                          type="file"
-                          accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
-                          class="hidden-input"
-                          @change="onFileChange"
-                        />
                       </div>
 
                       <div v-if="error" class="wb-notice wb-notice--error">
@@ -217,6 +210,18 @@
                 </div>
               </section>
             </div>
+
+            <!-- Outside the v-for on purpose: a `ref` inside v-for is populated
+                 as an ARRAY in Vue 3, so fileInputRef?.click() was undefined and
+                 the receipt picker never opened. Only one card is expanded at a
+                 time, so one input serves the modal. -->
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
+              class="hidden-input"
+              @change="onFileChange"
+            />
           </template>
         </div>
 
@@ -299,7 +304,10 @@ async function startCheckout(m: DepositMethod) {
     // fresh link upstream and kills the previous one.
     window.location.assign(res.url)
   } catch (e: any) {
-    checkoutError.value = e?.data?.error ?? t('wallet.checkoutFailed')
+    checkoutError.value =
+      e?.data?.code === 'account_restricted'
+        ? t('wallet.accountRestricted')
+        : (e?.data?.error ?? t('wallet.checkoutFailed'))
     redirecting.value = false
   }
 }
@@ -437,6 +445,9 @@ async function submit() {
     if (status === 409) {
       fieldError.value = 'transactionId'
       error.value = serverMsg ?? 'Transaction ID already used.'
+    } else if (e?.data?.code === 'account_restricted') {
+      fieldError.value = ''
+      error.value = t('wallet.accountRestricted')
     } else {
       fieldError.value = ''
       error.value = serverMsg ?? 'Deposit failed. Please try again.'

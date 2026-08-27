@@ -155,6 +155,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const config = useRuntimeConfig()
+const { t } = useI18n()
 const errorMsg = ref('')
 const loading = ref(false)
 const showPassword = ref(false)
@@ -176,7 +177,13 @@ async function handleCredentialsLogin() {
     await auth.login({ identifier: form.identifier, password: form.password })
     await router.push(redirectPath.value)
   } catch (e: any) {
-    errorMsg.value = e?.data?.message || 'Invalid credentials. Please try again.'
+    // A suspended account fails authentication with its own code; showing
+    // "invalid credentials" for it sends the player to reset a password that
+    // was never the problem.
+    errorMsg.value =
+      e?.data?.code === 'account_suspended'
+        ? t('wallet.accountSuspended')
+        : e?.data?.message || 'Invalid credentials. Please try again.'
   } finally {
     loading.value = false
   }
@@ -188,7 +195,10 @@ function handleTelegramCallback(user: TelegramAuthDto) {
   auth.telegramLogin(user)
     .then(() => router.push(redirectPath.value))
     .catch((e: any) => {
-      errorMsg.value = e?.data?.message || 'Authentication failed. Please try again.'
+      errorMsg.value =
+        e?.data?.code === 'account_suspended'
+          ? t('wallet.accountSuspended')
+          : e?.data?.message || 'Authentication failed. Please try again.'
     })
     .finally(() => { loading.value = false })
 }

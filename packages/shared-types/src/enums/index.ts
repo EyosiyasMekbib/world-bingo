@@ -87,6 +87,7 @@ export enum NotificationType {
     CASHBACK_AWARDED = 'CASHBACK_AWARDED',
     CAMPAIGN_MESSAGE = 'CAMPAIGN_MESSAGE',
     SUPPORT_REPLY = 'SUPPORT_REPLY',
+    ACCOUNT_STATUS_CHANGED = 'ACCOUNT_STATUS_CHANGED',
 }
 
 export enum TournamentStatus {
@@ -126,4 +127,18 @@ export enum BonusGrantStatus {
 export enum SpendAccount {
     REAL = 'REAL',
     BONUS = 'BONUS',
+}
+
+/**
+ * Whether an account may act. Covers staff as well as players.
+ *
+ * RESTRICTED is the investigation state: the player can still log in, see their
+ * balance and reach support, but cannot move money or join a game. It exists so
+ * that containment does not make someone unreachable exactly when you need them
+ * to explain themselves.
+ */
+export enum AccountStatus {
+    ACTIVE = 'ACTIVE',
+    RESTRICTED = 'RESTRICTED',
+    SUSPENDED = 'SUSPENDED',
 }

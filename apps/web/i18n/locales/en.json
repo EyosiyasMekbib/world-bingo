@@ -42,6 +42,8 @@
     }
   },
   "wallet": {
+    "accountSuspended": "This account has been suspended. Please contact support.",
+    "accountRestricted": "Your account is under review. Deposits, withdrawals and games are paused — please contact support.",
     "continue": "Continue",
     "redirecting": "Redirecting…",
     "hostedCheckoutHint": "Choose your method and send your receipt on the ZareCash page.",

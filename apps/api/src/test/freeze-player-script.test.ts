@@ -45,7 +45,7 @@ describe('freeze-player script: resolveUser', () => {
     username: null,
     phone: null,
     serial: 1,
-    isActive: true,
+    accountStatus: 'ACTIVE',
     ...overrides,
   })
 
@@ -68,7 +68,7 @@ describe('freeze-player script: resolveUser', () => {
     })
     expect(capturedArgs).toEqual({
       where: { OR: [{ id: 'bob' }, { username: 'bob' }, { phone: 'bob' }] },
-      select: { id: true, username: true, phone: true, serial: true, isActive: true },
+      select: { id: true, username: true, phone: true, serial: true, accountStatus: true },
     })
   })
 
@@ -100,7 +100,7 @@ describe('freeze-player script: matchedFields', () => {
     username: null,
     phone: null,
     serial: 1,
-    isActive: true,
+    accountStatus: 'ACTIVE',
     ...overrides,
   })
 

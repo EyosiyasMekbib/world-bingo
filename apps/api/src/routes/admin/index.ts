@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
+import { AccountStatusService, STATUS_CATEGORIES } from '../../services/account-status.service.js'
 import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
@@ -113,6 +114,17 @@ const logoUrlSchema = z
     })
     .nullish()
 
+const statusChangeSchema = z.object({
+    reason: z.string().trim().min(3, 'A reason of at least 3 characters is required'),
+    category: z.enum(STATUS_CATEGORIES).optional(),
+    /** ISO-8601. When set, the hourly pass returns the account to ACTIVE then. */
+    expiresAt: z.string().datetime().optional(),
+})
+
+const reinstateSchema = z.object({
+    reason: z.string().trim().min(3, 'A reason of at least 3 characters is required'),
+})
+
 const paymentMethodCreateSchema = z.object({
     code: z.string().min(1),
     name: z.string().min(1),
@@ -153,6 +165,28 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // ── Clerk-accessible routes (admin + clerk) ───────────────────────────────
     await fastify.register(async (f) => {
         f.addHook('preValidation', f.requireAdminOrClerk)
+
+        // Containment should not wait for an admin: a clerk who spots something
+        // can RESTRICT immediately. Escalating to SUSPENDED, and lifting
+        // anything, is ADMIN-only and lives in the scope below.
+        f.post('/players/:id/restrict', async (req: any, reply) => {
+            const parsed = statusChangeSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message })
+            try {
+                return await AccountStatusService.restrict(req.params.id, {
+                    reason: parsed.data.reason,
+                    category: parsed.data.category ?? null,
+                    expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+                    actorId: req.user.id,
+                })
+            } catch (err: any) {
+                return reply.status(err?.statusCode ?? 500).send({ error: err?.message, code: err?.code })
+            }
+        })
+
+        f.get('/players/:id/status-history', async (req: any) =>
+            AccountStatusService.history(req.params.id),
+        )
 
         f.get('/transactions/pending', AdminController.getPendingDeposits)
         f.get('/transactions/history', AdminController.getOrdersHistory)
@@ -253,7 +287,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     serial: true,
                     username: true,
                     phone: true,
-                    isActive: true,
+                    accountStatus: true,
                     createdAt: true,
                     wallet: { select: { realBalance: true, bonusBalance: true } },
                 },
@@ -293,7 +327,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.get('/clerks', async (_req, _reply) => {
             return prisma.user.findMany({
                 where: { role: UserRole.CLERK },
-                select: { id: true, username: true, phone: true, isActive: true, createdAt: true },
+                select: { id: true, username: true, phone: true, accountStatus: true, createdAt: true },
                 orderBy: { createdAt: 'desc' },
             })
         })
@@ -310,8 +344,10 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const passwordHash = await bcrypt.hash(password, 10)
             const clerk = await prisma.user.create({
-                data: { username, passwordHash, role: UserRole.CLERK, isActive: true },
-                select: { id: true, username: true, role: true, isActive: true, createdAt: true },
+                // accountStatus defaults to ACTIVE; disabling a clerk is a
+                // SUSPENDED transition through AccountStatusService like any other.
+                data: { username, passwordHash, role: UserRole.CLERK },
+                select: { id: true, username: true, role: true, accountStatus: true, createdAt: true },
             })
             return reply.status(201).send(clerk)
         })
@@ -452,13 +488,42 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             })
         })
 
+        // ── Account status ────────────────────────────────────────────────────
+        f.post('/players/:id/suspend', async (req: any, reply) => {
+            const parsed = statusChangeSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message })
+            try {
+                return await AccountStatusService.suspend(req.params.id, {
+                    reason: parsed.data.reason,
+                    category: parsed.data.category ?? null,
+                    expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+                    actorId: req.user.id,
+                })
+            } catch (err: any) {
+                return reply.status(err?.statusCode ?? 500).send({ error: err?.message, code: err?.code })
+            }
+        })
+
+        f.post('/players/:id/reinstate', async (req: any, reply) => {
+            const parsed = reinstateSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message })
+            try {
+                return await AccountStatusService.reinstate(req.params.id, {
+                    reason: parsed.data.reason,
+                    actorId: req.user.id,
+                })
+            } catch (err: any) {
+                return reply.status(err?.statusCode ?? 500).send({ error: err?.message, code: err?.code })
+            }
+        })
+
         // ── Player Management ─────────────────────────────────────────────────
         f.get('/players/:id', async (req: any, reply) => {
             const user = await prisma.user.findUnique({
                 where: { id: req.params.id },
                 select: {
                     id: true, serial: true, username: true, phone: true, role: true,
-                    isActive: true, createdAt: true,
+                    accountStatus: true, createdAt: true,
                     wallet: { select: { realBalance: true, bonusBalance: true } },
                 },
             })

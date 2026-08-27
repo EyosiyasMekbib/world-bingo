@@ -261,7 +261,7 @@ describe('PlayerMetricsService — idempotency and incremental refresh', () => {
         await PlayerMetricsService.refreshAll()
         expect((await prisma.playerMetrics.findUnique({ where: { userId: user.id } }))!.isActive).toBe(true)
 
-        await prisma.$executeRaw`UPDATE users SET "isActive" = false WHERE id = ${user.id}`
+        await prisma.$executeRaw`UPDATE users SET "accountStatus" = 'SUSPENDED' WHERE id = ${user.id}`
 
         await PlayerMetricsService.refreshIncremental()
 

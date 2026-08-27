@@ -42,6 +42,8 @@
     }
   },
   "wallet": {
+    "accountSuspended": "ይህ አካውንት ታግዷል። እባክዎ ድጋፍን ያግኙ።",
+    "accountRestricted": "አካውንትዎ በክለሳ ላይ ነው። ተቀማጭ፣ ወጪ እና ጨዋታዎች ለጊዜው ቆመዋል — እባክዎ ድጋፍን ያግኙ።",
     "continue": "ቀጥል",
     "redirecting": "በማዛወር ላይ…",
     "hostedCheckoutHint": "በዛሬካሽ ገጽ ላይ የክፍያ መንገድዎን ይምረጡ እና ደረሰኝዎን ይላኩ።",

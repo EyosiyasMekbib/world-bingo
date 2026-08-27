@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma'
-import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType } from '@world-bingo/shared-types'
+import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType, AccountStatus } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { HouseWalletService } from './house-wallet.service'
@@ -290,11 +290,16 @@ export class AdminService {
                 )
             }
 
-            // Containment: never pay out a withdrawal for a frozen/under-review account.
-            // Freezing (isActive=false) a flagged account therefore holds any balance
-            // sitting in its wallet — the pending withdrawal cannot be approved.
-            const holder = await prisma.user.findUnique({ where: { id: tx.userId }, select: { isActive: true } })
-            if (holder && !holder.isActive) {
+            // Containment: never pay out a withdrawal for a restricted or suspended
+            // account. This is what makes "freeze in place" mean something — the
+            // balance stays put and the pending withdrawal cannot be approved by a
+            // clerk while the account is under review.
+            //
+            // Reads accountStatus, NOT isActive: that boolean is now only the bot
+            // pool flag, so leaving this on it would have let a clerk approve a
+            // suspended player's payout.
+            const holder = await prisma.user.findUnique({ where: { id: tx.userId }, select: { accountStatus: true } })
+            if (holder && holder.accountStatus !== AccountStatus.ACTIVE) {
                 throw new Error('Account is under review — withdrawal cannot be approved until it is reinstated')
             }
 

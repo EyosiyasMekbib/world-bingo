@@ -1,4 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library'
+import type { AccountStatus as AccountStatusValue } from '@prisma/client'
+import { AccountStatus } from '@world-bingo/shared-types'
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getLogger } from '../lib/log-context.js'
@@ -70,18 +72,18 @@ function palaceErr(code: number, status: string): PalaceResponse {
     return { result: code, status, data: null }
 }
 
-async function resolveUser(account: string): Promise<{ id: string; isActive: boolean } | null> {
+async function resolveUser(account: string): Promise<{ id: string; accountStatus: AccountStatusValue } | null> {
     const cacheKey = `tp:user:${account}`
     const cached = await redis.get(cacheKey)
     if (cached) return JSON.parse(cached)
 
-    let user: { id: string; isActive: boolean } | null = null
+    let user: { id: string; accountStatus: AccountStatusValue } | null = null
 
     if (/^[0-9a-f]{32}$/i.test(account)) {
         const id = `${account.slice(0, 8)}-${account.slice(8, 12)}-${account.slice(12, 16)}-${account.slice(16, 20)}-${account.slice(20)}`
-        user = await prisma.user.findUnique({ where: { id }, select: { id: true, isActive: true } })
+        user = await prisma.user.findUnique({ where: { id }, select: { id: true, accountStatus: true } })
     } else {
-        user = await prisma.user.findUnique({ where: { username: account }, select: { id: true, isActive: true } })
+        user = await prisma.user.findUnique({ where: { username: account }, select: { id: true, accountStatus: true } })
     }
 
     if (user) await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
@@ -122,7 +124,7 @@ export class PalaceWalletService {
     static async authenticate(account: string): Promise<PalaceResponse> {
         const user = await resolveUser(account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         const balance = wallet
@@ -136,7 +138,7 @@ export class PalaceWalletService {
     static async getBalance(account: string): Promise<PalaceResponse> {
         const user = await resolveUser(account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
 
         const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
         if (!wallet) return palaceErr(21, 'USER_NOT_FOUND')
@@ -148,7 +150,7 @@ export class PalaceWalletService {
     static async processBet(params: BetParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
 
         const existing = await findExisting(params.trans_guid)
         if (existing) {
@@ -276,7 +278,7 @@ export class PalaceWalletService {
     static async processWin(params: WinParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
 
         const existing = await findExisting(params.trans_guid)
         if (existing) {
@@ -399,7 +401,7 @@ export class PalaceWalletService {
     static async processCancel(params: CancelParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (!user.isActive) return palaceErr(22, 'USER_INACTIVE')
+        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
 
         // Idempotency key for this rollback. Prefer the cancel's own trans_guid;
         // if Palace omits it, derive a stable key from the original bet ref so the

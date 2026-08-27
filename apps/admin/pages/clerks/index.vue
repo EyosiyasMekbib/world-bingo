@@ -95,8 +95,8 @@ onMounted(fetchClerks)
           <tr v-for="clerk in clerks" :key="clerk.id">
             <td class="font-medium">{{ clerk.username }}</td>
             <td>
-              <span :class="clerk.isActive ? 'badge-active' : 'badge-inactive'">
-                {{ clerk.isActive ? 'Active' : 'Inactive' }}
+              <span :class="clerk.accountStatus === 'ACTIVE' ? 'badge-active' : 'badge-inactive'">
+                {{ clerk.accountStatus === 'ACTIVE' ? 'Active' : 'Suspended' }}
               </span>
             </td>
             <td class="text-muted">{{ new Date(clerk.createdAt).toLocaleDateString() }}</td>

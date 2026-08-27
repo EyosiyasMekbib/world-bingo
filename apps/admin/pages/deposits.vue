@@ -7,6 +7,12 @@ interface DepositTransaction {
   receiptUrl: string | null
   note?: string
   paymentTransactionId?: string | null
+  /** Which gateway owns the row: null/'manual', or 'zarecash'. */
+  gateway?: string | null
+  /** Provider-side id (dp_…). The reference for a hosted-checkout deposit,
+   *  which has no paymentTransactionId because the provider collected the
+   *  receipt on its own page. */
+  gatewayRef?: string | null
   senderName?: string | null
   senderAccount?: string | null
   user: { username: string; phone: string; serial?: number }
@@ -21,9 +27,26 @@ interface DepositTransaction {
   } | null
 }
 
+/**
+ * The reference an operator can actually search for.
+ *
+ * A manual deposit carries the player-entered receipt number. A hosted-checkout
+ * deposit has none — ZareCash took the receipt on its own page — so its handle
+ * is the provider id. Showing '—' for those made every one of them look broken.
+ */
+function referenceOf(d: DepositTransaction): string | null {
+  return d.paymentTransactionId?.trim() || d.gatewayRef?.trim() || null
+}
+
 function verifyBadge(d: DepositTransaction): { label: string; color: string } {
   const v = d.depositVerification
-  if (!v) return { label: 'Manual', color: 'neutral' }
+  // 'Manual' here means "no verification row", which is also true of every
+  // hosted-checkout deposit — where the provider, not us, did the verifying.
+  if (!v) {
+    return d.gateway === 'zarecash'
+      ? { label: 'ZareCash', color: 'info' }
+      : { label: 'Manual', color: 'neutral' }
+  }
   switch (v.status) {
     case 'AUTO_CREDITED':
       return { label: 'Auto-verified', color: 'success' }
@@ -489,14 +512,14 @@ const copyToClipboard = (text: string) => {
         <template #paymentTransactionId-cell="{ row }">
           <div class="flex items-center gap-1.5 px-1 py-0.5 rounded-lg hover:bg-white/5 transition-colors group">
             <span class="font-mono text-xs font-semibold text-zinc-200">
-              {{ (row.original as unknown as DepositTransaction).paymentTransactionId ?? '—' }}
+              {{ referenceOf(row.original as unknown as DepositTransaction) ?? '—' }}
             </span>
             <UButton
-              v-if="(row.original as unknown as DepositTransaction).paymentTransactionId"
+              v-if="referenceOf(row.original as unknown as DepositTransaction)"
               icon="i-heroicons:clipboard-document"
               variant="ghost" color="primary" size="xs"
               class="opacity-50 hover:opacity-100 transition-opacity p-1"
-              @click="copyToClipboard((row.original as unknown as DepositTransaction).paymentTransactionId!)"
+              @click="copyToClipboard(referenceOf(row.original as unknown as DepositTransaction)!)"
             />
           </div>
         </template>
@@ -571,11 +594,12 @@ Check
       >
         <!-- Transaction ID — top of card -->
         <div class="txid-row">
-          <span class="txid-text">{{ d.paymentTransactionId ?? '—' }}</span>
+          <span class="txid-text">{{ referenceOf(d) ?? '—' }}</span>
           <button
+            v-if="referenceOf(d)"
             class="txid-copy"
-            :title="'Copy ' + d.paymentTransactionId"
-            @click.stop="copyToClipboard(d.paymentTransactionId)"
+            :title="'Copy ' + referenceOf(d)"
+            @click.stop="copyToClipboard(referenceOf(d)!)"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
