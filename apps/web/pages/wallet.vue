@@ -12,7 +12,36 @@ onMounted(async () => {
     return
   }
   await Promise.all([refreshBalance(), fetchRecentTx(), fetchBonusGrants()])
+  await claimReturnedDeposit()
 })
+
+const route = useRoute()
+const confirmingDeposit = ref(false)
+
+/**
+ * ZareCash sends the player back with ?deposit=dp_…&status=pending.
+ *
+ * "pending" means a receipt was accepted, NOT that money arrived — the balance
+ * moves only when the deposit.approved webhook lands. So this records the
+ * pending deposit and shows a waiting state. It must never credit anything.
+ */
+async function claimReturnedDeposit() {
+  const depositId = route.query.deposit
+  if (typeof depositId !== 'string' || !depositId) return
+  // Strip the query first, so a refresh does not replay this.
+  router.replace({ path: '/wallet' })
+  confirmingDeposit.value = true
+  try {
+    await auth.apiFetch('/wallet/deposit/checkout/claim', {
+      method: 'POST',
+      body: { depositId },
+    })
+  } catch {
+    // The webhook is the source of truth and creates the row without us.
+    // A failed claim is not worth alarming the player over.
+  }
+  await Promise.all([refreshBalance(), fetchRecentTx()])
+}
 
 const showDeposit = ref(false)
 const showWithdrawal = ref(false)
@@ -218,6 +247,10 @@ function formatRelativeTime(dateStr: string): string {
           </div>
         </div>
         <p v-if="spendAccountError" class="spend-account-error">{{ spendAccountError }}</p>
+
+        <p v-if="confirmingDeposit" class="deposit-confirming">
+          <span aria-hidden="true">⏳</span>{{ t('wallet.confirmingDeposit') }}
+        </p>
 
         <!-- Actions -->
         <div class="action-row">
@@ -582,6 +615,20 @@ function formatRelativeTime(dateStr: string): string {
 .action-btn:hover { transform: translateY(-1px); }
 .action-btn:active { transform: translateY(0); }
 .action-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.deposit-confirming {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 34%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
 
 .action-btn--deposit {
   background: var(--brand-primary);

@@ -42,6 +42,12 @@
     }
   },
   "wallet": {
+    "amount": "Amount",
+    "continue": "Continue",
+    "redirecting": "Redirecting…",
+    "hostedCheckoutHint": "Choose your method and send your receipt on the ZareCash page.",
+    "checkoutFailed": "Could not start the deposit. Please try again.",
+    "confirmingDeposit": "We're confirming your deposit — your balance updates as soon as it clears.",
     "balance": "Balance",
     "deposit": "Deposit",
     "withdraw": "Withdraw",
