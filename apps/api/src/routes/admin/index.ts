@@ -287,7 +287,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     serial: true,
                     username: true,
                     phone: true,
-                    isActive: true,
+                    accountStatus: true,
                     createdAt: true,
                     wallet: { select: { realBalance: true, bonusBalance: true } },
                 },
@@ -327,7 +327,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.get('/clerks', async (_req, _reply) => {
             return prisma.user.findMany({
                 where: { role: UserRole.CLERK },
-                select: { id: true, username: true, phone: true, isActive: true, createdAt: true },
+                select: { id: true, username: true, phone: true, accountStatus: true, createdAt: true },
                 orderBy: { createdAt: 'desc' },
             })
         })
@@ -344,8 +344,10 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             }
             const passwordHash = await bcrypt.hash(password, 10)
             const clerk = await prisma.user.create({
-                data: { username, passwordHash, role: UserRole.CLERK, isActive: true },
-                select: { id: true, username: true, role: true, isActive: true, createdAt: true },
+                // accountStatus defaults to ACTIVE; disabling a clerk is a
+                // SUSPENDED transition through AccountStatusService like any other.
+                data: { username, passwordHash, role: UserRole.CLERK },
+                select: { id: true, username: true, role: true, accountStatus: true, createdAt: true },
             })
             return reply.status(201).send(clerk)
         })
