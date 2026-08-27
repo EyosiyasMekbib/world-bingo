@@ -129,6 +129,8 @@ services:
       - "3001"
     environment:
       NUXT_PUBLIC_API_BASE: /api
+      # Same-origin: the admin's own /socket.io/** routeRule proxies to the API.
+      NUXT_PUBLIC_WS_URL: /
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
       NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
       NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
