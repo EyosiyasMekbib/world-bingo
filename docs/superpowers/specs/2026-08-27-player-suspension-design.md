@@ -42,7 +42,7 @@ those two raw queries as first-class call sites.
 | Levels | `ACTIVE` / `RESTRICTED` / `SUSPENDED` | Fraud work needs a middle state. A hard lockout on suspicion makes the player unreachable exactly when you need them to explain themselves; `RESTRICTED` holds the money while leaving support chat open. |
 | Applies to | Every account, staff included | `isActive` already did. A disabled clerk is `SUSPENDED`, which is what disabling a clerk should mean. `RESTRICTED` is simply never used for staff. |
 | Source of truth | `User.accountStatus`, and nothing else | No mirror, no dual write. `isActive` stops being read or written in the same release that introduces `accountStatus`. |
-| Dropping `isActive` | One release later | After release 1 the column is dead weight, so the flaw is already gone. Dropping it immediately would probably survive — Dokploy stops the old container before starting the new one, so old code never meets the new schema — but a rollback would meet it, and raw SQL offers no compile-time net. |
+| Dropping `isActive` | **Not dropped** | Corrected during implementation. `BotService` toggles `isActive` on bot accounts every pooling cycle as a pool flag, and bots are role PLAYER with `passwordHash = 'BOT_ACCOUNT'` — there is no BOT role to exclude. Routing that through `AccountStatusService` would append an audit row, notify a player and call the provider's freeze endpoint on every cycle. So `isActive` survives as the bot-pool flag; nothing else reads or writes it, and no account-status enforcement consults it. |
 | Funds on suspension | Freeze in place | Nothing forfeited, nothing moved. A pending withdrawal stays `PENDING_REVIEW` and becomes un-approvable; it is deliberately NOT auto-refunded, because the payout may already be in flight at ZareCash and re-crediting is the double-pay this codebase works hard to prevent. |
 | In-flight games | Play out | The stake is already spent and the engine is server-authoritative. Yanking a player mid-game buys nothing and risks the game state. |
 | Permissions | Clerk restricts; admin suspends and reinstates | Containment should not wait for an admin. Lifting anything should. Mirrors the separation of duties already used for transaction review (`reviewedById`). |
@@ -61,8 +61,9 @@ enum AccountStatus {
 model User {
   // ...
   accountStatus AccountStatus @default(ACTIVE)
-  // `isActive` remains in the schema for one release, read and written by
-  // nothing, and is dropped by a follow-up migration.
+  // `isActive` remains, but ONLY as BotService's pool flag. No account-status
+  // enforcement reads it. The backfill deliberately excludes bot accounts,
+  // which would otherwise all have been marked SUSPENDED while merely parked.
 }
 
 /// One row per transition. Current status lives on User; how it got there
@@ -169,6 +170,8 @@ Distinct copy for a refused login versus a blocked action, in `en` and `am`.
 | `player-metrics.service.ts:41,91` | raw SQL, hand-edited |
 | `admin/index.ts` clerk create + user lists | write and return `accountStatus` |
 | `freeze-player.ts`, `freeze-player-args.ts` | becomes a wrapper over `AccountStatusService` |
+| `palace-wallet.service.ts` resolveUser + 5 guards | **found during implementation** — an enforcement point the design missed, with its own Redis cache under `tp:user:<id>` and `tp:user:<username>`, both now invalidated on every transition |
+| `admin.service.ts` reviewTransaction | **found during implementation** — the withdrawal-approval containment guard, which would otherwise have let a clerk approve a suspended player's payout |
 
 `PlayerMetrics.isActive` is a different, derived column on a different table. It
 stays, and sources from `accountStatus`.
