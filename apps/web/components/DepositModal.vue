@@ -170,13 +170,6 @@
                             <span>Click or drag &amp; drop receipt (JPG/PNG/HEIC, max 5MB)</span>
                           </div>
                         </div>
-                        <input
-                          ref="fileInputRef"
-                          type="file"
-                          accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
-                          class="hidden-input"
-                          @change="onFileChange"
-                        />
                       </div>
 
                       <div v-if="error" class="wb-notice wb-notice--error">
@@ -217,6 +210,18 @@
                 </div>
               </section>
             </div>
+
+            <!-- Outside the v-for on purpose: a `ref` inside v-for is populated
+                 as an ARRAY in Vue 3, so fileInputRef?.click() was undefined and
+                 the receipt picker never opened. Only one card is expanded at a
+                 time, so one input serves the modal. -->
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
+              class="hidden-input"
+              @change="onFileChange"
+            />
           </template>
         </div>
 
