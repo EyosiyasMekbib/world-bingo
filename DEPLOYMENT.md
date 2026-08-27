@@ -36,7 +36,7 @@ The `docker-compose.yml` file is already optimized for this setup. Here is how D
 
 *   **Admin Service (`admin`)**:
     *   **Routing**: Similar to the Web service, Nuxt proxies `/api` and `/socket.io`.
-    *   **Environment Variables**: Ensure `NUXT_PUBLIC_API_BASE` is set to `/api`.
+    *   **Environment Variables**: Ensure `NUXT_PUBLIC_API_BASE` is set to `/api` and `NUXT_PUBLIC_WS_URL` is set to `/`. Both are required, for the same reason they are on the Web service. `NUXT_PUBLIC_WS_URL` is the one that is easy to miss: the admin support inbox opens its own socket.io client, and `apps/admin/nuxt.config.ts` defaults `wsUrl` to `http://localhost:8080` for local dev. Leave it unset and a clerk's browser tries to reach port 8080 on the clerk's own machine — the inbox fails with `xhr poll error` and receives no queue updates, messages or threads, while the rest of the admin keeps working over the separate `/api` proxy, so it reads as an empty queue rather than a broken connection.
     *   **Action**: Map your admin domain (e.g., `admin.bingo.example.com`) to port `3001` of the `admin` service.
 
 ### 4. Database and Redis
