@@ -11,6 +11,7 @@ type PaymentMethod = {
   merchantAccount: string | null
   instructions: string | null
   icon: string | null
+  logoUrl: string | null
   enabled: boolean
   autoVerify: boolean
   sortOrder: number
@@ -31,6 +32,7 @@ const form = reactive({
   merchantAccount: '',
   instructions: '',
   icon: '',
+  logoUrl: '',
   enabled: true,
   autoVerify: false,
   sortOrder: 0,
@@ -61,6 +63,7 @@ const openAdd = () => {
   form.merchantAccount = ''
   form.instructions = ''
   form.icon = ''
+  form.logoUrl = ''
   form.enabled = true
   form.autoVerify = false
   form.sortOrder = 0
@@ -76,6 +79,7 @@ const openEdit = (m: PaymentMethod) => {
   form.merchantAccount = m.merchantAccount ?? ''
   form.instructions = m.instructions ?? ''
   form.icon = m.icon ?? ''
+  form.logoUrl = m.logoUrl ?? ''
   form.enabled = m.enabled
   form.autoVerify = m.autoVerify ?? false
   form.sortOrder = m.sortOrder
@@ -97,6 +101,7 @@ const saveMethod = async () => {
       merchantAccount: form.merchantAccount || null,
       instructions: form.instructions || null,
       icon: form.icon || null,
+      logoUrl: form.logoUrl || null,
       enabled: form.enabled,
       autoVerify: form.autoVerify,
       sortOrder: form.sortOrder,
@@ -335,6 +340,11 @@ async function fetchAll() {
               <label class="text-xs font-semibold text-white/60 uppercase tracking-wider">Icon (emoji)</label>
               <UInput v-model="form.icon" placeholder="📱" />
             </div>
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-white/60 uppercase tracking-wider">Logo URL</label>
+            <UInput v-model="form.logoUrl" placeholder="https://…" />
+            <p class="text-xs text-white/30">Card header image on the deposit screen. Falls back to the icon when empty.</p>
           </div>
 
           <div v-if="form.type === 'DEPOSIT'" class="space-y-1">

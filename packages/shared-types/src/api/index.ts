@@ -44,6 +44,15 @@ export const DepositSchema = z.object({
     methodCode: z.string().optional(),
 })
 
+export const CheckoutSessionSchema = z.object({
+    amount: z.number().positive(),
+    methodCode: z.string().min(1),
+})
+
+export const ClaimCheckoutSchema = z.object({
+    depositId: z.string().min(3),
+})
+
 export const WithdrawalSchema = z.object({
     amount: z.number().min(100, 'Minimum withdrawal is 100 Birr'),
     paymentMethod: z.string().min(3),

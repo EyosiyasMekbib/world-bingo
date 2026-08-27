@@ -20,7 +20,10 @@
 - **Money is `Decimal`,** never JS `number`, in anything that touches a wallet or a transaction row. Convert at the HTTP boundary only.
 - **Test phase only.** `ZARECASH_MODE=test`. Nothing in this plan assumes a live key.
 - **Never refund on `409 withdrawal_pending`** — a payout may genuinely be in flight.
-- Run tests with `pnpm --filter @world-bingo/api test`. `apps/api` is the one package in this repo whose test exit code is trustworthy; do not infer anything from other packages' gates.
+- Run tests with `pnpm --filter @world-bingo/api test`. Do not infer anything from other packages' gates.
+- **The suite is not green, and will not be.** Verified baseline at commit `7d4008e`: **27 failing tests across 6 files** (`admin-featured-games`, `auth.service`, `game-state`, `integration`, `settings.service`, `withdrawal.service`), 944 passing. Causes are environmental (no Redis/Docker in this sandbox) and pre-existing (missing Fastify decorators, stale tests). The full list is in `.superpowers/sdd/2026-08-26-zarecash-integration/baseline-failures.txt`.
+  **Every "run the full suite" gate in this plan means: the failure set is unchanged from that baseline — same files, same test names, same count.** A new failure, or an old one disappearing, is the signal. An all-green run is not achievable and must not be waited for.
+- Note for Tasks 5 and 9: `withdrawal.service.test.ts` already contributes 5 of those failures, two of them inside `requestWithdrawal — complete flow` (stale tests that predate the one-pending-withdrawal rule). It is still a usable gate — but the bar is "these same 5, no more", not zero.
 - Tests live in `apps/api/src/test/*.test.ts`. Real-DB suites rely on `cleanDb()` in `src/test/setup.ts`.
 
 ---
@@ -1052,7 +1055,9 @@ Pure refactor with no behaviour change. Task 9 needs to refund a debited player 
 pnpm --filter @world-bingo/api test src/test/withdrawal.service.test.ts src/test/admin.service.test.ts
 ```
 
-Expected: PASS. Record the test count — the same tests must pass unchanged at the end. If they are already failing, stop and report before refactoring.
+Expected at commit `7d4008e`: **5 failed | 35 passed (40)** — `admin.service.test.ts` fully green, `withdrawal.service.test.ts` contributing 5 pre-existing failures (3 in `getTransactions — pagination and filtering`, 2 in `requestWithdrawal — complete flow`). Those 5 are stale tests that predate the one-pending-withdrawal rule; they are NOT yours to fix in this task.
+
+Record the exact failing test names. That list is your gate: after the refactor it must be identical. A 6th failure means you changed behaviour.
 
 - [ ] **Step 2: Move the logic into WalletService**
 
@@ -1161,7 +1166,7 @@ Leave the `PENDING_REVIEW` guard above it untouched — `rejectWithdrawal` re-ch
 pnpm --filter @world-bingo/api test src/test/withdrawal.service.test.ts src/test/admin.service.test.ts
 ```
 
-Expected: PASS, same count as Step 1. Any change in the passing set means the refactor altered behaviour — revert and re-read the original branch.
+Expected: **the identical 5 failures from Step 1 and nothing else** — same test names, same count. Any new failure, or a Step 1 failure that now passes, means the refactor altered behaviour. Revert and re-read the original branch.
 
 - [ ] **Step 5: Run the full api suite**
 
@@ -1169,7 +1174,7 @@ Expected: PASS, same count as Step 1. Any change in the passing set means the re
 pnpm --filter @world-bingo/api test
 ```
 
-Expected: PASS. This method is reached by several suites; a green full run is the real gate here.
+Expected: **27 failed | 944 passed**, matching `baseline-failures.txt` exactly. This method is reached by several suites, so an unchanged failure set is the real gate. Diff your output against that file before claiming the refactor is clean.
 
 - [ ] **Step 6: Commit**
 
@@ -2389,7 +2394,7 @@ import './workers/zarecash-withdrawal.worker.js'
 pnpm --filter @world-bingo/api test
 ```
 
-Expected: PASS. `withdrawal.service.test.ts` exercises `requestWithdrawal`, so this proves the manual path is unaffected.
+Expected: **27 failed | 944 passed**, matching `baseline-failures.txt` exactly. `withdrawal.service.test.ts` exercises `requestWithdrawal`, so an unchanged failure set is what proves the manual path is unaffected. A 28th failure is yours.
 
 - [ ] **Step 8: Commit**
 
@@ -2901,10 +2906,10 @@ with `import { isZareCashEnabled } from './gateways/payment/zarecash/config.js'`
 - [ ] **Step 6: Run the full suite and typecheck**
 
 ```bash
-pnpm --filter @world-bingo/api test && pnpm --filter @world-bingo/api typecheck
+pnpm --filter @world-bingo/api test; pnpm --filter @world-bingo/api typecheck
 ```
 
-Expected: both PASS.
+Expected: the test run matches `baseline-failures.txt` (27 failed | 944 passed) plus your new suites passing; typecheck PASSES with no errors. Note the `;` rather than `&&` — the test command exits non-zero on the pre-existing failures, which would otherwise skip the typecheck.
 
 - [ ] **Step 7: Commit**
 

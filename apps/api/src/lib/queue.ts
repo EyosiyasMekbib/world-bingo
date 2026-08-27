@@ -38,9 +38,54 @@ export const QUEUE_NAMES = {
     CRM_CAMPAIGN: 'crm-campaign',
     PREDICTION: 'prediction',
     BONUS_EXPIRY: 'bonus-expiry',
+    ZARECASH_DEPOSIT: 'zarecash-deposit',
+    ZARECASH_EVENT: 'zarecash-event',
+    ZARECASH_WITHDRAWAL: 'zarecash-withdrawal',
+    ZARECASH_SWEEP: 'zarecash-sweep',
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]
+
+/**
+ * Retry budget for ZareCash withdrawal submission, before the worker's terminal
+ * refund fires. Exported so the producer (wallet.service.ts, which enqueues the
+ * job) and the consumer (zarecash-withdrawal.worker.ts, which compares
+ * attemptsMade against it) read the exact same number — the queue's
+ * `defaultJobOptions.attempts` below (3) is too short for an irreversible refund
+ * decision, so this job overrides `attempts` explicitly on `.add()` rather than
+ * relying on the queue default.
+ */
+const DEFAULT_ZARECASH_WITHDRAWAL_ATTEMPTS = 8
+
+/**
+ * Validated, because a bad value here silently inverts the refund decision.
+ *
+ * `Number('eight')` is NaN, and `job.attemptsMade < NaN` is false — so the
+ * worker's "have we exhausted retries?" gate passes on the FIRST failure and
+ * fires the terminal refund immediately, refunding a payout after a single
+ * transient blip. Any non-integer or non-positive value falls back to the
+ * default and says so.
+ */
+function readWithdrawalAttempts(): number {
+    const raw = (process.env.ZARECASH_WITHDRAWAL_ATTEMPTS ?? '').trim()
+    if (!raw) return DEFAULT_ZARECASH_WITHDRAWAL_ATTEMPTS
+    const parsed = Number(raw)
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        console.warn(
+            `[Queue] ZARECASH_WITHDRAWAL_ATTEMPTS="${raw}" is not a positive integer — ` +
+                `falling back to ${DEFAULT_ZARECASH_WITHDRAWAL_ATTEMPTS}`,
+        )
+        return DEFAULT_ZARECASH_WITHDRAWAL_ATTEMPTS
+    }
+    return parsed
+}
+
+export const ZARECASH_WITHDRAWAL_ATTEMPTS = readWithdrawalAttempts()
+
+/** Test seam — re-reads the env var so a test can exercise the validation. */
+export function __readWithdrawalAttemptsForTest(): number {
+    return readWithdrawalAttempts()
+}
 
 // Singleton map of Queue instances
 const queues = new Map<string, Queue>()

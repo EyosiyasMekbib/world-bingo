@@ -3,10 +3,13 @@ import { DepositDto, TransactionType, PaymentStatus, NotificationType } from '@w
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { ReferralService } from './referral.service'
-import { wbDepositsTotal } from '../lib/metrics'
+import { wbDepositsTotal, wbWithdrawalsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
+import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
+import { getQueue, QUEUE_NAMES, ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
+import { reportError } from '../lib/sentry'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -48,6 +51,11 @@ export class WalletService {
             }
         }
 
+        // Route to ZareCash when the method has opted in; otherwise keep the
+        // manual flow untouched, including local auto-verification. Resolved
+        // BEFORE the insert so the routing decision can be recorded on the row.
+        const routeToZareCash = await isZareCashMethod(data.methodCode)
+
         // Create a pending transaction
         const transaction = await prisma.transaction.create({
             data: {
@@ -60,8 +68,38 @@ export class WalletService {
                 senderName: data.senderName,
                 senderAccount: data.senderAccount,
                 ...(data.methodCode ? { note: data.methodCode } : {}),
+                ...(routeToZareCash ? { gateway: 'zarecash' } : {}),
             },
         })
+        if (routeToZareCash) {
+            // Submit on a queue, not inline: it buys retries for free, and it
+            // keeps wallet.service from importing zarecash.service (which imports
+            // WalletService back — a cycle that leaves one of them undefined at
+            // module init). A failed submit leaves the deposit PENDING_REVIEW,
+            // which is a safe state: no money has moved.
+            //
+            // The row is COMMITTED by the time we get here, and
+            // `paymentTransactionId` is unique — so letting a Redis blip surface
+            // as a 500 would burn the receipt permanently: the player's retry hits
+            // the duplicate check and 409s "Transaction ID already used", with an
+            // orphaned PENDING_REVIEW row behind it and no job to submit it. Both
+            // sibling paths already refuse to do that (the manual path's
+            // DepositVerificationService.enqueue swallows; the withdrawal enqueue
+            // was hardened the same way). Report and continue — a human can still
+            // approve the row.
+            try {
+                await getQueue(QUEUE_NAMES.ZARECASH_DEPOSIT).add('submit', { transactionId: transaction.id })
+            } catch (err) {
+                console.error('[WalletService] failed to enqueue ZareCash deposit submit:', (err as Error).message)
+                reportError(err, {
+                    service: 'wallet',
+                    phase: 'zarecash-deposit-enqueue',
+                    transactionId: transaction.id,
+                })
+            }
+            return transaction
+        }
+
         // Best-effort: kick off async auto-verification. Swallows its own errors so a
         // queue hiccup can never break deposit submission — the deposit still goes to manual.
         await DepositVerificationService.enqueue(transaction.id)
@@ -289,6 +327,12 @@ export class WalletService {
             throw new Error(`Maximum withdrawal amount is ${maxWithdrawal} Birr`)
         }
 
+        // Resolve routing BEFORE opening the wallet transaction — it is a read of
+        // PaymentMethod config, and it must be known INSIDE the transaction so the
+        // decision lands on the row atomically with the debit. See the comment on
+        // `gateway` below for why that timing is the whole point.
+        const routeToZareCash = await isZareCashMethod(data.paymentMethod)
+
         return await prisma.$transaction(async (tx) => {
             // Lock the wallet row to prevent concurrent withdrawals from passing the balance check
             const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
@@ -323,7 +367,19 @@ export class WalletService {
                 data: { realBalance: { decrement: data.amount } }
             })
 
-            // Create a pending withdrawal with balance snapshot
+            // Create a pending withdrawal with balance snapshot.
+            //
+            // `gateway` is written HERE, in the same transaction as the debit, and
+            // that timing is load-bearing. It is what arms the admin double-pay
+            // guard (AdminService.reviewTransaction). Keying that guard on
+            // `gatewayRef` instead — as it originally did — armed it far too late:
+            // gatewayRef is only written once ZareCash has answered the payout
+            // POST, and that POST can be in flight for ZARECASH_TIMEOUT_MS per
+            // attempt across several attempts. In that window a clerk working the
+            // review queue saw gatewayRef null, sailed through the guard, and
+            // refunded (or hand-paid) a payout ZareCash was about to settle.
+            // gatewayRef stays exactly what it is — the upstream id, written when
+            // we learn it.
             const transaction = await tx.transaction.create({
                 data: {
                     userId,
@@ -335,14 +391,153 @@ export class WalletService {
                     balanceAfter: realAfter,
                     bonusBalanceBefore: bonusBefore,
                     bonusBalanceAfter: bonusBefore,
+                    ...(routeToZareCash ? { gateway: 'zarecash' } : {}),
                 },
             })
             return { transaction, realAfter, bonusBefore }
         }).then(async ({ transaction, realAfter, bonusBefore }) => {
             // Push balance update
             NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
+
+            // Submit AFTER the DB transaction commits — never hold the wallet lock
+            // across a network call. Routing data travels on the job rather than
+            // being parsed back out of the free-form `note` string.
+            //
+            // The debit and PENDING_REVIEW row are already committed by this point,
+            // so a failure here (Redis down, DB blip on the isZareCashMethod read)
+            // must not surface as a request error — the player would see a failed
+            // withdrawal while actually being debited, with no way to retry (the
+            // single-pending guard blocks a resubmit). The row is already in the
+            // exact state the manual admin path knows how to handle, so swallow and
+            // report instead of throwing.
+            try {
+                if (routeToZareCash) {
+                    await getQueue(QUEUE_NAMES.ZARECASH_WITHDRAWAL).add(
+                        'submit',
+                        {
+                            transactionId: transaction.id,
+                            methodCode: data.paymentMethod,
+                            destinationAccount: data.accountNumber,
+                        },
+                        { attempts: ZARECASH_WITHDRAWAL_ATTEMPTS },
+                    )
+                }
+            } catch (err) {
+                console.error('[WalletService] failed to enqueue ZareCash withdrawal submit:', (err as Error).message)
+                reportError(err, { service: 'wallet', phase: 'zarecash-withdrawal-enqueue', transactionId: transaction.id })
+                // The queue never accepted the job, so nothing will ever submit
+                // this payout to ZareCash — which means the gateway does NOT own
+                // this row and must not hold the admin guard shut on it. Hand it
+                // back to the manual review path (which is exactly the state the
+                // comment above describes) rather than leaving the player debited
+                // behind a guard no worker will ever release. Scoped to
+                // PENDING_REVIEW so it can never disturb a row something else has
+                // already moved on.
+                await prisma.transaction
+                    .updateMany({
+                        where: {
+                            id: transaction.id,
+                            gateway: 'zarecash',
+                            gatewayRef: null,
+                            status: PaymentStatus.PENDING_REVIEW,
+                        },
+                        data: { gateway: null },
+                    })
+                    .catch((clearErr) => {
+                        // Best-effort compensation only. Failing here leaves the row
+                        // marked gateway-managed — safe (no double pay), but it needs
+                        // a human, so say so loudly.
+                        console.error(
+                            '[WalletService] could not release gateway marker on %s after a failed enqueue:',
+                            transaction.id,
+                            (clearErr as Error).message,
+                        )
+                        reportError(clearErr, {
+                            service: 'wallet',
+                            phase: 'zarecash-withdrawal-marker-release',
+                            transactionId: transaction.id,
+                        })
+                    })
+            }
             return transaction
         })
+    }
+
+    /**
+     * Reject a pending withdrawal and refund the player.
+     *
+     * Extracted from AdminService so both a human reviewer and the ZareCash
+     * withdrawal worker can reach it. The claim is an atomic conditional update:
+     * two concurrent rejects serialize on the row and the loser aborts BEFORE
+     * crediting, so the wallet can never be double-refunded.
+     */
+    static async rejectWithdrawal(transactionId: string, note?: string, reviewerId?: string) {
+        const existing = await prisma.transaction.findUnique({ where: { id: transactionId } })
+        if (!existing) throw new Error('Transaction not found')
+        if (existing.type !== TransactionType.WITHDRAWAL) {
+            throw new Error('rejectWithdrawal only applies to withdrawals')
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            const claim = await tx.transaction.updateMany({
+                where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
+                data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
+            })
+            if (claim.count === 0) {
+                throw new Error('Transaction is not pending review')
+            }
+            const updated = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } })
+
+            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${existing.userId} FOR UPDATE
+            `
+            const wallet = wallets[0]
+            if (!wallet) throw new Error('Wallet not found')
+
+            const realBefore = new Decimal(wallet.realBalance)
+            const realAfter = realBefore.plus(new Decimal(existing.amount))
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+
+            await tx.wallet.update({
+                where: { userId: existing.userId },
+                data: { realBalance: { increment: existing.amount } },
+            })
+
+            await tx.transaction.create({
+                data: {
+                    userId: existing.userId,
+                    type: TransactionType.REFUND,
+                    amount: existing.amount,
+                    status: PaymentStatus.APPROVED,
+                    referenceId: transactionId,
+                    note: `Refund for rejected withdrawal${note ? `: ${note}` : ''}`,
+                    balanceBefore: realBefore,
+                    balanceAfter: realAfter,
+                    bonusBalanceBefore: bonusBefore,
+                    bonusBalanceAfter: bonusBefore,
+                },
+            })
+
+            return { updated, realAfter, bonusBefore }
+        })
+
+        NotificationService.pushWalletUpdate(
+            existing.userId,
+            result.realAfter.toNumber(),
+            result.bonusBefore.toNumber(),
+        )
+
+        await NotificationService.create(
+            existing.userId,
+            NotificationType.WITHDRAWAL_PROCESSED,
+            'Withdrawal Rejected',
+            `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
+            { transactionId, amount: Number(existing.amount), note },
+        ).catch(() => {})
+
+        wbWithdrawalsTotal.labels('rejected').inc()
+
+        return result.updated
     }
 
     static async getTransactions(

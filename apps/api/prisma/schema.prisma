@@ -44,6 +44,7 @@ model User {
   bonusRuleMemberships  BonusRuleMember[]
   supportConversations  SupportConversation[]  @relation("SupportConversations")
   supportAssignments    SupportConversation[]  @relation("SupportAssignments")
+  zarecashCheckoutSessions ZareCashCheckoutSession[]
 
   @@index([role])
   @@index([referralCode])
@@ -162,6 +163,13 @@ model Transaction {
   bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
   bonusExpiresAtSpend  DateTime?
   paymentTransactionId String?              @unique
+  /// Which payment gateway owns this row, recorded at creation time (e.g. "zarecash").
+  /// Null means the manual/admin-reviewed flow. This is the ROUTING DECISION and is
+  /// set the moment we decide to route — unlike `gatewayRef`, which is the upstream
+  /// id and only exists once the provider has told us what it is. The admin
+  /// double-pay guard keys on this, because `gatewayRef` arrives too late to be safe.
+  gateway              String?
+  gatewayRef           String?              @unique
   senderName           String?
   senderAccount        String?
   reviewedById         String? // admin/clerk who approved or rejected (audit + separation-of-duties)
@@ -174,6 +182,7 @@ model Transaction {
   @@index([userId, type])
   @@index([createdAt])
   @@index([reviewedById])
+  @@index([gateway, status])
   @@map("transactions")
 }
 
@@ -538,19 +547,26 @@ enum PaymentMethodType {
 }
 
 model PaymentMethod {
-  id              String            @id @default(uuid())
-  code            String            @unique // e.g. "telebirr", "cbe", "awash"
-  name            String // display name, e.g. "TeleBirr"
-  type            PaymentMethodType
-  merchantAccount String? // account/phone number for deposit methods
-  merchantName    String? // recipient name shown before account number (e.g. "John Doe")
-  instructions    String? // shown to users during deposit flow
-  icon            String? // emoji or icon identifier, e.g. "📱"
-  enabled         Boolean           @default(true)
-  autoVerify      Boolean           @default(false) // opt this method into deposit auto-verification
-  sortOrder       Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                String            @id @default(uuid())
+  code              String            @unique // e.g. "telebirr", "cbe", "awash"
+  name              String // display name, e.g. "TeleBirr"
+  type              PaymentMethodType
+  merchantAccount   String? // account/phone number for deposit methods
+  merchantName      String? // recipient name shown before account number (e.g. "John Doe")
+  instructions      String? // shown to users during deposit flow
+  icon              String? // emoji or icon identifier, e.g. "📱"
+  enabled           Boolean           @default(true)
+  autoVerify        Boolean           @default(false) // opt this method into deposit auto-verification
+  gateway           String            @default("manual") // "manual" | "zarecash"
+  gatewayMethodCode String? // ZareCash methodCode when gateway = "zarecash"
+  /// Deposits for this method are collected on ZareCash's hosted page rather than
+  /// by our own receipt form. Requires gateway = "zarecash".
+  hostedCheckout    Boolean           @default(false)
+  /// Card header image for the deposit UI. Falls back to `icon` when unset.
+  logoUrl           String?
+  sortOrder         Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@map("payment_methods")
 }
@@ -791,6 +807,21 @@ enum DepositVerificationStatus {
 
 enum DepositVerificationSource {
   RECEIPT_FETCH
+}
+
+/// One row per received ZareCash webhook delivery. Delivery is at-least-once,
+/// so this table is both the dedupe key and the audit trail.
+model ZareCashEvent {
+  id          String    @id // evt_… assigned by ZareCash
+  type        String
+  payload     Json
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@index([type])
+  @@index([processedAt])
+  @@map("zarecash_events")
 }
 
 // ─── Player CRM ───────────────────────────────────────────────────────────────
@@ -1240,4 +1271,32 @@ model SupportMessage {
 
   @@index([conversationId, createdAt])
   @@map("support_messages")
+}
+
+/// One row per hosted-checkout attempt. Created BEFORE ZareCash is called so its
+/// `id` can serve as the Idempotency-Key. Carries no money: the Transaction is
+/// only created once a depositId exists, so an abandoned session never reaches
+/// the admin deposit queue.
+model ZareCashCheckoutSession {
+  id            String   @id @default(cuid())
+  /// cs_… — null only in the window between our insert and ZareCash's answer.
+  sessionId     String?  @unique
+  userId        String
+  amount        Decimal  @db.Decimal(12, 2)
+  /// open | submitted | expired | cancelled | dead ("dead" is ours, not theirs)
+  status        String   @default("open")
+  /// dp_… once the player submits a receipt on the hosted page.
+  depositId     String?  @unique
+  /// Our Transaction, once materialised.
+  transactionId String?  @unique
+  methodCode    String
+  returnUrl     String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("zarecash_checkout_sessions")
 }

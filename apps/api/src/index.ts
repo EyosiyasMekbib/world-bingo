@@ -1,4 +1,4 @@
-import { initSentry, Sentry } from './lib/sentry.js'
+import { initSentry, Sentry, reportError } from './lib/sentry.js'
 
 // Initialise error reporting before anything else so early failures are captured.
 // No-op when SENTRY_DSN is unset.
@@ -37,6 +37,7 @@ import paymentMethodRoutes from './routes/payment-methods/index.js'
 import { registerBullBoard } from './routes/bull-board.js'
 import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
 import { palaceCallbackRoute } from './routes/palace/callback.js'
+import zarecashWebhookRoute from './routes/zarecash/webhook.js'
 import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
@@ -49,6 +50,7 @@ import { registerGameHandlers } from './gateways/game.gateway'
 import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
 import { registerSupportHandlers } from './gateways/support.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
+import { isZareCashEnabled } from './gateways/payment/zarecash/config.js'
 
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
@@ -62,6 +64,12 @@ import './workers/player-metrics.worker.js'
 import './workers/crm-campaign.worker.js'
 import './workers/bonus-expiry.worker.js'
 import './workers/prediction.worker.js'
+import './workers/zarecash-deposit.worker.js'
+import './workers/zarecash-event.worker.js'
+import './workers/zarecash-withdrawal.worker.js'
+import './workers/zarecash-sweep.worker.js'
+import { scheduleZareCashSweep } from './workers/zarecash-sweep.worker.js'
+import { ZareCashService, ZareCashModeMismatchError } from './services/zarecash.service.js'
 
 if (!jwtPrivateKey || !jwtPublicKey) {
     console.error('FATAL: JWT keys not set. Provide JWT_PRIVATE_KEY_BASE64/JWT_PUBLIC_KEY_BASE64 or JWT_PRIVATE_KEY/JWT_PUBLIC_KEY')
@@ -283,6 +291,7 @@ await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
+await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
 }
@@ -371,6 +380,26 @@ try {
     // trade and status broadcast would be emitted into an empty room.
     registerPredictionHandlers(io)
     registerSupportHandlers(io)
+
+    // Refuse to bind the port if we're talking to the wrong ZareCash keyspace —
+    // a genuine mode mismatch must abort startup, not degrade into a warning.
+    //
+    // ONLY that. This block sits inside the try whose catch calls process.exit(1),
+    // so anything else escaping here kills the API over a payment provider. Two
+    // paths used to do exactly that: a truncated 200 from GET /v1/float (now
+    // rejected at the source in client.ts, but still not a mode mismatch), and
+    // scheduleZareCashSweep's getQueue().add() when Redis is down at startup.
+    // Bingo games have nothing to do with ZareCash's — or Redis's — uptime.
+    if (isZareCashEnabled()) {
+        try {
+            await ZareCashService.assertMode()
+            await scheduleZareCashSweep()
+        } catch (err) {
+            if (err instanceof ZareCashModeMismatchError) throw err
+            console.error('[ZareCash] boot setup failed (continuing without it):', (err as Error)?.message)
+            reportError(err, { phase: 'zarecash-boot' })
+        }
+    }
 
     await server.listen({ port, host })
 

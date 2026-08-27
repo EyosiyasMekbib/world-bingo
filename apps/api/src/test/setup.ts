@@ -91,6 +91,7 @@ async function cleanDb() {
     await prisma.tournamentEntry.deleteMany()
     await prisma.tournamentGame.deleteMany()
     await prisma.thirdPartyTransaction.deleteMany()
+    await prisma.zareCashEvent.deleteMany()
     await prisma.transaction.deleteMany()
     await prisma.gameEntry.deleteMany()
     await prisma.cartela.deleteMany()

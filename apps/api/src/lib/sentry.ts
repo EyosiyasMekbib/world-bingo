@@ -46,4 +46,22 @@ export function reportError(error: unknown, context?: Record<string, unknown>): 
     }
 }
 
+/**
+ * Report a non-error condition that still needs a human: a low provider float, a
+ * payout parked on a risk hold, a reconciliation sweep that could not drain its
+ * backlog. Captured at `warning` level so it is triageable without polluting the
+ * error budget. No-op when Sentry is not enabled. NEVER throws.
+ */
+export function reportWarning(message: string, context?: Record<string, unknown>): void {
+    if (!enabled) return
+    try {
+        Sentry.captureMessage(message, {
+            level: 'warning',
+            ...(context ? { extra: context } : {}),
+        })
+    } catch {
+        // Swallow — observability must never crash the app.
+    }
+}
+
 export { Sentry }
