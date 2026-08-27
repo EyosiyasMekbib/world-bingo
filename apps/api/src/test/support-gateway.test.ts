@@ -21,14 +21,6 @@ vi.mock('../services/support/support.service.js', () => ({
   },
 }))
 
-vi.mock('../services/support/support-presence.js', () => ({
-  SupportPresence: {
-    markOnline: vi.fn(),
-    markOffline: vi.fn(),
-    anyOnline: vi.fn(),
-  },
-}))
-
 vi.mock('../services/support/support-rate-limit.js', () => ({
   SupportRateLimit: {
     checkMessage: vi.fn(),
@@ -57,7 +49,6 @@ vi.mock('../services/support/support-audit.js', () => ({
 
 import { registerSupportHandlers } from '../gateways/support.gateway.js'
 import { SupportService } from '../services/support/support.service.js'
-import { SupportPresence } from '../services/support/support-presence.js'
 import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
 import { NotificationService } from '../services/notification.service.js'
@@ -445,15 +436,20 @@ describe('support.gateway', () => {
       ;(SupportService.unassignedCount as any).mockResolvedValue(1)
     })
 
-    it('emits support:contact-fallback when no agent is online', async () => {
-      ;(SupportPresence.anyOnline as any).mockResolvedValue(false)
+    // Presence is read from live room membership, not a Redis set, so these
+    // two drive the agents room directly. An empty room is the state a
+    // deploy used to be unable to reach: the old set kept every clerk marked
+    // online after shutdown skipped their disconnect handlers, so the
+    // fallback stopped firing for good.
+    it('emits support:contact-fallback when the agents room is empty', async () => {
       ;(SupportContact.get as any).mockResolvedValue({
         phone: '+251-911',
         telegram: '@wbingo',
         hours: '9-5',
       })
 
-      const { socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+      const { io, socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+      io.__setRoomSockets('support:agents', [])
       await socket.__handlers['support:escalate']({ conversationId: 'conv-1' })
 
       expect(socket.emit).toHaveBeenCalledWith(
@@ -462,10 +458,9 @@ describe('support.gateway', () => {
       )
     })
 
-    it('does not emit support:contact-fallback when an agent is online', async () => {
-      ;(SupportPresence.anyOnline as any).mockResolvedValue(true)
-
-      const { socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+    it('does not emit support:contact-fallback when a clerk is in the agents room', async () => {
+      const { io, socket } = await setup({ userId: 'player-1', role: 'PLAYER' })
+      io.__setRoomSockets('support:agents', [{ id: 'clerk-socket', data: { userId: 'clerk-1' } }])
       await socket.__handlers['support:escalate']({ conversationId: 'conv-1' })
 
       const fallbackCalls = (socket.emit as any).mock.calls.filter(

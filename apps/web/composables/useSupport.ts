@@ -64,6 +64,71 @@ export function telegramHref(handle: string): string | null {
   return `https://t.me/${withoutAt}`
 }
 
+/** Every event this app binds on the shared player socket. `connect` is in
+ *  here deliberately: it is not a support event, but it IS one this composable
+ *  attaches, and the rebinding below has to know about every handler it owns
+ *  in order to remove exactly those and nothing else. */
+export const SUPPORT_EVENTS = [
+  'connect',
+  'support:thread',
+  'support:message',
+  'support:status',
+  'support:contact-fallback',
+  'support:error',
+] as const
+
+export type SupportEvent = (typeof SUPPORT_EVENTS)[number]
+
+/** Handlers `bindSupportListeners` last attached, per socket. A WeakMap rather
+ *  than a flag or a module-level `let`: `useSocket()` hands out a different
+ *  Socket after every reconnect, and keying on the instance means an old one
+ *  can be garbage collected without leaving an entry behind. */
+const boundHandlers = new WeakMap<object, Array<[SupportEvent, (payload: any) => void]>>()
+
+/**
+ * Attach the support listeners to `socket`, first dropping the ones this app
+ * attached to it before. No Nuxt runtime deps — testable with a fake socket
+ * outside a Nuxt context, mirroring `contactRevealPlan` above.
+ *
+ * `useSocket().connect()` builds a BRAND NEW Socket whenever the current one
+ * isn't connected, and a dropped transport, a sleeping tab or an explicit
+ * `disconnect()` all leave the player with a different instance. Binding once
+ * behind a sticky `bound` flag therefore left every socket after the first
+ * with no support listeners at all: `support:open` still went out, the server
+ * still answered with `support:thread`, and nothing caught it — so
+ * `conversation` stayed null, `send()` bailed on its `!conversation.value`
+ * guard, and support chat was dead until a full page reload.
+ *
+ * Removal is BY HANDLER REFERENCE, not by event name. `socket.off(event)`
+ * drops every listener on that event, including ones this composable never
+ * added — and `useSocket()` is the whole player app's socket, with `connect`
+ * handlers belonging to `useSocket` itself and to any other feature. Clearing
+ * by name would silently unhook them. Tracking what we attached keeps this
+ * idempotent per socket while leaving every foreign listener alone.
+ */
+export function bindSupportListeners<
+  S extends {
+    on(event: any, handler: any): unknown
+    off(event: any, handler?: any): unknown
+  },
+>(socket: S, handlers: Array<[SupportEvent, (payload: any) => void]>) {
+  for (const [event, handler] of boundHandlers.get(socket) ?? []) {
+    socket.off(event, handler)
+  }
+  for (const [event, handler] of handlers) {
+    socket.on(event, handler)
+  }
+  boundHandlers.set(socket, handlers)
+}
+
+/** Module scope, not per-`useSupport()` call. `bind` now re-runs on every
+ *  `openChat`, possibly from a different component's composable instance, and
+ *  a per-call `let` meant each instance cleared only its OWN pending reveal —
+ *  a timer armed by an earlier instance would still fire and flash the phone
+ *  number at a thread a clerk had since claimed. One shared handle can't be
+ *  orphaned that way. Client-only: nothing arms it during SSR. */
+let revealTimer: ReturnType<typeof setTimeout> | null = null
+
 export const useSupport = () => {
   const { socket, connect } = useSocket()
   const auth = useAuth()
@@ -77,9 +142,6 @@ export const useSupport = () => {
   const unread = useState('support_unread', () => 0)
   const error = useState<string | null>('support_error', () => null)
   const sending = useState('support_sending', () => false)
-  const bound = useState('support_bound', () => false)
-
-  let revealTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Reveal contact details once the thread has waited long enough. Re-armed
    *  on every status change so a claim cancels a pending reveal. Always
@@ -110,40 +172,74 @@ export const useSupport = () => {
     }
   }
 
+  /** Re-bound on every `openChat`, because `connect()` may well have handed
+   *  us a different Socket than the one we bound last time. */
   const bind = () => {
-    if (bound.value || !socket.value) return
-    bound.value = true
+    if (!socket.value) return
 
-    socket.value.on('support:thread', (payload: SupportConversationWithMessages) => {
-      conversation.value = payload.conversation
-      messages.value = payload.messages
-      unread.value = 0
-      armContactReveal()
-    })
-
-    socket.value.on('support:message', (message: SupportMessage) => {
-      if (message.conversationId !== conversation.value?.id) return
-      messages.value = [...messages.value, message]
-      if (!isOpen.value && message.senderRole !== 'PLAYER') unread.value += 1
-    })
-
-    socket.value.on('support:status', (updated: SupportConversation) => {
-      if (updated.id !== conversation.value?.id) return
-      conversation.value = updated
-      // A claimed thread is being handled — stop counting down to the
-      // phone number.
-      if (updated.status === 'ASSIGNED') showContact.value = false
-      armContactReveal()
-    })
-
-    socket.value.on('support:contact-fallback', (payload) => {
-      contact.value = { phone: payload.phone, telegram: payload.telegram, hours: payload.hours }
-      showContact.value = true
-    })
-
-    socket.value.on('support:error', (payload: { code: string; message: string }) => {
-      error.value = payload.message
-    })
+    bindSupportListeners(socket.value, [
+      [
+        // Socket.io rooms do not survive a reconnect: the server builds a
+        // fresh Socket with a new id, and it belongs to no room until it
+        // joins one again. `support:conv:<id>` is only ever joined by the
+        // `support:open` / `support:watch` handlers, so a transport drop
+        // while the panel is open silently took the player out of their own
+        // thread — agent replies stopped arriving, and so did the echo of
+        // the player's own sends, with the panel still looking healthy
+        // (`conversation` set, Send enabled). Re-opening rejoins the room
+        // AND returns the transcript, which also backfills whatever was said
+        // while the socket was down; rejoining alone would leave a hole.
+        //
+        // Guarded on an existing conversation so this never opens a thread
+        // for a player who has not asked for support: `connect` fires for
+        // every reconnect of the shared app socket, not just support ones.
+        'connect',
+        () => {
+          if (conversation.value) socket.value?.emit('support:open')
+        },
+      ],
+      [
+        'support:thread',
+        (payload: SupportConversationWithMessages) => {
+          conversation.value = payload.conversation
+          messages.value = payload.messages
+          unread.value = 0
+          armContactReveal()
+        },
+      ],
+      [
+        'support:message',
+        (message: SupportMessage) => {
+          if (message.conversationId !== conversation.value?.id) return
+          messages.value = [...messages.value, message]
+          if (!isOpen.value && message.senderRole !== 'PLAYER') unread.value += 1
+        },
+      ],
+      [
+        'support:status',
+        (updated: SupportConversation) => {
+          if (updated.id !== conversation.value?.id) return
+          conversation.value = updated
+          // A claimed thread is being handled — stop counting down to the
+          // phone number.
+          if (updated.status === 'ASSIGNED') showContact.value = false
+          armContactReveal()
+        },
+      ],
+      [
+        'support:contact-fallback',
+        (payload: SupportContactInfo) => {
+          contact.value = { phone: payload.phone, telegram: payload.telegram, hours: payload.hours }
+          showContact.value = true
+        },
+      ],
+      [
+        'support:error',
+        (payload: { code: string; message: string }) => {
+          error.value = payload.message
+        },
+      ],
+    ])
   }
 
   const openChat = async () => {
