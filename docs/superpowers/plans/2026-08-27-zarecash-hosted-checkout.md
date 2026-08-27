@@ -431,6 +431,7 @@ vi.mock('../lib/prisma', () => ({
         siteSetting: { findUnique: vi.fn().mockResolvedValue(null) },
         paymentMethod: { findUnique: vi.fn() },
         zareCashCheckoutSession: { create: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+        transaction: { create: vi.fn() },
     },
 }))
 const { createCheckoutSession } = vi.hoisted(() => ({ createCheckoutSession: vi.fn() }))
@@ -486,9 +487,9 @@ describe('ZareCashCheckoutService.createSession', () => {
         })
     })
 
-    it('creates no Transaction', async () => {
+    it('creates no Transaction — an abandoned session must not reach the deposit queue', async () => {
         await ZareCashCheckoutService.createSession('u1', 500, 'zarecash')
-        expect((prisma as any).transaction).toBeUndefined()
+        expect((prisma as any).transaction.create).not.toHaveBeenCalled()
     })
 
     it('rejects an amount below the site minimum before calling ZareCash', async () => {
