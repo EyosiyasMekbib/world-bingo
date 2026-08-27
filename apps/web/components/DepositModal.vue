@@ -42,7 +42,7 @@
                        account and the receipt all live on ZareCash's page. -->
                   <template v-if="m.hostedCheckout">
                     <div class="wb-field">
-                      <label class="wb-label">{{ t('wallet.amount') }} (ETB)</label>
+                      <label class="wb-label">{{ t('wallet.amount') }}</label>
                       <input
                         v-model.number="checkoutAmount"
                         type="number"

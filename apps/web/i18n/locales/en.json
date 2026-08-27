@@ -42,7 +42,6 @@
     }
   },
   "wallet": {
-    "amount": "Amount",
     "continue": "Continue",
     "redirecting": "Redirecting…",
     "hostedCheckoutHint": "Choose your method and send your receipt on the ZareCash page.",
