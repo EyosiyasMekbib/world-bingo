@@ -13,7 +13,17 @@ export const useSocket = () => {
     
     const connect = () => {
         if (socket.value?.connected) return socket.value
-        
+
+        // A disconnected socket is not a dead socket — socket.io keeps retrying
+        // it in the background. Replacing `socket.value` without tearing the old
+        // one down left a zombie alive with every listener still attached, so
+        // once it reconnected each event was handled twice against the same
+        // shared state: support:message appended every reply to the transcript
+        // twice and double-counted the unread badge, and wallet:updated fired
+        // two writes per update. Callers already re-bind onto whatever instance
+        // this returns, so the old one has no work left to do.
+        socket.value?.disconnect()
+
         socket.value = io(config.public.wsUrl, {
             // `auth` as a CALLBACK, not a literal object. Access tokens expire
             // in 15 minutes; a literal snapshots `auth.token` once, at connect

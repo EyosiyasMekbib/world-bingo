@@ -64,9 +64,12 @@ export function telegramHref(handle: string): string | null {
   return `https://t.me/${withoutAt}`
 }
 
-/** The full set of support events this app listens for. Kept as one list so
- *  the rebinding below can't drift out of sync with what `bind` registers. */
+/** Every event this app binds on the shared player socket. `connect` is in
+ *  here deliberately: it is not a support event, but it IS one this composable
+ *  attaches, and the rebinding below has to know about every handler it owns
+ *  in order to remove exactly those and nothing else. */
 export const SUPPORT_EVENTS = [
+  'connect',
   'support:thread',
   'support:message',
   'support:status',
@@ -76,8 +79,14 @@ export const SUPPORT_EVENTS = [
 
 export type SupportEvent = (typeof SUPPORT_EVENTS)[number]
 
+/** Handlers `bindSupportListeners` last attached, per socket. A WeakMap rather
+ *  than a flag or a module-level `let`: `useSocket()` hands out a different
+ *  Socket after every reconnect, and keying on the instance means an old one
+ *  can be garbage collected without leaving an entry behind. */
+const boundHandlers = new WeakMap<object, Array<[SupportEvent, (payload: any) => void]>>()
+
 /**
- * Attach the support listeners to `socket`, first dropping any this app
+ * Attach the support listeners to `socket`, first dropping the ones this app
  * attached to it before. No Nuxt runtime deps — testable with a fake socket
  * outside a Nuxt context, mirroring `contactRevealPlan` above.
  *
@@ -90,17 +99,26 @@ export type SupportEvent = (typeof SUPPORT_EVENTS)[number]
  * `conversation` stayed null, `send()` bailed on its `!conversation.value`
  * guard, and support chat was dead until a full page reload.
  *
- * Clearing each event before re-adding keeps this idempotent per socket, so
- * `openChat` can bind unconditionally without tracking instances or stacking
- * duplicate handlers onto a socket it already bound.
+ * Removal is BY HANDLER REFERENCE, not by event name. `socket.off(event)`
+ * drops every listener on that event, including ones this composable never
+ * added — and `useSocket()` is the whole player app's socket, with `connect`
+ * handlers belonging to `useSocket` itself and to any other feature. Clearing
+ * by name would silently unhook them. Tracking what we attached keeps this
+ * idempotent per socket while leaving every foreign listener alone.
  */
 export function bindSupportListeners<
-  S extends { on(event: any, handler: any): unknown; off(event: any): unknown },
+  S extends {
+    on(event: any, handler: any): unknown
+    off(event: any, handler?: any): unknown
+  },
 >(socket: S, handlers: Array<[SupportEvent, (payload: any) => void]>) {
+  for (const [event, handler] of boundHandlers.get(socket) ?? []) {
+    socket.off(event, handler)
+  }
   for (const [event, handler] of handlers) {
-    socket.off(event)
     socket.on(event, handler)
   }
+  boundHandlers.set(socket, handlers)
 }
 
 /** Module scope, not per-`useSupport()` call. `bind` now re-runs on every
@@ -160,6 +178,26 @@ export const useSupport = () => {
     if (!socket.value) return
 
     bindSupportListeners(socket.value, [
+      [
+        // Socket.io rooms do not survive a reconnect: the server builds a
+        // fresh Socket with a new id, and it belongs to no room until it
+        // joins one again. `support:conv:<id>` is only ever joined by the
+        // `support:open` / `support:watch` handlers, so a transport drop
+        // while the panel is open silently took the player out of their own
+        // thread — agent replies stopped arriving, and so did the echo of
+        // the player's own sends, with the panel still looking healthy
+        // (`conversation` set, Send enabled). Re-opening rejoins the room
+        // AND returns the transcript, which also backfills whatever was said
+        // while the socket was down; rejoining alone would leave a hole.
+        //
+        // Guarded on an existing conversation so this never opens a thread
+        // for a player who has not asked for support: `connect` fires for
+        // every reconnect of the shared app socket, not just support ones.
+        'connect',
+        () => {
+          if (conversation.value) socket.value?.emit('support:open')
+        },
+      ],
       [
         'support:thread',
         (payload: SupportConversationWithMessages) => {

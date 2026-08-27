@@ -34,6 +34,13 @@ export const useSupportInbox = () => {
     await refreshQueue()
     if (socket.value?.connected) return
 
+    // A disconnected socket is not a dead socket — socket.io keeps retrying it
+    // in the background. Overwriting the ref without tearing the old one down
+    // left it alive with a full set of listeners, so as soon as it came back
+    // every support:message was handled twice: each reply appended to the
+    // transcript twice, and two refreshQueue() round-trips per event.
+    socket.value?.disconnect()
+
     // `auth` as a CALLBACK, not a literal. Admin access tokens expire in 15
     // minutes; a literal snapshots the token at connect time, so the first
     // reconnect after expiry re-presents a dead token and the socket drops out
@@ -61,6 +68,15 @@ export const useSupportInbox = () => {
     socket.value.on('connect', () => {
       error.value = null
       refreshQueue()
+      // Socket.io rooms do not survive a reconnect: the server builds a fresh
+      // Socket with a new id, belonging to no room until it joins one again.
+      // `support:conv:<id>` is only ever joined by the support:watch handler,
+      // so after any transport drop the clerk's open thread went silent — new
+      // player messages stopped arriving, and so did the echo of the clerk's
+      // own replies, while the queue beside it kept refreshing and looking
+      // healthy. Re-watching rejoins the room and reloads the transcript,
+      // which also backfills anything said while the socket was down.
+      if (active.value) watchThread(active.value.id)
     })
 
     socket.value.on('support:thread', (payload: SupportConversationWithMessages) => {
