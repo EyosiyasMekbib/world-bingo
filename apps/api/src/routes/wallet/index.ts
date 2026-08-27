@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
-import { DepositSchema, WithdrawalSchema } from '@world-bingo/shared-types'
+import { CheckoutSessionSchema, ClaimCheckoutSchema, DepositSchema, WithdrawalSchema } from '@world-bingo/shared-types'
 import { WalletController } from '../../controllers/wallet.controller'
 import zodToJsonSchema from 'zod-to-json-schema'
 
@@ -13,6 +13,20 @@ const walletRoutes: FastifyPluginAsync = async (fastify) => {
     // T16: Accept both multipart/form-data (with receipt file) and JSON body
     fastify.post('/deposit', {
         handler: WalletController.deposit,
+    })
+
+    fastify.post('/deposit/checkout', {
+        schema: {
+            body: zodToJsonSchema(CheckoutSessionSchema),
+        },
+        handler: WalletController.createCheckoutSession,
+    })
+
+    fastify.post('/deposit/checkout/claim', {
+        schema: {
+            body: zodToJsonSchema(ClaimCheckoutSchema),
+        },
+        handler: WalletController.claimCheckoutDeposit,
     })
 
     fastify.post('/withdraw', {

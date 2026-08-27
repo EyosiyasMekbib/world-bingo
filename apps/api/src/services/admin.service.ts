@@ -2,9 +2,30 @@ import prisma from '../lib/prisma'
 import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
-import { Decimal } from '@prisma/client/runtime/library'
 import { HouseWalletService } from './house-wallet.service'
 import { wbWithdrawalsTotal } from '../lib/metrics'
+
+/**
+ * Is this row owned by a payment gateway rather than by the manual review queue?
+ *
+ * Keys on `gateway` — the ROUTING DECISION, written in the same transaction that
+ * debits the player — and NOT on `gatewayRef`. gatewayRef is the upstream id and
+ * only lands once ZareCash has answered the payout POST, which can be in flight
+ * for ZARECASH_TIMEOUT_MS per attempt across several attempts. A guard keyed on
+ * it was open for that entire window: a clerk rejecting a payout mid-flight was
+ * waved through, we re-credited the wallet, and ZareCash then settled anyway —
+ * the player refunded locally AND paid upstream. `gatewayRef` is still accepted
+ * so rows created before the `gateway` column existed stay protected.
+ *
+ * Scoped to PENDING_REVIEW on purpose. Once a gateway-managed payout has reached
+ * a terminal state — including one that failed permanently and was refunded — it
+ * is settled business, and admins get the ordinary "not pending review" answer
+ * rather than being told to keep waiting on a webhook that will never come.
+ */
+function isGatewayManaged(tx: { gateway: string | null; gatewayRef: string | null; status: string }): boolean {
+    if (tx.status !== PaymentStatus.PENDING_REVIEW) return false
+    return tx.gateway === 'zarecash' || tx.gatewayRef !== null
+}
 
 export class AdminService {
     static async getStats(params?: { from?: Date; to?: Date }) {
@@ -259,6 +280,16 @@ export class AdminService {
                 return await WalletService.approveDeposit(transactionId, adjustedAmount, reviewerId)
             }
 
+            // Gateway-managed withdrawals settle or refund via webhook, not this
+            // route. A manual approve here would double-pay a payout ZareCash is
+            // about to settle (or already has). Refuse before the containment check
+            // and the approval claim below.
+            if (tx.type === TransactionType.WITHDRAWAL && isGatewayManaged(tx)) {
+                throw new Error(
+                    'This payout is managed by ZareCash and will settle or refund automatically via webhook — it cannot be approved manually',
+                )
+            }
+
             // Containment: never pay out a withdrawal for a frozen/under-review account.
             // Freezing (isActive=false) a flagged account therefore holds any balance
             // sitting in its wallet — the pending withdrawal cannot be approved.
@@ -300,80 +331,18 @@ export class AdminService {
         }
 
         if (existing.type === TransactionType.WITHDRAWAL) {
-            // Withdrawal rejection must:
-            // 1. Mark the withdrawal REJECTED
-            // 2. Re-credit the wallet using SELECT FOR UPDATE (was deducted on request)
-            // 3. Create a REFUND compensation transaction for the audit trail
-            // All in one DB transaction to prevent partial state on crash.
-            const result = await prisma.$transaction(async (tx) => {
-                // Atomically claim the withdrawal: flip PENDING_REVIEW→REJECTED only if
-                // still pending. Two concurrent rejects (double-click) serialize on this
-                // row; the loser sees count === 0 and aborts BEFORE crediting, so the
-                // wallet can never be double-refunded (fixes the TOCTOU).
-                const claim = await tx.transaction.updateMany({
-                    where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
-                    data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
-                })
-                if (claim.count === 0) {
-                    throw new Error('Transaction is not pending review')
-                }
-                const updated = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } })
-
-                // Lock wallet row before reading balance
-                const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                    SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${existing.userId} FOR UPDATE
-                `
-                const wallet = wallets[0]
-                if (!wallet) throw new Error('Wallet not found')
-
-                const realBefore = new Decimal(wallet.realBalance)
-                const realAfter = realBefore.plus(new Decimal(existing.amount))
-                const bonusBefore = new Decimal(wallet.bonusBalance)
-
-                // Re-credit wallet
-                await tx.wallet.update({
-                    where: { userId: existing.userId },
-                    data: { realBalance: { increment: existing.amount } },
-                })
-
-                // Create compensation transaction so audit trail shows the wallet credit
-                await tx.transaction.create({
-                    data: {
-                        userId: existing.userId,
-                        type: TransactionType.REFUND,
-                        amount: existing.amount,
-                        status: PaymentStatus.APPROVED,
-                        referenceId: transactionId,
-                        note: `Refund for rejected withdrawal${note ? `: ${note}` : ''}`,
-                        balanceBefore: realBefore,
-                        balanceAfter: realAfter,
-                        bonusBalanceBefore: bonusBefore,
-                        bonusBalanceAfter: bonusBefore,
-                    },
-                })
-
-                return { updated, realAfter, bonusBefore }
-            })
-
-            // Push real-time balance update after commit
-            NotificationService.pushWalletUpdate(
-                existing.userId,
-                result.realAfter.toNumber(),
-                result.bonusBefore.toNumber(),
-            )
-
-            await NotificationService.create(
-                existing.userId,
-                NotificationType.WITHDRAWAL_PROCESSED,
-                'Withdrawal Rejected',
-                `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
-                { transactionId, amount: Number(existing.amount), note },
-            ).catch(() => {})
-
-            // Metric: withdrawal rejected + refunded (post-commit).
-            wbWithdrawalsTotal.labels('rejected').inc()
-
-            return result.updated
+            // Same gateway-managed guard as the approve path above: a payout ZareCash
+            // is settling must not be rejected-and-refunded here — that could
+            // double-pay a payout that lands anyway, or fight a genuine webhook
+            // rejection that is about to arrive. WalletService.rejectWithdrawal itself
+            // stays reachable for the worker's own terminal-refund and permanent-error
+            // paths, which call it directly — only this manual admin route is guarded.
+            if (isGatewayManaged(existing)) {
+                throw new Error(
+                    'This payout is managed by ZareCash and will settle or refund automatically via webhook — it cannot be rejected manually',
+                )
+            }
+            return await WalletService.rejectWithdrawal(transactionId, note, reviewerId)
         }
 
         // DEPOSIT rejection — no wallet change (balance was never credited)

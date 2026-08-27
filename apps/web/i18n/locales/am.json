@@ -42,6 +42,12 @@
     }
   },
   "wallet": {
+    "amount": "መጠን",
+    "continue": "ቀጥል",
+    "redirecting": "በማዛወር ላይ…",
+    "hostedCheckoutHint": "በዛሬካሽ ገጽ ላይ የክፍያ መንገድዎን ይምረጡ እና ደረሰኝዎን ይላኩ።",
+    "checkoutFailed": "ክፍያውን መጀመር አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
+    "confirmingDeposit": "ተቀማጭዎን በማረጋገጥ ላይ ነን — እንደተጠናቀቀ ቀሪ ሂሳብዎ ይዘምናል።",
     "balance": "ቀሪ ሂሳብ",
     "deposit": "ብር ጨምር",
     "withdraw": "ብር አውጣ",

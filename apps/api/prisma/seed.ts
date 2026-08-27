@@ -207,7 +207,26 @@ async function main() {
             create: method,
         })
     }
-    console.log(`Payment methods seeded (${defaultMethods.length} methods)`)
+    // Hosted checkout ships OFF. An operator enables it once this brand's Custom
+    // URL and webhook are configured in the ZareCash console. sortOrder -1 keeps it
+    // above the manual methods without rewriting their operator-chosen ordering.
+    await prisma.paymentMethod.upsert({
+        where: { code: 'zarecash' },
+        update: {},
+        create: {
+            code: 'zarecash',
+            name: 'ZareCash',
+            type: 'DEPOSIT' as const,
+            gateway: 'zarecash',
+            hostedCheckout: true,
+            icon: '⚡',
+            instructions: 'Pay on the ZareCash page — we confirm your deposit automatically.',
+            sortOrder: -1,
+            enabled: false,
+        },
+    })
+
+    console.log(`Payment methods seeded (${defaultMethods.length + 1} methods)`)
 
     // 8. Create one WAITING game per active template so the lobby isn't empty
     console.log('Creating initial games from templates...')
