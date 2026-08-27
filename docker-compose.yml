@@ -69,6 +69,18 @@ services:
       PALACE_CALLBACK_TOKEN: ${PALACE_CALLBACK_TOKEN:-}
       PALACE_CURRENCY: ${PALACE_CURRENCY:-ETB}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://www.aradabingo.bet}
+      ALLOW_SCHEMA_DRIFT: ${ALLOW_SCHEMA_DRIFT:-false}
+      # --- ZareCash (deposits & withdrawals as a service) ---
+      # No-op while ZARECASH_ENABLED=false. Compose forwards only what a service
+      # declares, so every one of these must be listed here or it never reaches
+      # the process, however it is set in the deployment platform.
+      ZARECASH_ENABLED: ${ZARECASH_ENABLED:-false}
+      ZARECASH_BASE_URL: ${ZARECASH_BASE_URL:-https://api.zarecash.com}
+      ZARECASH_API_KEY: ${ZARECASH_API_KEY:-}
+      ZARECASH_WEBHOOK_SECRET: ${ZARECASH_WEBHOOK_SECRET:-}
+      ZARECASH_MODE: ${ZARECASH_MODE:-test}
+      ZARECASH_TIMEOUT_MS: ${ZARECASH_TIMEOUT_MS:-10000}
+      ZARECASH_WITHDRAWAL_ATTEMPTS: ${ZARECASH_WITHDRAWAL_ATTEMPTS:-8}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
       # ─── Observability (env-gated; no-op when unset) ───
       SENTRY_DSN: ${SENTRY_DSN:-}
