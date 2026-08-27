@@ -9,7 +9,6 @@ import {
 } from '@world-bingo/shared-types'
 import { jwtPublicKey } from '../lib/jwt-keys.js'
 import { SupportService } from '../services/support/support.service.js'
-import { SupportPresence } from '../services/support/support-presence.js'
 import { SupportRateLimit } from '../services/support/support-rate-limit.js'
 import { SupportContact } from '../services/support/support-contact.js'
 import { SupportError } from '../services/support/errors.js'
@@ -73,6 +72,29 @@ export function registerSupportHandlers(io: any) {
     })
   }
 
+  /**
+   * Whether any clerk is actually on shift, anywhere in the cluster.
+   *
+   * Derived from live room membership rather than a Redis set of agent ids.
+   * The set was written on connect and cleared in a `disconnect` handler, so
+   * it only stayed truthful when every socket closed cleanly — and it did not.
+   * `shutdown()` calls `process.exit(0)` as soon as `server.close()` resolves,
+   * which does not wait for each disconnect handler's async Redis write, so a
+   * routine deploy left every clerk marked online forever. `anyOnline()` then
+   * answered true with nobody there, and the escalation fallback — the one
+   * thing that hands a stranded player a phone number — silently never fired
+   * again. A crashed or OOM-killed instance left the same residue permanently.
+   *
+   * `fetchSockets()` goes through the Redis adapter (lib/socket.ts), so it
+   * sees agents on every instance, and it cannot go stale: it reports the
+   * connections that exist right now. Same call the reply-notification
+   * fallback below already relies on.
+   */
+  async function anyAgentOnline(): Promise<boolean> {
+    const agents = await io.in(AGENTS_ROOM).fetchSockets()
+    return agents.length > 0
+  }
+
   async function broadcastQueue(conversationId: string) {
     const unassignedCount = await SupportService.unassignedCount()
     io.to(AGENTS_ROOM).emit('support:queue-update', { conversationId, unassignedCount })
@@ -99,10 +121,12 @@ export function registerSupportHandlers(io: any) {
       }
     }
 
-    const isStaff = STAFF_ROLES.has(socket.data?.role ?? '')
-    if (isStaff && socket.data.userId) {
+    // Membership of this room is now the whole record of who is on shift —
+    // see anyAgentOnline() above. Nothing to clear on disconnect: socket.io
+    // removes a closed socket from its rooms itself, on every instance,
+    // whether it closed cleanly, crashed, or was killed mid-deploy.
+    if (STAFF_ROLES.has(socket.data?.role ?? '') && socket.data.userId) {
       socket.join(AGENTS_ROOM)
-      await SupportPresence.markOnline(socket.data.userId)
     }
 
     // ── Player: open or create the live thread ───────────────────────────
@@ -218,7 +242,7 @@ export function registerSupportHandlers(io: any) {
 
         // Escalating into an empty room must hand over a phone number,
         // not silence.
-        if (!(await SupportPresence.anyOnline())) {
+        if (!(await anyAgentOnline())) {
           const contact = await SupportContact.get()
           socket.emit('support:contact-fallback', { conversationId, ...contact })
         }
@@ -297,18 +321,6 @@ export function registerSupportHandlers(io: any) {
       } catch (err) {
         fail(socket, conversationId, err)
       }
-    })
-
-    socket.on('disconnect', async () => {
-      if (!isStaff || !socket.data.userId) return
-      // A clerk with two tabs open is still on shift. Only clear presence
-      // when this was their last socket.
-      const remaining = await io.in(AGENTS_ROOM).fetchSockets()
-      const stillConnected = remaining.some(
-        (s: { id: string; data?: { userId?: string } }) =>
-          s.data?.userId === socket.data.userId && s.id !== socket.id,
-      )
-      if (!stillConnected) await SupportPresence.markOffline(socket.data.userId)
     })
   })
 }
