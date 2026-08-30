@@ -44,6 +44,13 @@ export const useAdminAuth = () => {
         accessToken.value = null
         refreshToken.value = null
         user.value = null
+        // The support socket lives in useState and survives an SPA navigation,
+        // so logging out used to leave it connected with the previous clerk's
+        // handshake still stamped on socket.data.userId server-side — the next
+        // clerk's claims and replies went out under the old identity. Tear it
+        // down here rather than trusting the page to unmount first: logout is
+        // also reached from apiFetch's 401 path, which can fire from anywhere.
+        useSupportInbox().disconnectInbox()
         return navigateTo('/login')
     }
 

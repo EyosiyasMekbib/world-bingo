@@ -2,7 +2,12 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-icon', 'image/vnd.microsoft.icon']
+/** The single source of truth for what may be attached to a support message.
+ *  Exported because the socket path validates `attachmentMime` too — a raw
+ *  `support:send` never goes through the upload route, so re-declaring the
+ *  list there would let the two drift and silently stop accepting, say,
+ *  iPhone HEIC on one path but not the other. */
+export const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-icon', 'image/vnd.microsoft.icon']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 
 export interface UploadResult {

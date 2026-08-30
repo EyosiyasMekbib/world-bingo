@@ -106,7 +106,11 @@ useHead({
   position: fixed;
   inset: 0;
   background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
-  z-index: 100;
+  /* 55, not 100: all this surface has to cover is the arada sticky header at
+     50. At 100 it also covered the support launcher, so the one screen where
+     a player most needs to ask a question was the one screen with no way to
+     ask it. See the scale in assets/css/components.css. */
+  z-index: 55;
   display: flex;
   align-items: center;
   justify-content: center;

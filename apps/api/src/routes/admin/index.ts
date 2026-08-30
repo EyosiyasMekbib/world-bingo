@@ -265,13 +265,21 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         // ── Support inbox ───────────────────────────────────────────────────
+        // Returns the badge count alongside the rows rather than a bare array:
+        // the count is global (unassigned threads anywhere), so a clerk sitting
+        // on the "mine" filter could not derive it from the rows they were
+        // given and their badge sat empty until the first socket event.
         f.get('/support/queue', async (req: any) => {
             const filter = (req.query?.filter ?? 'unassigned') as
                 | 'unassigned'
                 | 'mine'
                 | 'all'
                 | 'resolved'
-            return SupportService.listQueue(filter, req.user.id)
+            const [items, unassignedCount] = await Promise.all([
+                SupportService.listQueue(filter, req.user.id),
+                SupportService.unassignedCount(),
+            ])
+            return { items, unassignedCount }
         })
 
         // A support-scoped projection rather than reusing /admin/players/:id:
