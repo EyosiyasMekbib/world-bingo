@@ -17,13 +17,16 @@ const { isOpen, unread, toggle } = useSupport()
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  z-index: 60;
+  /* Shared scale, defined in assets/css/components.css. Above the in-game
+     surface, below the mobile drawer — see the comment there for the full
+     order. */
+  z-index: var(--z-support, 60);
   width: 3.25rem;
   height: 3.25rem;
   border: none;
   border-radius: 50%;
-  background: #f59e0b;
-  color: #111;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
   font-size: 1.35rem;
   cursor: pointer;
   box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
@@ -35,8 +38,8 @@ const { isOpen, unread, toggle } = useSupport()
   min-width: 1.25rem;
   padding: 0 0.3rem;
   border-radius: 999px;
-  background: #dc2626;
-  color: #fff;
+  background: var(--status-error);
+  color: var(--text-primary);
   font-size: 0.72rem;
   line-height: 1.25rem;
 }

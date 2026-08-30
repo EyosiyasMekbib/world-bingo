@@ -527,10 +527,15 @@ export const useAdminApi = () => {
         getBonusReconciliation: () => apiFetch<Array<{ userId: string; cachedBalance: number; lotSum: number }>>('/admin/bonus-reconciliation'),
 
         // ── Support ───────────────────────────────────────────────────────
+        // `unassignedCount` rides along with the rows because the badge is
+        // otherwise only ever set by a support:queue-update, so a clerk who
+        // opened the inbox on a quiet minute saw no badge at all until the
+        // next event — however many threads were already waiting.
         getSupportQueue: (filter: 'unassigned' | 'mine' | 'all' | 'resolved') =>
-            apiFetch<import('@world-bingo/shared-types').SupportQueueItem[]>(
-                `/admin/support/queue?filter=${filter}`,
-            ),
+            apiFetch<{
+                items: import('@world-bingo/shared-types').SupportQueueItem[]
+                unassignedCount: number
+            }>(`/admin/support/queue?filter=${filter}`),
         getSupportContext: (userId: string) =>
             apiFetch<{
                 id: string

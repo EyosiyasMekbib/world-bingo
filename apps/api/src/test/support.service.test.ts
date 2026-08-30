@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../lib/prisma', () => ({
-  default: {
+vi.mock('../lib/prisma', () => {
+  const client: any = {
     supportConversation: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -13,11 +13,19 @@ vi.mock('../lib/prisma', () => ({
     },
     supportMessage: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
-  },
-}))
+  }
+  // addMessage runs its whole read/update/insert sequence inside an
+  // interactive transaction, which hands the callback a scoped client. Handing
+  // back this same mock keeps every expectation below written against
+  // `prisma.supportX.y` — and is faithful where it counts: the callback's
+  // writes are the transaction's writes.
+  client.$transaction = vi.fn((fn: any) => fn(client))
+  return { default: client }
+})
 
 import prisma from '../lib/prisma'
 import { SupportService, LIVE_STATUSES } from '../services/support/support.service'
@@ -117,7 +125,7 @@ describe('SupportService.openForUser', () => {
     expect(result.messages.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3'])
   })
 
-  it('creates a thread when none is live, and it starts OPEN', async () => {
+  it('creates a thread when none is live, and it starts OPEN with no escalatedAt', async () => {
     ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
     ;(prisma.supportConversation.create as any).mockResolvedValue(
       conversationRow({ id: 'conv-new' }),
@@ -131,6 +139,11 @@ describe('SupportService.openForUser', () => {
         data: expect.objectContaining({ userId: 'user-1', status: 'OPEN' }),
       }),
     )
+    // escalatedAt is what the widget times its five-minute "here is our phone
+    // number" reveal off. Stamping it at creation started that countdown for
+    // a player who opened the panel and typed nothing.
+    const createArg = (prisma.supportConversation.create as any).mock.calls[0][0]
+    expect(createArg.data.escalatedAt).toBeNull()
     expect(result.conversation.id).toBe('conv-new')
     expect(result.messages).toEqual([])
   })
@@ -155,7 +168,7 @@ describe('SupportService.openForUser', () => {
 describe('SupportService.addMessage', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('persists the message and bumps lastMessageAt', async () => {
+  it('persists the message and bumps lastMessageAt, inside one transaction', async () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(conversationRow())
     ;(prisma.supportMessage.create as any).mockResolvedValue({
       id: 'msg-2',
@@ -169,7 +182,7 @@ describe('SupportService.addMessage', () => {
     })
     ;(prisma.supportConversation.update as any).mockResolvedValue(conversationRow())
 
-    const message = await SupportService.addMessage({
+    const { message, reopened } = await SupportService.addMessage({
       conversationId: 'conv-1',
       senderRole: 'PLAYER',
       senderId: 'user-1',
@@ -177,6 +190,8 @@ describe('SupportService.addMessage', () => {
     })
 
     expect(message.id).toBe('msg-2')
+    expect(reopened).toBe(false)
+    expect(prisma.$transaction).toHaveBeenCalled()
     expect(prisma.supportConversation.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'conv-1' },
@@ -185,17 +200,18 @@ describe('SupportService.addMessage', () => {
     )
   })
 
-  it('reopens a RESOLVED thread to OPEN, never to BOT', async () => {
-    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
-      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
-    )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+  it('writes lastMessageAt and the message createdAt from one clock', async () => {
+    // They used to come from two: lastMessageAt from Node, createdAt from the
+    // Postgres default. The inbox sorts on lastMessageAt and the transcript on
+    // createdAt, so clock skew between API and DB could order the same message
+    // differently in the two views.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(conversationRow())
     ;(prisma.supportMessage.create as any).mockResolvedValue({
-      id: 'msg-3',
+      id: 'msg-2',
       conversationId: 'conv-1',
       senderRole: 'PLAYER',
       senderId: 'user-1',
-      body: 'still not fixed',
+      body: 'hi',
       attachmentUrl: null,
       attachmentMime: null,
       createdAt: NOW,
@@ -206,10 +222,85 @@ describe('SupportService.addMessage', () => {
       conversationId: 'conv-1',
       senderRole: 'PLAYER',
       senderId: 'user-1',
-      body: 'still not fixed',
+      body: 'hi',
     })
 
     const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    const createArg = (prisma.supportMessage.create as any).mock.calls[0][0]
+    expect(createArg.data.createdAt).toBe(updateArg.data.lastMessageAt)
+  })
+
+  it("stamps escalatedAt on the player's first message, and not again on the second", async () => {
+    // The contact-reveal countdown starts when the player actually asks for
+    // something — not when they open the panel, and not again with every
+    // sentence, which would push the reveal permanently out of reach for
+    // anyone who keeps typing.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ escalatedAt: null }),
+    )
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-2',
+      conversationId: 'conv-1',
+      senderRole: 'PLAYER',
+      senderId: 'user-1',
+      body: 'hi',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+    ;(prisma.supportConversation.update as any).mockResolvedValue(conversationRow())
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'PLAYER',
+      senderId: 'user-1',
+      body: 'hi',
+    })
+    expect(
+      (prisma.supportConversation.update as any).mock.calls[0][0].data.escalatedAt,
+    ).toBeInstanceOf(Date)
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ escalatedAt: NOW }),
+    )
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'PLAYER',
+      senderId: 'user-1',
+      body: 'still hi',
+    })
+    expect((prisma.supportConversation.update as any).mock.calls[1][0].data).not.toHaveProperty(
+      'escalatedAt',
+    )
+  })
+
+  it('reopens a RESOLVED thread to OPEN, never to BOT', async () => {
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
+    )
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 1 })
+    ;(prisma.supportMessage.create as any).mockResolvedValue({
+      id: 'msg-3',
+      conversationId: 'conv-1',
+      senderRole: 'PLAYER',
+      senderId: 'user-1',
+      body: 'still not fixed',
+      attachmentUrl: null,
+      attachmentMime: null,
+      createdAt: NOW,
+    })
+
+    await SupportService.addMessage({
+      conversationId: 'conv-1',
+      senderRole: 'PLAYER',
+      senderId: 'user-1',
+      body: 'still not fixed',
+    })
+
+    const updateArg = (prisma.supportConversation.updateMany as any).mock.calls[0][0]
+    // Conditional on the thread still being RESOLVED: two senders reopening
+    // the same thread at once must not both apply their own reopen.
+    expect(updateArg.where).toEqual({ id: 'conv-1', status: 'RESOLVED' })
     expect(updateArg.data.status).toBe('OPEN')
     expect(updateArg.data.resolvedAt).toBeNull()
     expect(updateArg.data.assignedToId).toBeNull()
@@ -225,7 +316,7 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 1 })
     ;(prisma.supportMessage.create as any).mockResolvedValue({
       id: 'msg-4',
       conversationId: 'conv-1',
@@ -236,9 +327,6 @@ describe('SupportService.addMessage', () => {
       attachmentMime: null,
       createdAt: NOW,
     })
-    ;(prisma.supportConversation.update as any).mockResolvedValue(
-      conversationRow({ status: 'ASSIGNED', assignedToId: 'clerk-1', resolvedAt: null }),
-    )
 
     await SupportService.addMessage({
       conversationId: 'conv-1',
@@ -247,7 +335,7 @@ describe('SupportService.addMessage', () => {
       body: 'following up on this',
     })
 
-    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    const updateArg = (prisma.supportConversation.updateMany as any).mock.calls[0][0]
     expect(updateArg.data.status).toBe('ASSIGNED')
     expect(updateArg.data.resolvedAt).toBeNull()
     // The assignee must be PRESERVED, not nulled — nulling it here would
@@ -265,7 +353,7 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: null }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 1 })
     ;(prisma.supportMessage.create as any).mockResolvedValue({
       id: 'msg-5',
       conversationId: 'conv-1',
@@ -276,9 +364,6 @@ describe('SupportService.addMessage', () => {
       attachmentMime: null,
       createdAt: NOW,
     })
-    ;(prisma.supportConversation.update as any).mockResolvedValue(
-      conversationRow({ status: 'OPEN', assignedToId: null, resolvedAt: null }),
-    )
 
     await SupportService.addMessage({
       conversationId: 'conv-1',
@@ -287,7 +372,7 @@ describe('SupportService.addMessage', () => {
       body: 'reopening this for you',
     })
 
-    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    const updateArg = (prisma.supportConversation.updateMany as any).mock.calls[0][0]
     expect(updateArg.data.status).toBe('OPEN')
     expect(updateArg.data.resolvedAt).toBeNull()
     expect(updateArg.data).not.toHaveProperty('assignedToId')
@@ -333,13 +418,16 @@ describe('SupportService.addMessage', () => {
 
   it('refuses an AGENT reopen when a newer live thread already exists for the player', async () => {
     // Same StaleConversationError guard the player path has: agent-triggered
-    // reopen must still throw rather than crash on the DB's P2002 when a
-    // newer live thread for this user already exists.
+    // reopen must still surface as a client-actionable error rather than a
+    // raw P2002 when a newer live thread for this user already exists.
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(
-      conversationRow({ id: 'conv-newer' }),
+    // The partial unique index on (userId) over the live statuses is what
+    // actually detects the newer thread — a preceding SELECT could only ever
+    // guess, since one can appear between the read and the write.
+    ;(prisma.supportConversation.updateMany as any).mockRejectedValue(
+      Object.assign(new Error('unique violation'), { code: 'P2002' }),
     )
 
     await expect(
@@ -361,7 +449,7 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 1 })
     ;(prisma.supportMessage.create as any).mockResolvedValue({
       id: 'msg-6',
       conversationId: 'conv-1',
@@ -372,9 +460,6 @@ describe('SupportService.addMessage', () => {
       attachmentMime: null,
       createdAt: NOW,
     })
-    ;(prisma.supportConversation.update as any).mockResolvedValue(
-      conversationRow({ status: 'ASSIGNED', assignedToId: 'clerk-1', resolvedAt: null }),
-    )
 
     await SupportService.addMessage({
       conversationId: 'conv-1',
@@ -383,7 +468,7 @@ describe('SupportService.addMessage', () => {
       body: 'here is what I found',
     })
 
-    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    const updateArg = (prisma.supportConversation.updateMany as any).mock.calls[0][0]
     expect(updateArg.data.status).toBe('ASSIGNED')
     expect(updateArg.data.resolvedAt).toBeNull()
     expect(updateArg.data).not.toHaveProperty('assignedToId')
@@ -394,7 +479,7 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: null }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(null)
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 1 })
     ;(prisma.supportMessage.create as any).mockResolvedValue({
       id: 'msg-7',
       conversationId: 'conv-1',
@@ -405,9 +490,6 @@ describe('SupportService.addMessage', () => {
       attachmentMime: null,
       createdAt: NOW,
     })
-    ;(prisma.supportConversation.update as any).mockResolvedValue(
-      conversationRow({ status: 'OPEN', assignedToId: null, resolvedAt: null }),
-    )
 
     await SupportService.addMessage({
       conversationId: 'conv-1',
@@ -416,7 +498,7 @@ describe('SupportService.addMessage', () => {
       body: 'conversation auto-reopened',
     })
 
-    const updateArg = (prisma.supportConversation.update as any).mock.calls[0][0]
+    const updateArg = (prisma.supportConversation.updateMany as any).mock.calls[0][0]
     expect(updateArg.data.status).toBe('OPEN')
     expect(updateArg.data.resolvedAt).toBeNull()
     expect(updateArg.data).not.toHaveProperty('assignedToId')
@@ -426,8 +508,11 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW, assignedToId: 'clerk-1' }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(
-      conversationRow({ id: 'conv-newer' }),
+    // The partial unique index on (userId) over the live statuses is what
+    // actually detects the newer thread — a preceding SELECT could only ever
+    // guess, since one can appear between the read and the write.
+    ;(prisma.supportConversation.updateMany as any).mockRejectedValue(
+      Object.assign(new Error('unique violation'), { code: 'P2002' }),
     )
 
     await expect(
@@ -448,9 +533,35 @@ describe('SupportService.addMessage', () => {
     ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
       conversationRow({ status: 'RESOLVED', resolvedAt: NOW }),
     )
-    ;(prisma.supportConversation.findFirst as any).mockResolvedValue(
-      conversationRow({ id: 'conv-newer' }),
+    // The partial unique index on (userId) over the live statuses is what
+    // actually detects the newer thread — a preceding SELECT could only ever
+    // guess, since one can appear between the read and the write.
+    ;(prisma.supportConversation.updateMany as any).mockRejectedValue(
+      Object.assign(new Error('unique violation'), { code: 'P2002' }),
     )
+
+    await expect(
+      SupportService.addMessage({
+        conversationId: 'conv-1',
+        senderRole: 'PLAYER',
+        senderId: 'user-1',
+        body: 'hi',
+      }),
+    ).rejects.toBeInstanceOf(StaleConversationError)
+
+    expect(prisma.supportMessage.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses the reopen when the conditional update matches nothing, and writes no message', async () => {
+    // The thread stopped being RESOLVED between the read and the write —
+    // someone else reopened it, or resolved-then-reopened it — so this
+    // caller's reopen data is describing a thread that no longer exists in
+    // that state. Writing the message anyway would attach it to a
+    // conversation whose status this call never actually set.
+    ;(prisma.supportConversation.findUnique as any).mockResolvedValue(
+      conversationRow({ status: 'RESOLVED', resolvedAt: NOW }),
+    )
+    ;(prisma.supportConversation.updateMany as any).mockResolvedValue({ count: 0 })
 
     await expect(
       SupportService.addMessage({

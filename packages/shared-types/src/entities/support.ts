@@ -12,6 +12,10 @@ export interface SupportMessage {
     attachmentUrl: string | null
     attachmentMime: string | null
     createdAt: string
+    /** Echoed back on the broadcast so the sender can replace its own
+     *  optimistic bubble instead of appending a duplicate. Wire-only — it is
+     *  not persisted, so it is null on every message read back from the DB. */
+    clientMsgId?: string | null
 }
 
 export interface SupportConversation {

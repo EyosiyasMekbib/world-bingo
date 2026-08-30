@@ -11,6 +11,26 @@ export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
 
+    app: {
+        head: {
+            meta: [
+                {
+                    // Nuxt's default viewport tag, plus the one addition:
+                    // `interactive-widget=resizes-content` makes Chromium shrink
+                    // the layout viewport when the on-screen keyboard opens, so a
+                    // full-screen sheet (the support panel on a phone) keeps its
+                    // composer above the keyboard instead of behind it. It is
+                    // Chromium-only and does nothing on iOS Safari — the
+                    // visualViewport listeners in SupportPanel.vue are the half
+                    // that works everywhere. Declared here because this config
+                    // carried no `app.head` at all.
+                    name: 'viewport',
+                    content: 'width=device-width, initial-scale=1, interactive-widget=resizes-content',
+                },
+            ],
+        },
+    },
+
     modules: [
         '@nuxtjs/tailwindcss',
         '@pinia/nuxt',

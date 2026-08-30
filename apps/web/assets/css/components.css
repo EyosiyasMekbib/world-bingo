@@ -12,6 +12,20 @@
    hardcode colors here. Prefixed `wb-` to stay clear of scoped component CSS.
    ────────────────────────────────────────────────────────────────────────── */
 
+/* ═══════════ Z-INDEX SCALE ═══════════
+   One place to read the app's stacking order from, because the support widget
+   is the piece that has to sit between two things that already existed:
+
+     arada sticky header 50 < .play-page 55 < support 60
+       < arada mobile drawer 80 < .wb-overlay / modal 100 < quick-play 1000
+
+   The support FAB has to clear the in-game surface — "my spin didn't pay" is
+   asked from inside a game, and the launcher was invisible there — but must
+   stay UNDER the mobile drawer, which is supposed to cover it. */
+:root {
+  --z-support: 60;
+}
+
 /* ═══════════ OVERLAY + MODAL ═══════════ */
 .wb-overlay {
   position: fixed;

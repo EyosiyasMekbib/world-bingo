@@ -109,6 +109,14 @@ const statusVariant = (status: string) => {
 
 <style scoped>
 .ctx {
+  /* This root is a flex child of the inbox's context pane, not one of the
+     page's `.col` elements, so it inherits none of their min-width: 0. Without
+     it the pane's min-content width — set by the longest untruncated username
+     or timestamp in here — refuses to shrink and fights the now-flexible grid
+     track, pushing the transcript back towards zero on a narrow screen. */
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   padding: 0.9rem;
   border-left: 1px solid var(--surface-border);
   background: var(--surface-raised);
