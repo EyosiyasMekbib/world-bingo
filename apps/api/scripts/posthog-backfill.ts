@@ -117,10 +117,21 @@ function send(ev: BackfillEvent | BackfillAlias): void {
     }
     counts[ev.event] = (counts[ev.event] ?? 0) + 1
     if (client) {
+        // `brand` goes on the person profile too, not just the event. Live
+        // server events do this in lib/posthog.ts (`$set: { ...opts.set, brand }`)
+        // and the browser identify sends brand as well — without it a person
+        // whose only event is a backfilled user_registered has no brand on
+        // their profile, and every person-level brand filter drops them.
+        const set = ev.properties.$set
+        const hasSet = !!set && typeof set === 'object' && !Array.isArray(set)
         client.capture({
             distinctId: ev.distinctId,
             event: ev.event,
-            properties: { ...ev.properties, brand },
+            properties: {
+                ...ev.properties,
+                brand,
+                ...(hasSet ? { $set: { ...(set as Record<string, unknown>), brand } } : {}),
+            },
             timestamp: ev.timestamp,
             uuid: ev.uuid,
         })
