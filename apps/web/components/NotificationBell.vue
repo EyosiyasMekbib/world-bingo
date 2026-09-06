@@ -194,7 +194,9 @@ onUnmounted(() => {
                   class="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400 mt-1"
                 />
               </div>
-              <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{{ notif.body }}</p>
+              <!-- data-ph-mask: notification bodies carry reviewer rejection
+                   notes, which are free text about a specific player. -->
+              <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2" data-ph-mask>{{ notif.body }}</p>
               <p class="text-[11px] text-zinc-600 mt-1">{{ relativeTime(notif.createdAt) }}</p>
             </div>
           </button>
