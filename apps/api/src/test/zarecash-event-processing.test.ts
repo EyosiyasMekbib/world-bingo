@@ -255,6 +255,9 @@ describe('processEvent — withdrawal.approved landing on an already-resolved ro
     )
     ;(prisma as any).transaction.findUnique
       .mockResolvedValueOnce({ id: 'tx1', userId: 'u1', amount: '500', status: 'PENDING_REVIEW' })
+      // The pre-claim `before` read (note/createdAt) settleApprovedWithdrawal now does
+      // ahead of the update, so it can still report the withdrawal method post-commit.
+      .mockResolvedValueOnce({ note: null, createdAt: new Date() })
       .mockResolvedValueOnce({ id: 'tx1', userId: 'u1', amount: '500', status: 'APPROVED' })
     ;(prisma as any).transaction.updateMany.mockResolvedValue({ count: 0 })
 
