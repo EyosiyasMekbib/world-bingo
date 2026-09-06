@@ -22,6 +22,7 @@ import { GameStatus } from '@world-bingo/shared-types'
 import { NotificationService } from '../services/notification.service'
 import { NotificationType } from '@world-bingo/shared-types'
 import { wbGamesCompletedTotal, wbGameDurationSeconds } from './metrics'
+import { emitGameFinished } from './posthog-events'
 
 /**
  * T24 — Robust Game Engine with Redlock
@@ -230,6 +231,7 @@ async function endGameNoWinner(gameId: string): Promise<void> {
 
     // Metrics: game completed with no winner (post-commit).
     wbGamesCompletedTotal.labels('no_winner').inc()
+    void emitGameFinished(gameId)
     if (endedGame.startedAt && endedGame.endedAt) {
         const durationSecs =
             (new Date(endedGame.endedAt).getTime() - new Date(endedGame.startedAt).getTime()) / 1000
