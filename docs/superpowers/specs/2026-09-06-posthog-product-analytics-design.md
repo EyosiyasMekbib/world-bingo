@@ -97,14 +97,15 @@ scripts/posthog-backfill.ts
 - Anonymous visitors get PostHog's own device id. On login/register the client calls
   `posthog.identify(user.id, personProps)`, which merges the anonymous trail into the person.
 - **Person properties** (set on identify and on `user_registered`): `serial`, `brand`,
-  `signup_method` (`phone` | `telegram`), `referred` (boolean), `created_at`.
+  `signup_method` (`phone` | `telegram`), `referred` (boolean, server-side only — the client never
+  sees `referredById`), `created_at`.
   Never phone, first or last name, password hash, account numbers, receipt URLs.
 - `person_profiles: 'identified_only'` — anonymous events are captured, person rows are only created
   once someone signs in. Keeps the person table to real players.
 - Logout calls `posthog.reset()` **and** rotates `wb_anon_id`, so the next account on a shared
   phone does not inherit the previous player's trail (defect 3 below).
-- Bots (`username LIKE 'bot_t%'` or `passwordHash = 'BOT_ACCOUNT'`) are excluded at emit time on the
-  server and at the source in the backfill. The server helper caches `userId → isBot` in a bounded
+- Bots (`username LIKE 'bot_t%'` or `passwordHash = 'BOT_ACCOUNT'`) and staff (`role != PLAYER`) are
+  excluded at emit time on the server and at the source in the backfill, matching `AnalyticsService`. The server helper caches `userId → isBot` in a bounded
   in-memory map (one `findUnique` per unseen user, then free).
 
 ## Client (`apps/web`)
@@ -202,13 +203,13 @@ Events are emitted **post-commit**, after the Prisma transaction resolves, never
 | `deposit_approved` | `WalletService.approveDeposit` (covers manual review and ZareCash webhook) | `amount`, `method`, `gateway`, `hours_to_approve`, `is_first_deposit`, `tx_id` |
 | `deposit_rejected` | `AdminService.reviewTransaction`, REJECTED + DEPOSIT branch | `amount`, `method`, `hours_to_decision`, `has_note`, `tx_id` |
 | `withdrawal_requested` | `WalletService.requestWithdrawal` | `amount`, `method`, `tx_id` |
-| `withdrawal_approved` | `AdminService.reviewTransaction`, APPROVED + WITHDRAWAL branch; ZareCash withdrawal worker on settle | `amount`, `method`, `gateway`, `hours_to_decision`, `tx_id` |
+| `withdrawal_approved` | `AdminService.reviewTransaction`, APPROVED + WITHDRAWAL branch; `ZareCashService.settleApprovedWithdrawal` | `amount`, `method`, `gateway`, `hours_to_decision`, `tx_id` |
 | `withdrawal_rejected` | `WalletService.rejectWithdrawal` | `amount`, `method`, `hours_to_decision`, `tx_id` |
 | `game_joined` | `GameService.joinGame` | `game_id`, `template_id`, `ticket_price`, `cartelas`, `stake`, `spend_account` |
 | `game_left` | `GameService.leaveGame` | `game_id`, `refund` |
 | `game_finished` | `GameService.claimBingo` (winner path) and `endGameNoWinner` in `lib/game-engine.ts`, one event per distinct human entrant | `game_id`, `template_id`, `ticket_price`, `cartelas`, `stake`, `outcome` (`won` \| `lost` \| `no_winner`), `prize`, `net`, `duration_secs` |
 | `game_refunded` | `GameService.cancelGame`, one per refunded player | `game_id`, `template_id`, `reason`, `refund` |
-| `bonus_granted` | the callers that own the transaction around `BonusService.grant`, after commit, when `granted` is true | `amount`, `source`, `rule_id` |
+| `bonus_granted` | post-commit in the four owners of a `BonusService.grant` transaction: `WalletService.approveDeposit` (first-deposit and rule grants), `CampaignService` delivery, `CashbackService` disbursement, the admin adjust-balance route | `amount`, `source` (`FIRST_DEPOSIT` \| `DEPOSIT_RULE` \| `CAMPAIGN` \| `CASHBACK` \| `ADMIN`), `rule_id` |
 | `account_status_changed` | `AccountStatusService.transition` when `result.changed` | `from`, `to`, `category`, `has_expiry` |
 | `provider_game_launched` | existing emit site in `routes/game-provider/index.ts` | `provider_code`, `game_code` |
 
@@ -246,15 +247,16 @@ pnpm posthog:backfill -- --since 2026-02-20 [--until 2026-09-06] [--dry-run]
 | source | events |
 |---|---|
 | `users` | `user_registered` @ `createdAt`, with `$set` person props |
-| `transactions` DEPOSIT | `deposit_submitted` @ `createdAt`; `deposit_approved` / `deposit_rejected` @ `updatedAt` |
-| `transactions` WITHDRAWAL | `withdrawal_requested` @ `createdAt`; `withdrawal_approved` / `withdrawal_rejected` @ `updatedAt` |
+| `transactions` DEPOSIT | `deposit_submitted` @ `createdAt`; `deposit_approved` / `deposit_rejected` @ `createdAt` + 1 s with `hours_to_*: null` (the table has no decision timestamp) |
+| `transactions` WITHDRAWAL | `withdrawal_requested` @ `createdAt`; `withdrawal_approved` / `withdrawal_rejected` @ `createdAt` + 1 s with `hours_to_*: null` |
 | `game_entries` grouped by (`gameId`, `userId`) | `game_joined` @ min `joinedAt` |
 | `games` COMPLETED, joined to entries | `game_finished` per player @ `endedAt`; prize from the `PRIZE_WIN` transaction with `referenceId = gameId` |
 | `games` CANCELLED, joined to `REFUND` transactions | `game_refunded` per player @ `endedAt` |
-| `bonus_grants` | `bonus_granted` @ `createdAt` |
+| `transactions` of type `FIRST_DEPOSIT_BONUS`, `CASHBACK_BONUS`, `CAMPAIGN_BONUS`, `ADMIN_BONUS_ADJUSTMENT` with `amount > 0` | `bonus_granted` @ `createdAt`, `source` derived from the type (`bonus_grants` carries no source) |
 | `analytics_events` | same event name @ `createdAt`, distinct id `userId ?? anonId`; `identify` rows become `$create_alias` (user ← anon) |
 
-`hours_to_*` on backfilled money events use `updatedAt - createdAt`; the runbook says so.
+Backfilled decision events carry `hours_to_*: null` and `backfilled: true`: `transactions` records when a
+row was created, never when it was decided. Decision timing is a live-only metric; the runbook says so.
 
 ## Environment and deployment
 
@@ -333,11 +335,11 @@ Vitest, following existing patterns (pure helpers tested directly, network mocke
 | `apps/api/src/services/wallet.service.ts` | modify | deposit + withdrawal events |
 | `apps/api/src/services/zarecash-checkout.service.ts` | modify | `deposit_submitted` |
 | `apps/api/src/services/admin.service.ts` | modify | `deposit_rejected`, `withdrawal_approved` |
-| `apps/api/src/workers/zarecash-withdrawal.worker.ts` | modify | `withdrawal_approved` on settle |
+| `apps/api/src/services/zarecash.service.ts` | modify | `withdrawal_approved` on settle |
 | `apps/api/src/services/game.service.ts` | modify | join / leave / finished / refunded |
 | `apps/api/src/lib/game-engine.ts` | modify | `game_finished` no-winner path |
 | `apps/api/src/services/event.service.ts` | modify | `games_lobby_view` allowlist |
-| `apps/api/src/services/deposit-bonus.service.ts` and other `BonusService.grant` callers | modify | `bonus_granted` post-commit |
+| `apps/api/src/services/player-crm/campaign.service.ts`, `apps/api/src/services/cashback.service.ts`, `apps/api/src/routes/admin/index.ts` | modify | `bonus_granted` post-commit (deposit-side grants are emitted from `approveDeposit`) |
 | `apps/api/src/services/account-status.service.ts` | modify | `account_status_changed` |
 | `apps/api/src/routes/game-provider/index.ts` | modify | `provider_game_launched` |
 | `apps/api/src/lib/posthog-backfill.ts` (+ test) | create | pure row → event mappers |
