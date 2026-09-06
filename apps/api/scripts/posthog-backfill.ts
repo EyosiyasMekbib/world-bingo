@@ -6,7 +6,8 @@
  *
  * Reads POSTHOG_KEY / POSTHOG_HOST / POSTHOG_BRAND (falls back to
  * DEPLOYMENT_CODE) from the root .env. Refuses to run without a key unless
- * --dry-run is given.
+ * --dry-run is given. With --dry-run, no PostHog client is constructed and
+ * no events are sent, even if POSTHOG_KEY is configured.
  *
  * Safe to re-run: every event has a deterministic uuid and PostHog
  * de-duplicates on it. The client is created with historicalMigration so the
@@ -53,7 +54,7 @@ if (!key && !dryRun) {
 }
 const brand = process.env.POSTHOG_BRAND || process.env.DEPLOYMENT_CODE || ''
 
-const client = key
+const client = key && !dryRun
     ? new PostHog(key, {
           host: process.env.POSTHOG_HOST || 'https://eu.i.posthog.com',
           historicalMigration: true,
