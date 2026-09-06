@@ -33,6 +33,11 @@ describe('hoursBetween', () => {
         const to = new Date('2026-09-01T00:00:00Z')
         expect(hoursBetween(from, to)).toBe(0)
     })
+    it('returns null instead of throwing when the start is missing', () => {
+        const to = new Date('2026-09-01T00:00:00Z')
+        expect(hoursBetween(null, to)).toBeNull()
+        expect(hoursBetween(undefined, to)).toBeNull()
+    })
 })
 
 describe('withdrawalMethodFromNote', () => {

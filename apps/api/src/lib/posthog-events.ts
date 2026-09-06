@@ -10,7 +10,13 @@ import prisma from './prisma'
 import { captureEvent } from './posthog'
 import { rootLogger } from './logger'
 
-export function hoursBetween(from: Date, to: Date): number {
+/**
+ * Null when the start is unknown: property maths runs before captureEvent's
+ * try/catch, so this must never throw — a settle path with no `createdAt` on
+ * the row (as one worker test constructs) would otherwise fail the request.
+ */
+export function hoursBetween(from: Date | null | undefined, to: Date): number | null {
+    if (!(from instanceof Date) || Number.isNaN(from.getTime())) return null
     const hours = (to.getTime() - from.getTime()) / 3_600_000
     return Math.max(0, Math.round(hours * 100) / 100)
 }
