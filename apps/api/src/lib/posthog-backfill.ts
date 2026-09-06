@@ -237,13 +237,47 @@ export function gameRefundedEvents(game: GameRow, refunds: Array<{ userId: strin
     )
 }
 
+/**
+ * Event names a primary-table mapper already owns. `wallet.controller.ts`
+ * writes a `deposit_submitted` row into `analytics_events` for every manual
+ * deposit, and `depositEvents()` derives the same event from `transactions`
+ * — under a different uuid namespace, so PostHog cannot de-duplicate them.
+ * The `transactions` row is the authoritative one (it carries amount, method,
+ * gateway and tx_id), so the `analytics_events` copy is dropped.
+ */
+const OWNED_BY_PRIMARY_TABLE = new Set(['deposit_submitted'])
+
+/**
+ * `analytics_events.props` predates the snake_case convention. The live
+ * `provider_game_launched` hook sends `provider_code` / `game_code`, so the
+ * historical rows are renamed to match rather than splitting the property into
+ * two spellings on one event.
+ */
+const PROP_RENAMES: Record<string, Record<string, string>> = {
+    provider_game_launched: {
+        providerCode: 'provider_code',
+        gameCode: 'game_code',
+        balanceBefore: 'balance_before',
+    },
+}
+
+function renameProps(props: Record<string, unknown>, renames?: Record<string, string>): Record<string, unknown> {
+    if (!renames) return props
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(props)) {
+        out[renames[key] ?? key] = value
+    }
+    return out
+}
+
 export function analyticsEventRow(e: AnalyticsRow): BackfillEvent | BackfillAlias | null {
     if (e.name === 'identify') {
         if (!e.userId || !e.anonId) return null
         return { distinctId: e.userId, alias: e.anonId }
     }
+    if (OWNED_BY_PRIMARY_TABLE.has(e.name)) return null
     const distinctId = e.userId ?? e.anonId
     if (!distinctId) return null
     const props = e.props && typeof e.props === 'object' ? (e.props as Record<string, unknown>) : {}
-    return make('ae', e.id, e.name, distinctId, e.createdAt, props)
+    return make('ae', e.id, e.name, distinctId, e.createdAt, renameProps(props, PROP_RENAMES[e.name]))
 }

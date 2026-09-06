@@ -139,6 +139,52 @@ describe('analyticsEventRow', () => {
     it('uses anonId when there is no user', () => {
         expect(analyticsEventRow({ id: 'e2', name: 'lobby_view', userId: null, anonId: 'a1', createdAt: T0, props: null })).toMatchObject({ distinctId: 'a1' })
     })
+    it('drops deposit_submitted, which the transactions mapper already emits', () => {
+        // wallet.controller.ts records one of these per manual deposit AND
+        // depositEvents() derives one from `transactions`, under a different
+        // uuid namespace — so PostHog would keep both.
+        expect(
+            analyticsEventRow({
+                id: 'e6',
+                name: 'deposit_submitted',
+                userId: 'u1',
+                anonId: null,
+                createdAt: T0,
+                props: { amount: 500, paymentMethod: 'cbe', txId: 't1' },
+            }),
+        ).toBeNull()
+    })
+
+    it('renames provider_game_launched props to the snake_case the live hook sends', () => {
+        const ev = analyticsEventRow({
+            id: 'e7',
+            name: 'provider_game_launched',
+            userId: 'u1',
+            anonId: null,
+            createdAt: T0,
+            props: { providerCode: 'smartsoft', gameCode: 'JetX', balanceBefore: 240 },
+        })
+        expect(ev).toMatchObject({
+            distinctId: 'u1',
+            event: 'provider_game_launched',
+            properties: {
+                provider_code: 'smartsoft',
+                game_code: 'JetX',
+                balance_before: 240,
+                backfilled: true,
+            },
+        })
+        const props = (ev as { properties: Record<string, unknown> }).properties
+        expect(Object.keys(props)).not.toContain('providerCode')
+        expect(Object.keys(props)).not.toContain('gameCode')
+        expect(Object.keys(props)).not.toContain('balanceBefore')
+    })
+
+    it('leaves props alone for events with no rename map', () => {
+        const ev = analyticsEventRow({ id: 'e8', name: 'game_view', userId: 'u1', anonId: null, createdAt: T0, props: { gameId: 'g1' } })
+        expect((ev as { properties: Record<string, unknown> }).properties).toMatchObject({ gameId: 'g1' })
+    })
+
     it('turns identify rows into aliases and drops unusable rows', () => {
         expect(analyticsEventRow({ id: 'e3', name: 'identify', userId: 'u1', anonId: 'a1', createdAt: T0, props: null })).toEqual({ distinctId: 'u1', alias: 'a1' })
         expect(analyticsEventRow({ id: 'e4', name: 'identify', userId: null, anonId: 'a1', createdAt: T0, props: null })).toBeNull()
