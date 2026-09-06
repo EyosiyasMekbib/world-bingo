@@ -5,8 +5,38 @@ import crypto from 'crypto'
 import { ReferralService } from './referral.service'
 import { captureEvent } from '../lib/posthog'
 import { personPropsFor } from '../lib/posthog-events'
+import { wbAuthRefreshTotal } from '../lib/metrics'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
+
+/**
+ * How long a rotated refresh token keeps working. The web app fires several
+ * authenticated calls at once (the lobby loads bingo and provider games in
+ * parallel); when the 15-minute access token expires they all 401 together and
+ * each one refreshes with the same stored token. Without this window exactly
+ * one of them won and every other caller was logged out — 64 of 194 refreshes
+ * in one 4-hour production sample, plus 4 crashes from the delete/create race.
+ *
+ * A minute is long enough to cover that burst and a slow mobile round trip, and
+ * short enough that a genuinely stolen token is useless.
+ */
+export const REFRESH_GRACE_MS = 60_000
+
+/** Rotated rows are pruned once they are this old — long past any live burst. */
+const REFRESH_PRUNE_MS = 5 * 60_000
+
+/**
+ * A refusal the client can act on. `code` is what the web store keys its
+ * "really log out" decision on: anything else (network, 429, 5xx) must leave
+ * the session alone.
+ */
+export class RefreshTokenError extends Error {
+    readonly statusCode = 401
+    constructor(readonly code: 'refresh_token_invalid' | 'refresh_token_expired', message: string) {
+        super(message)
+        this.name = 'RefreshTokenError'
+    }
+}
 
 function generateRefreshToken(): string {
     return crypto.randomBytes(64).toString('hex')
@@ -129,31 +159,58 @@ export class AuthService {
         })
 
         if (!storedToken) {
-            throw new Error('Invalid refresh token')
+            wbAuthRefreshTotal.labels('invalid').inc()
+            throw new RefreshTokenError('refresh_token_invalid', 'Invalid refresh token')
         }
 
         if (storedToken.expiresAt < new Date()) {
-            // Clean up expired token
-            await prisma.refreshToken.delete({ where: { tokenHash } })
-            throw new Error('Refresh token expired')
+            await prisma.refreshToken.deleteMany({ where: { tokenHash } })
+            wbAuthRefreshTotal.labels('expired').inc()
+            throw new RefreshTokenError('refresh_token_expired', 'Refresh token expired')
         }
 
-        // Rotate: delete old token, issue new one
         const newRefreshToken = generateRefreshToken()
         const newTokenHash = hashToken(newRefreshToken)
         const newExpiresAt = new Date()
         newExpiresAt.setDate(newExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
 
-        await prisma.$transaction([
-            prisma.refreshToken.delete({ where: { tokenHash } }),
-            prisma.refreshToken.create({
-                data: {
+        // Claim the rotation. `rotatedAt: null` in the WHERE makes this atomic:
+        // concurrent callers serialize on the row and exactly one gets count 1.
+        // The loser is NOT an error — see the grace branch below.
+        const claim = await prisma.refreshToken.updateMany({
+            where: { tokenHash, rotatedAt: null },
+            data: { rotatedAt: new Date(), replacedByHash: newTokenHash },
+        })
+
+        if (claim.count === 0) {
+            // We lost the race: another caller already claimed this token.
+            // `storedToken` is a pre-claim snapshot — re-read so the grace
+            // check sees the rotatedAt the winner just set, not a stale null.
+            const current = await prisma.refreshToken.findUnique({ where: { tokenHash } })
+            const rotatedAt = current?.rotatedAt ?? new Date(0)
+            if (!current || Date.now() - rotatedAt.getTime() > REFRESH_GRACE_MS) {
+                wbAuthRefreshTotal.labels('invalid').inc()
+                throw new RefreshTokenError('refresh_token_invalid', 'Invalid refresh token')
+            }
+            wbAuthRefreshTotal.labels('grace').inc()
+        } else {
+            wbAuthRefreshTotal.labels('rotated').inc()
+        }
+
+        await prisma.refreshToken.create({
+            data: { userId: storedToken.userId, tokenHash: newTokenHash, expiresAt: newExpiresAt },
+        })
+
+        // Housekeeping, not correctness: keeps one live row per device plus at
+        // most a few seconds of rotated ones. Never blocks the response.
+        prisma.refreshToken
+            .deleteMany({
+                where: {
                     userId: storedToken.userId,
-                    tokenHash: newTokenHash,
-                    expiresAt: newExpiresAt,
+                    rotatedAt: { lt: new Date(Date.now() - REFRESH_PRUNE_MS) },
                 },
-            }),
-        ])
+            })
+            .catch(() => {})
 
         const { passwordHash: _, ...user } = storedToken.user
         return { user, refreshToken: newRefreshToken }

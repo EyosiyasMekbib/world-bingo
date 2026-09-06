@@ -204,7 +204,7 @@ describe('AuthService', () => {
             )
         })
 
-        it('should invalidate the old token after rotation', async () => {
+        it('should serve the same token again inside the grace window instead of invalidating it', async () => {
             const userData = {
                 username: 'rotateuser',
                 phone: '+251912300020',
@@ -220,10 +220,13 @@ describe('AuthService', () => {
             // Use the token once
             await AuthService.refreshToken(firstToken)
 
-            // Try to use the same token again — must fail
-            await expect(AuthService.refreshToken(firstToken)).rejects.toThrow(
-                'Invalid refresh token',
-            )
+            // Reusing the same token again immediately (well inside the grace
+            // window) must succeed — this is the whole point of the fix.
+            // Genuine reuse once the window has passed is covered in
+            // auth-refresh-grace.test.ts.
+            const { refreshToken: thirdToken } = await AuthService.refreshToken(firstToken)
+            expect(thirdToken).toBeDefined()
+            expect(thirdToken).not.toBe(firstToken)
         })
     })
 
