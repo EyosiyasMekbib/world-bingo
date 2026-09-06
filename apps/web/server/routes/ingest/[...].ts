@@ -27,9 +27,15 @@ export default defineEventHandler(async (event) => {
   })
 
   const headers = stripSensitiveHeaders(getProxyRequestHeaders(event))
-  const body = PAYLOAD_METHODS.has(event.method)
+  const raw = PAYLOAD_METHODS.has(event.method)
     ? await readRawBody(event, false).catch(() => undefined)
     : undefined
+  // readRawBody hands back a Node Buffer, whose type is Buffer<ArrayBufferLike>.
+  // BodyInit only accepts ArrayBufferView<ArrayBuffer>, so neither the Buffer nor
+  // a zero-copy view over its (ArrayBufferLike) backing store satisfies it —
+  // copying into a fresh Uint8Array does. Ingest payloads are small; the copy is
+  // nothing next to the network hop.
+  const body = raw ? new Uint8Array(raw) : undefined
 
   return sendProxy(event, target, {
     fetchOptions: { method: event.method, body, headers },
