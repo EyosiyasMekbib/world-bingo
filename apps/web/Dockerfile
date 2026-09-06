@@ -34,6 +34,12 @@ RUN pnpm --filter @world-bingo/game-logic build
 # Defaults to http://api:8080; spokes pass a suffixed host (e.g. http://api-betbawa:8080).
 ARG NUXT_API_PROXY_TARGET=http://api:8080
 ENV NUXT_API_PROXY_TARGET=$NUXT_API_PROXY_TARGET
+# PostHog ingest proxy targets are baked into routeRules too. EU Cloud defaults;
+# override both only for a US-region project.
+ARG NUXT_POSTHOG_PROXY_TARGET=https://eu.i.posthog.com
+ENV NUXT_POSTHOG_PROXY_TARGET=$NUXT_POSTHOG_PROXY_TARGET
+ARG NUXT_POSTHOG_ASSETS_PROXY_TARGET=https://eu-assets.i.posthog.com
+ENV NUXT_POSTHOG_ASSETS_PROXY_TARGET=$NUXT_POSTHOG_ASSETS_PROXY_TARGET
 WORKDIR /app/apps/web
 RUN pnpm run build
 
