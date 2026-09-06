@@ -256,10 +256,20 @@ model RefreshToken {
   tokenHash String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+  /// Set when this token has been exchanged. The row is KEPT for a short grace
+  /// window (REFRESH_GRACE_MS in auth.service.ts) rather than deleted, so a
+  /// device that fires several refreshes at once — the lobby's parallel calls
+  /// all 401ing together — gets a working session on every one of them instead
+  /// of one winner and N logouts. Reuse after the window is a genuine replay
+  /// and is rejected.
+  rotatedAt DateTime?
+  /// Hash of the token issued in exchange. Audit only; never returned to a client.
+  replacedByHash String?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([rotatedAt])
   @@map("refresh_tokens")
 }
 
