@@ -18,6 +18,7 @@ import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/feat
 import { SupportService } from '../../services/support/support.service'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
+import { captureEvent } from '../../lib/posthog'
 import { Decimal } from '@prisma/client/runtime/library'
 
 const templateCreateSchema = z.object({
@@ -261,6 +262,13 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 }
             })
             NotificationService.pushWalletUpdate(userId, result.realBalance, result.bonusBalance)
+            if (type === 'bonus' && Number(amount) > 0) {
+                void captureEvent(userId, 'bonus_granted', {
+                    amount: Number(amount),
+                    source: 'ADMIN',
+                    rule_id: null,
+                })
+            }
             return result
         })
 

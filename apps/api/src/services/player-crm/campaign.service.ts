@@ -9,6 +9,7 @@ import { NotificationType, TransactionType, PaymentStatus } from '@world-bingo/s
 import { getIo } from '../../lib/socket'
 import { reportError } from '../../lib/sentry.js'
 import { BonusService } from '../bonus.service'
+import { captureEvent } from '../../lib/posthog'
 
 /**
  * Campaign lifecycle and delivery.
@@ -374,6 +375,7 @@ export class CampaignService {
         actions: CampaignActions,
     ): Promise<void> {
         try {
+            let bonusAmount: Decimal | null = null
             await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
                 // Liveness is re-checked live, not from the rollup: a freeze is a
                 // raw UPDATE that bumps no timestamp, so the rollup copy can lag.
@@ -403,7 +405,6 @@ export class CampaignService {
 
                 let notificationId: string | null = null
                 let transactionId: string | null = null
-                let bonusAmount: Decimal | null = null
 
                 if (actions.message) {
                     const notification = await tx.notification.create({
@@ -535,6 +536,14 @@ export class CampaignService {
                     data: { sentCount: { increment: 1 } },
                 })
             })
+
+            if (bonusAmount !== null && bonusAmount.greaterThan(0)) {
+                void captureEvent(userId, 'bonus_granted', {
+                    amount: Number(bonusAmount),
+                    source: 'CAMPAIGN',
+                    rule_id: campaignId,
+                })
+            }
 
             // Socket push is best-effort and outside the transaction — a dropped
             // websocket must never roll back a payment.

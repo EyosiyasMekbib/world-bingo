@@ -3,6 +3,7 @@ import { TransactionType, PaymentStatus, NotificationType, CashbackRefundType, C
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { BonusService } from './bonus.service'
+import { captureEvent } from '../lib/posthog'
 
 /**
  * Compute the start and end of the current frequency window (UTC).
@@ -248,6 +249,11 @@ export class CashbackService {
             } else {
                 disbursed++
                 total = total.plus(result as Decimal)
+                void captureEvent(entry.userId, 'bonus_granted', {
+                    amount: Number(result as Decimal),
+                    source: 'CASHBACK',
+                    rule_id: promotionId,
+                })
 
                 // Push notification (fire-and-forget)
                 NotificationService.create(

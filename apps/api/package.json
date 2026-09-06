@@ -12,6 +12,7 @@
         "build": "tsup",
         "start": "node --env-file .env dist/index.js",
         "typecheck": "tsc --noEmit",
+        "typecheck:scripts": "tsc --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target es2022 scripts/posthog-backfill.ts",
         "lint": "eslint src",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
@@ -20,7 +21,8 @@
         "db:seed:etfc": "tsx --env-file ../../.env prisma/seed-etfc.ts",
         "db:seed:demo": "tsx --env-file ../../.env prisma/seed-demo-history.ts",
         "db:studio": "prisma studio --env-file ../../.env",
-        "db:seed:etfc:novelty": "tsx --env-file ../../.env prisma/seed-etfc-novelty.ts"
+        "db:seed:etfc:novelty": "tsx --env-file ../../.env prisma/seed-etfc-novelty.ts",
+        "posthog:backfill": "tsx --env-file ../../.env scripts/posthog-backfill.ts"
     },
     "dependencies": {
         "@bull-board/api": "^6.19.0",
@@ -52,6 +54,7 @@
         "node-html-parser": "^9.0.0",
         "pino": "^9.0.0",
         "pino-loki": "^2",
+        "posthog-node": "^5.51.6",
         "prom-client": "^15.1.3",
         "redlock": "4.2.0",
         "socket.io": "^4.8.0",

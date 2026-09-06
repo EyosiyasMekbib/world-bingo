@@ -3,6 +3,8 @@ import { LoginDto, RegisterDto, ChangePasswordDto, TelegramAuthDto } from '@worl
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { ReferralService } from './referral.service'
+import { captureEvent } from '../lib/posthog'
+import { personPropsFor } from '../lib/posthog-events'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
 
@@ -61,6 +63,13 @@ export class AuthService {
             },
         })
 
+        void captureEvent(
+            user.id,
+            'user_registered',
+            { signup_method: 'phone', referred: !!referredById },
+            { set: personPropsFor(user, 'phone') },
+        )
+
         const { passwordHash: _, ...result } = user
         return { user: result, refreshToken }
     }
@@ -101,6 +110,10 @@ export class AuthService {
                 tokenHash,
                 expiresAt,
             },
+        })
+
+        void captureEvent(user.id, 'user_logged_in', {
+            signup_method: user.telegramId ? 'telegram' : 'phone',
         })
 
         const { passwordHash: _, ...result } = user
@@ -199,6 +212,9 @@ export class AuthService {
 
         // 3. Upsert user
         const telegramId = String(data.id)
+        // Read before the upsert: it is the only way to tell a first login
+        // (user_registered) from a returning one (user_logged_in).
+        const existed = await prisma.user.findUnique({ where: { telegramId }, select: { id: true } })
 
         // If phone_number provided, check it's not already taken by another account
         let phoneToSet: string | null | undefined = undefined
@@ -235,6 +251,17 @@ export class AuthService {
         const expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
         await prisma.refreshToken.create({ data: { userId: user.id, tokenHash, expiresAt } })
+
+        if (existed) {
+            void captureEvent(user.id, 'user_logged_in', { signup_method: 'telegram' })
+        } else {
+            void captureEvent(
+                user.id,
+                'user_registered',
+                { signup_method: 'telegram', referred: false },
+                { set: personPropsFor(user, 'telegram') },
+            )
+        }
 
         const { passwordHash: _, ...result } = user
         return { user: result, refreshToken }

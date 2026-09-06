@@ -28,7 +28,7 @@ function event(type: string, data: Record<string, unknown>) {
     processedAt: null, receivedAt: new Date(),
   }
 }
-const TX = { id: 'tx1', userId: 'u1', amount: '500', status: 'PENDING_REVIEW' }
+const TX = { id: 'tx1', userId: 'u1', amount: '500', status: 'PENDING_REVIEW', note: null, createdAt: new Date() }
 
 describe('withdrawal webhook events', () => {
   beforeEach(() => vi.clearAllMocks())

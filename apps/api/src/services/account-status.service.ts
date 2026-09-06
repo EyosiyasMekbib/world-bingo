@@ -15,6 +15,7 @@ import redis from '../lib/redis.js'
 import { AccountStatus, NotificationType } from '@world-bingo/shared-types'
 import { NotificationService } from './notification.service.js'
 import { ZareCashService } from './zarecash.service.js'
+import { captureEvent } from '../lib/posthog'
 
 /** Free-text `reason` is required; this only buckets it for reporting. */
 export const STATUS_CATEGORIES = [
@@ -249,6 +250,12 @@ export class AccountStatusService {
 
         if (result.changed) {
             await AccountStatusService.announce(userId, to, reason)
+            void captureEvent(userId, 'account_status_changed', {
+                from: result.from,
+                to,
+                category: input.category ?? null,
+                has_expiry: !!input.expiresAt,
+            })
         }
 
         return result.change

@@ -14,6 +14,7 @@ import { isZareCashEnabled } from '../gateways/payment/zarecash/config.js'
 import { ZareCashError } from '../gateways/payment/zarecash/types.js'
 import { PaymentStatus, TransactionType } from '@world-bingo/shared-types'
 import { reportError } from '../lib/sentry.js'
+import { captureEvent } from '../lib/posthog'
 
 /** The contract's open window. Overwritten by the expiresAt ZareCash returns. */
 const OPEN_WINDOW_MS = 20 * 60 * 1000
@@ -224,6 +225,12 @@ export class ZareCashCheckoutService {
                     gatewayRef: depositId,
                     note: session.methodCode,
                 },
+            })
+            void captureEvent(session.userId, 'deposit_submitted', {
+                amount: Number(tx.amount),
+                method: session.methodCode ?? null,
+                gateway: 'zarecash',
+                tx_id: tx.id,
             })
             await prisma.zareCashCheckoutSession.update({
                 where: { id: session.id },

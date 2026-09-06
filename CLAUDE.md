@@ -109,6 +109,7 @@ per-brand. Tools:
 - **Prometheus + Grafana** — metrics scrape + dashboards (`wb-domain`, `wb-infra`); per-brand.
 - **Alertmanager** — alert routing; notification channel is an intentional TODO placeholder (no notifier wired).
 - **Uptime Kuma** — external uptime checks.
+- **PostHog** — product analytics (browser events, session replay, server-side money/game events). Env-gated by `POSTHOG_KEY` / `NUXT_PUBLIC_POSTHOG_KEY`; see `docs/posthog.md`.
 
 Everything is **env-gated and a no-op when unset**: empty `SENTRY_DSN`, empty `LOKI_URL`, and
 `OTEL_ENABLED=false` mean the app boots and runs exactly as before. All **central service names are

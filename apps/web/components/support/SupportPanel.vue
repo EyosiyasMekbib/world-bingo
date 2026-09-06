@@ -267,7 +267,9 @@ const onFile = async (event: Event) => {
 
         <!-- Bodies are interpolated as text, never v-html: a support message
              body is attacker-controlled (a player types it). -->
-        <p v-if="message.body">{{ message.body }}</p>
+        <!-- data-ph-mask: a chat body is free text a player or agent typed,
+             so it can hold anything — phone numbers, account numbers, names. -->
+        <p v-if="message.body" data-ph-mask>{{ message.body }}</p>
         <img
           v-if="message.attachmentUrl"
           :src="message.attachmentUrl"

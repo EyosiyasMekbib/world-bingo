@@ -11,7 +11,7 @@
         </div>
         <div class="user-details">
           <h2 class="username">{{ auth.user?.firstName ?? auth.user?.username }}</h2>
-          <p class="phone">{{ auth.user?.telegramUsername ? `@${auth.user.telegramUsername}` : auth.user?.phone }}</p>
+          <p class="phone" data-ph-mask>{{ auth.user?.telegramUsername ? `@${auth.user.telegramUsername}` : auth.user?.phone }}</p>
           <div class="user-id-row">
             <span class="user-id">ID: #{{ formattedSerial }}</span>
             <button class="copy-btn" :title="serialCopied ? 'Copied!' : 'Copy ID'" @click="copySerial">

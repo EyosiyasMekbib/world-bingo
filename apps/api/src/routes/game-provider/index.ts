@@ -6,6 +6,7 @@ import { GameCatalogService } from '../../services/game-catalog.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { EventService } from '../../services/event.service.js'
 import { accountForLaunch } from './account-for-launch.js'
+import { captureEvent } from '../../lib/posthog'
 
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
@@ -222,6 +223,11 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             if (token) {
                 await redis.setex(`tp:token:${token}`, TOKEN_TTL, user.id)
             }
+
+            void captureEvent(user.id, 'provider_game_launched', {
+                provider_code: providerCode,
+                game_code: gameCode,
+            })
 
             // Fire analytics event non-blocking — never fail the launch
             Promise.all([

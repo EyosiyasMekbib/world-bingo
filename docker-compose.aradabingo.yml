@@ -86,6 +86,9 @@ services:
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
       LOKI_URL: ${LOKI_URL:-}
       LOKI_LABEL_APP: ${LOKI_LABEL_APP:-world-bingo-api-arada}
+      POSTHOG_KEY: ${POSTHOG_KEY:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
+      POSTHOG_BRAND: ${POSTHOG_BRAND:-arada}
     volumes:
       - uploads_data:/app/apps/api/uploads
     healthcheck:
@@ -118,6 +121,11 @@ services:
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
       NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
       NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
+      NUXT_PUBLIC_POSTHOG_KEY: ${NUXT_PUBLIC_POSTHOG_KEY:-}
+      NUXT_PUBLIC_POSTHOG_HOST: ${NUXT_PUBLIC_POSTHOG_HOST:-/ingest}
+      NUXT_PUBLIC_POSTHOG_UI_HOST: ${NUXT_PUBLIC_POSTHOG_UI_HOST:-https://eu.posthog.com}
+      NUXT_PUBLIC_POSTHOG_REPLAY: ${NUXT_PUBLIC_POSTHOG_REPLAY:-true}
+      NUXT_PUBLIC_POSTHOG_BRAND: ${NUXT_PUBLIC_POSTHOG_BRAND:-arada}
     depends_on:
       api-arada:
         condition: service_healthy

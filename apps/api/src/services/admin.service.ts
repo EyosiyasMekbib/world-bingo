@@ -4,6 +4,8 @@ import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { HouseWalletService } from './house-wallet.service'
 import { wbWithdrawalsTotal } from '../lib/metrics'
+import { captureEvent } from '../lib/posthog'
+import { hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
 /**
  * Is this row owned by a payment gateway rather than by the manual review queue?
@@ -314,6 +316,15 @@ export class AdminService {
                 throw new Error('Transaction is not pending review')
             }
             const updated = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } })
+            if (tx.type === TransactionType.WITHDRAWAL) {
+                void captureEvent(updated.userId, 'withdrawal_approved', {
+                    amount: Number(updated.amount),
+                    method: withdrawalMethodFromNote(tx.note),
+                    gateway: 'manual',
+                    hours_to_decision: hoursBetween(tx.createdAt, new Date()),
+                    tx_id: transactionId,
+                })
+            }
             await NotificationService.create(
                 updated.userId,
                 NotificationType.WITHDRAWAL_PROCESSED,
@@ -354,6 +365,16 @@ export class AdminService {
         const transaction = await prisma.transaction.update({
             where: { id: transactionId },
             data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
+        })
+
+        // `existing.note` is the method code initiateDeposit stored; the update
+        // above just replaced it with the reviewer's note.
+        void captureEvent(transaction.userId, 'deposit_rejected', {
+            amount: Number(existing.amount),
+            method: existing.note ?? null,
+            hours_to_decision: hoursBetween(existing.createdAt, new Date()),
+            has_note: !!note,
+            tx_id: transactionId,
         })
 
         await NotificationService.create(

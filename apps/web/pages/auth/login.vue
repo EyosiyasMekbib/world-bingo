@@ -96,15 +96,18 @@
       <div v-if="showWelcomeBack" class="welcome-back">
         <div class="wb-avatar">
           <img v-if="auth.user!.photoUrl" :src="auth.user!.photoUrl" class="wb-photo" alt="Profile" />
-          <span v-else>{{ (auth.user!.firstName ?? auth.user!.username ?? 'U')[0].toUpperCase() }}</span>
+          <!-- data-ph-mask: session replay must not record the player's
+               name. rrweb masks the matched element and its descendants. -->
+          <span v-else data-ph-mask>{{ (auth.user!.firstName ?? auth.user!.username ?? 'U')[0].toUpperCase() }}</span>
         </div>
-        <p class="wb-name">
+        <p class="wb-name" data-ph-mask>
           Welcome back,<br>
           <strong>{{ auth.user!.firstName ?? auth.user!.telegramUsername ?? auth.user!.username }}</strong>
         </p>
         <button class="btn-primary-auth" :disabled="loading" @click="openTelegramAuth">
           <span v-if="loading" class="spinner" />
-          <span>{{ loading ? 'Connecting…' : `Continue as ${auth.user!.firstName ?? auth.user!.username}` }}</span>
+          <!-- The spinner beside this still shows the loading state in replay. -->
+          <span data-ph-mask>{{ loading ? 'Connecting…' : `Continue as ${auth.user!.firstName ?? auth.user!.username}` }}</span>
         </button>
         <button class="wb-switch" @click="auth.clearStoredUser()">
           Sign in as different user

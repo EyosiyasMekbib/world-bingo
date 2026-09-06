@@ -24,6 +24,8 @@ import { getQueue, QUEUE_NAMES } from '../lib/queue'
 import { TournamentService } from './tournament.service'
 import { GameSchedulerService } from './game-scheduler.service'
 import { HouseWalletService } from './house-wallet.service'
+import { captureEvent } from '../lib/posthog'
+import { emitGameFinished, emitGameRefunded } from '../lib/posthog-events'
 import {
     wbPayoutLatencySeconds,
     wbPayoutsTotal,
@@ -137,15 +139,16 @@ export class GameService {
                 )
             )
 
-            return { entries, game, totalCost, realAfter, bonusAfter }
+            return { entries, game, totalCost, realAfter, bonusAfter, spendAccount: wallet.spendAccount }
         })
 
-        const { game, totalCost, entries: joinedEntries, realAfter, bonusAfter } = txResult as {
+        const { game, totalCost, entries: joinedEntries, realAfter, bonusAfter, spendAccount } = txResult as {
             game: any
             totalCost: Decimal
             entries: any[]
             realAfter: Decimal
             bonusAfter: Decimal
+            spendAccount: string
         }
 
         // ── Post-commit: update Redis room state ────────────────────────────
@@ -174,6 +177,15 @@ export class GameService {
 
         // Push balance update
         NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusAfter.toNumber())
+
+        void captureEvent(userId, 'game_joined', {
+            game_id: gameId,
+            template_id: game.templateId ?? null,
+            ticket_price: Number(game.ticketPrice),
+            cartelas: joinedEntries.length,
+            stake: Number(totalCost),
+            spend_account: spendAccount,
+        })
 
         // Metrics: count cartela reservations / game joins (post-commit, one per entry)
         wbGameEntriesTotal.inc(joinedEntries.length)
@@ -293,6 +305,12 @@ export class GameService {
         // Push balance update
         NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusAfter.toNumber())
 
+        void captureEvent(userId, 'game_left', {
+            game_id: gameId,
+            template_id: game.templateId ?? null,
+            refund: Number(refundAmount),
+        })
+
         return { refundAmount, playerCount }
     }
 
@@ -397,6 +415,8 @@ export class GameService {
 
         // Refund all players (idempotent)
         const refunds = await RefundService.refundGame(gameId)
+
+        emitGameRefunded(gameId, game.templateId ?? null, refunds, reason)
 
         // Notify each refunded player
         await Promise.all(
@@ -597,6 +617,7 @@ export class GameService {
 
             // Game completed via a winner.
             wbGamesCompletedTotal.labels('winner').inc()
+            void emitGameFinished(gameId)
             if (endedGame?.startedAt && endedGame?.endedAt) {
                 const durationSecs =
                     (new Date(endedGame.endedAt).getTime() - new Date(endedGame.startedAt).getTime()) / 1000
