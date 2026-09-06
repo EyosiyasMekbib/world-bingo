@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js'
 
 export const ALLOWED_EVENTS = [
     'lobby_view',
+    'games_lobby_view',
     'game_view',
     'join_click',
     'deposit_modal_opened',

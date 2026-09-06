@@ -1,18 +1,6 @@
 import { defineStore } from 'pinia'
 import type { LoginDto, RegisterDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
 
-function sendIdentify(apiBase: string) {
-    if (typeof localStorage === 'undefined') return
-    const anonId = localStorage.getItem('wb_anon_id')
-    const sessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('wb_session_id') : null
-    if (!anonId) return
-    fetch(`${apiBase}/events/identify`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ anonId, sessionId }),
-    }).catch(() => {})
-}
-
 interface AuthState {
   user: User | null
   accessToken: string | null
@@ -48,7 +36,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = user
       this.accessToken = accessToken
       this.refreshToken = refreshToken
-      sendIdentify(config.public.apiBase as string)
+      useAnalytics().identify(user)
       await this.fetchWallet()
     },
 
@@ -65,6 +53,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = user
       this.accessToken = accessToken
       this.refreshToken = refreshToken
+      useAnalytics().identify(user)
       await this.fetchWallet()
     },
 
@@ -81,7 +70,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = user
       this.accessToken = accessToken
       this.refreshToken = refreshToken
-      sendIdentify(config.public.apiBase as string)
+      useAnalytics().identify(user)
       await this.fetchWallet()
     },
 
@@ -110,6 +99,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     clearStoredUser() {
+      useAnalytics().reset()
       this.user = null
       this.accessToken = null
       this.refreshToken = null
@@ -128,6 +118,7 @@ export const useAuthStore = defineStore('auth', {
           // ignore
         }
       }
+      useAnalytics().reset()
       this.user = null
       this.accessToken = null
       this.refreshToken = null
