@@ -10,6 +10,8 @@ import { DepositBonusService } from './deposit-bonus.service'
 import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
 import { getQueue, QUEUE_NAMES, ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
 import { reportError } from '../lib/sentry'
+import { captureEvent } from '../lib/posthog'
+import { emitDepositApproved, hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
 export class WalletService {
     static async getBalance(userId: string) {
@@ -70,6 +72,12 @@ export class WalletService {
                 ...(data.methodCode ? { note: data.methodCode } : {}),
                 ...(routeToZareCash ? { gateway: 'zarecash' } : {}),
             },
+        })
+        void captureEvent(userId, 'deposit_submitted', {
+            amount: Number(data.amount),
+            method: data.methodCode ?? null,
+            gateway: routeToZareCash ? 'zarecash' : 'manual',
+            tx_id: transaction.id,
         })
         if (routeToZareCash) {
             // Submit on a queue, not inline: it buys retries for free, and it
@@ -229,6 +237,24 @@ export class WalletService {
                 realAfter.toNumber(),
                 finalBonusBalance,
             )
+
+            // PostHog — post-commit only. The approval itself, then every bonus
+            // this approval granted (first-deposit and rule-based).
+            void emitDepositApproved(transaction.id)
+            if (bonusAwarded > 0) {
+                void captureEvent(transaction.userId, 'bonus_granted', {
+                    amount: bonusAwarded,
+                    source: 'FIRST_DEPOSIT',
+                    rule_id: null,
+                })
+            }
+            for (const grant of [...depositBonusResult.daily, ...depositBonusResult.weekly]) {
+                void captureEvent(transaction.userId, 'bonus_granted', {
+                    amount: Number(grant.amount),
+                    source: 'DEPOSIT_RULE',
+                    rule_id: grant.ruleId,
+                })
+            }
 
             // Metrics: deposit approved (post-commit). The payment method is stored
             // in `note` (the client-supplied methodCode) by initiateDeposit. Bound
@@ -404,6 +430,13 @@ export class WalletService {
             // Push balance update
             NotificationService.pushWalletUpdate(userId, realAfter.toNumber(), bonusBefore.toNumber())
 
+            void captureEvent(userId, 'withdrawal_requested', {
+                amount: data.amount,
+                method: data.paymentMethod,
+                gateway: routeToZareCash ? 'zarecash' : 'manual',
+                tx_id: transaction.id,
+            })
+
             // Submit AFTER the DB transaction commits — never hold the wallet lock
             // across a network call. Routing data travels on the job rather than
             // being parsed back out of the free-form `note` string.
@@ -539,6 +572,13 @@ export class WalletService {
             `Your withdrawal of ${Number(existing.amount).toFixed(2)} ETB was rejected and refunded to your wallet.${note ? ` Reason: ${note}` : ''}`,
             { transactionId, amount: Number(existing.amount), note },
         ).catch(() => {})
+
+        void captureEvent(existing.userId, 'withdrawal_rejected', {
+            amount: Number(existing.amount),
+            method: withdrawalMethodFromNote(existing.note),
+            hours_to_decision: hoursBetween(existing.createdAt, new Date()),
+            tx_id: transactionId,
+        })
 
         wbWithdrawalsTotal.labels('rejected').inc()
 

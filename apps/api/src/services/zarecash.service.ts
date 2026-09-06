@@ -18,6 +18,8 @@ import { ZareCashCheckoutService } from './zarecash-checkout.service.js'
 import { wbWithdrawalsTotal } from '../lib/metrics.js'
 import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
 import { reportError, reportWarning } from '../lib/sentry.js'
+import { captureEvent } from '../lib/posthog'
+import { hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
 /**
  * How many pages of GET /v1/events one sweep run may walk before it gives up and
@@ -700,6 +702,11 @@ export class ZareCashService {
         transactionId: string,
         settlementRef: string | null,
     ): Promise<void> {
+        // The claim below overwrites `note` (which carries the method). Read it first.
+        const before = await prisma.transaction.findUnique({
+            where: { id: transactionId },
+            select: { note: true, createdAt: true },
+        })
         const claim = await prisma.transaction.updateMany({
             where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
             data: {
@@ -756,6 +763,13 @@ export class ZareCashService {
             `Your withdrawal of ${Number(settled.amount).toFixed(2)} ETB has been transferred.`,
             { transactionId, amount: Number(settled.amount) },
         ).catch(() => {})
+        void captureEvent(settled.userId, 'withdrawal_approved', {
+            amount: Number(settled.amount),
+            method: withdrawalMethodFromNote(before?.note),
+            gateway: 'zarecash',
+            hours_to_decision: hoursBetween(before?.createdAt ?? settled.createdAt, new Date()),
+            tx_id: transactionId,
+        })
         wbWithdrawalsTotal.labels('approved').inc()
     }
 
