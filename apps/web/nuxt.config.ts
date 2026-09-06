@@ -9,6 +9,9 @@ const API_PROXY_TARGET = process.env.NUXT_API_PROXY_TARGET || 'http://api:8080'
 
 // PostHog ingest is proxied through this origin so ad blockers never see it.
 // EU Cloud by default; a US project passes both build args (see Dockerfile).
+// These are the BUILD-TIME defaults for the runtimeConfig keys below, so the
+// Dockerfile args keep working; a runtime NUXT_POSTHOG_PROXY_TARGET /
+// NUXT_POSTHOG_ASSETS_PROXY_TARGET still overrides them without a rebuild.
 const POSTHOG_PROXY_TARGET = process.env.NUXT_POSTHOG_PROXY_TARGET || 'https://eu.i.posthog.com'
 const POSTHOG_ASSETS_PROXY_TARGET =
     process.env.NUXT_POSTHOG_ASSETS_PROXY_TARGET || 'https://eu-assets.i.posthog.com'
@@ -87,6 +90,11 @@ export default defineNuxtConfig({
         // When running in Docker, set this to http://api:8080 so SSR calls
         // reach the API container instead of localhost (which doesn't resolve).
         apiBaseServer: '',
+        // Upstream origins for server/routes/ingest/[...].ts. Private (server
+        // -only) on purpose: the browser talks to the same-origin /ingest path
+        // and never needs to know where it lands.
+        posthogProxyTarget: POSTHOG_PROXY_TARGET,
+        posthogAssetsProxyTarget: POSTHOG_ASSETS_PROXY_TARGET,
         public: {
             apiBase: 'http://localhost:8080',
             wsUrl: 'http://localhost:8080',
@@ -131,9 +139,11 @@ export default defineNuxtConfig({
                 'cache-control': 'public, max-age=31536000, immutable',
             },
         },
-        // PostHog reverse proxy. The static rule must stay above the catch-all.
-        '/ingest/static/**': { proxy: `${POSTHOG_ASSETS_PROXY_TARGET}/static/**` },
-        '/ingest/**': { proxy: `${POSTHOG_PROXY_TARGET}/**` },
+        // NOTE: /ingest/** is deliberately NOT a route rule. routeRules.proxy
+        // goes through h3's proxyRequest, which forwards the request's `cookie`
+        // header — and the persisted auth store lives in a cookie, so every
+        // event batch shipped the player's JWTs and profile to PostHog.
+        // server/routes/ingest/[...].ts proxies it with those headers stripped.
         '/api/**': { proxy: `${API_PROXY_TARGET}/**` },
         '/socket.io/': { proxy: `${API_PROXY_TARGET}/socket.io/` },
         '/v1/**': { proxy: `${API_PROXY_TARGET}/v1/**` },
