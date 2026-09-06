@@ -12,6 +12,7 @@
         "build": "tsup",
         "start": "node --env-file .env dist/index.js",
         "typecheck": "tsc --noEmit",
+        "typecheck:scripts": "tsc --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target es2022 scripts/posthog-backfill.ts",
         "lint": "eslint src",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",

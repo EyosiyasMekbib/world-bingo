@@ -13,6 +13,12 @@
  * de-duplicates on it. The client is created with historicalMigration so the
  * import does not count against real-time ingestion limits.
  *
+ * Every page loop awaits a flush before reading the next page: the client
+ * queue drops the OLDEST event when it fills, silently, so a paging loop that
+ * outruns the network loses the beginning of history rather than the end. The
+ * run finishes by reconciling events queued against events PostHog
+ * acknowledged, and exits 1 on any shortfall.
+ *
  * Bots and staff are excluded at the source with the same predicate
  * AnalyticsService uses. Phone numbers, names and account numbers never leave
  * the database — see lib/posthog-backfill.ts for exactly what is sent.
@@ -60,16 +66,47 @@ const client = key && !dryRun
           historicalMigration: true,
           flushAt: 100,
           flushInterval: 1000,
+          // posthog-node defaults this to 10_000, and @posthog/core drops the
+          // OLDEST queued event once the queue is full — a `logger.warn` that
+          // only prints in debug mode, never an 'error' event. Postgres returns
+          // a 1000-row page in milliseconds while a flush is 100 events per
+          // HTTP round trip, so the queue used to saturate within a handful of
+          // pages and silently discard everything but the last ~10k events.
+          // The real fix is the per-page `await drain()` below; this is the
+          // belt to its braces.
+          maxQueueSize: Number.MAX_SAFE_INTEGER,
       })
     : null
 
 const counts: Record<string, number> = {}
 let failed = false
+/** Events PostHog actually accepted, from the core client's own 'flush' event. */
+let sent = 0
 if (client) {
     client.on('error', (err: unknown) => {
         failed = true
         console.error('[posthog] batch error:', err)
     })
+    // @posthog/core emits 'flush' with the array of messages it just shipped
+    // (`this._events.emit('flush', sentMessages)`), so this counts sends, not
+    // enqueues — which is exactly the number that used to go missing.
+    client.on('flush', (messages: unknown) => {
+        sent += Array.isArray(messages) ? messages.length : 0
+    })
+}
+
+/**
+ * Empty the queue before reading the next page. Without this the paging loop
+ * outruns the network by orders of magnitude and the queue eats itself.
+ */
+async function drain(): Promise<void> {
+    if (!client) return
+    try {
+        await client.flush()
+    } catch (err) {
+        failed = true
+        console.error('[posthog] flush failed:', err)
+    }
 }
 
 function send(ev: BackfillEvent | BackfillAlias): void {
@@ -119,6 +156,7 @@ async function backfillUsers(excluded: Set<string>): Promise<void> {
             if (excluded.has(u.id)) continue
             userEvents(u).forEach(send)
         }
+        await drain()
         cursor = rows[rows.length - 1].id
     }
 }
@@ -147,6 +185,7 @@ async function backfillTransactions(excluded: Set<string>): Promise<void> {
                 if (b) send(b)
             }
         }
+        await drain()
         cursor = rows[rows.length - 1].id
     }
 }
@@ -196,6 +235,7 @@ async function backfillGames(excluded: Set<string>): Promise<void> {
             if (game.status === 'COMPLETED') gameFinishedEvents(game, entrants).forEach(send)
             else gameRefundedEvents(game, refundsByGame.get(game.id) ?? []).forEach(send)
         }
+        await drain()
         cursor = games[games.length - 1].id
     }
 }
@@ -216,6 +256,7 @@ async function backfillAnalyticsEvents(excluded: Set<string>): Promise<void> {
             const mapped = analyticsEventRow(e)
             if (mapped) send(mapped)
         }
+        await drain()
         cursor = rows[rows.length - 1].id
     }
 }
@@ -228,9 +269,22 @@ async function main(): Promise<void> {
     await backfillTransactions(excluded)
     await backfillGames(excluded)
     await backfillAnalyticsEvents(excluded)
-    if (client) await client.shutdown()
+    // Default is 30 s, which is not enough to drain a large tail. Every page
+    // already flushed, so this normally has little left to do.
+    if (client) await client.shutdown(600_000)
     await prisma.$disconnect()
     console.table(counts)
+
+    const queued = Object.values(counts).reduce((a, b) => a + b, 0)
+    if (client) {
+        console.log(`queued ${queued} events, PostHog acknowledged ${sent}`)
+        if (sent < queued) {
+            console.error(`SHORTFALL: ${queued - sent} events were never sent. Re-run: deterministic uuids make that safe.`)
+            failed = true
+        }
+    } else {
+        console.log(`counted ${queued} events (dry run — nothing sent)`)
+    }
     if (failed) {
         console.error('Some batches failed. Re-run: deterministic uuids make that safe.')
         process.exit(1)
