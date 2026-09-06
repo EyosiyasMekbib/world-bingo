@@ -24,7 +24,11 @@
    | `NUXT_PUBLIC_POSTHOG_KEY` | web | the same `phc_…` |
    | `NUXT_PUBLIC_POSTHOG_BRAND` | web | `arada` or `betbawa` |
 
-   Everything else has a working default (`/ingest` proxy, EU hosts, replay on).
+   `POSTHOG_BRAND` and `NUXT_PUBLIC_POSTHOG_BRAND` **must be set to the same value**. They
+   are the `brand` property on server events and browser events respectively; if they
+   disagree, one player's history splits across two brands and every brand-filtered
+   insight under-counts. Everything else has a working default (`/ingest` proxy, EU hosts,
+   replay on).
 4. Redeploy api and web. The api logs `[posthog] product analytics enabled` at boot.
 
 ## 2. Verify
@@ -34,6 +38,13 @@
   `serial`, `brand`, `signup_method` set — and **no** phone number anywhere.
 - Network tab: events go to `https://<your-domain>/ingest/…`, never to `posthog.com`
   directly. If they do not, the Nuxt image was built without the default proxy targets.
+- **The outbound `/ingest` request must carry no `Cookie` header.** `/ingest` is same-origin,
+  so the browser attaches the persisted `auth` cookie — which holds the JWT access and
+  refresh tokens and the whole user record — to the request the *browser* makes. The Nitro
+  handler at `server/routes/ingest/[...].ts` strips `cookie` and `authorization` before
+  forwarding. To check: on the api container, `tcpdump`/proxy logs on the upstream leg, or
+  simply confirm the handler is in the build — a `routeRules` proxy would forward the
+  cookie, which is why this is a handler and not a route rule.
 - **Session replay** → a recording appears within a minute. Every input is masked; the
   profile page's phone line is masked (`data-ph-mask`); uploaded receipts are black boxes.
 - Turn replay off without a rebuild: `NUXT_PUBLIC_POSTHOG_REPLAY=false`, redeploy web.
@@ -90,6 +101,20 @@ alias linking each anonymous id to the user that later identified. Every backfil
 transactions table records when a row was created, not when it was decided. Those charts start
 from the deploy date.
 
+What it cannot send, because no historical source exists:
+
+- **`DEPOSIT_RULE` bonuses.** The other four bonus sources map from a transaction type;
+  a deposit-rule grant leaves no distinguishing row, so backfilled `bonus_granted` never
+  carries `source: 'DEPOSIT_RULE'`. That source appears only from the deploy date on.
+- **`game_left`.** Leaving a game before it starts is not recorded anywhere — the entry row
+  is deleted. Backfilled history has `game_joined` with no matching `game_left`, so any
+  join→leave funnel is live-only.
+- **Cancellation reasons.** Backfilled `game_refunded` carries `reason: 'backfill'`, not the
+  real reason, which was never persisted. Filter it out when charting reasons.
+
+`deposit_submitted` rows in `analytics_events` are skipped: the same event is derived from
+`transactions`, which is the authoritative copy.
+
 Historical imports show up in PostHog with a delay (minutes to an hour) and are billed as an
 import, not as live events.
 
@@ -126,9 +151,14 @@ Supporting cuts worth a saved insight each: `game_finished` breakdown by `templa
 - Distinct id is the user UUID. Phone, names, Telegram handles, account numbers, receipt URLs
   and reviewer notes are never sent — by construction in `lib/posthog-events.ts` and
   `utils/posthog.ts`. Keep it that way when adding events.
+- **Nothing that identifies a player rides the proxy either.** `/ingest` is a Nitro handler,
+  not a route rule, precisely so `cookie` and `authorization` can be stripped before the
+  request leaves the box — see §2.
 - Replay masks all inputs (`maskAllInputs`), anything with `data-ph-mask`, and blocks
-  `/uploads/` images. Add `data-ph-mask` to any new element that renders a phone or account
-  number as text.
+  `/uploads/` images. Masked today: the profile phone line, the login "Welcome back" card,
+  support chat message bodies, notification bodies. Add `data-ph-mask` to any new element
+  that renders a name, phone, account number, or free text somebody typed — rrweb masks the
+  matched element and everything inside it.
 - `autocapture` is off. Volume is the named events only; a busy month is well under the
   free tier. Check Settings → Billing monthly.
 - To stop everything: clear the two keys and redeploy. Nothing else needs to change.
@@ -140,7 +170,9 @@ Supporting cuts worth a saved insight each: `game_finished` breakdown by `templa
 | `apps/web/plugins/02.posthog.client.ts` | SDK init, super props, identify on hydrate |
 | `apps/web/composables/useAnalytics.ts` | `track` / `identify` / `reset` dual-sink adapter |
 | `apps/web/utils/posthog.ts` | pure helpers (person props, replay flag, brand slug) |
-| `apps/web/nuxt.config.ts` | `runtimeConfig.public.posthog`, `/ingest/**` proxy rules |
+| `apps/web/nuxt.config.ts` | `runtimeConfig.public.posthog`, private `posthog*ProxyTarget` |
+| `apps/web/server/routes/ingest/[...].ts` | `/ingest` reverse proxy, strips credential headers |
+| `apps/web/utils/posthog-proxy.ts` | pure helpers for that handler (header strip, host split) |
 | `apps/api/src/lib/posthog.ts` | env-gated client, bot/staff exclusion, `captureEvent` |
 | `apps/api/src/lib/posthog-events.ts` | `emitDepositApproved`, `emitGameFinished`, `emitGameRefunded` |
 | `apps/api/src/lib/posthog-backfill.ts` + `scripts/posthog-backfill.ts` | historical import |
