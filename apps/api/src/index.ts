@@ -1,8 +1,10 @@
 import { initSentry, Sentry, reportError } from './lib/sentry.js'
+import { initPostHog, shutdownPostHog } from './lib/posthog'
 
 // Initialise error reporting before anything else so early failures are captured.
 // No-op when SENTRY_DSN is unset.
 initSentry()
+initPostHog()
 
 import Fastify, { type FastifyError } from 'fastify'
 import cors from '@fastify/cors'
@@ -377,6 +379,7 @@ const shutdown = async (signal: string) => {
     stopAllEngines()
     stopAllRoomCountdowns()
     await closeAllQueues().catch(() => { })
+    await shutdownPostHog()
     await prisma.$disconnect().catch(() => { })
     try {
         await server.close()
