@@ -20,7 +20,8 @@
         "db:seed:etfc": "tsx --env-file ../../.env prisma/seed-etfc.ts",
         "db:seed:demo": "tsx --env-file ../../.env prisma/seed-demo-history.ts",
         "db:studio": "prisma studio --env-file ../../.env",
-        "db:seed:etfc:novelty": "tsx --env-file ../../.env prisma/seed-etfc-novelty.ts"
+        "db:seed:etfc:novelty": "tsx --env-file ../../.env prisma/seed-etfc-novelty.ts",
+        "posthog:backfill": "tsx --env-file ../../.env scripts/posthog-backfill.ts"
     },
     "dependencies": {
         "@bull-board/api": "^6.19.0",
