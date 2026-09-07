@@ -87,6 +87,49 @@ describe('refresh — single flight', () => {
     await store.refresh()
     expect($fetch).toHaveBeenCalledTimes(2)
   })
+
+  // Module scope on the Nitro server is shared by concurrent requests from
+  // DIFFERENT users, so sharing the slot there would hand one player's freshly
+  // minted access token to another player's page. Simulated by removing
+  // `window`, which is exactly what the store sees under SSR.
+  it('does NOT share the slot during SSR, so users cannot cross', async () => {
+    const realWindow = globalThis.window
+    vi.stubGlobal('window', undefined)
+    try {
+      $fetch.mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ user: store.user, accessToken: jwt(900), refreshToken: 'rt-2' }), 10),
+          ),
+      )
+      await Promise.all([store.refresh(), store.refresh()])
+      expect($fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      // Restore ONLY window: unstubAllGlobals would also wipe this file's
+      // $fetch / useRuntimeConfig stubs and break every later test.
+      vi.stubGlobal('window', realWindow)
+    }
+  })
+
+  it('leaves the shared slot usable after an SSR refresh', async () => {
+    const realWindow = globalThis.window
+    vi.stubGlobal('window', undefined)
+    $fetch.mockResolvedValue({ user: store.user, accessToken: jwt(900), refreshToken: 'rt-2' })
+    await store.refresh()
+    vi.stubGlobal('window', realWindow)
+
+    // Back in the browser the slot must still de-duplicate: an SSR call that
+    // never took the slot must not have left a stale promise behind either.
+    $fetch.mockClear()
+    $fetch.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ user: store.user, accessToken: jwt(900), refreshToken: 'rt-3' }), 10),
+        ),
+    )
+    await Promise.all([store.refresh(), store.refresh(), store.refresh()])
+    expect($fetch).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('refresh — what ends a session', () => {

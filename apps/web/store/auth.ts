@@ -11,10 +11,30 @@ import { isExpiringWithin, TOKEN_REFRESH_MARGIN_MS } from '~/utils/token'
 const SESSION_ENDING_CODES = new Set(['refresh_token_invalid', 'refresh_token_expired'])
 
 /**
- * Module-level, not per-store-instance: every caller in the app must await the
- * same request. The lobby alone fires several authenticated calls in parallel,
- * and before this each one refreshed separately — one won, the others got a
- * retired token back and logged the player out.
+ * Whether the shared refresh slot below may be used.
+ *
+ * `typeof window` is the load-bearing half: under Nitro there is no `window`,
+ * and a test can simulate the server by removing it. `import.meta.client` is
+ * the Nuxt idiom and is checked with `!== false` because Vitest leaves it
+ * undefined — so the browser and jsdom both share, and only SSR does not.
+ */
+function sharesRefresh(): boolean {
+  return typeof window !== 'undefined' && import.meta.client !== false
+}
+
+/**
+ * Module-level, not per-store-instance: in the browser every caller must await
+ * the same request. The lobby alone fires several authenticated calls in
+ * parallel, and before this each one refreshed separately — one won, the others
+ * got a retired token back and logged the player out.
+ *
+ * Deliberately NOT shared during SSR. Module scope on the Nitro server is
+ * shared by concurrent requests from different users, so a shared promise there
+ * would hand one player's freshly minted access token to another player's page.
+ * No SSR path reaches a refresh today (`refresh()` returns at its
+ * `!this.refreshToken` guard, and every apiFetch call site is in `onMounted` or
+ * a handler), so this closes the door before someone opens it — an SSR fetch
+ * added later must not silently become a cross-user token leak.
  */
 let refreshPromise: Promise<string | null> | null = null
 
@@ -103,12 +123,13 @@ export const useAuthStore = defineStore('auth', {
 
     async refresh(): Promise<string | null> {
       if (!this.refreshToken) return null
-      if (refreshPromise) return refreshPromise
+      const shared = sharesRefresh()
+      if (shared && refreshPromise) return refreshPromise
 
       const config = useRuntimeConfig()
       const token = this.refreshToken
 
-      refreshPromise = (async () => {
+      const pending = (async () => {
         try {
           const { user, accessToken, refreshToken } = await $fetch<{
             user: User
@@ -141,11 +162,14 @@ export const useAuthStore = defineStore('auth', {
           useAnalytics().track('session_refresh_failed', { status, transient: true })
           throw error
         } finally {
-          refreshPromise = null
+          // Only clear a slot this call actually wrote. An SSR call never took
+          // the slot, so it must not blank out a browser refresh in flight.
+          if (shared) refreshPromise = null
         }
       })()
 
-      return refreshPromise
+      if (shared) refreshPromise = pending
+      return pending
     },
 
     /**
