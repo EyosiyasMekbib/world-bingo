@@ -110,12 +110,18 @@
                           :min="MIN_DEPOSIT"
                           :placeholder="`Min ${MIN_DEPOSIT} ETB`"
                           :class="['wb-input', form.amount > 0 && form.amount < MIN_DEPOSIT ? 'wb-input--error' : '']"
+                          @change="trackAmountEntered(m.code)"
                         />
                         <p v-if="form.amount > 0 && form.amount < MIN_DEPOSIT" class="wb-hint wb-hint--error">
                           Minimum deposit is {{ MIN_DEPOSIT }} ETB
                         </p>
                         <div class="chips">
-                          <button v-for="chip in [200, 500, 1000, 2000]" :key="chip" class="wb-chip" @click="form.amount = chip">
+                          <button
+                            v-for="chip in [200, 500, 1000, 2000]"
+                            :key="chip"
+                            class="wb-chip"
+                            @click="form.amount = chip; trackAmountEntered(m.code)"
+                          >
                             +{{ chip }}
                           </button>
                         </div>
@@ -278,6 +284,17 @@ function toggleMethod(m: DepositMethod) {
   if (openMethod.value) track('deposit_method_selected', { paymentMethod: m.code })
 }
 
+// Fires when the amount is actually entered — on the input's `change`
+// (not every keystroke) and on chip selection — instead of at final
+// submit. Manual deposits also require transaction ID, sender details and
+// a receipt upload, so tracking this at submit time conflated "typed an
+// amount" with "survived the whole form."
+function trackAmountEntered(paymentMethod: string) {
+  if (!(form.amount > 0)) return
+  const amountBucket = form.amount < 500 ? '<500' : form.amount < 1000 ? '500-1000' : form.amount < 5000 ? '1000-5000' : '5000+'
+  track('deposit_amount_entered', { paymentMethod, amountBucket })
+}
+
 // A logoUrl that 404s must not leave a broken-image glyph sitting on the card:
 // the asset and the database row that points at it ship separately, so any
 // deploy ordering can produce that gap. Fall back to the name instead.
@@ -413,8 +430,6 @@ async function submit() {
   error.value = ''
   success.value = false
   uploadProgress.value = 0
-  const amountBucket = form.amount < 500 ? '<500' : form.amount < 1000 ? '500-1000' : form.amount < 5000 ? '1000-5000' : '5000+'
-  track('deposit_amount_entered', { paymentMethod: selectedMethod.value?.code ?? null, amountBucket })
 
   try {
     const formData = new FormData()
