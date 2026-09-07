@@ -68,10 +68,10 @@ async function buildApp() {
     // a stub that's never invoked is enough to let the plugin register.
     app.decorate('authenticate', async () => {})
     // Required, not incidental: /auth/refresh builds its per-IP ceiling with
-    // `fastify.rateLimit(...)` at registration time, so authRoutes cannot be
-    // registered without the plugin. Production must fail loudly if this is
-    // ever missing — a silently absent ceiling is the bug it exists to
-    // prevent — so the test registers it rather than the route tolerating it.
+    // `fastify.createRateLimit(...)` at registration time, so authRoutes
+    // cannot be registered without the plugin. Production must fail loudly if
+    // this is ever missing — a silently absent ceiling is the bug it exists
+    // to prevent — so the test registers it rather than the route tolerating it.
     // The limits here are far above anything these few injects reach, so they
     // never colour the response shapes under test.
     await app.register(fastifyRateLimit, { global: false })

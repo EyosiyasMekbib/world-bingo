@@ -234,6 +234,39 @@ describe('AuthService', () => {
             expect(thirdToken).toBeDefined()
             expect(thirdToken).not.toBe(firstToken)
         })
+
+        it('counts an unexpected failure as outcome="error" and rethrows it unchanged', async () => {
+            // `AuthService.refreshToken`'s try/catch only labels 'error' for
+            // failures that are NOT a deliberate `RefreshTokenError` (invalid/
+            // expired tokens already label themselves inside
+            // `rotateRefreshToken`). Force exactly that: make the very first
+            // DB call in `rotateRefreshToken` — the `findUnique` lookup —
+            // reject with a generic error, standing in for a real DB outage.
+            const before = (await wbAuthRefreshTotal.get()).values.find(
+                (v) => v.labels.outcome === 'error',
+            )?.value ?? 0
+
+            const boom = new Error('connection reset')
+            // Save/restore by assignment rather than `vi.spyOn(...).mockRestore()`:
+            // Prisma exposes delegate methods through a proxy, so `mockRestore`
+            // deletes `findUnique` instead of putting the original back, and
+            // every later test that touches it dies with "not a function".
+            const original = realPrisma.refreshToken.findUnique
+            ;(realPrisma.refreshToken as any).findUnique = vi.fn().mockRejectedValueOnce(boom)
+            try {
+                // Rethrown unchanged — same reference, not a copy or a wrap —
+                // so a caller further up (the route handler, the error
+                // handler) sees exactly what the DB threw.
+                await expect(AuthService.refreshToken('whatever-token')).rejects.toBe(boom)
+            } finally {
+                ;(realPrisma.refreshToken as any).findUnique = original
+            }
+
+            const after = (await wbAuthRefreshTotal.get()).values.find(
+                (v) => v.labels.outcome === 'error',
+            )?.value ?? 0
+            expect(after - before).toBe(1)
+        })
     })
 
     describe('logout', () => {
