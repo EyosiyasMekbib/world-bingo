@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import crypto from 'crypto'
 import { AuthService } from '../services/auth.service'
 import { prisma } from './setup'
+// The same module-cache singleton auth.service.ts itself talks to — needed to
+// force the DB call it makes to fail, for the outcome="error" test below.
+// `./setup`'s `prisma` is a separate PrismaClient instance and spying on it
+// would not touch what AuthService actually calls.
+import realPrisma from '../lib/prisma'
+import { wbAuthRefreshTotal } from '../lib/metrics'
 import type { TelegramAuthDto } from '@world-bingo/shared-types'
 
 describe('AuthService', () => {

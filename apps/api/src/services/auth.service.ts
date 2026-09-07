@@ -90,6 +90,9 @@ export class AuthService {
                 userId: user.id,
                 tokenHash,
                 expiresAt,
+                // Starts this device's own rotation chain — see logout()'s
+                // family-wide revoke and refreshToken()'s propagation below.
+                familyId: crypto.randomUUID(),
             },
         })
 
@@ -139,6 +142,9 @@ export class AuthService {
                 userId: user.id,
                 tokenHash,
                 expiresAt,
+                // Starts this device's own rotation chain — a logout on this
+                // login must not touch a session started by a different login.
+                familyId: crypto.randomUUID(),
             },
         })
 
@@ -150,7 +156,25 @@ export class AuthService {
         return { user: result, refreshToken }
     }
 
+    /**
+     * Wraps the actual refresh logic so any failure that is NOT a deliberate
+     * `RefreshTokenError` (a DB error on the `create`, say) still moves the
+     * `error` counter — otherwise that class of failure vanishes from the
+     * metric meant to prove it doesn't happen. `RefreshTokenError` already
+     * labels itself (invalid/expired/grace/rotated below) and must not also
+     * be counted here.
+     */
     static async refreshToken(token: string) {
+        try {
+            return await AuthService.rotateRefreshToken(token)
+        } catch (err) {
+            if (err instanceof RefreshTokenError) throw err
+            wbAuthRefreshTotal.labels('error').inc()
+            throw err
+        }
+    }
+
+    private static async rotateRefreshToken(token: string) {
         const tokenHash = hashToken(token)
 
         const storedToken = await prisma.refreshToken.findUnique({
@@ -168,6 +192,14 @@ export class AuthService {
             wbAuthRefreshTotal.labels('expired').inc()
             throw new RefreshTokenError('refresh_token_expired', 'Refresh token expired')
         }
+
+        // Every token this chain produces from here on — the rotation winner
+        // and any grace-window siblings alike — shares this family, so
+        // logout() can revoke the whole chain in one delete. A row created
+        // before this column existed has no familyId of its own; treat it as
+        // a one-row family of itself rather than leaving new siblings
+        // unlinked from it.
+        const familyId = storedToken.familyId ?? storedToken.id
 
         const newRefreshToken = generateRefreshToken()
         const newTokenHash = hashToken(newRefreshToken)
@@ -198,7 +230,7 @@ export class AuthService {
         }
 
         await prisma.refreshToken.create({
-            data: { userId: storedToken.userId, tokenHash: newTokenHash, expiresAt: newExpiresAt },
+            data: { userId: storedToken.userId, tokenHash: newTokenHash, expiresAt: newExpiresAt, familyId },
         })
 
         // Housekeeping, not correctness: prunes rotated tokens older than the
@@ -220,7 +252,21 @@ export class AuthService {
 
     static async logout(token: string) {
         const tokenHash = hashToken(token)
-        await prisma.refreshToken.deleteMany({ where: { tokenHash } })
+        const storedToken = await prisma.refreshToken.findUnique({ where: { tokenHash } })
+        if (!storedToken) return
+
+        // Revoke the whole device chain, not just the presented hash — a
+        // sibling minted seconds earlier during a grace-window burst (see
+        // rotateRefreshToken above) is otherwise still valid for up to 30
+        // days after the player logs out. A null familyId (a row from before
+        // that column existed) falls back to the old single-hash behaviour.
+        if (storedToken.familyId) {
+            await prisma.refreshToken.deleteMany({
+                where: { userId: storedToken.userId, familyId: storedToken.familyId },
+            })
+        } else {
+            await prisma.refreshToken.deleteMany({ where: { tokenHash } })
+        }
     }
 
     static async changePassword(userId: string, data: ChangePasswordDto) {
@@ -309,7 +355,8 @@ export class AuthService {
         const tokenHash = hashToken(refreshToken)
         const expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
-        await prisma.refreshToken.create({ data: { userId: user.id, tokenHash, expiresAt } })
+        // Starts this device's own rotation chain — see login()'s comment.
+        await prisma.refreshToken.create({ data: { userId: user.id, tokenHash, expiresAt, familyId: crypto.randomUUID() } })
 
         if (existed) {
             void captureEvent(user.id, 'user_logged_in', { signup_method: 'telegram' })

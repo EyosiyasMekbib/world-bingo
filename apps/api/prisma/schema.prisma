@@ -265,11 +265,18 @@ model RefreshToken {
   rotatedAt      DateTime?
   /// Hash of the token issued in exchange. Audit only; never returned to a client.
   replacedByHash String?
+  /// Identifies one device's rotation chain, propagated from parent to child on
+  /// every rotation. Lets logout() revoke a whole chain (including any
+  /// unrotated siblings minted during a grace-window burst) instead of just the
+  /// single presented hash. Null on rows issued before this column existed;
+  /// those fall back to being treated as their own one-row family.
+  familyId       String?
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
   @@index([rotatedAt])
+  @@index([familyId])
   @@map("refresh_tokens")
 }
 
