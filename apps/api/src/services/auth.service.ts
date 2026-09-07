@@ -201,8 +201,10 @@ export class AuthService {
             data: { userId: storedToken.userId, tokenHash: newTokenHash, expiresAt: newExpiresAt },
         })
 
-        // Housekeeping, not correctness: keeps one live row per device plus at
-        // most a few seconds of rotated ones. Never blocks the response.
+        // Housekeeping, not correctness: prunes rotated tokens older than the
+        // grace window (5 minutes). During a concurrent burst, multiple unrotated
+        // rows may temporarily coexist; this cleanup removes old rotated ones.
+        // Never blocks the response.
         prisma.refreshToken
             .deleteMany({
                 where: {

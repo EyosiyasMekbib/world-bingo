@@ -44,7 +44,8 @@ describe('AuthService.refreshToken', () => {
         // its own (untouched) refresh token for this user.
         const firstRow = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(first) } })
         const secondRow = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(second) } })
-        expect(firstRow?.rotatedAt).not.toBeNull()
+        expect(firstRow).not.toBeNull()
+        expect(firstRow?.rotatedAt).toBeInstanceOf(Date)
         expect(secondRow?.rotatedAt).toBeNull()
     })
 
