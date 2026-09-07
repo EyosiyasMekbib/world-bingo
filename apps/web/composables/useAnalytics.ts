@@ -19,6 +19,8 @@ const ALLOWED = new Set([
     'deposit_method_selected',
     'deposit_amount_entered',
     'identify',
+    'session_expired',
+    'session_refresh_failed',
     'provider_game_view',
     'provider_session_ended',
     // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.

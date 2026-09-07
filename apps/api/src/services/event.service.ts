@@ -10,6 +10,8 @@ export const ALLOWED_EVENTS = [
     'deposit_amount_entered',
     'deposit_submitted',
     'identify',
+    'session_expired',
+    'session_refresh_failed',
     'provider_game_view',
     'provider_game_launched',
     'provider_session_ended',

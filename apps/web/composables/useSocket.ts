@@ -1,28 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import type { ClientToServerEvents, ServerToClientEvents } from '@world-bingo/shared-types'
 
-/** Refresh the access token when it has this little life left. Access tokens
- *  live 15 minutes; a socket that handshakes with 3 seconds of token left is
- *  authenticated for 3 seconds and mute afterwards. */
-const TOKEN_REFRESH_MARGIN_MS = 60_000
-
-/**
- * `exp` out of a JWT, in epoch milliseconds, or null when the value isn't a
- * JWT this can read. Payload only — verifying the signature is the API's job;
- * the client just needs to know whether it is about to present a dead token.
- */
-export function tokenExpiryMs(token: string | null | undefined): number | null {
-    if (!token) return null
-    const payload = token.split('.')[1]
-    if (!payload) return null
-    try {
-        const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
-        return typeof json?.exp === 'number' ? json.exp * 1000 : null
-    } catch {
-        return null
-    }
-}
-
 export const useSocket = () => {
     const config = useRuntimeConfig()
     const auth = useAuth()
@@ -94,20 +72,22 @@ export const useSocket = () => {
             // one, without turning this function's return value into a promise
             // that eight other call sites would have to await.
             auth: async (cb: (data: { token: string | null | undefined }) => void) => {
-                const expiry = tokenExpiryMs(auth.token)
-                const stale = !auth.token || (expiry !== null && expiry - Date.now() < TOKEN_REFRESH_MARGIN_MS)
-
-                if (stale && auth.isAuthenticated) {
-                    const refreshed = await auth.refresh()
-                    // `refresh()` clears the whole session on failure, so there
-                    // is nothing left to retry with. Say so once and hand over
-                    // a null token: the server admits tokenless sockets for
-                    // spectating, so the connection still succeeds and nothing
-                    // enters a reconnect loop — the authenticated features just
-                    // know they are signed out.
-                    signedOut.value = refreshed === null
-                } else if (auth.token) {
-                    signedOut.value = false
+                if (auth.isAuthenticated) {
+                    try {
+                        // Shares the store's single-flight refresh (and its
+                        // margin), so a reconnect during a page load no longer
+                        // races the page's own calls with a second refresh —
+                        // which is how one of them used to lose and log the
+                        // player out. It also no-ops when the token is healthy.
+                        await auth.ensureFreshToken()
+                        signedOut.value = !auth.token
+                    } catch {
+                        // Transient (dropped connection, 429, 5xx). The store
+                        // kept the session, so connect with the token we have
+                        // and let the server judge it; only a definitive
+                        // refusal clears `auth.token`.
+                        signedOut.value = false
+                    }
                 }
 
                 cb({ token: auth.token })
