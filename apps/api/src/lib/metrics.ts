@@ -92,6 +92,18 @@ export const wbWithdrawalsTotal = new Counter({
     registers: [register],
 })
 
+/**
+ * Refresh-token outcomes. `grace` means a concurrent refresh from the same
+ * device was served from the rotation grace window instead of being rejected —
+ * before that window existed, every one of those was a forced logout.
+ */
+export const wbAuthRefreshTotal = new Counter({
+    name: 'wb_auth_refresh_total',
+    help: 'Refresh token outcomes, by result',
+    labelNames: ['outcome'] as const,
+    registers: [register],
+})
+
 /** Total refunds, labelled by reason (under_fill | cancel | other) */
 export const wbRefundsTotal = new Counter({
     name: 'wb_refunds_total',

@@ -75,6 +75,20 @@ already sent: `lobby_view`, `games_lobby_view`, `game_view`, `join_click`,
 `provider_game_view`, `provider_session_ended`, `hero_predictions_click`,
 `lobby_predictions_click`. Super properties on all of them: `brand`, `locale`, `is_pwa`.
 
+Two session-health events come from the auth store:
+
+| event | properties | meaning |
+|---|---|---|
+| `session_expired` | `reason`: `refresh_token_invalid` \| `refresh_token_expired` | the client actually cleared a session |
+| `session_refresh_failed` | `status`, `transient` | a refresh failed but the session survived |
+
+Watch `session_expired` as a ratio of `user_logged_in`. Before the grace-window fix a third of
+all refreshes ended a session (64 of 194 returned 401 and 4 returned 500 in one 4.7-hour
+sample), and players were retyping their password several times a day. It should now be a small
+fraction; a rise means sessions are being lost again. `session_refresh_failed` is expected to be
+non-zero on mobile data and is not a problem on its own — it is the case that used to be treated
+as fatal.
+
 `track()` sends **any** name to PostHog; only the allowlisted names above also reach the
 custom `/events` endpoint. Add a new browser event by calling `track('new_name', {...})` —
 no list to update unless the admin page needs it too.

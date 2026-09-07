@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import crypto from 'crypto'
 import { AuthService } from '../services/auth.service'
 import { prisma } from './setup'
+// The same module-cache singleton auth.service.ts itself talks to — needed to
+// force the DB call it makes to fail, for the outcome="error" test below.
+// `./setup`'s `prisma` is a separate PrismaClient instance and spying on it
+// would not touch what AuthService actually calls.
+import realPrisma from '../lib/prisma'
+import { wbAuthRefreshTotal } from '../lib/metrics'
 import type { TelegramAuthDto } from '@world-bingo/shared-types'
 
 describe('AuthService', () => {
@@ -204,7 +210,7 @@ describe('AuthService', () => {
             )
         })
 
-        it('should invalidate the old token after rotation', async () => {
+        it('should serve the same token again inside the grace window instead of invalidating it', async () => {
             const userData = {
                 username: 'rotateuser',
                 phone: '+251912300020',
@@ -220,10 +226,46 @@ describe('AuthService', () => {
             // Use the token once
             await AuthService.refreshToken(firstToken)
 
-            // Try to use the same token again — must fail
-            await expect(AuthService.refreshToken(firstToken)).rejects.toThrow(
-                'Invalid refresh token',
-            )
+            // Reusing the same token again immediately (well inside the grace
+            // window) must succeed — this is the whole point of the fix.
+            // Genuine reuse once the window has passed is covered in
+            // auth-refresh-grace.test.ts.
+            const { refreshToken: thirdToken } = await AuthService.refreshToken(firstToken)
+            expect(thirdToken).toBeDefined()
+            expect(thirdToken).not.toBe(firstToken)
+        })
+
+        it('counts an unexpected failure as outcome="error" and rethrows it unchanged', async () => {
+            // `AuthService.refreshToken`'s try/catch only labels 'error' for
+            // failures that are NOT a deliberate `RefreshTokenError` (invalid/
+            // expired tokens already label themselves inside
+            // `rotateRefreshToken`). Force exactly that: make the very first
+            // DB call in `rotateRefreshToken` — the `findUnique` lookup —
+            // reject with a generic error, standing in for a real DB outage.
+            const before = (await wbAuthRefreshTotal.get()).values.find(
+                (v) => v.labels.outcome === 'error',
+            )?.value ?? 0
+
+            const boom = new Error('connection reset')
+            // Save/restore by assignment rather than `vi.spyOn(...).mockRestore()`:
+            // Prisma exposes delegate methods through a proxy, so `mockRestore`
+            // deletes `findUnique` instead of putting the original back, and
+            // every later test that touches it dies with "not a function".
+            const original = realPrisma.refreshToken.findUnique
+            ;(realPrisma.refreshToken as any).findUnique = vi.fn().mockRejectedValueOnce(boom)
+            try {
+                // Rethrown unchanged — same reference, not a copy or a wrap —
+                // so a caller further up (the route handler, the error
+                // handler) sees exactly what the DB threw.
+                await expect(AuthService.refreshToken('whatever-token')).rejects.toBe(boom)
+            } finally {
+                ;(realPrisma.refreshToken as any).findUnique = original
+            }
+
+            const after = (await wbAuthRefreshTotal.get()).values.find(
+                (v) => v.labels.outcome === 'error',
+            )?.value ?? 0
+            expect(after - before).toBe(1)
         })
     })
 

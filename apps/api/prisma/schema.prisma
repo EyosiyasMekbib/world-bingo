@@ -8,50 +8,50 @@ datasource db {
 }
 
 model User {
-  id                    String                 @id @default(uuid())
-  serial                Int                    @unique @default(autoincrement())
-  username              String?                @unique
-  phone                 String?                @unique
-  passwordHash          String?
-  telegramId            String?                @unique
-  telegramUsername      String?
-  firstName             String?
-  lastName              String?
-  photoUrl              String?
-  role                  UserRole               @default(PLAYER)
+  id                       String                    @id @default(uuid())
+  serial                   Int                       @unique @default(autoincrement())
+  username                 String?                   @unique
+  phone                    String?                   @unique
+  passwordHash             String?
+  telegramId               String?                   @unique
+  telegramUsername         String?
+  firstName                String?
+  lastName                 String?
+  photoUrl                 String?
+  role                     UserRole                  @default(PLAYER)
   /// Whether this account may act. Covers staff as well as players: a disabled
   /// clerk is SUSPENDED. Written ONLY by AccountStatusService.
-  accountStatus         AccountStatus          @default(ACTIVE)
+  accountStatus            AccountStatus             @default(ACTIVE)
   /// Superseded by accountStatus. Read and written by nothing; dropped by a
   /// follow-up migration once a rollback to the previous release is no longer
   /// plausible.
-  isActive              Boolean                @default(true)
-  avatarUrl             String?
-  referralCode          String?                @unique
-  referredById          String?
-  botTotalSpent         Decimal                @default(0) @db.Decimal(12, 2)
-  wallet                Wallet?
-  transactions          Transaction[]
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  entries               GameEntry[]
-  refreshTokens         RefreshToken[]
-  notifications         Notification[]
-  referredBy            User?                  @relation("Referrals", fields: [referredById], references: [id])
-  referrals             User[]                 @relation("Referrals")
-  referralRewards       ReferralReward[]
-  tournamentEntries     TournamentEntry[]
-  cashbackDisbursements CashbackDisbursement[]
-  playerMetrics         PlayerMetrics?
-  campaignDeliveries    CampaignDelivery[]
-  predictionOrders      PredictionOrder[]
-  predictionPositions   PredictionPosition[]
-  bonusGrants           BonusGrant[]
-  bonusRuleMemberships  BonusRuleMember[]
-  supportConversations  SupportConversation[]  @relation("SupportConversations")
-  supportAssignments    SupportConversation[]  @relation("SupportAssignments")
+  isActive                 Boolean                   @default(true)
+  avatarUrl                String?
+  referralCode             String?                   @unique
+  referredById             String?
+  botTotalSpent            Decimal                   @default(0) @db.Decimal(12, 2)
+  wallet                   Wallet?
+  transactions             Transaction[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  entries                  GameEntry[]
+  refreshTokens            RefreshToken[]
+  notifications            Notification[]
+  referredBy               User?                     @relation("Referrals", fields: [referredById], references: [id])
+  referrals                User[]                    @relation("Referrals")
+  referralRewards          ReferralReward[]
+  tournamentEntries        TournamentEntry[]
+  cashbackDisbursements    CashbackDisbursement[]
+  playerMetrics            PlayerMetrics?
+  campaignDeliveries       CampaignDelivery[]
+  predictionOrders         PredictionOrder[]
+  predictionPositions      PredictionPosition[]
+  bonusGrants              BonusGrant[]
+  bonusRuleMemberships     BonusRuleMember[]
+  supportConversations     SupportConversation[]     @relation("SupportConversations")
+  supportAssignments       SupportConversation[]     @relation("SupportAssignments")
   zarecashCheckoutSessions ZareCashCheckoutSession[]
-  statusChanges         AccountStatusChange[]
+  statusChanges            AccountStatusChange[]
 
   @@index([role])
   @@index([referralCode])
@@ -251,15 +251,32 @@ enum PatternType {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid())
+  userId         String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+  /// Set when this token has been exchanged. The row is KEPT for a short grace
+  /// window (REFRESH_GRACE_MS in auth.service.ts) rather than deleted, so a
+  /// device that fires several refreshes at once — the lobby's parallel calls
+  /// all 401ing together — gets a working session on every one of them instead
+  /// of one winner and N logouts. Reuse after the window is a genuine replay
+  /// and is rejected.
+  rotatedAt      DateTime?
+  /// Hash of the token issued in exchange. Audit only; never returned to a client.
+  replacedByHash String?
+  /// Identifies one device's rotation chain, propagated from parent to child on
+  /// every rotation. Lets logout() revoke a whole chain (including any
+  /// unrotated siblings minted during a grace-window burst) instead of just the
+  /// single presented hash. Null on rows issued before this column existed;
+  /// those fall back to being treated as their own one-row family.
+  familyId       String?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([rotatedAt])
+  @@index([familyId])
   @@map("refresh_tokens")
 }
 

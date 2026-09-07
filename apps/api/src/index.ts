@@ -53,6 +53,8 @@ import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
 import { registerSupportHandlers } from './gateways/support.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 import { isZareCashEnabled } from './gateways/payment/zarecash/config.js'
+import { verifiedUserRateLimitKey } from './lib/rate-limit-key'
+import { mapErrorToResponse } from './lib/error-handler'
 
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
@@ -137,8 +139,25 @@ await server.register(rateLimit, {
     global: true,
     max: 100,
     timeWindow: '1 minute',
+    // Keyed on a *verified* bearer-token user id so a shared carrier NAT
+    // address doesn't throttle a whole neighbourhood of players onto one
+    // 100/min budget. `@fastify/rate-limit` runs this at the `onRequest`
+    // hook, strictly before the `authenticate` preHandler/preValidation hook
+    // that populates `request.user` — so `request.user` is never available
+    // here. We verify the token ourselves instead (never just decode it:
+    // an unverified payload lets anyone forge an `id` claim and hand
+    // themselves an unlimited budget). Any request with no token, a
+    // malformed header, or a token that fails verification (wrong
+    // signature, expired — both common and expected) falls back to the IP
+    // key exactly as before. This can never throw and so can never fail the
+    // request it's rate-limiting.
     keyGenerator: (req) => {
-        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        return verifiedUserRateLimitKey({
+            authorizationHeader: req.headers.authorization,
+            verify: (token) => server.jwt.verify(token),
+            forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
+            ip: req.ip,
+        })
     },
     // Skip rate limiting for GASea wallet callbacks — server-to-server traffic
     // from GASea's IP must never be throttled mid-game-session.
@@ -186,54 +205,11 @@ await server.register(swaggerUi, {
     routePrefix: '/docs',
 })
 
-server.setErrorHandler<FastifyError>((error, request, reply) => {
-    // Map common service errors to appropriate status codes
-    if (error.message === 'Invalid credentials' || error.message === 'Invalid refresh token') {
-        return reply.status(401).send({
-            statusCode: 401,
-            error: 'Unauthorized',
-            message: error.message
-        })
-    }
-
-    if (error.message === 'User already exists') {
-        return reply.status(409).send({
-            statusCode: 409,
-            error: 'Conflict',
-            message: error.message
-        })
-    }
-
-    if (error.message === 'User not found') {
-        return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: error.message
-        })
-    }
-
-    // Structured provider errors (e.g. PalaceApiError) — surface the machine-readable
-    // code, the upstream provider code, and contextual details, not just a message.
-    const anyErr = error as any
-    if (anyErr?.name === 'PalaceApiError') {
-        const status = anyErr.statusCode || 502
-        return reply.status(status).send({
-            statusCode: status,
-            error: anyErr.code || 'PalaceApiError',
-            message: error.message,
-            ...(anyErr.palaceCode != null ? { palaceCode: anyErr.palaceCode } : {}),
-            ...(anyErr.details && Object.keys(anyErr.details).length > 0 ? { details: anyErr.details } : {}),
-        })
-    }
-
-    // Default error handler
-    const statusCode = error.statusCode || 500
-    return reply.status(statusCode).send({
-        statusCode,
-        error: error.name || 'Internal Server Error',
-        message: error.message
-    })
-})
+// The mapping itself lives in lib/error-handler.ts, extracted so that
+// test/auth-refresh-route.test.ts can exercise this exact function through a
+// real server.inject request instead of asserting against a copy that could
+// silently drift from what production actually sends on the wire.
+server.setErrorHandler<FastifyError>(mapErrorToResponse)
 
 // Wire Sentry's Fastify error capture AFTER our custom handler so it observes
 // errors without replacing our response mapping. No-op when Sentry is disabled.
