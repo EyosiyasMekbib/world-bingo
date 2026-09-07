@@ -74,6 +74,7 @@ services:
       HUB_SHARED_SECRET: ${HUB_SHARED_SECRET:-}
       WEB_BASE_URL: ${WEB_BASE_URL:-https://staging.betbawa.bet}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
     volumes:
       - uploads_data:/app/apps/api/uploads
     healthcheck:

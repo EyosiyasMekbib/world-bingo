@@ -57,30 +57,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // keys on a VERIFIED user id whenever a valid bearer token is
         // present, and only drops to this key otherwise. Refresh calls carry
         // no bearer token, so this route is always on the fallback.
-        // `req.ip` with `trustProxy: true` resolves to the LEFTMOST
-        // `x-forwarded-for` hop. Traefik *appends* its own hop
-        // rather than replacing the header, so that leftmost entry is
-        // whatever the client itself sent as `X-Forwarded-For` — an
-        // attacker can put anything there, including a fresh value on every
-        // request, which defeats this key entirely. So, honestly: this
-        // ceiling is NOT a defence against a determined attacker who spoofs
-        // the header (an attacker rotating both the refresh token AND the
-        // XFF value per request sees zero 429s from it, same as before this
-        // fix). It only guards against an accidental request storm or
-        // unsophisticated abuse that doesn't bother spoofing the header.
-        // Real hardening — pinning the trusted hop count for the actual
-        // production proxy topology (Dokploy/Traefik, possibly also
-        // Cloudflare, none of which is established here) and re-keying off
-        // it — is a follow-up, and it must cover the pre-existing global
-        // limiter's own anonymous fallback too, which shares this weakness.
-        // A 429 from this ceiling is no longer session-fatal either way:
-        // the web store treats 429 as transient and keeps the session.
-        keyGenerator: (req: any) =>
-            rateLimitKey({
-                userId: null,
-                forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
-                ip: req.ip,
-            }),
+        // `req.ip`, resolved against the pinned TRUST_PROXY_HOPS count in
+        // index.ts, so a client that writes its own `X-Forwarded-For` cannot
+        // choose its bucket. Keying off the raw header — as this did before —
+        // let a caller mint a fresh bucket per request and made the ceiling a
+        // no-op against the exact traffic it exists to stop.
+        // A 429 from this ceiling is not session-fatal: the web store treats
+        // 429 as transient and keeps the session.
+        keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
     })
 
     async function refreshIpCeiling(req: FastifyRequest, reply: FastifyReply) {

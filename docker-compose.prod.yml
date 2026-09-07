@@ -65,6 +65,7 @@ services:
       # builds its returnUrl from it and the provider rejects a mismatched origin.
       WEB_BASE_URL: ${WEB_BASE_URL:-https://aradabingo.bet}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       # ─── Deposit receipt verification egress (no-op when unset) ───
       # Optional external proxy for the server-side (unattended) receipt fetch,
       # e.g. an Ethiopian VPS SOCKS tunnel. Pins REQUIRED whenever a proxy is set —

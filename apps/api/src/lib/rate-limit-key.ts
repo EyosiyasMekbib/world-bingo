@@ -6,17 +6,24 @@
  * per-IP budget makes one busy player throttle a whole neighbourhood, and a
  * 429 on a refresh used to read as "logged out".
  *
- * Anonymous traffic still keys on the client IP, taking the first hop of
- * x-forwarded-for (the proxy appends, so the client is first).
+ * Anonymous traffic keys on `ip`, which MUST be Fastify's `request.ip` and
+ * never a raw `x-forwarded-for` value. This used to read the header's first
+ * hop directly, which any client could set: sending a fresh
+ * `X-Forwarded-For` per request minted a fresh bucket per request and made
+ * the limiter a no-op against exactly the traffic it exists to stop. Traefik
+ * *appends* rather than replaces, so the leftmost entry is attacker-chosen.
+ *
+ * `request.ip` is safe only because the server pins how many proxy hops it
+ * trusts (`TRUST_PROXY_HOPS`, see index.ts): Fastify then walks the header
+ * from the right, skips exactly that many trusted hops, and takes the next
+ * address — a spoofed prefix is ignored no matter how long it is.
  */
 export function rateLimitKey(input: {
     userId: string | null | undefined
-    forwardedFor: string | undefined
     ip: string | undefined
 }): string {
     if (input.userId) return `user:${input.userId}`
-    const hop = input.forwardedFor?.split(',')[0]?.trim()
-    return `ip:${hop || input.ip?.trim() || 'unknown'}`
+    return `ip:${input.ip?.trim() || 'unknown'}`
 }
 
 /**
@@ -53,7 +60,6 @@ export function extractBearerToken(authorizationHeader: string | undefined | nul
 export async function verifiedUserRateLimitKey(input: {
     authorizationHeader: string | undefined | null
     verify: (token: string) => unknown | Promise<unknown>
-    forwardedFor: string | undefined
     ip: string | undefined
 }): Promise<string> {
     let userId: string | null = null
@@ -69,5 +75,5 @@ export async function verifiedUserRateLimitKey(input: {
         // Wrong signature (forged), expired, malformed — all fall back to
         // IP-keying, same as having no token at all.
     }
-    return rateLimitKey({ userId, forwardedFor: input.forwardedFor, ip: input.ip })
+    return rateLimitKey({ userId, ip: input.ip })
 }

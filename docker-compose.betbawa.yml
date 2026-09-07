@@ -69,6 +69,7 @@ services:
       # builds its returnUrl from it and the provider rejects a mismatched origin.
       WEB_BASE_URL: ${WEB_BASE_URL:-https://dash1.games}
       RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       # ─── Observability (env-gated; no-op when unset) ───
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}

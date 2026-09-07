@@ -85,6 +85,12 @@ if (!jwtPrivateKey || !jwtPublicKey) {
 
 const isProd = process.env.NODE_ENV === 'production'
 
+/**
+ * How many reverse-proxy hops sit in front of this service. See the
+ * `trustProxy` note below — this is a security boundary, not a tuning knob.
+ */
+const TRUST_PROXY_HOPS = Math.max(1, Number(process.env.TRUST_PROXY_HOPS ?? 1) || 1)
+
 const server = Fastify({
     logger: isProd
         ? { redact: { paths: redactPaths, censor: '[redacted]' } }
@@ -97,7 +103,23 @@ const server = Fastify({
     requestIdHeader: false,
     genReqId,
     disableRequestLogging: false,
-    trustProxy: true, // Required when behind nginx/load balancer for correct IP in rate limiting
+    // A COUNT of trusted proxy hops, not `true`. With `true`, Fastify believes
+    // the whole X-Forwarded-For chain and `request.ip` becomes its leftmost
+    // entry — which the client writes. Traefik appends rather than replaces,
+    // so a caller sending `X-Forwarded-For: <anything>` chose their own
+    // `request.ip`, and with it their own rate-limit bucket: a fresh value per
+    // request defeated the limiter entirely.
+    //
+    // With a count, Fastify walks the chain from the right, skips exactly that
+    // many trusted hops, and takes the next address — a spoofed prefix is
+    // ignored however long it is. Default 1: Dokploy's Traefik is the only
+    // proxy in front of this service (verified against the live deployment —
+    // no Cloudflare `cf-ray`, Traefik's own `alt-svc: h3`). Raise it via
+    // TRUST_PROXY_HOPS if another proxy is ever put in front; if this is set
+    // too HIGH, `request.ip` collapses to the proxy's own address and every
+    // player shares one bucket, so check that first if limits start biting
+    // everyone at once.
+    trustProxy: TRUST_PROXY_HOPS,
 })
 
 // Bind req.log (which carries reqId) for the whole request's async context, so
@@ -155,7 +177,6 @@ await server.register(rateLimit, {
         return verifiedUserRateLimitKey({
             authorizationHeader: req.headers.authorization,
             verify: (token) => server.jwt.verify(token),
-            forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
             ip: req.ip,
         })
     },
@@ -165,7 +186,9 @@ await server.register(rateLimit, {
     allowList: (req) => {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
+        // caller could name a whitelisted address and skip the limiter outright.
+        const ip = req.ip
         return rateLimitWhitelist.has(ip)
     },
     errorResponseBuilder: () => ({
