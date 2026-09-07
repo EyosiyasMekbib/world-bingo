@@ -51,10 +51,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // this ceiling.
         max: 240,
         timeWindow: '1 minute',
-        // Same key the pre-existing global 100/min limiter uses (see
-        // lib/rate-limit-key.ts and the registration of `@fastify/rate-limit`
-        // in index.ts): `req.ip`, which with `trustProxy: true` resolves to
-        // the LEFTMOST `x-forwarded-for` hop. Traefik *appends* its own hop
+        // The same IP key the pre-existing global 100/min limiter falls back
+        // to for anonymous traffic (see lib/rate-limit-key.ts and the
+        // registration of `@fastify/rate-limit` in index.ts) — that limiter
+        // keys on a VERIFIED user id whenever a valid bearer token is
+        // present, and only drops to this key otherwise. Refresh calls carry
+        // no bearer token, so this route is always on the fallback.
+        // `req.ip` with `trustProxy: true` resolves to the LEFTMOST
+        // `x-forwarded-for` hop. Traefik *appends* its own hop
         // rather than replacing the header, so that leftmost entry is
         // whatever the client itself sent as `X-Forwarded-For` — an
         // attacker can put anything there, including a fresh value on every
@@ -68,7 +72,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // production proxy topology (Dokploy/Traefik, possibly also
         // Cloudflare, none of which is established here) and re-keying off
         // it — is a follow-up, and it must cover the pre-existing global
-        // limiter too, since it has always used this same spoofable key.
+        // limiter's own anonymous fallback too, which shares this weakness.
         // A 429 from this ceiling is no longer session-fatal either way:
         // the web store treats 429 as transient and keeps the session.
         keyGenerator: (req: any) =>
