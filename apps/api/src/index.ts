@@ -53,6 +53,7 @@ import { registerPredictionHandlers } from './gateways/prediction.gateway.js'
 import { registerSupportHandlers } from './gateways/support.gateway.js'
 import { jwtPrivateKey, jwtPublicKey } from './lib/jwt-keys.js'
 import { isZareCashEnabled } from './gateways/payment/zarecash/config.js'
+import { verifiedUserRateLimitKey } from './lib/rate-limit-key'
 
 // Import workers so they auto-start with the server process
 import './workers/game-countdown.worker.js'
@@ -137,8 +138,25 @@ await server.register(rateLimit, {
     global: true,
     max: 100,
     timeWindow: '1 minute',
+    // Keyed on a *verified* bearer-token user id so a shared carrier NAT
+    // address doesn't throttle a whole neighbourhood of players onto one
+    // 100/min budget. `@fastify/rate-limit` runs this at the `onRequest`
+    // hook, strictly before the `authenticate` preHandler/preValidation hook
+    // that populates `request.user` — so `request.user` is never available
+    // here. We verify the token ourselves instead (never just decode it:
+    // an unverified payload lets anyone forge an `id` claim and hand
+    // themselves an unlimited budget). Any request with no token, a
+    // malformed header, or a token that fails verification (wrong
+    // signature, expired — both common and expected) falls back to the IP
+    // key exactly as before. This can never throw and so can never fail the
+    // request it's rate-limiting.
     keyGenerator: (req) => {
-        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        return verifiedUserRateLimitKey({
+            authorizationHeader: req.headers.authorization,
+            verify: (token) => server.jwt.verify(token),
+            forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
+            ip: req.ip,
+        })
     },
     // Skip rate limiting for GASea wallet callbacks — server-to-server traffic
     // from GASea's IP must never be throttled mid-game-session.
@@ -187,6 +205,18 @@ await server.register(swaggerUi, {
 })
 
 server.setErrorHandler<FastifyError>((error, request, reply) => {
+    // RefreshTokenError carries the only two codes that authorise the client to
+    // clear a session. Everything else it sees must be treated as transient.
+    const refreshCode = (error as { code?: string }).code
+    if (refreshCode === 'refresh_token_invalid' || refreshCode === 'refresh_token_expired') {
+        return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: error.message,
+            code: refreshCode,
+        })
+    }
+
     // Map common service errors to appropriate status codes
     if (error.message === 'Invalid credentials' || error.message === 'Invalid refresh token') {
         return reply.status(401).send({

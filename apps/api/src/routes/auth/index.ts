@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { FastifyPluginAsync } from 'fastify'
 import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
@@ -49,6 +50,23 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             rateLimit: {
                 max: 20,
                 timeWindow: '1 minute',
+                // @fastify/rate-limit's default hook is 'onRequest', which runs
+                // before Fastify parses the body — req.body would always be
+                // undefined there and this keyGenerator would silently fall back
+                // to `ip:...` for every request. Move just this route's rate
+                // limit to 'preValidation' (after parsing, before the schema
+                // check) so it can actually key on the token. This does not
+                // touch the global limiter's hook phase.
+                hook: 'preValidation',
+                // Per device, not per IP: a shared carrier address must not put
+                // every player on one 20/min budget, and a 429 here reads to the
+                // client as a lost session.
+                keyGenerator: (req: any) => {
+                    const token = req.body?.refreshToken
+                    return typeof token === 'string' && token.length > 0
+                        ? `rt:${createHash('sha256').update(token).digest('hex')}`
+                        : `ip:${(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip}`
+                },
             },
         },
         schema: {
