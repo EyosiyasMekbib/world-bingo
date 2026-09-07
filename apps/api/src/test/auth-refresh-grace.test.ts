@@ -112,9 +112,19 @@ describe('AuthService.refreshToken', () => {
             data: { rotatedAt: new Date(Date.now() - 10 * 60_000) },
         })
         await AuthService.refreshToken(second)
-        const stale = await prisma.refreshToken.count({
-            where: { userId, rotatedAt: { lt: new Date(Date.now() - 5 * 60_000) } },
-        })
-        expect(stale).toBe(0)
+        // The prune is an unawaited, fire-and-forget `deleteMany` (see the
+        // "Never blocks the response" comment in auth.service.ts) — it can
+        // still be in flight, possibly on another pooled connection, when
+        // refreshToken() already returned. Poll with a bounded retry instead
+        // of asserting immediately, so this doesn't flake in CI.
+        await vi.waitFor(
+            async () => {
+                const stale = await prisma.refreshToken.count({
+                    where: { userId, rotatedAt: { lt: new Date(Date.now() - 5 * 60_000) } },
+                })
+                expect(stale).toBe(0)
+            },
+            { timeout: 2000, interval: 50 },
+        )
     })
 })
