@@ -86,10 +86,26 @@ if (!jwtPrivateKey || !jwtPublicKey) {
 const isProd = process.env.NODE_ENV === 'production'
 
 /**
- * How many reverse-proxy hops sit in front of this service. See the
- * `trustProxy` note below — this is a security boundary, not a tuning knob.
+ * How many reverse-proxy hops sit in front of this service. A security
+ * boundary, not a tuning knob — see the `trustProxy` note below.
+ *
+ * Validated hard, because the failure is silent: `Infinity` or `1e9` would
+ * make Fastify trust the entire X-Forwarded-For chain, which is exactly the
+ * `trustProxy: true` behaviour this exists to remove — measured at 0 × 429
+ * against a rotating spoof. Anything that is not a whole number in range
+ * falls back to the default rather than being coerced.
  */
-const TRUST_PROXY_HOPS = Math.max(1, Number(process.env.TRUST_PROXY_HOPS ?? 1) || 1)
+const TRUST_PROXY_HOPS = ((): number => {
+    const DEFAULT = 1
+    // 4 is well past any realistic topology (Traefik, plus Nitro's
+    // server-side /api proxy, plus a CDN, plus one spare).
+    const MAX = 4
+    const raw = process.env.TRUST_PROXY_HOPS
+    if (raw === undefined || raw.trim() === '') return DEFAULT
+    const n = Number(raw)
+    if (!Number.isInteger(n) || n < 1 || n > MAX) return DEFAULT
+    return n
+})()
 
 const server = Fastify({
     logger: isProd
@@ -112,13 +128,23 @@ const server = Fastify({
     //
     // With a count, Fastify walks the chain from the right, skips exactly that
     // many trusted hops, and takes the next address — a spoofed prefix is
-    // ignored however long it is. Default 1: Dokploy's Traefik is the only
-    // proxy in front of this service (verified against the live deployment —
-    // no Cloudflare `cf-ray`, Traefik's own `alt-svc: h3`). Raise it via
-    // TRUST_PROXY_HOPS if another proxy is ever put in front; if this is set
-    // too HIGH, `request.ip` collapses to the proxy's own address and every
-    // player shares one bucket, so check that first if limits start biting
-    // everyone at once.
+    // ignored however long it is (measured: a 10-entry fake prefix still
+    // resolves to the real client).
+    //
+    // Default 1. Dokploy's Traefik is the only hop that APPENDS to the chain,
+    // verified against the live deployment (no Cloudflare `cf-ray`, Traefik's
+    // own `alt-svc: h3`). Note the player path is browser → Traefik → Nitro's
+    // server-side /api proxy → here, which is two proxies: h3's
+    // `getProxyRequestHeaders` forwards X-Forwarded-For unchanged and appends
+    // nothing of its own, so the chain still carries exactly one appended hop
+    // and 1 is right. If that ever changes — h3 starts appending, or the
+    // proxy is swapped for one that does — this must change with it.
+    //
+    // Setting this too HIGH does NOT fail loudly: it walks `request.ip` LEFT,
+    // back into the part of the chain the client wrote, handing every caller
+    // its own `request.ip` again (measured at hops=2 against a one-entry
+    // spoof: 30 × 200, 0 × 429 — the original hole, restored silently). Raise
+    // it only in lockstep with a proxy that genuinely appends a hop.
     trustProxy: TRUST_PROXY_HOPS,
 })
 
@@ -433,6 +459,11 @@ try {
     }
 
     await server.listen({ port, host })
+
+    // Say the effective value out loud. Over-setting this hands `request.ip`
+    // back to the client with no other symptom (see the trustProxy note), so
+    // one boot line is the only chance to notice a bad value.
+    server.log.info({ trustProxyHops: TRUST_PROXY_HOPS }, '[security] trusted proxy hop count')
 
     // Recovery: restart countdowns for any WAITING games that already have players
     // and push LOCKING/STARTING games into the engine

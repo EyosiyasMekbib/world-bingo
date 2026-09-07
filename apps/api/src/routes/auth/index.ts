@@ -156,7 +156,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     const token = req.body?.refreshToken
                     return typeof token === 'string' && token.length > 0
                         ? `rt:${createHash('sha256').update(token).digest('hex')}`
-                        : `ip:${(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip}`
+                        // req.ip, never the raw header: this branch is live
+                        // (the body is parsed by preValidation, so a POST with
+                        // no refreshToken lands here), and reading the header
+                        // would let a caller mint a fresh 20/min bucket per
+                        // request by rotating it.
+                        : `ip:${req.ip}`
                 },
             },
         },

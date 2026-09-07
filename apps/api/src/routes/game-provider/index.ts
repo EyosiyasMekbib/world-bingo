@@ -126,8 +126,11 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             const { language = 'en', platform = 'WEB' } =
                 req.body as { language?: string; platform?: 'WEB' | 'H5' }
 
-            const ipAddress =
-                (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip
+            // req.ip, not the raw header: this is the player IP the provider
+            // uses for its own geo and fraud checks, and the leftmost header
+            // entry is whatever the client wrote. Trustworthy now that the
+            // server pins TRUST_PROXY_HOPS (see index.ts).
+            const ipAddress = req.ip
 
             const gateway = getGameProviderGateway(providerCode)
             const rawBase = process.env.WEB_BASE_URL || 'https://www.aradabingo.bet'
