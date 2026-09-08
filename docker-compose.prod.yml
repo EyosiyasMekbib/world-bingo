@@ -109,8 +109,6 @@ services:
         # id → upload skipped; .map files are stripped from the image either way.
         POSTHOG_CLI_PROJECT_ID: ${POSTHOG_CLI_PROJECT_ID:-}
         POSTHOG_CLI_HOST: ${POSTHOG_CLI_HOST:-https://eu.posthog.com}
-      secrets:
-        - POSTHOG_CLI_API_KEY
     image: world-bingo-web
     restart: unless-stopped
     ports:
