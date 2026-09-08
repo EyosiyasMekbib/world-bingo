@@ -175,3 +175,72 @@ export function emitGameRefunded(
         })
     }
 }
+
+// ── Third-party (provider) play ─────────────────────────────────────────────
+// Bets and wins happen inside the provider's iframe and only reach us as
+// wallet callbacks, so without these the only PostHog trace of provider play
+// is "launched". All three are fire-and-forget; call them post-commit.
+
+/**
+ * One event per launch attempt. `launchOk` false means the provider answered
+ * but the URL was unusable, or the vendor call failed — `reason` says which.
+ * Before this the launch event fired for every attempt, so launches
+ * outnumbered game views by almost two to one and nobody could tell a failed
+ * launch from a working one.
+ */
+export function emitProviderLaunch(
+    userId: string,
+    input: { providerCode: string; gameCode: string; launchOk: boolean; reason?: string },
+): void {
+    const base = { provider_code: input.providerCode, game_code: input.gameCode }
+    if (input.launchOk) {
+        void captureEvent(userId, 'provider_game_launched', base)
+    } else {
+        void captureEvent(userId, 'provider_launch_failed', { ...base, reason: input.reason ?? 'unknown' })
+    }
+}
+
+export function emitProviderBet(
+    userId: string,
+    input: {
+        providerCode: string
+        gameCode: string | null
+        roundId: string | null
+        betId: string | null
+        amount: number
+        spendAccount: string
+    },
+): void {
+    void captureEvent(userId, 'provider_bet', {
+        provider_code: input.providerCode,
+        game_code: input.gameCode,
+        round_id: input.roundId,
+        bet_id: input.betId,
+        amount: round2(Math.abs(input.amount)),
+        spend_account: input.spendAccount,
+    })
+}
+
+export function emitProviderWin(
+    userId: string,
+    input: {
+        providerCode: string
+        gameCode: string | null
+        roundId: string | null
+        betId: string | null
+        amount: number
+        roundStake: number
+    },
+): void {
+    const amount = round2(Math.abs(input.amount))
+    const roundStake = round2(Math.abs(input.roundStake))
+    void captureEvent(userId, 'provider_win', {
+        provider_code: input.providerCode,
+        game_code: input.gameCode,
+        round_id: input.roundId,
+        bet_id: input.betId,
+        amount,
+        round_stake: roundStake,
+        net: round2(amount - roundStake),
+    })
+}

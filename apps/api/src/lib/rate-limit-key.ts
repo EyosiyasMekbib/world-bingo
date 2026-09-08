@@ -1,3 +1,5 @@
+import { createHash } from 'crypto'
+
 /**
  * Rate-limit bucket for one request.
  *
@@ -18,6 +20,21 @@
  * from the right, skips exactly that many trusted hops, and takes the next
  * address — a spoofed prefix is ignored no matter how long it is.
  */
+/**
+ * Rate-limit bucket for /login: the identifier being tried, hashed, so a
+ * shared carrier address is not one 10/min budget for a whole neighbourhood.
+ * A brute-force on one account still lands in one bucket. Credential
+ * stuffing across many identifiers is caught by the route's IP ceiling, not
+ * by this key. Falls back to the resolved ip when the body has no usable
+ * identifier (the limiter runs at preValidation, so a malformed body lands
+ * here rather than 400ing first).
+ */
+export function loginRateLimitKey(input: { identifier: unknown; ip: string | undefined }): string {
+    const id = typeof input.identifier === 'string' ? input.identifier.trim().toLowerCase() : ''
+    if (id) return `login:${createHash('sha256').update(id).digest('hex')}`
+    return rateLimitKey({ userId: null, ip: input.ip })
+}
+
 export function rateLimitKey(input: {
     userId: string | null | undefined
     ip: string | undefined

@@ -3,7 +3,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { rateLimitKey } from '../../lib/rate-limit-key'
+import { rateLimitKey, loginRateLimitKey } from '../../lib/rate-limit-key'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Independent per-IP ceiling for /auth/refresh, built with
@@ -67,32 +67,50 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
     })
 
-    async function refreshIpCeiling(req: FastifyRequest, reply: FastifyReply) {
-        const result = await checkIpCeiling(req)
-        // `=== true`/`=== false`, not a plain truthiness check: this
-        // package's tsconfig runs with `strict: false` (no
-        // `strictNullChecks`), and without it a bare `if (result.isAllowed)`
-        // does not narrow this discriminated union at all — every property
-        // access below would still see the full `isAllowed: true | false`
-        // type and fail to compile.
-        if (result.isAllowed === true) return
+    // Builds an onRequest hook from a createRateLimit checker. Shared by
+    // /refresh and /login, which both need an IP backstop beside a per-
+    // identity budget that would otherwise mint unlimited buckets.
+    function ipCeilingHook(check: ReturnType<typeof fastify.createRateLimit>) {
+        return async function ipCeiling(req: FastifyRequest, reply: FastifyReply) {
+            const result = await check(req)
+            // `=== true`/`=== false`, not a plain truthiness check: this
+            // package's tsconfig runs with `strict: false` (no
+            // `strictNullChecks`), and without it a bare `if (result.isAllowed)`
+            // does not narrow this discriminated union at all — every property
+            // access below would still see the full `isAllowed: true | false`
+            // type and fail to compile.
+            if (result.isAllowed === true) return
 
-        // Mirrors @fastify/rate-limit's own `rateLimitRequestHandler`: every
-        // non-allowlisted request gets the informational headers, and only a
-        // request that is actually over the limit (`isExceeded`) gets
-        // `retry-after` plus the 429 body.
-        reply.header('x-ratelimit-limit', result.max)
-        reply.header('x-ratelimit-remaining', result.remaining)
-        reply.header('x-ratelimit-reset', result.ttlInSeconds)
-        if (result.isExceeded === false) return
+            // Mirrors @fastify/rate-limit's own `rateLimitRequestHandler`: every
+            // non-allowlisted request gets the informational headers, and only a
+            // request that is actually over the limit (`isExceeded`) gets
+            // `retry-after` plus the 429 body.
+            reply.header('x-ratelimit-limit', result.max)
+            reply.header('x-ratelimit-remaining', result.remaining)
+            reply.header('x-ratelimit-reset', result.ttlInSeconds)
+            if (result.isExceeded === false) return
 
-        reply.header('retry-after', result.ttlInSeconds)
-        return reply.code(429).send({
-            statusCode: 429,
-            error: 'Too Many Requests',
-            message: 'Rate limit exceeded. Please slow down.',
-        })
+            reply.header('retry-after', result.ttlInSeconds)
+            return reply.code(429).send({
+                statusCode: 429,
+                error: 'Too Many Requests',
+                message: 'Rate limit exceeded. Please slow down.',
+            })
+        }
     }
+    const refreshIpCeiling = ipCeilingHook(checkIpCeiling)
+
+    // /login backstop: 120/min per IP. Generous enough for a carrier NAT at
+    // peak, tight enough that stuffing many identifiers from one address
+    // still hits a wall. The per-identifier 10/min below is the real
+    // brute-force guard.
+    const loginIpCeiling = ipCeilingHook(
+        fastify.createRateLimit({
+            max: 120,
+            timeWindow: '1 minute',
+            keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
+        }),
+    )
 
     // Strict rate limit for auth endpoints to prevent brute-force
     fastify.post('/register', {
@@ -113,8 +131,16 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             rateLimit: {
                 max: 10,
                 timeWindow: '1 minute',
+                // Body is parsed by preValidation, so the key can read the
+                // identifier (see /refresh below for why not onRequest).
+                hook: 'preValidation',
+                // Per identifier tried, not per IP: behind a carrier NAT a
+                // per-IP 10/min was one budget for a whole neighbourhood and
+                // showed up as unexplained "Sign In" failures at peak.
+                keyGenerator: (req: any) => loginRateLimitKey({ identifier: req.body?.identifier, ip: req.ip }),
             },
         },
+        onRequest: loginIpCeiling,
         schema: {
             body: zodToJsonSchema(LoginSchema),
         },

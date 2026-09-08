@@ -31,7 +31,10 @@
 
     <!-- ── Username / Password tab ──────────────────────────────────── -->
     <div v-if="activeTab === 'credentials'" class="auth-actions">
-      <form @submit.prevent="handleCredentialsLogin">
+      <!-- novalidate: the native required/minlength bubble is a tooltip with no
+           DOM change, which replay records as a dead click on Sign In. Errors
+           now render inline and are tracked. -->
+      <form novalidate @submit.prevent="handleCredentialsLogin">
         <div class="wb-field">
           <label class="wb-label" for="identifier">Username or Phone</label>
           <input
@@ -143,6 +146,8 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
 import type { TelegramAuthDto } from '@world-bingo/shared-types'
+import { validateLoginForm, type LoginFormError } from '~/utils/auth-form'
+import { describeFailure } from '~/utils/http-failure'
 
 declare global {
   interface Window {
@@ -159,6 +164,7 @@ const router = useRouter()
 const route = useRoute()
 const config = useRuntimeConfig()
 const { t } = useI18n()
+const { track } = useAnalytics()
 const errorMsg = ref('')
 const loading = ref(false)
 const showPassword = ref(false)
@@ -173,13 +179,27 @@ const redirectPath = computed(() => {
   return typeof r === 'string' && r.startsWith('/') ? r : '/'
 })
 
+const VALIDATION_MESSAGES: Record<LoginFormError, string> = {
+  identifier_required: 'Enter your username or phone number.',
+  password_required: 'Enter your password.',
+  password_short: 'Password must be at least 6 characters.',
+}
+
 async function handleCredentialsLogin() {
   errorMsg.value = ''
+  const invalid = validateLoginForm(form)
+  if (invalid) {
+    errorMsg.value = VALIDATION_MESSAGES[invalid]
+    track('login_failed', { method: 'password', reason: invalid, status: null })
+    return
+  }
   loading.value = true
   try {
-    await auth.login({ identifier: form.identifier, password: form.password })
+    await auth.login({ identifier: form.identifier.trim(), password: form.password })
     await router.push(redirectPath.value)
   } catch (e: any) {
+    const failure = describeFailure(e)
+    track('login_failed', { method: 'password', reason: failure.code, status: failure.status })
     // A suspended account fails authentication with its own code; showing
     // "invalid credentials" for it sends the player to reset a password that
     // was never the problem.
@@ -198,6 +218,8 @@ function handleTelegramCallback(user: TelegramAuthDto) {
   auth.telegramLogin(user)
     .then(() => router.push(redirectPath.value))
     .catch((e: any) => {
+      const failure = describeFailure(e)
+      track('login_failed', { method: 'telegram', reason: failure.code, status: failure.status })
       errorMsg.value =
         e?.data?.code === 'account_suspended'
           ? t('wallet.accountSuspended')

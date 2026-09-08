@@ -40,7 +40,7 @@ const {
 
     <div class="d5-util-end">
       <template v-if="auth.isAuthenticated">
-        <div class="d5-balance">
+        <div class="d5-balance d5-balance--tap" role="button" tabindex="0" title="Deposit" @click="showDeposit = true" @keydown.enter.prevent="showDeposit = true">
           <strong>{{ formattedBalance }} <span>ETB</span></strong>
           <small>ID: {{ playerId }}</small>
         </div>

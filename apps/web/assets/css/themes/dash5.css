@@ -59,6 +59,7 @@
 [data-theme='dash5'] .d5-search-btn svg { width: 16px; height: 16px; }
 
 [data-theme='dash5'] .d5-util-end { display: flex; align-items: center; gap: 10px; }
+[data-theme='dash5'] .d5-balance--tap { cursor: pointer; }
 [data-theme='dash5'] .d5-balance { display: flex; flex-direction: column; line-height: 1.15; }
 [data-theme='dash5'] .d5-balance strong {
   font-family: var(--font-ui);

@@ -110,12 +110,14 @@
 </template>
 
 <script setup lang="ts">
+import { describeFailure } from '~/utils/http-failure'
 import { useAuthStore } from '~/store/auth'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 definePageMeta({ layout: 'auth' as any })
 
 const auth = useAuthStore()
+const { track } = useAnalytics()
 const router = useRouter()
 const errorMsg = ref('')
 const loading = ref(false)
@@ -132,22 +134,23 @@ const form = reactive({
 async function handleRegister() {
   errorMsg.value = ''
 
-  // client-side validation
+  // Client-side validation. Each rejection is tracked so a form that never
+  // reaches the server still shows up in register_failed.
+  const rejectLocally = (reason: string, message: string) => {
+    errorMsg.value = message
+    track('register_failed', { reason, status: null })
+  }
   if (form.username.length < 2 || form.username.length > 32) {
-    errorMsg.value = 'Username must be 2–32 characters.'
-    return
+    return rejectLocally('validation_username', 'Username must be 2–32 characters.')
   }
   if (form.phone.length < 9 || form.phone.length > 15) {
-    errorMsg.value = 'Phone number must be 9–15 digits.'
-    return
+    return rejectLocally('validation_phone', 'Phone number must be 9–15 digits.')
   }
   if (form.password.length < 6) {
-    errorMsg.value = 'Password must be at least 6 characters.'
-    return
+    return rejectLocally('validation_password', 'Password must be at least 6 characters.')
   }
   if (form.referralCode && (form.referralCode.length < 6 || form.referralCode.length > 12)) {
-    errorMsg.value = 'Referral code must be 6–12 characters.'
-    return
+    return rejectLocally('validation_referral', 'Referral code must be 6–12 characters.')
   }
 
   loading.value = true
@@ -160,6 +163,14 @@ async function handleRegister() {
     })
     await router.push('/')
   } catch (e: any) {
+    // 36 people in 40 hours hit "User already exists": returning players
+    // who lost their password and tried to re-register. Name that case so
+    // the recovery flow, when it lands, can be measured against it.
+    const failure = describeFailure(e)
+    track('register_failed', {
+      reason: /already exists/i.test(failure.message) ? 'exists' : failure.code,
+      status: failure.status,
+    })
     errorMsg.value = e?.data?.message || 'Registration failed. Please try again.'
   } finally {
     loading.value = false

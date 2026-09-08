@@ -76,6 +76,11 @@
                       {{ redirecting ? t('wallet.redirecting') : t('wallet.continue') }}
                     </button>
                     <p class="method-card__hint">{{ t('wallet.hostedCheckoutHint') }}</p>
+                    <a
+                      v-if="showManualLink && checkoutUrl"
+                      :href="checkoutUrl"
+                      class="wb-hint method-card__manual"
+                    >{{ t('wallet.openCheckoutManually') }}</a>
                   </template>
 
                   <!-- Manual: collapsed to a Continue button, expands to the
@@ -240,6 +245,8 @@
 </template>
 
 <script setup lang="ts">
+import { amountBucket } from '~/utils/deposit'
+import { describeFailure } from '~/utils/http-failure'
 import { useAuthStore } from '~/store/auth'
 import { usePromotionsStore } from '~/store/promotions'
 
@@ -291,8 +298,7 @@ function toggleMethod(m: DepositMethod) {
 // amount" with "survived the whole form."
 function trackAmountEntered(paymentMethod: string) {
   if (!(form.amount > 0)) return
-  const amountBucket = form.amount < 500 ? '<500' : form.amount < 1000 ? '500-1000' : form.amount < 5000 ? '1000-5000' : '5000+'
-  track('deposit_amount_entered', { paymentMethod, amountBucket })
+  track('deposit_amount_entered', { paymentMethod, amountBucket: amountBucket(form.amount) })
 }
 
 // A logoUrl that 404s must not leave a broken-image glyph sitting on the card:
@@ -304,27 +310,62 @@ const logoFailed = ref<string[]>([])
 const checkoutAmount = ref(0)
 const checkoutError = ref('')
 const redirecting = ref(false)
+// 34 players in 40 hours sat on a disabled "Redirecting…" button. A checkout
+// call that has not answered in 15 s now fails as a timeout and the button
+// comes back; a redirect that has not left the page in 4 s shows the link.
+const CHECKOUT_TIMEOUT_MS = 15_000
+const MANUAL_LINK_AFTER_MS = 4_000
+const checkoutUrl = ref('')
+const showManualLink = ref(false)
+let manualLinkTimer: ReturnType<typeof setTimeout> | null = null
+onUnmounted(() => {
+  if (manualLinkTimer) clearTimeout(manualLinkTimer)
+})
 
 async function startCheckout(m: DepositMethod) {
   if (redirecting.value) return
   redirecting.value = true
   checkoutError.value = ''
+  showManualLink.value = false
   const amt = checkoutAmount.value
-  const amountBucket = amt < 500 ? '<500' : amt < 1000 ? '500-1000' : amt < 5000 ? '1000-5000' : '5000+'
-  track('deposit_amount_entered', { paymentMethod: m.code, amountBucket })
+  const bucket = amountBucket(amt)
+  track('deposit_amount_entered', { paymentMethod: m.code, amountBucket: bucket })
+  const startedAt = performance.now()
   try {
     const res = await auth.apiFetch<{ url: string }>('/wallet/deposit/checkout', {
       method: 'POST',
       body: { amount: amt, methodCode: m.code },
+      timeout: CHECKOUT_TIMEOUT_MS,
+    })
+    track('deposit_checkout_redirect', {
+      paymentMethod: m.code,
+      amountBucket: bucket,
+      ms: Math.round(performance.now() - startedAt),
     })
     // Always the URL from THIS response: repeating the idempotency key mints a
     // fresh link upstream and kills the previous one.
+    checkoutUrl.value = res.url
     window.location.assign(res.url)
+    if (manualLinkTimer) clearTimeout(manualLinkTimer)
+    manualLinkTimer = setTimeout(() => {
+      showManualLink.value = true
+    }, MANUAL_LINK_AFTER_MS)
   } catch (e: any) {
+    const failure = describeFailure(e)
+    track('deposit_checkout_failed', {
+      paymentMethod: m.code,
+      amountBucket: bucket,
+      ms: Math.round(performance.now() - startedAt),
+      code: failure.code,
+      status: failure.status,
+      timeout: failure.timeout,
+    })
     checkoutError.value =
-      e?.data?.code === 'account_restricted'
+      failure.code === 'account_restricted'
         ? t('wallet.accountRestricted')
-        : (e?.data?.error ?? t('wallet.checkoutFailed'))
+        : failure.timeout
+          ? t('wallet.checkoutTimeout')
+          : (e?.data?.error ?? t('wallet.checkoutFailed'))
     redirecting.value = false
   }
 }

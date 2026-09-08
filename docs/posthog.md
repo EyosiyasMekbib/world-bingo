@@ -68,13 +68,29 @@ dropped before send.
 | `game_refunded` | game cancelled | `reason`, `refund` |
 | `bonus_granted` | any bonus credit | `amount`, `source` (`FIRST_DEPOSIT`/`DEPOSIT_RULE`/`CAMPAIGN`/`CASHBACK`/`ADMIN`), `rule_id` |
 | `account_status_changed` | restrict / suspend / reinstate | `from`, `to`, `category`, `has_expiry` |
-| `provider_game_launched` | third-party game opened | `provider_code`, `game_code` |
+| `provider_game_launched` | third-party game launch returned a usable URL | `provider_code`, `game_code` |
+| `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error` or `bad_url`) |
+| `provider_bet` / `provider_win` | Palace wallet callback committed a bet or a payout | `provider_code`, `game_code`, `round_id`, `bet_id`, `amount`; win adds `round_stake` and `net`; bet adds `spend_account` |
 
 **Browser (`apps/web`)** — `$pageview`, `$pageleave`, plus everything `useAnalytics().track()`
 already sent: `lobby_view`, `games_lobby_view`, `game_view`, `join_click`,
 `deposit_modal_opened`, `deposit_method_selected`, `deposit_amount_entered`,
 `provider_game_view`, `provider_session_ended`, `hero_predictions_click`,
 `lobby_predictions_click`. Super properties on all of them: `brand`, `locale`, `is_pwa`.
+
+Failure and timing events (added with the retention program, 2026-09-08):
+
+| event | when | properties |
+|---|---|---|
+| `login_failed` | a sign-in did not complete | `method` (`password` or `telegram`), `reason` (a validation reason such as `password_short`, or the server code: `invalid_credentials`, `account_suspended`, `rate_limited`, `timeout`, `network`), `status` |
+| `register_failed` | a registration did not complete | `reason` (`validation_*`, `exists` for "User already exists", or the server code), `status` |
+| `deposit_checkout_redirect` | ZareCash checkout created, browser about to leave | `paymentMethod`, `amountBucket`, `ms` (checkout call round trip) |
+| `deposit_checkout_failed` | checkout call failed or timed out (15 s) | `paymentMethod`, `amountBucket`, `ms`, `code`, `status`, `timeout` |
+| `provider_launch_failed` | browser side of a failed launch | `providerCode`, `gameCode`, `code`, `status` |
+| `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `msToLoad` since the launch call |
+
+`describeFailure()` in `apps/web/utils/http-failure.ts` produces `code` / `status` / `timeout`
+for all of them, so a failure reason means the same thing on every event.
 
 Two session-health events come from the auth store:
 
@@ -108,6 +124,14 @@ pnpm posthog:backfill -- --since 2026-02-20                # sends, using POSTHO
 Run it **from a machine that can reach the production database** with that environment's
 `DATABASE_URL`, `POSTHOG_KEY` and `POSTHOG_BRAND` in the root `.env`. Takes minutes, not hours,
 at current volume. Run once per brand (each brand has its own database).
+
+No such machine is needed any more: the API image ships `src/` and `scripts/`, so the same
+script runs inside the running `api` container with its own environment (Dokploy: the
+compose service, a one-off schedule; or `docker exec`):
+
+```bash
+cd /app/apps/api && pnpm posthog:backfill:image -- --since 2026-02-20
+```
 
 What it sends: `user_registered`, deposit/withdrawal lifecycles, `bonus_granted`,
 `game_joined` / `game_finished` / `game_refunded`, every row of `analytics_events`, and an
@@ -246,3 +270,14 @@ upload step was skipped for that build).
   from a tab opened before a deploy rotated the `_nuxt` hashes; Nuxt reloads
   the page (`experimental.emitRouteChunkError: 'automatic-immediate'`), so
   they are recovered, not fatal.
+
+## 9. Retention watchlists (cohorts)
+
+Two dynamic cohorts, created 2026-09-08, recalculate on their own:
+
+- **VIP depositors**: an approved deposit of 1,000+ ETB in the last 30 days. Nine such
+  players produced 46% of deposit volume in the first 40 hours of tracking.
+- **Quiet VIPs**: VIP depositors with no `$pageview` in the last 3 days. The daily win-back
+  list. Open it, reach out personally.
+
+Both live under Cohorts in the PostHog project. Filter any insight or replay list by them.

@@ -6,7 +6,7 @@ import { GameCatalogService } from '../../services/game-catalog.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { EventService } from '../../services/event.service.js'
 import { accountForLaunch } from './account-for-launch.js'
-import { captureEvent } from '../../lib/posthog'
+import { emitProviderLaunch } from '../../lib/posthog-events.js'
 
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
@@ -201,6 +201,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 // integration failure (e.g. GASea SC_VENDOR_ERROR, Palace unreachable).
                 // Don't hide the game; return a clean 502 with a retry hint instead of
                 // a raw 500 so the player gets a sensible message.
+                emitProviderLaunch(user.id, { providerCode, gameCode, launchOk: false, reason: 'vendor_error' })
                 return reply.status(502).send({
                     statusCode: 502,
                     error: 'GameLaunchFailed',
@@ -227,10 +228,9 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 await redis.setex(`tp:token:${token}`, TOKEN_TTL, user.id)
             }
 
-            void captureEvent(user.id, 'provider_game_launched', {
-                provider_code: providerCode,
-                game_code: gameCode,
-            })
+            // One event per attempt, named by outcome. The old unconditional
+            // provider_game_launched made launches outnumber game views 2:1.
+            emitProviderLaunch(user.id, { providerCode, gameCode, launchOk, reason: launchOk ? undefined : 'bad_url' })
 
             // Fire analytics event non-blocking — never fail the launch
             Promise.all([

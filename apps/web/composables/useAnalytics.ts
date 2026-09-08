@@ -23,6 +23,13 @@ const ALLOWED = new Set([
     'session_refresh_failed',
     'provider_game_view',
     'provider_session_ended',
+    // Failure and timing events added 2026-09-08 (retention program, project 2).
+    'login_failed',
+    'register_failed',
+    'deposit_checkout_redirect',
+    'deposit_checkout_failed',
+    'provider_launch_failed',
+    'provider_game_loaded',
     // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.
     // A name missing from either list is dropped by the /events sink (PostHog
     // still gets it).
