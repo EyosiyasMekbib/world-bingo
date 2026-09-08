@@ -1,4 +1,6 @@
 import { resolve } from 'path'
+import { existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 
 // Internal Docker hostname of THIS deployment's API service. Baked at build time
 // (routeRules proxies are static). Defaults to `http://api:8080` for the generic
@@ -21,10 +23,32 @@ export default defineNuxtConfig({
     devtools: { enabled: true },
 
     // Client chunks get hidden source maps: a .map beside every chunk, no
-    // sourceMappingURL comment. apps/web/scripts/posthog-sourcemaps.sh uploads
-    // them to PostHog during the Docker build and deletes them afterwards, so
-    // no map ever ships. Server maps keep the Nuxt default (never public).
+    // sourceMappingURL comment. The nitro:build:before hook below hands them
+    // to apps/web/scripts/posthog-sourcemaps.sh (inject chunk ids, upload,
+    // delete), so no map ever ships. Server maps keep the Nuxt default.
     sourcemap: { server: true, client: 'hidden' },
+
+    hooks: {
+        // MUST run here: after the Vite client build, BEFORE Nitro copies
+        // .nuxt/dist/client into .output/public and records every asset's
+        // size and etag in its manifest. Injecting chunk ids after that copy
+        // (as a post-build Docker step once did) grew each file by a few
+        // hundred bytes while Nitro kept sending the recorded content-length,
+        // so browsers received truncated modules and the entry chunk failed
+        // to parse. Production client JS was dead for ~10 minutes on
+        // 2026-09-08 because of exactly that.
+        'nitro:build:before': (nitro) => {
+            if (nitro.options.dev) return
+            const clientDir = resolve(__dirname, '.nuxt/dist/client/_nuxt')
+            if (!existsSync(clientDir)) {
+                console.warn(`[posthog-sourcemaps] ${clientDir} missing, skipping`)
+                return
+            }
+            // The script never fails the build on an upload error; it only
+            // exits non-zero when given no directory, which is guarded above.
+            execFileSync('sh', ['scripts/posthog-sourcemaps.sh', clientDir], { cwd: __dirname, stdio: 'inherit' })
+        },
+    },
 
     experimental: {
         // A chunk that 404s (stale tab after a deploy rotates _nuxt hashes)
