@@ -77,24 +77,41 @@ function currentBrand(): string {
     }
 }
 
+// Fallback ids for when storage access throws (Safari/webview privacy modes
+// raise a SecurityError on the `localStorage`/`sessionStorage` getter itself,
+// not just on .getItem — merely wrapping the call site isn't enough, the
+// property read has to be inside the try too). Regenerated per session since
+// they can't be persisted; analytics still work, just without cross-visit
+// continuity for that one browser.
+let fallbackAnonId: string | null = null
+let fallbackSessionId: string | null = null
+
 function getAnonId(): string {
     if (import.meta.server) return ''
-    let id = localStorage.getItem('wb_anon_id')
-    if (!id) {
-        id = uuidv4()
-        localStorage.setItem('wb_anon_id', id)
+    try {
+        let id = localStorage.getItem('wb_anon_id')
+        if (!id) {
+            id = uuidv4()
+            localStorage.setItem('wb_anon_id', id)
+        }
+        return id
+    } catch {
+        return (fallbackAnonId ??= uuidv4())
     }
-    return id
 }
 
 function getSessionId(): string {
     if (import.meta.server) return ''
-    let id = sessionStorage.getItem('wb_session_id')
-    if (!id) {
-        id = uuidv4()
-        sessionStorage.setItem('wb_session_id', id)
+    try {
+        let id = sessionStorage.getItem('wb_session_id')
+        if (!id) {
+            id = uuidv4()
+            sessionStorage.setItem('wb_session_id', id)
+        }
+        return id
+    } catch {
+        return (fallbackSessionId ??= uuidv4())
     }
-    return id
 }
 
 async function flush() {
@@ -191,6 +208,8 @@ export const useAnalytics = () => {
                 // ignore
             }
         }
+        fallbackAnonId = null
+        fallbackSessionId = null
         try {
             localStorage.removeItem('wb_anon_id')
             sessionStorage.removeItem('wb_session_id')

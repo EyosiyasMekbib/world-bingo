@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { execFileSync } from 'node:child_process'
 
 // Internal Docker hostname of THIS deployment's API service. Baked at build time
 // (routeRules proxies are static). Defaults to `http://api:8080` for the generic
@@ -22,8 +23,8 @@ export default defineNuxtConfig({
 
     // Client chunks get hidden source maps: a .map beside every chunk, no
     // sourceMappingURL comment. apps/web/scripts/posthog-sourcemaps.sh uploads
-    // them to PostHog during the Docker build and deletes them afterwards, so
-    // no map ever ships. Server maps keep the Nuxt default (never public).
+    // them to PostHog and deletes them afterwards (see hooks below), so no
+    // map ever ships. Server maps keep the Nuxt default (never public).
     sourcemap: { server: true, client: 'hidden' },
 
     experimental: {
@@ -31,6 +32,27 @@ export default defineNuxtConfig({
         // reloads the page at once instead of waiting for the next route
         // change. reloadNuxtApp guards the loop with a 10s sessionStorage TTL.
         emitRouteChunkError: 'automatic-immediate',
+    },
+
+    hooks: {
+        // Nitro copies .nuxt/dist/client into .output/public and freezes each
+        // file's byte size into its own asset manifest during ITS build phase
+        // (right after this hook), then serves that exact size as
+        // content-length forever after. So posthog-sourcemaps.sh (inject
+        // chunk ids, upload hidden source maps, strip every .map) MUST run
+        // here, before Nitro measures the client output — never as a step
+        // after `nuxt build` against .output/public. Editing post-build ships
+        // truncated JS with a stale content-length (browsers get a SyntaxError
+        // or an aborted fetch mid-chunk) and .map requests 404/500 once
+        // stripped. This took client JS down in production on 2026-09-08;
+        // see the postmortem in project memory before changing this again.
+        'nitro:build:before': () => {
+            execFileSync(
+                'sh',
+                [resolve(__dirname, 'scripts/posthog-sourcemaps.sh'), resolve(__dirname, '.nuxt/dist/client/_nuxt')],
+                { stdio: 'inherit' },
+            )
+        },
     },
 
     // @sentry/nuxt module options (not runtimeConfig). Its source map plugin
