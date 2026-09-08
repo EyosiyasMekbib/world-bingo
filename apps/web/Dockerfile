@@ -43,6 +43,18 @@ ENV NUXT_POSTHOG_ASSETS_PROXY_TARGET=$NUXT_POSTHOG_ASSETS_PROXY_TARGET
 WORKDIR /app/apps/web
 RUN pnpm run build
 
+# PostHog error tracking: inject chunk ids and upload the hidden client source
+# maps (only when the POSTHOG_CLI_API_KEY build secret is supplied), then strip
+# every .map so none ships. Never fails the build. See scripts/posthog-sourcemaps.sh.
+ARG POSTHOG_CLI_PROJECT_ID=
+ARG POSTHOG_CLI_HOST=https://eu.posthog.com
+ARG POSTHOG_CLI_VERSION=0.18.1
+RUN --mount=type=secret,id=POSTHOG_CLI_API_KEY \
+    POSTHOG_CLI_PROJECT_ID="$POSTHOG_CLI_PROJECT_ID" \
+    POSTHOG_CLI_HOST="$POSTHOG_CLI_HOST" \
+    POSTHOG_CLI_VERSION="$POSTHOG_CLI_VERSION" \
+    sh scripts/posthog-sourcemaps.sh .output/public/_nuxt
+
 # ---- Stage 2: Production runner ----
 FROM node:22-alpine AS runner
 

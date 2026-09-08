@@ -1,3 +1,4 @@
+| `apps/web/scripts/posthog-sourcemaps.sh` | build step: inject chunk ids, upload hidden source maps, strip `.map` files |
 # World Bingo — PostHog Product Analytics Runbook
 
 > **Scope:** browser events, session replay, server-side money and game events, and the
@@ -190,3 +191,58 @@ Supporting cuts worth a saved insight each: `game_finished` breakdown by `templa
 | `apps/api/src/lib/posthog.ts` | env-gated client, bot/staff exclusion, `captureEvent` |
 | `apps/api/src/lib/posthog-events.ts` | `emitDepositApproved`, `emitGameFinished`, `emitGameRefunded` |
 | `apps/api/src/lib/posthog-backfill.ts` + `scripts/posthog-backfill.ts` | historical import |
+
+## 8. Source maps for error tracking
+
+PostHog's exception autocapture is switched on remotely (project settings →
+Error tracking), so the web app reports unhandled errors without any client
+config. Without source maps every frame is a minified `_nuxt/XXXX.js:2:641`,
+and PostHog's own symbolication attempt fails with "bad json" because the
+`.map` it asks for 404s. The web Docker build fixes that:
+
+1. `nuxt.config.ts` sets `sourcemap.client: 'hidden'` — a `.map` beside every
+   chunk, no `sourceMappingURL` comment — and turns off `@sentry/nuxt`'s
+   source map plugin, which would otherwise delete the maps after its own
+   (token-less, skipped) upload.
+2. After `nuxt build`, `scripts/posthog-sourcemaps.sh` runs
+   `posthog-cli sourcemap process` on `.output/public/_nuxt`: it stamps a
+   chunk id into each JS file and its map, uploads the maps, then deletes
+   every `.map` so none ships.
+3. The step is env-gated and never fails the build. No key → "skipping
+   upload", maps still stripped. A failed upload logs `UPLOAD FAILED` and
+   continues.
+
+### Enable it on a deployment
+
+In the stack's environment (Dokploy → compose → Environment):
+
+```
+POSTHOG_CLI_API_KEY=phx_...      # personal API key, scope: error_tracking:write
+POSTHOG_CLI_PROJECT_ID=267450    # the number in the PostHog project URL
+POSTHOG_CLI_HOST=https://eu.posthog.com
+```
+
+Create the key at PostHog → Settings → Personal API keys, scoped to this
+organization with only `error_tracking:write`. The compose files pass it to
+the web build as a BuildKit **secret** (`/run/secrets/POSTHOG_CLI_API_KEY`),
+never as a build arg, so it lands in no image layer. Then redeploy the web
+service: the build log shows `posthog-sourcemaps: uploading N source maps`.
+
+### Verify
+
+PostHog → Error tracking → any new issue → the stack trace shows
+`components/...vue` frames instead of `_nuxt/XXXX.js`. Symbol sets are listed
+under Error tracking → Settings → Symbol sets; a row with a failure reason
+means the chunk id in the served JS has no uploaded map (stale image, or the
+upload step was skipped for that build).
+
+### Related noise rules (set in PostHog, not in code)
+
+- **Suppression**: `$exception_values` contains `Script error.` — the
+  cross-origin placeholder old Android in-app browsers emit. Dropped at
+  ingestion.
+- **Grouping**: any of `dynamically imported module`, `Importing a module
+  script failed`, `Unable to preload CSS` → one issue. Those are chunk loads
+  from a tab opened before a deploy rotated the `_nuxt` hashes; Nuxt reloads
+  the page (`experimental.emitRouteChunkError: 'automatic-immediate'`), so
+  they are recovered, not fatal.

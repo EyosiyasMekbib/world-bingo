@@ -100,6 +100,13 @@ services:
         # Browser /api, /socket.io, /v1, /uploads must proxy to THIS stack's api,
         # not the bare `api` alias shared on dokploy-network.
         NUXT_API_PROXY_TARGET: http://api-arada-stg:8080
+        # PostHog source maps for error tracking (apps/web/scripts/posthog-sourcemaps.sh).
+        # The key arrives as the build secret below, never as an arg. Empty project
+        # id → upload skipped; .map files are stripped from the image either way.
+        POSTHOG_CLI_PROJECT_ID: ${POSTHOG_CLI_PROJECT_ID:-}
+        POSTHOG_CLI_HOST: ${POSTHOG_CLI_HOST:-https://eu.posthog.com}
+      secrets:
+        - POSTHOG_CLI_API_KEY
     image: world-bingo-web:arada-stg
     restart: unless-stopped
     ports:
@@ -156,3 +163,10 @@ networks:
   internal:
   dokploy-network:
     external: true
+
+secrets:
+  # Build-time only. Compose reads it from this stack's .env (Dokploy writes
+  # that file) and BuildKit mounts it at /run/secrets/POSTHOG_CLI_API_KEY for
+  # the web image build. Unset → empty file → upload skipped. Never a layer.
+  POSTHOG_CLI_API_KEY:
+    environment: POSTHOG_CLI_API_KEY
