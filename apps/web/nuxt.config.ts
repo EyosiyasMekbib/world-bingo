@@ -20,6 +20,26 @@ export default defineNuxtConfig({
     compatibilityDate: '2024-11-01',
     devtools: { enabled: true },
 
+    // Client chunks get hidden source maps: a .map beside every chunk, no
+    // sourceMappingURL comment. apps/web/scripts/posthog-sourcemaps.sh uploads
+    // them to PostHog during the Docker build and deletes them afterwards, so
+    // no map ever ships. Server maps keep the Nuxt default (never public).
+    sourcemap: { server: true, client: 'hidden' },
+
+    experimental: {
+        // A chunk that 404s (stale tab after a deploy rotates _nuxt hashes)
+        // reloads the page at once instead of waiting for the next route
+        // change. reloadNuxtApp guards the loop with a 10s sessionStorage TTL.
+        emitRouteChunkError: 'automatic-immediate',
+    },
+
+    // @sentry/nuxt module options (not runtimeConfig). Its source map plugin
+    // is on by default even with an empty DSN, and it deletes every public
+    // .map after its (skipped) upload — which would leave nothing for PostHog.
+    sentry: {
+        sourceMapsUploadOptions: { enabled: false },
+    },
+
     app: {
         head: {
             meta: [

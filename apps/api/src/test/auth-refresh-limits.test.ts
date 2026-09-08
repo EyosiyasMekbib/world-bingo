@@ -5,19 +5,30 @@ import { rateLimitKey, extractBearerToken, verifiedUserRateLimitKey } from '../l
 
 describe('rateLimitKey', () => {
     it('keys on the user id when a bearer token identifies one', () => {
-        expect(rateLimitKey({ userId: 'u-1', forwardedFor: '10.0.0.1', ip: '10.0.0.1' })).toBe('user:u-1')
+        expect(rateLimitKey({ userId: 'u-1', ip: '10.0.0.1' })).toBe('user:u-1')
     })
 
-    it('falls back to the first forwarded-for hop for anonymous traffic', () => {
-        expect(rateLimitKey({ userId: null, forwardedFor: '196.188.1.1, 10.0.0.5', ip: '10.0.0.5' })).toBe('ip:196.188.1.1')
+    it('keys anonymous traffic on the resolved request ip', () => {
+        expect(rateLimitKey({ userId: null, ip: '196.188.1.1' })).toBe('ip:196.188.1.1')
     })
 
-    it('falls back to the socket ip when there is no forwarded-for header', () => {
-        expect(rateLimitKey({ userId: null, forwardedFor: undefined, ip: '10.0.0.5' })).toBe('ip:10.0.0.5')
+    it('cannot be steered by a client-supplied x-forwarded-for value', () => {
+        // The helper no longer accepts a raw header at all. `ip` is Fastify's
+        // request.ip, resolved against the pinned TRUST_PROXY_HOPS count, so a
+        // spoofed prefix never reaches this function. Passing a header-shaped
+        // string is therefore just an ordinary key, not a way to pick a bucket.
+        const a = rateLimitKey({ userId: null, ip: '196.188.1.1' })
+        const b = rateLimitKey({ userId: null, ip: '196.188.1.1' })
+        expect(a).toBe(b)
+        expect(a).toBe('ip:196.188.1.1')
+    })
+
+    it('falls back to the socket ip when nothing else is known', () => {
+        expect(rateLimitKey({ userId: null, ip: '10.0.0.5' })).toBe('ip:10.0.0.5')
     })
 
     it('never returns a bare empty key', () => {
-        expect(rateLimitKey({ userId: null, forwardedFor: '   ', ip: '' })).toBe('ip:unknown')
+        expect(rateLimitKey({ userId: null, ip: '   ' })).toBe('ip:unknown')
     })
 })
 
@@ -69,7 +80,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: `Bearer ${token}`,
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('user:u-42')
@@ -84,7 +94,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: `Bearer ${forged}`,
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('ip:10.0.0.9')
@@ -96,7 +105,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: `Bearer ${token}`,
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('ip:10.0.0.9')
@@ -106,7 +114,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: undefined,
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('ip:10.0.0.9')
@@ -116,7 +123,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: 'Basic dXNlcjpwYXNz',
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('ip:10.0.0.9')
@@ -130,7 +136,6 @@ describe('verifiedUserRateLimitKey', () => {
             verifiedUserRateLimitKey({
                 authorizationHeader: 'Bearer whatever',
                 verify: throwingVerify,
-                forwardedFor: undefined,
                 ip: '10.0.0.9',
             }),
         ).resolves.toBe('ip:10.0.0.9')
@@ -144,7 +149,6 @@ describe('verifiedUserRateLimitKey', () => {
             verifiedUserRateLimitKey({
                 authorizationHeader: 'Bearer whatever',
                 verify: rejectingVerify,
-                forwardedFor: undefined,
                 ip: '10.0.0.9',
             }),
         ).resolves.toBe('ip:10.0.0.9')
@@ -155,7 +159,6 @@ describe('verifiedUserRateLimitKey', () => {
         const key = await verifiedUserRateLimitKey({
             authorizationHeader: `Bearer ${token}`,
             verify,
-            forwardedFor: undefined,
             ip: '10.0.0.9',
         })
         expect(key).toBe('ip:10.0.0.9')

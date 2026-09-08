@@ -85,6 +85,28 @@ if (!jwtPrivateKey || !jwtPublicKey) {
 
 const isProd = process.env.NODE_ENV === 'production'
 
+/**
+ * How many reverse-proxy hops sit in front of this service. A security
+ * boundary, not a tuning knob — see the `trustProxy` note below.
+ *
+ * Validated hard, because the failure is silent: `Infinity` or `1e9` would
+ * make Fastify trust the entire X-Forwarded-For chain, which is exactly the
+ * `trustProxy: true` behaviour this exists to remove — measured at 0 × 429
+ * against a rotating spoof. Anything that is not a whole number in range
+ * falls back to the default rather than being coerced.
+ */
+const TRUST_PROXY_HOPS = ((): number => {
+    const DEFAULT = 1
+    // 4 is well past any realistic topology (Traefik, plus Nitro's
+    // server-side /api proxy, plus a CDN, plus one spare).
+    const MAX = 4
+    const raw = process.env.TRUST_PROXY_HOPS
+    if (raw === undefined || raw.trim() === '') return DEFAULT
+    const n = Number(raw)
+    if (!Number.isInteger(n) || n < 1 || n > MAX) return DEFAULT
+    return n
+})()
+
 const server = Fastify({
     logger: isProd
         ? { redact: { paths: redactPaths, censor: '[redacted]' } }
@@ -97,7 +119,33 @@ const server = Fastify({
     requestIdHeader: false,
     genReqId,
     disableRequestLogging: false,
-    trustProxy: true, // Required when behind nginx/load balancer for correct IP in rate limiting
+    // A COUNT of trusted proxy hops, not `true`. With `true`, Fastify believes
+    // the whole X-Forwarded-For chain and `request.ip` becomes its leftmost
+    // entry — which the client writes. Traefik appends rather than replaces,
+    // so a caller sending `X-Forwarded-For: <anything>` chose their own
+    // `request.ip`, and with it their own rate-limit bucket: a fresh value per
+    // request defeated the limiter entirely.
+    //
+    // With a count, Fastify walks the chain from the right, skips exactly that
+    // many trusted hops, and takes the next address — a spoofed prefix is
+    // ignored however long it is (measured: a 10-entry fake prefix still
+    // resolves to the real client).
+    //
+    // Default 1. Dokploy's Traefik is the only hop that APPENDS to the chain,
+    // verified against the live deployment (no Cloudflare `cf-ray`, Traefik's
+    // own `alt-svc: h3`). Note the player path is browser → Traefik → Nitro's
+    // server-side /api proxy → here, which is two proxies: h3's
+    // `getProxyRequestHeaders` forwards X-Forwarded-For unchanged and appends
+    // nothing of its own, so the chain still carries exactly one appended hop
+    // and 1 is right. If that ever changes — h3 starts appending, or the
+    // proxy is swapped for one that does — this must change with it.
+    //
+    // Setting this too HIGH does NOT fail loudly: it walks `request.ip` LEFT,
+    // back into the part of the chain the client wrote, handing every caller
+    // its own `request.ip` again (measured at hops=2 against a one-entry
+    // spoof: 30 × 200, 0 × 429 — the original hole, restored silently). Raise
+    // it only in lockstep with a proxy that genuinely appends a hop.
+    trustProxy: TRUST_PROXY_HOPS,
 })
 
 // Bind req.log (which carries reqId) for the whole request's async context, so
@@ -155,7 +203,6 @@ await server.register(rateLimit, {
         return verifiedUserRateLimitKey({
             authorizationHeader: req.headers.authorization,
             verify: (token) => server.jwt.verify(token),
-            forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
             ip: req.ip,
         })
     },
@@ -165,7 +212,9 @@ await server.register(rateLimit, {
     allowList: (req) => {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
+        // caller could name a whitelisted address and skip the limiter outright.
+        const ip = req.ip
         return rateLimitWhitelist.has(ip)
     },
     errorResponseBuilder: () => ({
@@ -410,6 +459,11 @@ try {
     }
 
     await server.listen({ port, host })
+
+    // Say the effective value out loud. Over-setting this hands `request.ip`
+    // back to the client with no other symptom (see the trustProxy note), so
+    // one boot line is the only chance to notice a bad value.
+    server.log.info({ trustProxyHops: TRUST_PROXY_HOPS }, '[security] trusted proxy hop count')
 
     // Recovery: restart countdowns for any WAITING games that already have players
     // and push LOCKING/STARTING games into the engine

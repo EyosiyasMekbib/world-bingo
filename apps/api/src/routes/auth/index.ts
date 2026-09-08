@@ -3,7 +3,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { rateLimitKey } from '../../lib/rate-limit-key'
+import { rateLimitKey, loginRateLimitKey } from '../../lib/rate-limit-key'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Independent per-IP ceiling for /auth/refresh, built with
@@ -51,60 +51,66 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         // this ceiling.
         max: 240,
         timeWindow: '1 minute',
-        // Same key the pre-existing global 100/min limiter uses (see
-        // lib/rate-limit-key.ts and the registration of `@fastify/rate-limit`
-        // in index.ts): `req.ip`, which with `trustProxy: true` resolves to
-        // the LEFTMOST `x-forwarded-for` hop. Traefik *appends* its own hop
-        // rather than replacing the header, so that leftmost entry is
-        // whatever the client itself sent as `X-Forwarded-For` — an
-        // attacker can put anything there, including a fresh value on every
-        // request, which defeats this key entirely. So, honestly: this
-        // ceiling is NOT a defence against a determined attacker who spoofs
-        // the header (an attacker rotating both the refresh token AND the
-        // XFF value per request sees zero 429s from it, same as before this
-        // fix). It only guards against an accidental request storm or
-        // unsophisticated abuse that doesn't bother spoofing the header.
-        // Real hardening — pinning the trusted hop count for the actual
-        // production proxy topology (Dokploy/Traefik, possibly also
-        // Cloudflare, none of which is established here) and re-keying off
-        // it — is a follow-up, and it must cover the pre-existing global
-        // limiter too, since it has always used this same spoofable key.
-        // A 429 from this ceiling is no longer session-fatal either way:
-        // the web store treats 429 as transient and keeps the session.
-        keyGenerator: (req: any) =>
-            rateLimitKey({
-                userId: null,
-                forwardedFor: req.headers['x-forwarded-for'] as string | undefined,
-                ip: req.ip,
-            }),
+        // The same IP key the pre-existing global 100/min limiter falls back
+        // to for anonymous traffic (see lib/rate-limit-key.ts and the
+        // registration of `@fastify/rate-limit` in index.ts) — that limiter
+        // keys on a VERIFIED user id whenever a valid bearer token is
+        // present, and only drops to this key otherwise. Refresh calls carry
+        // no bearer token, so this route is always on the fallback.
+        // `req.ip`, resolved against the pinned TRUST_PROXY_HOPS count in
+        // index.ts, so a client that writes its own `X-Forwarded-For` cannot
+        // choose its bucket. Keying off the raw header — as this did before —
+        // let a caller mint a fresh bucket per request and made the ceiling a
+        // no-op against the exact traffic it exists to stop.
+        // A 429 from this ceiling is not session-fatal: the web store treats
+        // 429 as transient and keeps the session.
+        keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
     })
 
-    async function refreshIpCeiling(req: FastifyRequest, reply: FastifyReply) {
-        const result = await checkIpCeiling(req)
-        // `=== true`/`=== false`, not a plain truthiness check: this
-        // package's tsconfig runs with `strict: false` (no
-        // `strictNullChecks`), and without it a bare `if (result.isAllowed)`
-        // does not narrow this discriminated union at all — every property
-        // access below would still see the full `isAllowed: true | false`
-        // type and fail to compile.
-        if (result.isAllowed === true) return
+    // Builds an onRequest hook from a createRateLimit checker. Shared by
+    // /refresh and /login, which both need an IP backstop beside a per-
+    // identity budget that would otherwise mint unlimited buckets.
+    function ipCeilingHook(check: ReturnType<typeof fastify.createRateLimit>) {
+        return async function ipCeiling(req: FastifyRequest, reply: FastifyReply) {
+            const result = await check(req)
+            // `=== true`/`=== false`, not a plain truthiness check: this
+            // package's tsconfig runs with `strict: false` (no
+            // `strictNullChecks`), and without it a bare `if (result.isAllowed)`
+            // does not narrow this discriminated union at all — every property
+            // access below would still see the full `isAllowed: true | false`
+            // type and fail to compile.
+            if (result.isAllowed === true) return
 
-        // Mirrors @fastify/rate-limit's own `rateLimitRequestHandler`: every
-        // non-allowlisted request gets the informational headers, and only a
-        // request that is actually over the limit (`isExceeded`) gets
-        // `retry-after` plus the 429 body.
-        reply.header('x-ratelimit-limit', result.max)
-        reply.header('x-ratelimit-remaining', result.remaining)
-        reply.header('x-ratelimit-reset', result.ttlInSeconds)
-        if (result.isExceeded === false) return
+            // Mirrors @fastify/rate-limit's own `rateLimitRequestHandler`: every
+            // non-allowlisted request gets the informational headers, and only a
+            // request that is actually over the limit (`isExceeded`) gets
+            // `retry-after` plus the 429 body.
+            reply.header('x-ratelimit-limit', result.max)
+            reply.header('x-ratelimit-remaining', result.remaining)
+            reply.header('x-ratelimit-reset', result.ttlInSeconds)
+            if (result.isExceeded === false) return
 
-        reply.header('retry-after', result.ttlInSeconds)
-        return reply.code(429).send({
-            statusCode: 429,
-            error: 'Too Many Requests',
-            message: 'Rate limit exceeded. Please slow down.',
-        })
+            reply.header('retry-after', result.ttlInSeconds)
+            return reply.code(429).send({
+                statusCode: 429,
+                error: 'Too Many Requests',
+                message: 'Rate limit exceeded. Please slow down.',
+            })
+        }
     }
+    const refreshIpCeiling = ipCeilingHook(checkIpCeiling)
+
+    // /login backstop: 120/min per IP. Generous enough for a carrier NAT at
+    // peak, tight enough that stuffing many identifiers from one address
+    // still hits a wall. The per-identifier 10/min below is the real
+    // brute-force guard.
+    const loginIpCeiling = ipCeilingHook(
+        fastify.createRateLimit({
+            max: 120,
+            timeWindow: '1 minute',
+            keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
+        }),
+    )
 
     // Strict rate limit for auth endpoints to prevent brute-force
     fastify.post('/register', {
@@ -125,8 +131,16 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             rateLimit: {
                 max: 10,
                 timeWindow: '1 minute',
+                // Body is parsed by preValidation, so the key can read the
+                // identifier (see /refresh below for why not onRequest).
+                hook: 'preValidation',
+                // Per identifier tried, not per IP: behind a carrier NAT a
+                // per-IP 10/min was one budget for a whole neighbourhood and
+                // showed up as unexplained "Sign In" failures at peak.
+                keyGenerator: (req: any) => loginRateLimitKey({ identifier: req.body?.identifier, ip: req.ip }),
             },
         },
+        onRequest: loginIpCeiling,
         schema: {
             body: zodToJsonSchema(LoginSchema),
         },
@@ -168,7 +182,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     const token = req.body?.refreshToken
                     return typeof token === 'string' && token.length > 0
                         ? `rt:${createHash('sha256').update(token).digest('hex')}`
-                        : `ip:${(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip}`
+                        // req.ip, never the raw header: this branch is live
+                        // (the body is parsed by preValidation, so a POST with
+                        // no refreshToken lands here), and reading the header
+                        // would let a caller mint a fresh 20/min bucket per
+                        // request by rotating it.
+                        : `ip:${req.ip}`
                 },
             },
         },

@@ -15,6 +15,13 @@ export const ALLOWED_EVENTS = [
     'provider_game_view',
     'provider_game_launched',
     'provider_session_ended',
+    // Failure and timing events added 2026-09-08 (retention program, project 2).
+    'login_failed',
+    'register_failed',
+    'deposit_checkout_redirect',
+    'deposit_checkout_failed',
+    'provider_launch_failed',
+    'provider_game_loaded',
     // Which lobby surface sends players into the fight markets — the hero slide
     // or the lobby card. Worth separating: it is the only way to tell whether
     // the banner is doing the work or the tab is.

@@ -63,6 +63,12 @@ COPY packages/game-logic/package.json ./packages/game-logic/
 # Copy compiled output and prisma schema from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+# The PostHog backfill (scripts/posthog-backfill.ts) runs through tsx straight
+# from source, so ship src + scripts too: a one-off job inside this container
+# can then import history without a machine that reaches the prod database.
+# `pnpm posthog:backfill:image -- --since 2026-02-20` from /app/apps/api.
+COPY --from=builder /app/apps/api/src ./apps/api/src
+COPY --from=builder /app/apps/api/scripts ./apps/api/scripts
 COPY --from=builder /app/packages/game-logic/dist ./packages/game-logic/dist
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 

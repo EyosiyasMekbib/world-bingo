@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library'
+import { emitProviderBet, emitProviderWin } from '../lib/posthog-events.js'
 import type { AccountStatus as AccountStatusValue } from '@prisma/client'
 import { AccountStatus } from '@world-bingo/shared-types'
 import prisma from '../lib/prisma.js'
@@ -169,9 +170,11 @@ export class PalaceWalletService {
             return ok({ balance: Number(current.toFixed(2)) })
         }
 
+        let spentFrom: 'REAL' | 'BONUS' = 'REAL'
         try {
             const balanceAfter = await prisma.$transaction(async (tx) => {
                 const wallet = await lockWallet(tx, user.id)
+                spentFrom = wallet.spendAccount === 'BONUS' ? 'BONUS' : 'REAL'
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
@@ -235,6 +238,16 @@ export class PalaceWalletService {
                 return wallet.spendAccount === 'BONUS' ? newBonus : newReal
             })
 
+            // Post-commit: the ledger rows are durable once $transaction resolves,
+            // so a failed capture can never roll a bet back.
+            emitProviderBet(user.id, {
+                providerCode: 'palace',
+                gameCode: params.game_code ?? null,
+                roundId: params.round_id ?? null,
+                betId: params.gplay_id ?? null,
+                amount: Number(params.amount),
+                spendAccount: spentFrom,
+            })
             return ok({ balance: Number(balanceAfter.toFixed(2)) })
         } catch (e: any) {
             // `BonusService.spend` can throw its own `InsufficientBonusBalanceError`
@@ -393,6 +406,15 @@ export class PalaceWalletService {
             // account doesn't hold, undoing the point of authenticate/getBalance/
             // processBet already reporting per-account.
             return wallet.spendAccount === 'BONUS' ? bonusBefore : newReal
+        })
+
+        emitProviderWin(user.id, {
+            providerCode: 'palace',
+            gameCode: params.game_code ?? null,
+            roundId: params.round_id ?? null,
+            betId: params.gplay_id ?? null,
+            amount: winAmount.toNumber(),
+            roundStake: roundStake.toNumber(),
         })
 
         return ok({ balance: Number(balanceAfter.toFixed(2)) })

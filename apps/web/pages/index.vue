@@ -22,6 +22,9 @@ const brand = useBrand()
 const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
 
 const showAuthPrompt = ref(false)
+// The lobby's Deposit CTA used to navigate to /wallet; the balance chip and
+// the shells open the modal in place, so this does too.
+const { showDeposit } = useAppShell()
 
 // True until the first bingo + casino load settles together (see onMounted).
 const lobbyInitialLoading = ref(true)
@@ -262,7 +265,7 @@ function heroAction(slide: HeroSlide) {
     navigateTo('/promotions')
   } else if (action === 'deposit') {
     if (!auth.isAuthenticated) showAuthPrompt.value = true
-    else navigateTo('/wallet')
+    else showDeposit.value = true
   } else {
     navigateTo('/games')
   }

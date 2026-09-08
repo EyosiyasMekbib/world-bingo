@@ -46,6 +46,8 @@
     "accountRestricted": "Your account is under review. Deposits, withdrawals and games are paused — please contact support.",
     "continue": "Continue",
     "redirecting": "Redirecting…",
+    "checkoutTimeout": "The payment page is taking too long to answer. Please try again.",
+    "openCheckoutManually": "Not redirected? Tap here to open the payment page.",
     "hostedCheckoutHint": "Choose your method and send your receipt on the ZareCash page.",
     "checkoutFailed": "Could not start the deposit. Please try again.",
     "confirmingDeposit": "We're confirming your deposit — your balance updates as soon as it clears.",

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
+import { describeFailure } from '~/utils/http-failure'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,6 +11,21 @@ const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
 
 const gameUrl = ref<string | null>(null)
+// Iframe load time, measured from the launch call. 185 of 210 Keno sessions
+// ended inside a minute; without this nobody can tell a slow-loading game
+// from a short one.
+const launchStartedAt = ref<number | null>(null)
+let frameLoadTracked = false
+
+function onFrameLoad() {
+  if (frameLoadTracked || launchStartedAt.value === null) return
+  frameLoadTracked = true
+  track('provider_game_loaded', {
+    providerCode,
+    gameCode,
+    msToLoad: Math.round(performance.now() - launchStartedAt.value),
+  })
+}
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -30,6 +46,7 @@ onMounted(async () => {
 
   track('provider_game_view', { providerCode, gameCode })
 
+  launchStartedAt.value = performance.now()
   try {
     const lobbyUrl = `${window.location.origin}/`
     const result = await auth.apiFetch<{ gameUrl: string; token: string }>(
@@ -42,6 +59,8 @@ onMounted(async () => {
     gameUrl.value = result.gameUrl
     sessionStartedAt.value = Date.now()
   } catch (e: any) {
+    const failure = describeFailure(e)
+    track('provider_launch_failed', { providerCode, gameCode, code: failure.code, status: failure.status })
     error.value = e?.data?.message ?? e?.message ?? 'Failed to launch game'
   } finally {
     loading.value = false
@@ -85,6 +104,7 @@ useHead({
     <template v-else-if="gameUrl">
       <iframe
         :src="gameUrl"
+        @load="onFrameLoad"
         class="game-frame"
         allow="fullscreen; autoplay"
         allowfullscreen

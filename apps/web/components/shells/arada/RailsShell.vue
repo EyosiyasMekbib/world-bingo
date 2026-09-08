@@ -43,7 +43,7 @@ const {
 
         <div class="ab-spacer" />
 
-        <div class="ab-balance">
+        <div class="ab-balance ab-balance--tap" role="button" tabindex="0" title="Deposit" @click="showDeposit = true" @keydown.enter.prevent="showDeposit = true">
           <div class="ab-balance-amt">{{ formattedBalance }} <span>ETB</span></div>
           <div class="ab-balance-id">ID: {{ playerId }}</div>
         </div>
@@ -107,7 +107,7 @@ const {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" /><path d="m20 20-3.2-3.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </NuxtLink>
         <div class="ab-spacer" />
-        <div class="ab-balance ab-balance-sm">
+        <div class="ab-balance ab-balance-sm ab-balance--tap" role="button" tabindex="0" title="Deposit" @click="showDeposit = true" @keydown.enter.prevent="showDeposit = true">
           <div class="ab-balance-amt">{{ formattedBalance }} <span>ETB</span></div>
           <div class="ab-balance-id">ID: {{ playerId }}</div>
         </div>
