@@ -127,10 +127,11 @@ at current volume. Run once per brand (each brand has its own database).
 
 No such machine is needed any more: the API image ships `src/` and `scripts/`, so the same
 script runs inside the running `api` container with its own environment (Dokploy: the
-compose service, a one-off schedule; or `docker exec`):
+compose service, a one-off schedule; or `docker exec`). The runner image has no pnpm, so
+call tsx directly:
 
 ```bash
-cd /app/apps/api && pnpm posthog:backfill:image -- --since 2026-02-20
+cd /app/apps/api && node_modules/.bin/tsx scripts/posthog-backfill.ts --since 2026-02-20
 ```
 
 What it sends: `user_registered`, deposit/withdrawal lifecycles, `bonus_granted`,
@@ -228,10 +229,13 @@ and PostHog's own symbolication attempt fails with "bad json" because the
    chunk, no `sourceMappingURL` comment — and turns off `@sentry/nuxt`'s
    source map plugin, which would otherwise delete the maps after its own
    (token-less, skipped) upload.
-2. After `nuxt build`, `scripts/posthog-sourcemaps.sh` runs
-   `posthog-cli sourcemap process` on `.output/public/_nuxt`: it stamps a
+2. During `nuxt build`, the `nitro:build:before` hook in `nuxt.config.ts` runs
+   `scripts/posthog-sourcemaps.sh` on `.nuxt/dist/client/_nuxt`: it stamps a
    chunk id into each JS file and its map, uploads the maps, then deletes
-   every `.map` so none ships.
+   every `.map` so none ships. It must run there, before Nitro copies the
+   client build into `.output/public` and records each asset's size: editing
+   assets after that copy serves them truncated (that took production down
+   for ten minutes on 2026-09-08).
 3. The step is env-gated and never fails the build. No key → "skipping
    upload", maps still stripped. A failed upload logs `UPLOAD FAILED` and
    continues.
