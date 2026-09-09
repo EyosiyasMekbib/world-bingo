@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
-const { getCashbackPromotions, createCashbackPromotion, toggleCashbackPromotion } = useAdminApi()
+const { getCashbackPromotions, createCashbackPromotion, toggleCashbackPromotion, getGameTemplates, getProviders, getProviderGames } = useAdminApi()
 const toast = useToast()
 
 const promotions = ref<any[]>([])
@@ -18,6 +18,17 @@ const form = reactive({
   startsAt: '',
   endsAt: '',
 })
+
+const templates = ref<any[]>([])
+const providers = ref<any[]>([])
+const selectedTemplateIds = ref<string[]>([])
+const providerGameQuery = ref('')
+const providerGameResults = ref<any[]>([])
+const selectedProviderGames = ref<Array<{ providerId: string; gameCode: string; gameName: string }>>([])
+const loadingProviderGames = ref(false)
+let providerGameSearchTimer: ReturnType<typeof setTimeout> | undefined
+
+const primaryProvider = computed(() => providers.value.find((p: any) => p.isPrimary) ?? providers.value[0] ?? null)
 
 const refundTypeOptions = [
   { label: 'Percentage of loss', value: 'PERCENTAGE' },
@@ -45,6 +56,38 @@ async function fetchPromotions() {
   }
 }
 
+async function fetchTemplates() {
+  templates.value = (await getGameTemplates()) as any[] ?? []
+}
+
+async function fetchProviders() {
+  providers.value = (await getProviders()) as any[] ?? []
+}
+
+function onProviderGameSearch() {
+  if (providerGameSearchTimer) clearTimeout(providerGameSearchTimer)
+  providerGameSearchTimer = setTimeout(async () => {
+    if (!primaryProvider.value) return
+    loadingProviderGames.value = true
+    try {
+      const res = await getProviderGames(primaryProvider.value.code, { search: providerGameQuery.value, limit: 20 })
+      providerGameResults.value = (res as any)?.data ?? []
+    } finally {
+      loadingProviderGames.value = false
+    }
+  }, 300)
+}
+
+function isProviderGameSelected(game: any) {
+  return selectedProviderGames.value.some((g) => g.providerId === game.providerId && g.gameCode === game.gameCode)
+}
+
+function toggleProviderGame(game: any) {
+  const idx = selectedProviderGames.value.findIndex((g) => g.providerId === game.providerId && g.gameCode === game.gameCode)
+  if (idx >= 0) selectedProviderGames.value.splice(idx, 1)
+  else selectedProviderGames.value.push({ providerId: game.providerId, gameCode: game.gameCode, gameName: game.gameName })
+}
+
 async function create() {
   if (!form.name.trim() || !form.startsAt || !form.endsAt) {
     toast.add({ title: 'Missing fields', description: 'Name, Period Start and Period End are required', color: 'error' })
@@ -60,6 +103,8 @@ async function create() {
       frequency: form.frequency,
       startsAt: new Date(form.startsAt).toISOString(),
       endsAt: new Date(form.endsAt).toISOString(),
+      templateIds: selectedTemplateIds.value,
+      providerGameKeys: selectedProviderGames.value.map((g) => `${g.providerId}:${g.gameCode}`),
     })
     toast.add({ title: 'Created', description: 'Cashback promotion created', color: 'success' })
     showCreate.value = false
@@ -70,6 +115,10 @@ async function create() {
     form.frequency = 'WEEKLY'
     form.startsAt = ''
     form.endsAt = ''
+    selectedTemplateIds.value = []
+    selectedProviderGames.value = []
+    providerGameQuery.value = ''
+    providerGameResults.value = []
     await fetchPromotions()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err?.data?.error ?? 'Failed to create', color: 'error' })
@@ -98,10 +147,15 @@ function describePromo(promo: any) {
     ? `${Number(promo.refundValue).toFixed(0)}% back`
     : `${Number(promo.refundValue).toFixed(2)} ETB back`
   const freq = (promo.frequency as string).toLowerCase()
-  return `Lose ${threshold} ETB → get ${val} · ${freq}`
+  const scope = promo.scopedGameNames?.length ? ` on ${promo.scopedGameNames.join(', ')}` : ''
+  return `Lose ${threshold} ETB${scope} → get ${val} · ${freq}`
 }
 
-onMounted(fetchPromotions)
+onMounted(() => {
+  fetchPromotions()
+  fetchTemplates()
+  fetchProviders()
+})
 </script>
 
 <template>
@@ -162,6 +216,28 @@ onMounted(fetchPromotions)
           </UFormField>
           <UFormField label="Frequency">
             <USelect v-model="form.frequency" :items="frequencyOptions" value-key="value" label-key="label" class="w-full" />
+          </UFormField>
+          <UFormField label="Bingo Templates (optional — leave empty for site-wide)">
+            <div class="space-y-1 max-h-32 overflow-y-auto border border-(--surface-border) rounded-lg p-2">
+              <label v-for="t in templates" :key="t.id" class="flex items-center gap-2 text-sm text-white/80">
+                <input type="checkbox" :value="t.id" v-model="selectedTemplateIds" class="accent-primary-500" />
+                {{ t.title }}
+              </label>
+              <p v-if="!templates.length" class="text-xs text-white/30">No templates found</p>
+            </div>
+          </UFormField>
+          <UFormField label="Provider Games (optional)">
+            <UInput v-model="providerGameQuery" placeholder="Search provider games..." class="w-full mb-2" @input="onProviderGameSearch" />
+            <div class="space-y-1 max-h-32 overflow-y-auto border border-(--surface-border) rounded-lg p-2">
+              <p v-if="loadingProviderGames" class="text-xs text-white/30">Searching...</p>
+              <label v-for="g in providerGameResults" :key="`${g.providerId}-${g.gameCode}`" class="flex items-center gap-2 text-sm text-white/80">
+                <input type="checkbox" :checked="isProviderGameSelected(g)" @change="toggleProviderGame(g)" class="accent-primary-500" />
+                {{ g.gameName }}
+              </label>
+            </div>
+            <div v-if="selectedProviderGames.length" class="flex flex-wrap gap-1 mt-2">
+              <UBadge v-for="g in selectedProviderGames" :key="`${g.providerId}-${g.gameCode}`" color="primary" variant="soft" :label="g.gameName" />
+            </div>
           </UFormField>
           <UFormField label="Period Start">
             <UInput v-model="form.startsAt" type="datetime-local" class="w-full" />
