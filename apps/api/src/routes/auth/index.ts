@@ -3,7 +3,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { rateLimitKey, loginRateLimitKey } from '../../lib/rate-limit-key'
+import { rateLimitKey, loginRateLimitKey, registerRateLimitKey } from '../../lib/rate-limit-key'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Independent per-IP ceiling for /auth/refresh, built with
@@ -118,8 +118,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             rateLimit: {
                 max: 5,
                 timeWindow: '1 minute',
+                // Per phone being registered, not per IP: 25 people were
+                // refused with a 429 in 14 hours behind carrier NATs. The
+                // IP ceiling below still caps a single address.
+                hook: 'preValidation',
+                keyGenerator: (req: any) => registerRateLimitKey({ phone: req.body?.phone, ip: req.ip }),
             },
         },
+        onRequest: loginIpCeiling,
         schema: {
             body: zodToJsonSchema(RegisterSchema),
         },

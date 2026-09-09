@@ -39,6 +39,7 @@
           <label class="wb-label" for="identifier">Username or Phone</label>
           <input
             id="identifier"
+            ref="identifierEl"
             v-model="form.identifier"
             type="text"
             autocomplete="username"
@@ -53,6 +54,7 @@
           <div class="input-wrap">
             <input
               id="password"
+              ref="passwordEl"
               v-model="form.password"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
@@ -151,7 +153,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
 import type { TelegramAuthDto } from '@world-bingo/shared-types'
-import { validateLoginForm, type LoginFormError } from '~/utils/auth-form'
+import { validateLoginForm, applyAutofill, type LoginFormError } from '~/utils/auth-form'
 import { describeFailure } from '~/utils/http-failure'
 
 declare global {
@@ -176,6 +178,10 @@ const showPassword = ref(false)
 const activeTab = ref<'credentials' | 'telegram'>('credentials')
 
 const form = reactive({ identifier: '', password: '' })
+// Some Android browsers autofill without firing `input`, so v-model stays
+// empty while the box shows a value; applyAutofill reads the DOM back.
+const identifierEl = ref<HTMLInputElement | null>(null)
+const passwordEl = ref<HTMLInputElement | null>(null)
 
 const showWelcomeBack = computed(() => !!auth.user && !auth.isAuthenticated)
 
@@ -192,6 +198,7 @@ const VALIDATION_MESSAGES: Record<LoginFormError, string> = {
 
 async function handleCredentialsLogin() {
   errorMsg.value = ''
+  applyAutofill(form, { identifier: identifierEl.value, password: passwordEl.value })
   const invalid = validateLoginForm(form)
   if (invalid) {
     errorMsg.value = VALIDATION_MESSAGES[invalid]

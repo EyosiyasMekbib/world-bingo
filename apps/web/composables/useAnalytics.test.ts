@@ -119,3 +119,22 @@ describe('reset', () => {
     expect(sessionStorage.getItem('wb_session_id')).toBeNull()
   })
 })
+
+describe('track with { instant: true }', () => {
+  // deposit_checkout_redirect is tracked a few milliseconds before
+  // window.location.assign(). Batched capture lost every one of them (0 of
+  // 174 checkouts in 14 hours). PostHog's send_instantly bypasses the batch.
+  it('asks PostHog to send the event immediately', () => {
+    installed = ph
+    ph.capture.mockClear()
+    useAnalytics().track('deposit_checkout_redirect', { ms: 12 }, { instant: true })
+    expect(ph.capture).toHaveBeenCalledWith('deposit_checkout_redirect', { ms: 12 }, { send_instantly: true })
+  })
+
+  it('leaves ordinary tracking batched', () => {
+    installed = ph
+    ph.capture.mockClear()
+    useAnalytics().track('lobby_view', { a: 1 })
+    expect(ph.capture).toHaveBeenCalledWith('lobby_view', { a: 1 })
+  })
+})

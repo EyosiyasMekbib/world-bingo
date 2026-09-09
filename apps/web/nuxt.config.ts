@@ -216,6 +216,21 @@ export default defineNuxtConfig({
     },
 
     vite: {
+        build: {
+            rollupOptions: {
+                output: {
+                    // One-time cache bust. On 2026-09-08 a broken build served
+                    // truncated chunks under immutable, 1-year cache headers;
+                    // the fixed build kept the same content-hash filenames for
+                    // unchanged chunks, so browsers that cached a truncated
+                    // copy kept throwing SyntaxError for hours. A different
+                    // hash alphabet renames every chunk without touching the
+                    // source. Leave it in place; changing it back would resurrect
+                    // the old names.
+                    hashCharacters: 'base36',
+                },
+            },
+        },
         resolve: {
             alias: {
                 '@world-bingo/ui': resolve(__dirname, '../../packages/ui/src'),

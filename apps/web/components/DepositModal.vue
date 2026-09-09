@@ -337,11 +337,13 @@ async function startCheckout(m: DepositMethod) {
       body: { amount: amt, methodCode: m.code },
       timeout: CHECKOUT_TIMEOUT_MS,
     })
-    track('deposit_checkout_redirect', {
-      paymentMethod: m.code,
-      amountBucket: bucket,
-      ms: Math.round(performance.now() - startedAt),
-    })
+    // instant: the next line leaves the page; a batched capture never
+    // flushed (0 of 174 redirects arrived in the first 14 hours).
+    track(
+      'deposit_checkout_redirect',
+      { paymentMethod: m.code, amountBucket: bucket, ms: Math.round(performance.now() - startedAt) },
+      { instant: true },
+    )
     // Always the URL from THIS response: repeating the idempotency key mints a
     // fresh link upstream and kills the previous one.
     checkoutUrl.value = res.url

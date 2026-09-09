@@ -29,10 +29,23 @@ import { createHash } from 'crypto'
  * identifier (the limiter runs at preValidation, so a malformed body lands
  * here rather than 400ing first).
  */
+function identityRateLimitKey(scope: string, identifier: unknown, ip: string | undefined): string {
+    const id = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
+    if (id) return `${scope}:${createHash('sha256').update(id).digest('hex')}`
+    return rateLimitKey({ userId: null, ip })
+}
+
 export function loginRateLimitKey(input: { identifier: unknown; ip: string | undefined }): string {
-    const id = typeof input.identifier === 'string' ? input.identifier.trim().toLowerCase() : ''
-    if (id) return `login:${createHash('sha256').update(id).digest('hex')}`
-    return rateLimitKey({ userId: null, ip: input.ip })
+    return identityRateLimitKey('login', input.identifier, input.ip)
+}
+
+/**
+ * Same idea for /register, keyed on the phone being registered. Its own
+ * namespace: a login attempt and a registration on the same number must not
+ * spend each other's budget. 25 people hit the old per-IP 5/min in 14 hours.
+ */
+export function registerRateLimitKey(input: { phone: unknown; ip: string | undefined }): string {
+    return identityRateLimitKey('register', input.phone, input.ip)
 }
 
 export function rateLimitKey(input: {

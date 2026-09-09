@@ -153,19 +153,26 @@ function scheduleFlush() {
 }
 
 export const useAnalytics = () => {
-    const track = (name: string, props?: Record<string, unknown> | null) => {
+    /**
+     * `instant`: send now instead of batching. Use for an event tracked right
+     * before the page navigates away (a checkout redirect): the batched
+     * queue never got flushed and 0 of 174 checkout redirects arrived.
+     */
+    const track = (name: string, props?: Record<string, unknown> | null, opts?: { instant?: boolean }) => {
         if (import.meta.server) return
         const ph = getPosthog()
         if (ph) {
             try {
-                ph.capture(name, props ?? undefined)
+                if (opts?.instant) ph.capture(name, props ?? undefined, { send_instantly: true })
+                else ph.capture(name, props ?? undefined)
             } catch {
                 // never let analytics throw into the UI
             }
         }
         if (!ALLOWED.has(name)) return
         queue.push({ name, props: props ?? null, ts: Date.now() })
-        scheduleFlush()
+        if (opts?.instant) void flush()
+        else scheduleFlush()
     }
 
     /**
