@@ -11,7 +11,7 @@ const auth = useAuthStore()
 const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()
 const promotionsStore = usePromotionsStore()
-const { connect } = useSocket()
+const { socket, connect } = useSocket()
 const config = useRuntimeConfig()
 const { patternLabel } = usePatternLabel()
 const { track } = useAnalytics()
@@ -579,8 +579,12 @@ watch(
 onUnmounted(() => {
   feedObserver?.disconnect()
   if (slideTimer) clearInterval(slideTimer)
-  const socket = connect()
-  socket?.emit('lobby:unsubscribe')
+  // Read the existing socket, never connect() here: connect() creates a new
+  // connection when the reuse check doesn't match (e.g. auth identity has
+  // already changed by unmount time), so an unsubscribe-on-teardown call
+  // was opening a brand new socket — full handshake, polling, failed
+  // websocket upgrade — just to emit into a room it was never part of.
+  socket.value?.emit('lobby:unsubscribe')
 })
 </script>
 
