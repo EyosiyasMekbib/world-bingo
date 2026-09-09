@@ -504,6 +504,8 @@ export const useAdminApi = () => {
             frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
             startsAt: string
             endsAt: string
+            templateIds?: string[]
+            providerGameKeys?: string[]
         }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),

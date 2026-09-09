@@ -50,6 +50,8 @@ export class CashbackService {
         frequency: CashbackFrequency
         startsAt: string
         endsAt: string
+        templateIds?: string[]
+        providerGameKeys?: string[]
     }) {
         return prisma.cashbackPromotion.create({
             data: {
@@ -60,18 +62,53 @@ export class CashbackService {
                 frequency: data.frequency,
                 startsAt: new Date(data.startsAt),
                 endsAt: new Date(data.endsAt),
+                templateIds: data.templateIds ?? [],
+                providerGameKeys: data.providerGameKeys ?? [],
             },
         })
     }
 
     /**
-     * List all promotions, newest first.
+     * List all promotions, newest first. Resolves each promotion's game
+     * scope into display names so the admin UI needs no second round-trip.
      */
     static async listPromotions() {
-        return prisma.cashbackPromotion.findMany({
+        const promotions = await prisma.cashbackPromotion.findMany({
             orderBy: { createdAt: 'desc' },
             include: { _count: { select: { disbursements: true } } },
         })
+
+        const allTemplateIds = [...new Set(promotions.flatMap((p) => p.templateIds))]
+        const allProviderGameKeys = [...new Set(promotions.flatMap((p) => p.providerGameKeys))]
+
+        const templates = allTemplateIds.length > 0
+            ? await prisma.gameTemplate.findMany({ where: { id: { in: allTemplateIds } }, select: { id: true, title: true } })
+            : []
+        const templateTitleById = new Map(templates.map((t) => [t.id, t.title]))
+
+        const providerPairs = allProviderGameKeys
+            .map((key) => {
+                const separatorIndex = key.indexOf(':')
+                if (separatorIndex === -1) return null
+                return { key, providerId: key.slice(0, separatorIndex), gameCode: key.slice(separatorIndex + 1) }
+            })
+            .filter((p): p is { key: string; providerId: string; gameCode: string } => p !== null)
+
+        const providerGames = providerPairs.length > 0
+            ? await prisma.providerGame.findMany({
+                  where: { OR: providerPairs.map((p) => ({ providerId: p.providerId, gameCode: p.gameCode })) },
+                  select: { providerId: true, gameCode: true, gameName: true },
+              })
+            : []
+        const providerGameNameByKey = new Map(providerGames.map((g) => [`${g.providerId}:${g.gameCode}`, g.gameName]))
+
+        return promotions.map((promotion) => ({
+            ...promotion,
+            scopedGameNames: [
+                ...promotion.templateIds.map((id) => templateTitleById.get(id) ?? 'Unknown template'),
+                ...promotion.providerGameKeys.map((key) => providerGameNameByKey.get(key) ?? 'Unknown game'),
+            ],
+        }))
     }
 
     /**

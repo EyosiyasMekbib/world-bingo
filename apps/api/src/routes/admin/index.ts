@@ -71,6 +71,8 @@ const cashbackCreateSchema = z.object({
     frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
     startsAt: z.string(),
     endsAt: z.string(),
+    templateIds: z.array(z.string().uuid()).default([]),
+    providerGameKeys: z.array(z.string()).default([]),
 }).refine(
     (data) => new Date(data.startsAt) < new Date(data.endsAt),
     { message: 'endsAt must be after startsAt', path: ['endsAt'] }
@@ -669,8 +671,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.post('/cashback', async (req: any, reply) => {
             const parsed = cashbackCreateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
-            const { name, lossThreshold, refundType, refundValue, frequency, startsAt, endsAt } = parsed.data
-            return CashbackService.createPromotion({ name, lossThreshold, refundType: refundType as any, refundValue, frequency: frequency as any, startsAt, endsAt })
+            const { name, lossThreshold, refundType, refundValue, frequency, startsAt, endsAt, templateIds, providerGameKeys } = parsed.data
+            return CashbackService.createPromotion({ name, lossThreshold, refundType: refundType as any, refundValue, frequency: frequency as any, startsAt, endsAt, templateIds, providerGameKeys })
         })
 
         f.patch('/cashback/:id/toggle', async (req: any, _reply) => {
