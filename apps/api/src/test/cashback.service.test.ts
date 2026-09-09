@@ -165,3 +165,217 @@ describe('CashbackService.checkAndDisburse', () => {
         expect(Number(sorted[1].bonusBalanceAfter)).toBe(50)
     })
 })
+
+describe('CashbackService.checkAndDisburse — game scoping', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    async function makeTemplate(suffix: string) {
+        return prisma.gameTemplate.create({
+            data: {
+                title: `Scoped Template ${suffix}`,
+                ticketPrice: 10,
+                maxPlayers: 70,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE',
+            },
+        })
+    }
+
+    async function makeGameForTemplate(templateId: string | null, suffix: string) {
+        return prisma.game.create({
+            data: {
+                title: `Scoped Game ${suffix}`,
+                ticketPrice: 10,
+                maxPlayers: 70,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE',
+                status: 'COMPLETED',
+                calledBalls: [],
+                templateId,
+            },
+        })
+    }
+
+    async function makeProviderGame(suffix: string) {
+        const provider = await prisma.gameProvider.create({
+            data: { code: `prov-scope-${suffix}-${Date.now()}`, name: 'Test Provider', status: 'ACTIVE', apiBaseUrl: '', currency: 'ETB', config: {} },
+        })
+        const vendor = await prisma.gameVendor.create({
+            data: { providerId: provider.id, code: 'V1', name: 'Test Vendor' },
+        })
+        const game = await prisma.providerGame.create({
+            data: {
+                providerId: provider.id,
+                vendorId: vendor.id,
+                gameCode: `GAME-${suffix}`,
+                gameName: `Provider Game ${suffix}`,
+                categoryCode: 'SLOTS',
+                languageCodes: ['en'],
+                platformCodes: ['WEB'],
+                currencyCodes: ['ETB'],
+            },
+        })
+        return { provider, game }
+    }
+
+    it('only counts losses on the scoped bingo template, ignoring losses on other games', async () => {
+        const player = await makeUser('scopedbingo1', '+251900000030')
+        const inScopeTemplate = await makeTemplate('in')
+        const outOfScopeTemplate = await makeTemplate('out')
+        const inScopeGame = await makeGameForTemplate(inScopeTemplate.id, 'in')
+        const outOfScopeGame = await makeGameForTemplate(outOfScopeTemplate.id, 'out')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Template Scoped', lossThreshold: 50, refundType: 'FIXED', refundValue: 20,
+                frequency: 'DAILY', isActive: true, templateIds: [inScopeTemplate.id],
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // In-scope loss: 100 wagered, 0 won.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED', referenceId: inScopeGame.id },
+        })
+        // Out-of-scope loss: 500 wagered — must NOT count toward this promotion.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 500, status: 'APPROVED', referenceId: outOfScopeGame.id },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(20)
+
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { userId: player.id, promotionId: promotion.id } })
+        expect(new Decimal(disbursement.amount).toNumber()).toBe(20)
+    })
+
+    it('only counts losses on the scoped provider game', async () => {
+        const player = await makeUser('scopedprovider1', '+251900000031')
+        const { provider, game } = await makeProviderGame('a')
+        const { game: otherGame } = await makeProviderGame('b')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Provider Scoped', lossThreshold: 50, refundType: 'FIXED', refundValue: 15,
+                frequency: 'DAILY', isActive: true, providerGameKeys: [`${provider.id}:${game.gameCode}`],
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // In-scope: net loss of 100 (bet 100, no win).
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: player.id, providerId: provider.id, transactionId: `bet-${Date.now()}-a`,
+                gameCode: game.gameCode, type: 'BET', status: 'COMPLETED', amount: -100,
+                balanceBefore: 0, balanceAfter: 0,
+            },
+        })
+        // Out-of-scope: a big loss on a different provider game — must NOT count.
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: player.id, providerId: provider.id, transactionId: `bet-${Date.now()}-b`,
+                gameCode: otherGame.gameCode, type: 'BET', status: 'COMPLETED', amount: -900,
+                balanceBefore: 0, balanceAfter: 0,
+            },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(15)
+    })
+
+    it('sums losses across a mixed bingo-template + provider-game scope', async () => {
+        const player = await makeUser('scopedmixed1', '+251900000032')
+        const template = await makeTemplate('mixed')
+        const bingoGame = await makeGameForTemplate(template.id, 'mixed')
+        const { provider, game: providerGame } = await makeProviderGame('mixed')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Mixed Scoped', lossThreshold: 50, refundType: 'FIXED', refundValue: 25,
+                frequency: 'DAILY', isActive: true,
+                templateIds: [template.id], providerGameKeys: [`${provider.id}:${providerGame.gameCode}`],
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // 30 lost on bingo + 30 lost on the provider game = 60 total, clears the 50 threshold.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 30, status: 'APPROVED', referenceId: bingoGame.id },
+        })
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: player.id, providerId: provider.id, transactionId: `bet-${Date.now()}-mixed`,
+                gameCode: providerGame.gameCode, type: 'BET', status: 'COMPLETED', amount: -30,
+                balanceBefore: 0, balanceAfter: 0,
+            },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(25)
+    })
+
+    it('does not disburse when the scoped loss alone is below threshold, even if site-wide loss would clear it', async () => {
+        const player = await makeUser('scopedbelow1', '+251900000033')
+        const inScopeTemplate = await makeTemplate('below-in')
+        const outOfScopeTemplate = await makeTemplate('below-out')
+        const inScopeGame = await makeGameForTemplate(inScopeTemplate.id, 'below-in')
+        const outOfScopeGame = await makeGameForTemplate(outOfScopeTemplate.id, 'below-out')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Threshold Scoped', lossThreshold: 100, refundType: 'FIXED', refundValue: 20,
+                frequency: 'DAILY', isActive: true, templateIds: [inScopeTemplate.id],
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // In-scope loss is only 40 — below the 100 threshold.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 40, status: 'APPROVED', referenceId: inScopeGame.id },
+        })
+        // Out-of-scope loss of 200 would clear the threshold site-wide, but must be ignored.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 200, status: 'APPROVED', referenceId: outOfScopeGame.id },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(0)
+        expect(result.skipped).toBe(0)
+        const disbursement = await prisma.cashbackDisbursement.findFirst({ where: { userId: player.id, promotionId: promotion.id } })
+        expect(disbursement).toBeNull()
+    })
+
+    it('listPromotions resolves scoped template and provider game ids into display names', async () => {
+        const template = await makeTemplate('listed')
+        const { provider, game } = await makeProviderGame('listed')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Listed Scoped', lossThreshold: 50, refundType: 'FIXED', refundValue: 10,
+                frequency: 'DAILY', isActive: true,
+                templateIds: [template.id], providerGameKeys: [`${provider.id}:${game.gameCode}`],
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        const list = await CashbackService.listPromotions()
+        const found = list.find((p) => p.id === promotion.id)
+
+        expect(found?.scopedGameNames).toEqual([template.title, game.gameName])
+    })
+})

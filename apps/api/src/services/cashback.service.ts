@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { Prisma } from '@prisma/client'
 import { TransactionType, PaymentStatus, NotificationType, CashbackRefundType, CashbackFrequency } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
@@ -112,6 +113,102 @@ export class CashbackService {
     }
 
     /**
+     * Net loss (wagered − won) per user within [periodStart, periodEnd],
+     * restricted to the promotion's game scope. Empty templateIds AND empty
+     * providerGameKeys means unscoped — every bingo and provider game counts,
+     * matching site-wide behavior.
+     */
+    static async getNetLossByUser(
+        promotion: { templateIds: string[]; providerGameKeys: string[] },
+        periodStart: Date,
+        periodEnd: Date,
+    ): Promise<Map<string, Decimal>> {
+        const templateIds = promotion.templateIds ?? []
+        const providerGameKeys = promotion.providerGameKeys ?? []
+
+        if (templateIds.length === 0 && providerGameKeys.length === 0) {
+            const entries = await prisma.transaction.groupBy({
+                by: ['userId'],
+                where: {
+                    type: TransactionType.GAME_ENTRY,
+                    status: PaymentStatus.APPROVED,
+                    createdAt: { gte: periodStart, lte: periodEnd },
+                },
+                _sum: { amount: true },
+            })
+
+            const wins = await prisma.transaction.groupBy({
+                by: ['userId'],
+                where: {
+                    type: TransactionType.PRIZE_WIN,
+                    status: PaymentStatus.APPROVED,
+                    createdAt: { gte: periodStart, lte: periodEnd },
+                },
+                _sum: { amount: true },
+            })
+
+            const winMap = new Map(wins.map((w) => [w.userId, new Decimal(w._sum.amount ?? 0)]))
+            const result = new Map<string, Decimal>()
+            for (const entry of entries) {
+                const wagered = new Decimal(entry._sum.amount ?? 0)
+                const won = winMap.get(entry.userId) ?? new Decimal(0)
+                result.set(entry.userId, wagered.minus(won))
+            }
+            return result
+        }
+
+        const providerPairs = providerGameKeys
+            .map((key) => {
+                const separatorIndex = key.indexOf(':')
+                if (separatorIndex === -1) return null
+                return { providerId: key.slice(0, separatorIndex), gameCode: key.slice(separatorIndex + 1) }
+            })
+            .filter((pair): pair is { providerId: string; gameCode: string } => pair !== null)
+
+        const bingoFilter = templateIds.length > 0
+            ? Prisma.sql`AND g."templateId" = ANY(${templateIds}::text[])`
+            : Prisma.sql`AND false`
+
+        const providerFilter = providerPairs.length > 0
+            ? Prisma.sql`AND (tpt."providerId", tpt."gameCode") IN (${Prisma.join(
+                  providerPairs.map((p) => Prisma.sql`(${p.providerId}, ${p.gameCode})`),
+              )})`
+            : Prisma.sql`AND false`
+
+        const rows = await prisma.$queryRaw<Array<{ userId: string; netLoss: Decimal }>>(Prisma.sql`
+            WITH bingo_loss AS (
+                SELECT t."userId",
+                       SUM(CASE WHEN t.type = 'GAME_ENTRY' THEN t.amount ELSE 0 END) -
+                       SUM(CASE WHEN t.type = 'PRIZE_WIN' THEN t.amount ELSE 0 END) AS "netLoss"
+                FROM transactions t
+                JOIN games g ON g.id = t."referenceId"
+                WHERE t.status = 'APPROVED'
+                  AND t.type IN ('GAME_ENTRY', 'PRIZE_WIN')
+                  AND t."createdAt" BETWEEN ${periodStart} AND ${periodEnd}
+                  ${bingoFilter}
+                GROUP BY t."userId"
+            ),
+            provider_loss AS (
+                SELECT tpt."userId", -SUM(tpt.amount) AS "netLoss"
+                FROM third_party_transactions tpt
+                WHERE tpt.status = 'COMPLETED'
+                  AND tpt."createdAt" BETWEEN ${periodStart} AND ${periodEnd}
+                  ${providerFilter}
+                GROUP BY tpt."userId"
+            )
+            SELECT "userId", SUM("netLoss") AS "netLoss"
+            FROM (SELECT * FROM bingo_loss UNION ALL SELECT * FROM provider_loss) combined
+            GROUP BY "userId"
+        `)
+
+        const result = new Map<string, Decimal>()
+        for (const row of rows) {
+            result.set(row.userId, new Decimal(row.netLoss))
+        }
+        return result
+    }
+
+    /**
      * Check and disburse cashback for one promotion within one period window.
      * Idempotent: safe to call multiple times for the same (promotionId, periodStart).
      */
@@ -123,34 +220,13 @@ export class CashbackService {
         const promotion = await prisma.cashbackPromotion.findUnique({ where: { id: promotionId } })
         if (!promotion || !promotion.isActive) return { disbursed: 0, skipped: 0, total: new Decimal(0) }
 
-        // Sum GAME_ENTRY amounts per user in the window (real balance losses)
-        const entries = await prisma.transaction.groupBy({
-            by: ['userId'],
-            where: {
-                type: TransactionType.GAME_ENTRY,
-                status: PaymentStatus.APPROVED,
-                createdAt: { gte: periodStart, lte: periodEnd },
-            },
-            _sum: { amount: true },
-        })
+        const netLossByUser = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
 
-        // Sum PRIZE_WIN amounts per user in the window
-        const wins = await prisma.transaction.groupBy({
-            by: ['userId'],
-            where: {
-                type: TransactionType.PRIZE_WIN,
-                status: PaymentStatus.APPROVED,
-                createdAt: { gte: periodStart, lte: periodEnd },
-            },
-            _sum: { amount: true },
-        })
-
-        const winMap = new Map(wins.map((w) => [w.userId, new Decimal(w._sum.amount ?? 0)]))
         const lossThreshold = new Decimal(promotion.lossThreshold)
         const refundValue = new Decimal(promotion.refundValue)
 
         // Filter out bots
-        const userIds = entries.map((e) => e.userId)
+        const userIds = [...netLossByUser.keys()]
         const botUserIds = new Set<string>()
         if (userIds.length > 0) {
             const botUsers = await prisma.user.findMany({
@@ -164,12 +240,8 @@ export class CashbackService {
         let skipped = 0
         let total = new Decimal(0)
 
-        for (const entry of entries) {
-            if (botUserIds.has(entry.userId)) continue
-
-            const totalWagered = new Decimal(entry._sum.amount ?? 0)
-            const totalWon = winMap.get(entry.userId) ?? new Decimal(0)
-            const netLoss = totalWagered.minus(totalWon)
+        for (const [userId, netLoss] of netLossByUser) {
+            if (botUserIds.has(userId)) continue
 
             // Qualifies when netLoss >= lossThreshold (inclusive boundary)
             if (netLoss.lt(lossThreshold)) continue
@@ -191,7 +263,7 @@ export class CashbackService {
                 // Idempotency: unique constraint on (promotionId, userId, periodStart)
                 const existing = await tx.cashbackDisbursement.findUnique({
                     where: {
-                        promotionId_userId_periodStart: { promotionId, userId: entry.userId, periodStart },
+                        promotionId_userId_periodStart: { promotionId, userId: userId, periodStart },
                     },
                 })
                 if (existing) return 'skipped'
@@ -205,11 +277,11 @@ export class CashbackService {
                 // bonusBalance and record a wrong bonusBalanceBefore in their
                 // audit row.
                 await tx.$queryRaw`
-                    SELECT id FROM wallets WHERE "userId" = ${entry.userId} FOR UPDATE
+                    SELECT id FROM wallets WHERE "userId" = ${userId} FOR UPDATE
                 `
 
                 const grantResult = await BonusService.grant(tx, {
-                    userId: entry.userId,
+                    userId: userId,
                     amount: cashbackAmount,
                     source: 'CASHBACK',
                 })
@@ -217,7 +289,7 @@ export class CashbackService {
 
                 await tx.transaction.create({
                     data: {
-                        userId: entry.userId,
+                        userId: userId,
                         type: TransactionType.CASHBACK_BONUS,
                         amount: cashbackAmount,
                         status: PaymentStatus.APPROVED,
@@ -234,7 +306,7 @@ export class CashbackService {
                 await tx.cashbackDisbursement.create({
                     data: {
                         promotionId,
-                        userId: entry.userId,
+                        userId: userId,
                         amount: cashbackAmount,
                         periodStart,
                         periodEnd,
@@ -249,7 +321,7 @@ export class CashbackService {
             } else {
                 disbursed++
                 total = total.plus(result as Decimal)
-                void captureEvent(entry.userId, 'bonus_granted', {
+                void captureEvent(userId, 'bonus_granted', {
                     amount: Number(result as Decimal),
                     source: 'CASHBACK',
                     rule_id: promotionId,
@@ -257,7 +329,7 @@ export class CashbackService {
 
                 // Push notification (fire-and-forget)
                 NotificationService.create(
-                    entry.userId,
+                    userId,
                     NotificationType.CASHBACK_AWARDED,
                     'Cashback Bonus!',
                     `You received ${Number(result as Decimal).toFixed(2)} ETB cashback from "${promotion.name}".`,
