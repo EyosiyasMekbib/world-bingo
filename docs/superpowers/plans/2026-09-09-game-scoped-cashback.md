@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Follow the repo's Prettier config: singleQuote, no semi, trailingComma: all.
-- `pnpm --filter @world-bingo/api test` must stay green — the 6 existing tests in `cashback.service.test.ts` exercise the unscoped path and must not change behavior or assertions.
+- `pnpm --filter @world-bingo/api test` must stay green — the 3 existing tests in `cashback.service.test.ts` exercise the unscoped path and must not change behavior or assertions.
 - No edits to `BonusService`, the hourly worker (`cashback-checker.worker.ts`), or the player-facing `CashbackBanner.vue` — out of scope per the spec.
 - No migration backfill needed — no `CashbackPromotion` rows exist yet in any real environment.
 - Design reference: `docs/superpowers/specs/2026-09-09-game-scoped-cashback-design.md`.
@@ -298,7 +298,7 @@ describe('CashbackService.checkAndDisburse — game scoping', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `pnpm --filter @world-bingo/api test cashback.service.test.ts`
-Expected: the 4 new tests FAIL (site-wide behavior currently ignores scope — e.g. the "ignoring losses on other games" test will see `disbursed: 1` but `total: 120` instead of `20`, or similar over-counting), while the 6 pre-existing tests still PASS.
+Expected: the 4 new tests FAIL (site-wide behavior currently ignores scope — e.g. the "ignoring losses on other games" test will see `disbursed: 1` but `total: 120` instead of `20`, or similar over-counting), while the 3 pre-existing tests still PASS.
 
 - [ ] **Step 3: Implement `getNetLossByUser` and refactor `checkAndDisburse`**
 
@@ -550,7 +550,7 @@ Now replace the body of `checkAndDisburse` (the existing lines from `const promo
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm --filter @world-bingo/api test cashback.service.test.ts`
-Expected: all 10 tests PASS (6 pre-existing + 4 new).
+Expected: all 7 tests PASS (3 pre-existing + 4 new).
 
 - [ ] **Step 5: Commit**
 
@@ -732,7 +732,7 @@ Append to `apps/api/src/test/cashback.service.test.ts`, inside the `describe('Ca
 - [ ] **Step 5: Run the tests**
 
 Run: `pnpm --filter @world-bingo/api test cashback.service.test.ts`
-Expected: all 11 tests PASS.
+Expected: all 8 tests PASS.
 
 - [ ] **Step 6: Typecheck the API**
 
