@@ -42,6 +42,8 @@ import { palaceCallbackRoute } from './routes/palace/callback.js'
 import zarecashWebhookRoute from './routes/zarecash/webhook.js'
 import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
+import { atlasVCallbackRoutes } from './routes/atlasv/callback.js'
+import { atlasVSpokeCallbackRoute } from './routes/hub/atlasv-spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
 import eventsRoutes from './routes/events/index.js'
@@ -347,9 +349,11 @@ await server.register(promotionsRoutes, { prefix: '/promotions' })
 await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
+await server.register(atlasVCallbackRoutes, { prefix: '/v1/atlasv/callback' })
 await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
+    await server.register(atlasVSpokeCallbackRoute, { prefix: '/v1/hub/atlasv-spoke-callback' })
 }
 if (deploymentConfig().role === 'hub') {
     await server.register(internalProviderRoute, { prefix: '/v1/hub/provider' })
