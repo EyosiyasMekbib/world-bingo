@@ -204,7 +204,8 @@ export class AtlasVWalletService {
             const refundable =
                 !!originalBet &&
                 originalBet.type === ThirdPartyTxType.BET &&
-                originalBet.status === ThirdPartyTxStatus.COMPLETED
+                originalBet.status === ThirdPartyTxStatus.COMPLETED &&
+                originalBet.rawResponse == null
 
             if (!refundable) {
                 getLogger().warn(
@@ -409,6 +410,10 @@ export class AtlasVWalletService {
             const newTotal = newReal.plus(bonusBefore)
 
             await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+            await tx.thirdPartyTransaction.update({
+                where: { id: priorBet.id },
+                data: { rawResponse: { settledBy: params.transaction_id } },
+            })
             await tx.thirdPartyTransaction.create({
                 data: {
                     providerId, userId: user.id, transactionId: params.transaction_id,

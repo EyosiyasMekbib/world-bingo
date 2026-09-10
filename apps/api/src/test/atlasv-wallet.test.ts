@@ -203,7 +203,7 @@ describe('AtlasVWalletService', () => {
         const fakeTx = {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
-            thirdPartyTransaction: { create: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), update: vi.fn() },
             transaction: { create: vi.fn() },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
@@ -216,6 +216,7 @@ describe('AtlasVWalletService', () => {
 
         expect(res).toEqual({ success: true })
         expect(fakeTx.wallet.update).toHaveBeenCalledWith({ where: { userId: 'uid1' }, data: { realBalance: expect.anything() } })
+        expect(fakeTx.thirdPartyTransaction.update).toHaveBeenCalledWith({ where: { id: 'bet1' }, data: { rawResponse: { settledBy: 'res1' } } })
     })
 
     it('processResult refuses to credit when there is no matching prior bet', async () => {
@@ -290,5 +291,86 @@ describe('AtlasVWalletService', () => {
         const { AtlasVWalletService } = await import('../services/atlasv-wallet.service.js')
         const res = await AtlasVWalletService.dispatch('nonsense' as any, { player_id: PLAYER_ID })
         expect(res).toEqual({ success: false })
+    })
+
+    it('processResult marks the prior bet settled, and a subsequent rollback on the same bet is refused', async () => {
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
+        p.thirdPartyTransaction.findUnique
+            .mockResolvedValueOnce(null) // findExisting(transaction_id)
+            .mockResolvedValueOnce({ id: 'bet1', type: 'BET', status: 'COMPLETED', betAmount: '10.00', amount: '-10.00' }) // prior bet lookup
+        const resultTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), update: vi.fn() },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction.mockImplementationOnce((cb: any) => cb(resultTx))
+
+        const { AtlasVWalletService } = await import('../services/atlasv-wallet.service.js')
+        const resultRes = await AtlasVWalletService.processResult({
+            player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty',
+            transaction_id: 'res1', bet_transaction_id: 't1', amount: 30,
+        })
+
+        expect(resultRes).toEqual({ success: true })
+        expect(resultTx.thirdPartyTransaction.update).toHaveBeenCalledWith({
+            where: { id: 'bet1' },
+            data: { rawResponse: { settledBy: 'res1' } },
+        })
+
+        // Now a rollback arrives for the same bet_transaction_id — the bet
+        // is already settled (rawResponse non-null), so it must not refund.
+        p.thirdPartyTransaction.findUnique.mockResolvedValueOnce(null) // findExisting(cancelTxId) — not a replay
+        const rollbackTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue({ id: 'bet1', betAmount: '10.00', amount: '-10.00', type: 'BET', status: 'COMPLETED', transactionId: 't1', rawResponse: { settledBy: 'res1' } }),
+                update: vi.fn(),
+                create: vi.fn(),
+            },
+            transaction: { create: vi.fn(), findFirst: vi.fn() },
+        }
+        p.$transaction.mockImplementationOnce((cb: any) => cb(rollbackTx))
+
+        const rollbackRes = await AtlasVWalletService.processRollback({
+            player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', bet_transaction_id: 't1',
+        })
+
+        expect(rollbackRes).toEqual({ success: true })
+        expect(rollbackTx.wallet.update).not.toHaveBeenCalled()
+        expect(rollbackTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
+    })
+
+    it('processBetWin credits the win to REAL even when the bet leg is funded from BONUS', async () => {
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null)
+        const bonusBalanceAfter = new Decimal('15.00') // 25.00 bonus - 10.00 bet
+        ;(BonusService.spend as any).mockResolvedValue({ bonusBalanceAfter, soonestExpiryConsumed: null })
+        const fakeTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '100.00', bonusBalance: '25.00', spendAccount: 'BONUS' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn() },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
+
+        const { AtlasVWalletService } = await import('../services/atlasv-wallet.service.js')
+        const res = await AtlasVWalletService.processBetWin({
+            player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't4', betAmount: 10, winAmount: 25,
+        })
+
+        expect(BonusService.spend).toHaveBeenCalled()
+        expect(fakeTx.wallet.update).toHaveBeenCalledWith({
+            where: { userId: 'uid1' },
+            data: { realBalance: expect.anything() },
+        })
+        const updateCall = (fakeTx.wallet.update as any).mock.calls[0][0]
+        expect(new Decimal(updateCall.data.realBalance).toString()).toBe(new Decimal('100.00').plus(25).toString())
+
+        // Report back only the account that changed — the bet leg drew from BONUS, so balance reflects the new BONUS balance.
+        expect(res).toEqual({ player_id: PLAYER_ID, balance: bonusBalanceAfter.toNumber() })
     })
 })
