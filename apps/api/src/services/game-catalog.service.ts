@@ -209,10 +209,19 @@ export class GameCatalogService {
     static async syncAll(
         providerCode: string,
     ): Promise<{ total: number; reenabled: number; autoHidden: number }> {
-        await GameCatalogService.syncVendors(providerCode)
-
         const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
         if (!provider) throw new Error(`Provider not found: ${providerCode}`)
+
+        // Some providers (Atlas-V) have no vendor/game-listing API — their
+        // catalog is maintained by hand in the seed script. Skip cleanly
+        // instead of letting the 6-hourly sync worker log a "not supported"
+        // error forever.
+        if ((provider.config as { catalogSync?: boolean } | null)?.catalogSync === false) {
+            console.log(`[GameCatalog] Skipping ${providerCode} — static catalog, no listing API`)
+            return { total: 0, reenabled: 0, autoHidden: 0 }
+        }
+
+        await GameCatalogService.syncVendors(providerCode)
 
         const vendors = await prisma.gameVendor.findMany({
             where: { providerId: provider.id, isActive: true },

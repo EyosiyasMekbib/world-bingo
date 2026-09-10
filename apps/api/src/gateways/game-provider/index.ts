@@ -1,6 +1,7 @@
 import type { GameProviderGateway } from './game-provider.interface.js'
 import { GaseaGateway } from './gasea.gateway.js'
 import { PalaceGateway } from './palace.gateway.js'
+import { AtlasVGateway } from './atlasv.gateway.js'
 import { deploymentConfig } from '../hub/deployment-config.js'
 import { RemoteGameProviderGateway } from '../hub/remote-game-provider.gateway.js'
 
@@ -25,10 +26,12 @@ if (deploymentConfig().role === 'spoke') {
     // Spokes have no provider credentials — every call is forwarded to the hub.
     registerGameProviderGateway(new RemoteGameProviderGateway('palace'))
     registerGameProviderGateway(new RemoteGameProviderGateway('gasea'))
+    registerGameProviderGateway(new RemoteGameProviderGateway('atlasv'))
 } else {
     // standalone + hub talk to providers directly.
     registerGameProviderGateway(new GaseaGateway())
     registerGameProviderGateway(new PalaceGateway())
+    registerGameProviderGateway(new AtlasVGateway())
 }
 
 export type { GameProviderGateway }
