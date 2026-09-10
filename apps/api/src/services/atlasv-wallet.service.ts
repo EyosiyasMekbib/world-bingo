@@ -282,4 +282,302 @@ export class AtlasVWalletService {
 
         return { success }
     }
+
+    static async processBetWin(params: BetWinParams): Promise<AtlasVResponse> {
+        const user = await resolveUser(params.player_id)
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+
+        const existing = await findExisting(params.transaction_id)
+        if (existing) {
+            const balance = await currentBalance(user.id)
+            return { player_id: params.player_id, balance: Number(balance.toFixed(2)) }
+        }
+
+        const betAmount = new Decimal(params.betAmount).abs()
+        const winAmount = new Decimal(params.winAmount).abs()
+
+        const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
+        const overMultiple = MAX_WIN_MULTIPLE > 0 && betAmount.greaterThan(0) && winAmount.greaterThan(betAmount.times(MAX_WIN_MULTIPLE))
+        if (overAbsolute || overMultiple) {
+            getLogger().warn(
+                {
+                    component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id),
+                    round: params.round_id, betAmount: betAmount.toNumber(), winAmount: winAmount.toNumber(),
+                },
+                '[atlasv-fraud-flag] betwin failed validation guard',
+            )
+            return fail()
+        }
+
+        try {
+            const balanceAfter = await prisma.$transaction(async (tx) => {
+                const wallet = await lockWallet(tx, user.id)
+                const realBefore = new Decimal(wallet.realBalance)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
+                const totalBefore = realBefore.plus(bonusBefore)
+
+                let newBonus = bonusBefore
+                let bonusExpiresAtSpend: Date | null = null
+
+                // A win always credits REAL balance — bonus wagers convert to
+                // withdrawable real money on a win, they don't replenish the
+                // bonus pot. Only the bet leg draws from BONUS when selected.
+                if (wallet.spendAccount === 'BONUS') {
+                    if (bonusBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
+                    const spendResult = await BonusService.spend(tx, user.id, betAmount)
+                    newBonus = spendResult.bonusBalanceAfter
+                    bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
+                } else {
+                    if (realBefore.lessThan(betAmount)) throw { code: 'BALANCE_NOT_ENOUGH' }
+                }
+                const newReal = (wallet.spendAccount === 'BONUS' ? realBefore : realBefore.minus(betAmount)).plus(winAmount)
+                await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+
+                const newTotal = newReal.plus(newBonus)
+                const providerId = await getAtlasVProviderId()
+                await tx.thirdPartyTransaction.create({
+                    data: {
+                        providerId, userId: user.id, transactionId: params.transaction_id,
+                        roundId: params.round_id, gameCode: params.game_code,
+                        type: ThirdPartyTxType.BET_RESULT, status: ThirdPartyTxStatus.COMPLETED,
+                        betAmount, winAmount, amount: winAmount.minus(betAmount),
+                        balanceBefore: totalBefore, balanceAfter: newTotal, rawRequest: params as any,
+                    },
+                })
+                await tx.transaction.create({
+                    data: {
+                        userId: user.id, type: TransactionType.TP_WIN, amount: winAmount.minus(betAmount),
+                        status: PaymentStatus.APPROVED,
+                        note: `Atlas-V betwin: ${params.game_code ?? ''} round ${params.round_id ?? ''}`,
+                        referenceId: params.transaction_id,
+                        balanceBefore: totalBefore, balanceAfter: newTotal,
+                        bonusBalanceBefore: bonusBefore, bonusBalanceAfter: newBonus, bonusExpiresAtSpend,
+                    },
+                })
+                return wallet.spendAccount === 'BONUS' ? newBonus : newReal
+            })
+
+            emitProviderBet(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: betAmount.toNumber(), spendAccount: 'REAL' })
+            emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: betAmount.toNumber() })
+
+            return { player_id: params.player_id, balance: Number(balanceAfter.toFixed(2)) }
+        } catch (e: any) {
+            if (e?.code === 'BALANCE_NOT_ENOUGH' || e?.name === 'InsufficientBonusBalanceError') return fail()
+            if (e?.code) return fail()
+            throw e
+        }
+    }
+
+    static async processResult(params: ResultParams): Promise<AtlasVResponse> {
+        const user = await resolveUser(params.player_id)
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+
+        const existing = await findExisting(params.transaction_id)
+        if (existing) return { success: true }
+
+        const providerId = await getAtlasVProviderId()
+        const priorBet = await prisma.thirdPartyTransaction.findUnique({
+            where: { providerId_transactionId: { providerId, transactionId: params.bet_transaction_id } },
+        })
+        if (!priorBet || priorBet.type !== ThirdPartyTxType.BET || priorBet.status !== ThirdPartyTxStatus.COMPLETED) {
+            getLogger().warn(
+                { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, betRef: params.bet_transaction_id },
+                '[atlasv-fraud-flag] result with no matching completed bet — not crediting',
+            )
+            return fail()
+        }
+
+        const winAmount = new Decimal(params.amount).abs()
+        const betAmount = new Decimal(priorBet.betAmount ?? priorBet.amount).abs()
+
+        const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
+        const overMultiple = MAX_WIN_MULTIPLE > 0 && betAmount.greaterThan(0) && winAmount.greaterThan(betAmount.times(MAX_WIN_MULTIPLE))
+        if (overAbsolute || overMultiple) {
+            getLogger().warn(
+                { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() },
+                '[atlasv-fraud-flag] result failed validation guard',
+            )
+            return fail()
+        }
+
+        await prisma.$transaction(async (tx) => {
+            const wallet = await lockWallet(tx, user.id)
+            const realBefore = new Decimal(wallet.realBalance)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+            const totalBefore = realBefore.plus(bonusBefore)
+            const newReal = realBefore.plus(winAmount)
+            const newTotal = newReal.plus(bonusBefore)
+
+            await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+            await tx.thirdPartyTransaction.create({
+                data: {
+                    providerId, userId: user.id, transactionId: params.transaction_id,
+                    roundId: params.round_id, gameCode: params.game_code,
+                    type: ThirdPartyTxType.BET_RESULT, status: ThirdPartyTxStatus.COMPLETED,
+                    winAmount, amount: winAmount,
+                    balanceBefore: totalBefore, balanceAfter: newTotal, rawRequest: params as any,
+                },
+            })
+            await tx.transaction.create({
+                data: {
+                    userId: user.id, type: TransactionType.TP_WIN, amount: winAmount,
+                    status: PaymentStatus.APPROVED,
+                    note: `Atlas-V result: ${params.game_code ?? ''} round ${params.round_id ?? ''}`,
+                    referenceId: params.transaction_id,
+                    balanceBefore: totalBefore, balanceAfter: newTotal,
+                    bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
+                },
+            })
+        })
+
+        emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.bet_transaction_id, amount: winAmount.toNumber(), roundStake: betAmount.toNumber() })
+        return { success: true }
+    }
+
+    static async processFreespinResult(params: FreespinResultParams): Promise<AtlasVResponse> {
+        const user = await resolveUser(params.player_id)
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+
+        const existing = await findExisting(params.transaction_id)
+        if (existing) return { success: true }
+
+        const winAmount = new Decimal(params.amount).abs()
+        if (MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)) {
+            getLogger().warn(
+                { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, winAmount: winAmount.toNumber() },
+                '[atlasv-fraud-flag] freespin result exceeds MAX_WIN_AMOUNT',
+            )
+            return fail()
+        }
+
+        const providerId = await getAtlasVProviderId()
+        await prisma.$transaction(async (tx) => {
+            const wallet = await lockWallet(tx, user.id)
+            const realBefore = new Decimal(wallet.realBalance)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+            const totalBefore = realBefore.plus(bonusBefore)
+            const newReal = realBefore.plus(winAmount)
+            const newTotal = newReal.plus(bonusBefore)
+
+            await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+            await tx.thirdPartyTransaction.create({
+                data: {
+                    providerId, userId: user.id, transactionId: params.transaction_id,
+                    roundId: params.round_id, gameCode: params.game_code,
+                    type: ThirdPartyTxType.BET_RESULT, status: ThirdPartyTxStatus.COMPLETED,
+                    winAmount, amount: winAmount,
+                    balanceBefore: totalBefore, balanceAfter: newTotal, rawRequest: params as any,
+                },
+            })
+            await tx.transaction.create({
+                data: {
+                    userId: user.id, type: TransactionType.TP_WIN, amount: winAmount,
+                    status: PaymentStatus.APPROVED,
+                    note: `Atlas-V freespin win: ${params.game_code ?? ''} round ${params.round_id ?? ''}`,
+                    referenceId: params.transaction_id,
+                    balanceBefore: totalBefore, balanceAfter: newTotal,
+                    bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
+                },
+            })
+        })
+
+        emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: 0 })
+        return { success: true }
+    }
+
+    // No MAX_WIN_AMOUNT cap here, deliberately — jackpots are inherently large
+    // by design; the cap exists to catch forged/absurd bet-tied wins, not to
+    // second-guess a legitimate jackpot payout.
+    static async processJackpot(params: JackpotParams): Promise<AtlasVResponse> {
+        const user = await resolveUser(params.player_id)
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+
+        const existing = await findExisting(params.transaction_id)
+        if (existing) return { success: true }
+
+        const winAmount = new Decimal(params.amount).abs()
+        const providerId = await getAtlasVProviderId()
+        await prisma.$transaction(async (tx) => {
+            const wallet = await lockWallet(tx, user.id)
+            const realBefore = new Decimal(wallet.realBalance)
+            const bonusBefore = new Decimal(wallet.bonusBalance)
+            const totalBefore = realBefore.plus(bonusBefore)
+            const newReal = realBefore.plus(winAmount)
+            const newTotal = newReal.plus(bonusBefore)
+
+            await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+            await tx.thirdPartyTransaction.create({
+                data: {
+                    providerId, userId: user.id, transactionId: params.transaction_id,
+                    roundId: params.round_id, gameCode: params.game_code,
+                    type: ThirdPartyTxType.BET_RESULT, status: ThirdPartyTxStatus.COMPLETED,
+                    winAmount, amount: winAmount,
+                    balanceBefore: totalBefore, balanceAfter: newTotal, rawRequest: params as any,
+                },
+            })
+            await tx.transaction.create({
+                data: {
+                    userId: user.id, type: TransactionType.TP_WIN, amount: winAmount,
+                    status: PaymentStatus.APPROVED,
+                    note: `Atlas-V jackpot: ${params.game_code ?? ''} round ${params.round_id ?? ''}`,
+                    referenceId: params.transaction_id,
+                    balanceBefore: totalBefore, balanceAfter: newTotal,
+                    bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
+                },
+            })
+        })
+
+        emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: 0 })
+        return { success: true }
+    }
+
+    /** Dispatch a callback action to the matching wallet handler. */
+    static async dispatch(action: AtlasVAction | undefined, d: Record<string, any>): Promise<AtlasVResponse> {
+        const startedAt = Date.now()
+        const res = await AtlasVWalletService.route(action, d)
+        getLogger().info(
+            { component: 'atlasv-wallet', action, playerId: maskAccount(d?.player_id), result: res, latencyMs: Date.now() - startedAt },
+            '[atlasv-wallet] action handled',
+        )
+        return res
+    }
+
+    private static async route(action: AtlasVAction | undefined, d: Record<string, any>): Promise<AtlasVResponse> {
+        switch (action) {
+            case 'account':
+                return AtlasVWalletService.getAccount({ player_id: d.player_id })
+            case 'bet':
+                return AtlasVWalletService.processBet({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    transaction_id: d.transaction_id, amount: d.amount,
+                })
+            case 'betwin':
+                return AtlasVWalletService.processBetWin({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    transaction_id: d.transaction_id, betAmount: d.betAmount, winAmount: d.winAmount,
+                })
+            case 'result':
+                return AtlasVWalletService.processResult({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    transaction_id: d.transaction_id, bet_transaction_id: d.bet_transaction_id, amount: d.amount,
+                })
+            case 'rollback':
+                return AtlasVWalletService.processRollback({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    bet_transaction_id: d.bet_transaction_id,
+                })
+            case 'freespin':
+                return AtlasVWalletService.processFreespinResult({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    transaction_id: d.transaction_id, amount: d.amount,
+                })
+            case 'jackpot':
+                return AtlasVWalletService.processJackpot({
+                    player_id: d.player_id, round_id: d.round_id, game_code: d.game,
+                    transaction_id: d.transaction_id, amount: d.amount,
+                })
+            default:
+                return fail()
+        }
+    }
 }
