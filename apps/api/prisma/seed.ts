@@ -190,6 +190,50 @@ async function main() {
     })
     console.log('Palace Casino provider seeded')
 
+    // 6c. Seed Atlas-V game provider (static catalog — no listing API in their
+    // spec, see docs/superpowers/specs/2026-09-09-atlasv-integration-design.md)
+    console.log('Seeding Atlas-V provider...')
+    const atlasv = await prisma.gameProvider.upsert({
+        where: { code: 'atlasv' },
+        update: {},  // don't overwrite status if admin changed it
+        create: {
+            code: 'atlasv',
+            name: 'Atlas-V',
+            status: 'ACTIVE',
+            isPrimary: false,
+            apiBaseUrl: process.env.ATLASV_SERVER_URL ?? '',
+            currency: process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB',
+            config: { catalogSync: false },
+        },
+    })
+    const atlasvVendor = await prisma.gameVendor.upsert({
+        where: { providerId_code: { providerId: atlasv.id, code: 'atlasv-default' } },
+        update: {},
+        create: {
+            providerId: atlasv.id,
+            code: 'atlasv-default',
+            name: 'Atlas-V',
+            categoryCode: 'ARCADE',
+            isActive: true,
+        },
+    })
+    await prisma.providerGame.upsert({
+        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'penalty' } },
+        update: {},
+        create: {
+            providerId: atlasv.id,
+            vendorId: atlasvVendor.id,
+            gameCode: 'penalty',
+            gameName: 'Penalty Shootout',
+            categoryCode: 'ARCADE',
+            languageCodes: ['en', 'am'],
+            platformCodes: ['WEB', 'H5'],
+            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+            isActive: true,
+        },
+    })
+    console.log('Atlas-V provider seeded')
+
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')
     const defaultMethods = [
