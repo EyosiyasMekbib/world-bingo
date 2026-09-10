@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
 import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
+import atlasVAdminRoutes from './atlasv'
 import { AdminService } from '../../services/admin.service'
 import { BonusService } from '../../services/bonus.service'
 import { GameService } from '../../services/game.service'
@@ -340,6 +341,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Player CRM (segments, metrics, CSV export) ────────────────────────
         await f.register(crmRoutes, { prefix: '/crm' })
+
+        // ── Atlas-V game provider (freespin grants) ────────────────────────────
+        await f.register(atlasVAdminRoutes, { prefix: '/game-providers/atlasv' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {
