@@ -214,6 +214,7 @@ await server.register(rateLimit, {
     allowList: (req) => {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
+        if (req.url.startsWith('/v1/atlasv/')) return true
         // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
         // caller could name a whitelisted address and skip the limiter outright.
         const ip = req.ip

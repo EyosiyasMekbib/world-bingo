@@ -12,7 +12,7 @@ export const atlasVCallbackRoutes: FastifyPluginAsync = async (fastify) => {
     // also accept application/json in case their staging client sends that.
     const parseJson = (_req: any, body: string, done: (err: Error | null, body?: any) => void) => {
         try {
-            done(null, JSON.parse(body))
+            done(null, { ...JSON.parse(body), __rawBody: body })
         } catch (e) {
             done(e as Error, undefined)
         }

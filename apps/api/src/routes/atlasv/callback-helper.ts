@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { AtlasVWalletService, type AtlasVAction, type AtlasVResponse } from '../../services/atlasv-wallet.service.js'
-import { verifyAtlasVBody } from '../../gateways/game-provider/atlasv-signature.js'
+import { verifyAtlasVBody, debugAtlasVHash } from '../../gateways/game-provider/atlasv-signature.js'
 import { deploymentConfig } from '../../gateways/hub/deployment-config.js'
 import { decideCallbackRoute } from '../../gateways/hub/route-callback.js'
 import { signBody, DEPLOYMENT_HEADER, SIGNATURE_HEADER } from '../../gateways/hub/hub-auth.js'
@@ -21,12 +21,31 @@ function fail(): AtlasVResponse {
  */
 export function atlasVCallbackHandler(action: AtlasVAction) {
     return async (req: FastifyRequest, reply: FastifyReply) => {
-        const body = (req.body ?? {}) as Record<string, any>
+        const incoming = (req.body ?? {}) as Record<string, any>
+        const rawBody = incoming.__rawBody ?? ''
+        const body = { ...incoming } as Record<string, any>
+        delete body.__rawBody
+
         req.log.info({ action, body }, '[Atlas-V] callback received')
 
         if (!verifyAtlasVBody(body)) {
-            if (DEBUG) req.log.warn({ action, body }, '[Atlas-V] signature verification failed')
+            if (DEBUG) {
+                const diag = debugAtlasVHash(body)
+                req.log.warn({ action, rawBody, ...diag }, '[Atlas-V] signature verification failed')
+            }
             return reply.status(200).send(fail())
+        }
+
+        // Atlas-V sent this exact value and must get it back unchanged in the
+        // response. On a hub deployment, `d.player_id` gets overwritten below
+        // (de-namespaced to the bare account) before local dispatch or
+        // forwarding — capture the original before any mutation happens.
+        const originalPlayerId = typeof body.player_id === 'string' ? body.player_id : undefined
+        function withOriginalPlayerId(result: AtlasVResponse): AtlasVResponse {
+            if (originalPlayerId && typeof result === 'object' && result !== null && 'player_id' in result) {
+                return { ...result, player_id: originalPlayerId }
+            }
+            return result
         }
 
         const d = { ...body }
@@ -60,7 +79,7 @@ export function atlasVCallbackHandler(action: AtlasVAction) {
                         return reply.status(200).send(fail())
                     }
                     const relayed = await res.json()
-                    return reply.status(200).send(relayed)
+                    return reply.status(200).send(withOriginalPlayerId(relayed))
                 } catch (err) {
                     req.log.error({ err, spoke: route.spoke.code, action }, '[Atlas-V] spoke forward failed')
                     return reply.status(200).send(fail())
@@ -76,7 +95,7 @@ export function atlasVCallbackHandler(action: AtlasVAction) {
         try {
             const result = await AtlasVWalletService.dispatch(action, d)
             req.log.info({ action, result }, '[Atlas-V] callback handled')
-            return reply.status(200).send(result)
+            return reply.status(200).send(withOriginalPlayerId(result))
         } catch (err) {
             req.log.error({ err, action }, '[Atlas-V] unhandled error in callback handler')
             return reply.status(200).send(fail())

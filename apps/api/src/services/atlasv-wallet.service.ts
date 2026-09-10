@@ -103,6 +103,7 @@ export class AtlasVWalletService {
 
         const existing = await findExisting(params.transaction_id)
         if (existing) {
+            if (existing.status === ThirdPartyTxStatus.FAILED) return fail()
             const balance = await currentBalance(user.id)
             return { player_id: params.player_id, balance: Number(balance.toFixed(2)) }
         }
@@ -377,32 +378,43 @@ export class AtlasVWalletService {
         if (existing) return { success: true }
 
         const providerId = await getAtlasVProviderId()
-        const priorBet = await prisma.thirdPartyTransaction.findUnique({
-            where: { providerId_transactionId: { providerId, transactionId: params.bet_transaction_id } },
-        })
-        if (!priorBet || priorBet.type !== ThirdPartyTxType.BET || priorBet.status !== ThirdPartyTxStatus.COMPLETED) {
-            getLogger().warn(
-                { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, betRef: params.bet_transaction_id },
-                '[atlasv-fraud-flag] result with no matching completed bet — not crediting',
-            )
-            return fail()
-        }
 
-        const winAmount = new Decimal(params.amount).abs()
-        const betAmount = new Decimal(priorBet.betAmount ?? priorBet.amount).abs()
-
-        const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
-        const overMultiple = MAX_WIN_MULTIPLE > 0 && betAmount.greaterThan(0) && winAmount.greaterThan(betAmount.times(MAX_WIN_MULTIPLE))
-        if (overAbsolute || overMultiple) {
-            getLogger().warn(
-                { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() },
-                '[atlasv-fraud-flag] result failed validation guard',
-            )
-            return fail()
-        }
-
-        await prisma.$transaction(async (tx) => {
+        const credited = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
+
+            // Re-read the original bet under the wallet lock so a concurrent
+            // rollback (or a second result call) cannot race past this check —
+            // same TOCTOU-safety as processRollback's originalBet re-read.
+            const priorBet = await tx.thirdPartyTransaction.findUnique({
+                where: { providerId_transactionId: { providerId, transactionId: params.bet_transaction_id } },
+            })
+            const creditable =
+                !!priorBet &&
+                priorBet.type === ThirdPartyTxType.BET &&
+                priorBet.status === ThirdPartyTxStatus.COMPLETED &&
+                priorBet.rawResponse == null
+
+            if (!creditable) {
+                getLogger().warn(
+                    { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, betRef: params.bet_transaction_id },
+                    '[atlasv-fraud-flag] result with no matching completed bet — not crediting',
+                )
+                return null
+            }
+
+            const winAmount = new Decimal(params.amount).abs()
+            const betAmount = new Decimal(priorBet!.betAmount ?? priorBet!.amount).abs()
+
+            const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
+            const overMultiple = MAX_WIN_MULTIPLE > 0 && betAmount.greaterThan(0) && winAmount.greaterThan(betAmount.times(MAX_WIN_MULTIPLE))
+            if (overAbsolute || overMultiple) {
+                getLogger().warn(
+                    { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() },
+                    '[atlasv-fraud-flag] result failed validation guard',
+                )
+                return null
+            }
+
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
@@ -411,7 +423,7 @@ export class AtlasVWalletService {
 
             await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
             await tx.thirdPartyTransaction.update({
-                where: { id: priorBet.id },
+                where: { id: priorBet!.id },
                 data: { rawResponse: { settledBy: params.transaction_id } },
             })
             await tx.thirdPartyTransaction.create({
@@ -433,9 +445,16 @@ export class AtlasVWalletService {
                     bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
                 },
             })
+
+            return { winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() }
         })
 
-        emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.bet_transaction_id, amount: winAmount.toNumber(), roundStake: betAmount.toNumber() })
+        if (!credited) return fail()
+
+        emitProviderWin(user.id, {
+            providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null,
+            betId: params.bet_transaction_id, amount: credited.winAmount, roundStake: credited.betAmount,
+        })
         return { success: true }
     }
 

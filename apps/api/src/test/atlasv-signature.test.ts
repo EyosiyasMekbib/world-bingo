@@ -23,6 +23,17 @@ describe('Atlas-V signature', () => {
         expect(verifyAtlasVBody({ game: 'penalty', player_id: 'p1', timestamp: String(Date.now()) })).toBe(false)
     })
 
+    it('debugAtlasVHash exposes the same expected hash that made verifyAtlasVBody pass', async () => {
+        const { signAtlasVBody, verifyAtlasVBody, debugAtlasVHash } = await import('../gateways/game-provider/atlasv-signature.js')
+        const signed = signAtlasVBody({ game: 'penalty', casino_id: 'c1', player_id: 'p1', amount: 100 })
+        expect(verifyAtlasVBody(signed)).toBe(true)
+
+        const diag = debugAtlasVHash(signed)
+        expect(diag.expected).toBe(signed.hash)
+        expect(diag.received).toBe(signed.hash)
+        expect(diag.timestamp).toBe(signed.timestamp)
+    })
+
     it('rejects when ATLASV_PRIVATE_KEY is unset', async () => {
         vi.resetModules()
         const prevKey = process.env.ATLASV_PRIVATE_KEY

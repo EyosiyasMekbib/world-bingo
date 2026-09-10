@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 
 let _key: string | null = null
-function getPrivateKey(): string {
+export function getPrivateKey(): string {
     if (!_key) {
         const k = (process.env.ATLASV_PRIVATE_KEY ?? '').trim()
         if (!k) console.warn('[Atlas-V] WARNING: ATLASV_PRIVATE_KEY is empty — all signature checks will fail')
@@ -43,4 +43,16 @@ export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
     const expected = sha1Hex(JSON.stringify(rest) + privateKey + timestamp)
     if (hash.length !== expected.length) return false
     return crypto.timingSafeEqual(Buffer.from(hash, 'utf8'), Buffer.from(expected, 'utf8'))
+}
+
+/**
+ * Debug-only: exposes the expected hash and what was received, for diagnosing
+ * a mismatch. Never used for the actual pass/fail decision — verifyAtlasVBody
+ * is. Gated behind ATLASV_CALLBACK_DEBUG by the caller.
+ */
+export function debugAtlasVHash(body: Record<string, unknown>): { expected: string; received: string | null; timestamp: string | null } {
+    const { hash, ...rest } = body
+    const timestamp = typeof rest.timestamp === 'string' ? rest.timestamp : null
+    const expected = timestamp ? sha1Hex(JSON.stringify(rest) + getPrivateKey() + timestamp) : ''
+    return { expected, received: typeof hash === 'string' ? hash : null, timestamp }
 }
