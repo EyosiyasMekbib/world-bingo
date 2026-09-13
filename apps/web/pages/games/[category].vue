@@ -89,7 +89,7 @@ async function loadMore() {
   page.value++
   try {
     const result = await fetchProviderPage(page.value)
-    if (result) providerGames.value = sortedByPriority([...providerGames.value, ...result.games.filter((g) => g.imageSquare || g.imageLandscape)])
+    if (result) providerGames.value = sortedByPriority([...providerGames.value, ...result.games])
   } finally {
     loadingMore.value = false
   }
@@ -160,7 +160,7 @@ onMounted(async () => {
     try {
       const result = await fetchProviderPage(1)
       if (result) {
-        providerGames.value = sortedByPriority(result.games.filter((g) => g.imageSquare || g.imageLandscape))
+        providerGames.value = sortedByPriority(result.games)
         totalPages.value = result.totalPages
       }
     } finally {
@@ -264,6 +264,7 @@ onUnmounted(() => {
           >
             <div class="pg-thumb">
               <img
+                v-if="g.imageSquare || g.imageLandscape"
                 :src="g.imageSquare ?? g.imageLandscape ?? ''"
                 :alt="g.gameName"
                 class="pg-img"
@@ -271,6 +272,9 @@ onUnmounted(() => {
                 @load="onImgLoad"
                 @error="onImgError"
               />
+              <div v-else class="pg-placeholder">
+                <span class="pg-letter">{{ (g.gameName?.[0] ?? '?').toUpperCase() }}</span>
+              </div>
               <div class="pg-hover"><span class="pg-play">Play</span></div>
             </div>
             <div class="pg-name">{{ g.gameName }}</div>
@@ -398,6 +402,19 @@ onUnmounted(() => {
 }
 .pg-img--loaded { opacity: 1; }
 .pg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.pg-letter {
+  width: clamp(34px, 5vw, 48px);
+  height: clamp(34px, 5vw, 48px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-weight: 700;
+  font-size: clamp(15px, 2vw, 20px);
+  color: #fff;
+}
 
 .pg-hover {
   position: absolute;

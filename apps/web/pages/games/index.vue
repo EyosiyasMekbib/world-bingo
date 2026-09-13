@@ -169,8 +169,6 @@ function bingoStatusColor(status: string) {
   return 'rgba(255,255,255,0.4)'
 }
 
-function hasImage(g: ProviderGame) { return !!(g.imageSquare || g.imageLandscape) }
-
 const bingoCards = computed<Card[]>(() => {
   if (activeCategory.value !== BINGO_CAT && activeCategory.value !== 'ALL') return []
   return gameStore.availableGames.map((g, i) => ({
@@ -189,13 +187,13 @@ const bingoCards = computed<Card[]>(() => {
 
 const providerCards = computed<Card[]>(() => {
   if (activeCategory.value === BINGO_CAT) return []
-  return providerStore.games.filter(hasImage).map((g) => ({
+  return providerStore.games.map((g) => ({
     key: `provider:${g.gameCode}`,
     kind: 'provider',
     name: g.gameName,
     glyph: (g.gameName?.[0] ?? 'G').toUpperCase(),
     thumb: 'linear-gradient(150deg,#16233f,#0a1628)',
-    image: g.imageSquare || g.imageLandscape,
+    image: g.imageSquare || g.imageLandscape || null,
     raw: g,
   }))
 })
@@ -407,7 +405,7 @@ onUnmounted(() => {
               @load="onImgLoad"
               @error="onImgError"
             />
-            <div v-else class="tile-bingo">
+            <div v-else-if="card.kind === 'bingo'" class="tile-bingo">
               <div class="bingo-balls">
                 <span style="background:var(--ball-b)">B</span>
                 <span style="background:var(--ball-i)">I</span>
@@ -415,6 +413,9 @@ onUnmounted(() => {
                 <span style="background:var(--ball-g)">G</span>
                 <span style="background:var(--ball-o)">O</span>
               </div>
+            </div>
+            <div v-else class="tile-placeholder">
+              <span class="tile-glyph">{{ card.glyph }}</span>
             </div>
 
             <span
@@ -770,6 +771,30 @@ onUnmounted(() => {
   font-size: clamp(10px, 1.3vw, 14px);
   color: #fff;
   box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* generic fallback for provider games with no artwork yet */
+.tile-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.08), transparent 60%);
+}
+.tile-glyph {
+  width: clamp(34px, 5vw, 48px);
+  height: clamp(34px, 5vw, 48px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: clamp(15px, 2vw, 20px);
+  color: var(--text-primary);
 }
 
 .tile-status {

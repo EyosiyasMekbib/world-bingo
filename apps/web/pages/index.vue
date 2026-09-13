@@ -359,10 +359,6 @@ function bingoToCard(g: Game): LobbyCard {
   }
 }
 
-function hasImage(g: ProviderGame) {
-  return !!(g.imageSquare || g.imageLandscape)
-}
-
 // Which games lead the grid is curated in the admin panel (Featured Games) and
 // applied by the API, so the order here is whatever the API returned.
 
@@ -401,13 +397,13 @@ const gridGames = computed<LobbyCard[]>(() => {
     cards = gameStore.availableGames.map(bingoToCard)
   } else if (cat === 'ALL') {
     // Featured games first, then remaining provider games; bingo rooms at the bottom
-    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
+    cards = [...allProviderGames.value.map(providerToCard), ...gameStore.availableGames.map(bingoToCard)]
   } else if (cat === 'TRENDING') {
-    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.map(providerToCard), ...trendingBingo.value.map(bingoToCard)]
   } else if (cat === 'POPULAR') {
-    cards = [...allProviderGames.value.filter(hasImage).map(providerToCard), ...popularBingo.value.map(bingoToCard)]
+    cards = [...allProviderGames.value.map(providerToCard), ...popularBingo.value.map(bingoToCard)]
   } else {
-    cards = (categoryGamesMap.value[cat] ?? []).filter(hasImage).map(providerToCard)
+    cards = (categoryGamesMap.value[cat] ?? []).map(providerToCard)
   }
 
   if (activeVendor.value !== 'ALL' && vendorsAreReal.value) {
