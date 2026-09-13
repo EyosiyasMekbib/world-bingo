@@ -42,11 +42,17 @@ export function signAtlasVBody<T extends Record<string, unknown>>(
 /**
  * Verifies an inbound Atlas-V callback body (the parsed JSON, still
  * containing `hash`). See canonicalHashInput for the confirmed formula.
+ *
+ * `excludeField` handles /bulkresult's documented exception: "for this
+ * request, the hash of the body is encoded without data array in the body" —
+ * the only endpoint where the hash excludes a real payload field, not just
+ * hash/timestamp.
  */
-export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
+export function verifyAtlasVBody(body: Record<string, unknown>, excludeField?: string): boolean {
     const privateKey = getPrivateKey()
     if (!privateKey) return false
     const { hash, ...rest } = body
+    if (excludeField) delete rest[excludeField]
     const timestamp = rest.timestamp
     if (typeof hash !== 'string' || typeof timestamp !== 'string') return false
     const expected = sha1Hex(canonicalHashInput(rest, timestamp, privateKey))
@@ -59,8 +65,9 @@ export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
  * a mismatch. Never used for the actual pass/fail decision — verifyAtlasVBody
  * is. Gated behind ATLASV_CALLBACK_DEBUG by the caller.
  */
-export function debugAtlasVHash(body: Record<string, unknown>): { expected: string; received: string | null; timestamp: string | null } {
+export function debugAtlasVHash(body: Record<string, unknown>, excludeField?: string): { expected: string; received: string | null; timestamp: string | null } {
     const { hash, ...rest } = body
+    if (excludeField) delete rest[excludeField]
     const timestamp = typeof rest.timestamp === 'string' ? rest.timestamp : null
     const expected = timestamp ? sha1Hex(canonicalHashInput(rest, timestamp, getPrivateKey())) : ''
     return { expected, received: typeof hash === 'string' ? hash : null, timestamp }

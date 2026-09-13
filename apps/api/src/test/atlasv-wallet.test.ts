@@ -295,6 +295,63 @@ describe('AtlasVWalletService', () => {
         expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
     })
 
+    it('processBulkResult credits each item independently and never fails the whole batch on one bad item', async () => {
+        p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
+        p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })
+        p.thirdPartyTransaction.findUnique.mockResolvedValue(null) // neither item's transaction_id is a replay
+
+        const goodItemTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue({ id: 'bet1', type: 'BET', status: 'COMPLETED', betAmount: '10.00', amount: '-10.00', rawResponse: null }),
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: { create: vi.fn() },
+        }
+        const badItemTx = {
+            $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
+            wallet: { update: vi.fn() },
+            thirdPartyTransaction: {
+                findUnique: vi.fn().mockResolvedValue(null), // no matching bet for this item
+                create: vi.fn(),
+                update: vi.fn(),
+            },
+            transaction: { create: vi.fn() },
+        }
+        p.$transaction
+            .mockImplementationOnce((cb: any) => cb(goodItemTx))
+            .mockImplementationOnce((cb: any) => cb(badItemTx))
+
+        const { AtlasVWalletService } = await import('../services/atlasv-wallet.service.js')
+        const res = await AtlasVWalletService.processBulkResult({
+            round_id: 'r1', game_code: 'penalty',
+            data: [
+                { player_id: PLAYER_ID, amount: 30, transaction_id: 'res-good', bet_transaction_id: 'bet-good' },
+                { player_id: PLAYER_ID, amount: 30, transaction_id: 'res-bad', bet_transaction_id: 'bet-bad' },
+            ],
+        })
+
+        expect(res).toEqual({ success: true, error: null })
+        expect(goodItemTx.wallet.update).toHaveBeenCalled()
+        expect(badItemTx.wallet.update).not.toHaveBeenCalled()
+    })
+
+    it('processBulkResult fails the whole batch when the provider is not configured', async () => {
+        vi.resetModules()
+        p.gameProvider.findUnique.mockResolvedValue(null)
+
+        const { AtlasVWalletService } = await import('../services/atlasv-wallet.service.js')
+        const res = await AtlasVWalletService.processBulkResult({
+            round_id: 'r1', game_code: 'penalty',
+            data: [{ player_id: PLAYER_ID, amount: 30, transaction_id: 'res1', bet_transaction_id: 'bet1' }],
+        })
+
+        expect(res).toEqual({ error: 'Service Error' })
+        expect(p.$transaction).not.toHaveBeenCalled()
+    })
+
     it('processFreespinResult credits a win with no prior bet required', async () => {
         p.gameProvider.findUnique.mockResolvedValue({ id: 'pid1' })
         p.user.findUnique.mockResolvedValue({ id: 'uid1', accountStatus: 'ACTIVE' })

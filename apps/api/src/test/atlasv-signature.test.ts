@@ -56,6 +56,19 @@ describe('Atlas-V signature', () => {
         vi.resetModules()
     })
 
+    it('verifies /bulkresult by excluding the data array from the hash, per its documented exception', async () => {
+        const { signAtlasVBody, verifyAtlasVBody } = await import('../gateways/game-provider/atlasv-signature.js')
+        // Atlas-V signs the body WITHOUT `data`, then attaches `data` afterward —
+        // so sign the shape excluding it, then add data on top of the signed result.
+        const signed = signAtlasVBody({ game: 'penalty', casino_id: 'c1', round_id: 'r1' })
+        const withData = { ...signed, data: [{ player_id: 'p1', amount: 100, transaction_id: 't1', bet_transaction_id: 'b1' }] }
+
+        expect(verifyAtlasVBody(withData, 'data')).toBe(true)
+        // Without the exclusion, the (unhashed) data array corrupts the
+        // recomputed hash — proving the exclusion is actually load-bearing.
+        expect(verifyAtlasVBody(withData)).toBe(false)
+    })
+
     it('rejects when ATLASV_PRIVATE_KEY is unset', async () => {
         vi.resetModules()
         const prevKey = process.env.ATLASV_PRIVATE_KEY

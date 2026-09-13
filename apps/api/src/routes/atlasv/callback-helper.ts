@@ -28,9 +28,15 @@ export function atlasVCallbackHandler(action: AtlasVAction) {
 
         req.log.info({ action, body }, '[Atlas-V] callback received')
 
-        if (!verifyAtlasVBody(body)) {
+        // /bulkresult's hash is computed WITHOUT the `data` array in the body
+        // — the spec's own explicit exception ("the hash of the body is
+        // encoded without data array in the body"). Every other action hashes
+        // its full body (minus hash/timestamp) as usual.
+        const excludeField = action === 'bulkresult' ? 'data' : undefined
+
+        if (!verifyAtlasVBody(body, excludeField)) {
             if (DEBUG) {
-                const diag = debugAtlasVHash(body)
+                const diag = debugAtlasVHash(body, excludeField)
                 req.log.warn({ action, rawBody, ...diag }, '[Atlas-V] signature verification failed')
             }
             return reply.status(200).send(fail())

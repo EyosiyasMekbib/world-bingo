@@ -15,7 +15,7 @@ const USER_CACHE_TTL = 3600
 const MAX_WIN_AMOUNT = Number(process.env.ATLASV_MAX_WIN_AMOUNT ?? 1_000_000)
 const MAX_WIN_MULTIPLE = Number(process.env.ATLASV_MAX_WIN_MULTIPLE ?? 20_000)
 
-export type AtlasVAction = 'account' | 'bet' | 'betwin' | 'result' | 'rollback' | 'freespin' | 'jackpot'
+export type AtlasVAction = 'account' | 'bet' | 'betwin' | 'result' | 'rollback' | 'bulkresult' | 'freespin' | 'jackpot'
 export type AtlasVResponse =
     | { player_id: string; balance: number; error?: null }
     | { success: boolean; error?: string | null }
@@ -44,6 +44,8 @@ interface BetParams { player_id: string; round_id?: string; game_code?: string; 
 interface BetWinParams { player_id: string; round_id?: string; game_code?: string; transaction_id: string; betAmount: number; winAmount: number }
 interface ResultParams { player_id: string; round_id?: string; game_code?: string; transaction_id: string; bet_transaction_id: string; amount: number }
 interface RollbackParams { player_id: string; round_id?: string; game_code?: string; bet_transaction_id: string }
+interface BulkResultItem { player_id: string; amount: number; transaction_id: string; bet_transaction_id: string }
+interface BulkResultParams { round_id?: string; game_code?: string; data: BulkResultItem[] }
 interface FreespinResultParams { player_id: string; round_id?: string; game_code?: string; transaction_id: string; amount: number }
 interface JackpotParams { player_id: string; round_id?: string; game_code?: string; transaction_id: string; amount: number }
 
@@ -490,6 +492,53 @@ export class AtlasVWalletService {
         return { success: true, error: null }
     }
 
+    /**
+     * Bulk-sends round results for multiple players in one call. Atlas-V's
+     * response for this endpoint is a single flat {success,error} — there is
+     * no documented channel to report per-item outcomes back — so each item
+     * is processed independently via the exact same logic as processResult
+     * (same fraud guard, same idempotency), and a per-item failure (bad
+     * player, no matching bet) is logged and skipped rather than failing the
+     * whole batch. Only a systemic problem (provider not configured) fails
+     * the batch outright, since that isn't a "this one record is bad" case.
+     */
+    static async processBulkResult(params: BulkResultParams): Promise<AtlasVResponse> {
+        try {
+            await getAtlasVProviderId()
+        } catch {
+            return errFail(ATLASV_ERROR.SERVICE_ERROR)
+        }
+
+        for (const item of params.data) {
+            try {
+                const result = await AtlasVWalletService.processResult({
+                    player_id: item.player_id,
+                    round_id: params.round_id,
+                    game_code: params.game_code,
+                    transaction_id: item.transaction_id,
+                    bet_transaction_id: item.bet_transaction_id,
+                    amount: item.amount,
+                })
+                // `error` is present (as null) on the success shape too — check
+                // its value, not just key presence, or every successful item
+                // would log as a false failure.
+                if ('error' in result && result.error) {
+                    getLogger().warn(
+                        { component: 'atlasv-bulkresult', playerId: maskAccount(item.player_id), betRef: item.bet_transaction_id, error: result.error },
+                        '[atlasv-bulkresult] one item in the batch failed — continuing with the rest',
+                    )
+                }
+            } catch (err) {
+                getLogger().error(
+                    { component: 'atlasv-bulkresult', err, playerId: maskAccount(item.player_id), betRef: item.bet_transaction_id },
+                    '[atlasv-bulkresult] one item threw unexpectedly — continuing with the rest',
+                )
+            }
+        }
+
+        return { success: true, error: null }
+    }
+
     static async processFreespinResult(params: FreespinResultParams): Promise<AtlasVResponse> {
         const user = await resolveUser(params.player_id)
         if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
@@ -621,6 +670,10 @@ export class AtlasVWalletService {
                 return AtlasVWalletService.processRollback({
                     player_id: d.player_id, round_id: d.round_id, game_code: d.game,
                     bet_transaction_id: d.bet_transaction_id,
+                })
+            case 'bulkresult':
+                return AtlasVWalletService.processBulkResult({
+                    round_id: d.round_id, game_code: d.game, data: Array.isArray(d.data) ? d.data : [],
                 })
             case 'freespin':
                 return AtlasVWalletService.processFreespinResult({

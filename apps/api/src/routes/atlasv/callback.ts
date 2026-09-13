@@ -25,6 +25,7 @@ export const atlasVCallbackRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/betwin', atlasVCallbackHandler('betwin'))
     fastify.post('/result', atlasVCallbackHandler('result'))
     fastify.post('/rollback', atlasVCallbackHandler('rollback'))
+    fastify.post('/bulkresult', atlasVCallbackHandler('bulkresult'))
     fastify.post('/freespin', atlasVCallbackHandler('freespin'))
     fastify.post('/jackpot', atlasVCallbackHandler('jackpot'))
 }
