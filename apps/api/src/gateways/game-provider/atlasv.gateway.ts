@@ -42,8 +42,14 @@ async function request<T>(baseUrl: string, path: string, body: Record<string, un
         })
     }
     if (!res.ok) {
+        let bodyText = ''
+        try {
+            bodyText = await res.text()
+        } catch {
+            // Mocked/malformed responses may have no .text(); fall back to a bare status.
+        }
         throw new AtlasVApiError({
-            message: `Atlas-V upstream returned HTTP ${res.status}`,
+            message: `Atlas-V upstream returned HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 500)}` : ''}`,
             statusCode: 502,
             code: 'ATLASV_UPSTREAM_HTTP_ERROR',
         })
