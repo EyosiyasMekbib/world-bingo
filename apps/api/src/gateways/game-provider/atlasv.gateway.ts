@@ -31,7 +31,13 @@ async function request<T>(baseUrl: string, path: string, body: Record<string, un
     try {
         res = await fetch(`${baseUrl}${path}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/javascript' },
+            // The spec (page 1) mandates text/javascript for every request, but
+            // Atlas-V's own /init crashes on it — TypeError: Cannot read
+            // properties of undefined (reading 'casino_id'), i.e. req.body came
+            // through unparsed. Their inbound callbacks are unaffected: our own
+            // receiver explicitly accepts both content types (routes/atlasv/
+            // callback.ts) for exactly this kind of spec/implementation gap.
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(signed),
         })
     } catch (err: any) {
