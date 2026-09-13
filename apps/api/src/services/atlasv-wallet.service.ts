@@ -16,7 +16,28 @@ const MAX_WIN_AMOUNT = Number(process.env.ATLASV_MAX_WIN_AMOUNT ?? 1_000_000)
 const MAX_WIN_MULTIPLE = Number(process.env.ATLASV_MAX_WIN_MULTIPLE ?? 20_000)
 
 export type AtlasVAction = 'account' | 'bet' | 'betwin' | 'result' | 'rollback' | 'freespin' | 'jackpot'
-export type AtlasVResponse = { player_id: string; balance: number } | { success: boolean }
+export type AtlasVResponse =
+    | { player_id: string; balance: number; error?: null }
+    | { success: boolean; error?: string | null }
+    | { error: string }
+
+/**
+ * Atlas-V's documented error vocabulary for /bet, /betwin, /result, /rollback
+ * (their spec calls out these exact strings — e.g. "Only errors with the
+ * value 'Service Error' will be retried"). "Rate Limit Increase" is omitted:
+ * nothing in this service rate-limits a wallet operation, so no code path
+ * ever produces it.
+ */
+const ATLASV_ERROR = {
+    SERVICE_ERROR: 'Service Error',
+    INSUFFICIENT_FUNDS: 'Insufficient Funds',
+    PLAYER_BLOCKED: 'Player Blocked',
+    // Not listed in the /result section of the spec (only /rollback's is),
+    // but "no matching bet" is unambiguously this case and neither
+    // "Service Error" (implies retry, which won't help) nor "Player Blocked"
+    // (wrong subject) fits — reusing /rollback's code is the closest honest match.
+    BET_NOT_FOUND: 'Bet not found',
+} as const
 
 interface AccountParams { player_id: string }
 interface BetParams { player_id: string; round_id?: string; game_code?: string; transaction_id: string; amount: number }
@@ -30,6 +51,11 @@ interface JackpotParams { player_id: string; round_id?: string; game_code?: stri
 
 function fail(): AtlasVResponse {
     return { success: false }
+}
+
+/** Error-shaped failure for /bet, /betwin, /result, /rollback — spec's error responses carry ONLY this field. */
+function errFail(code: string): AtlasVResponse {
+    return { error: code }
 }
 
 let _providerId: string | null = null
@@ -99,13 +125,13 @@ export class AtlasVWalletService {
 
     static async processBet(params: BetParams): Promise<AtlasVResponse> {
         const user = await resolveUser(params.player_id)
-        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return errFail(ATLASV_ERROR.PLAYER_BLOCKED)
 
         const existing = await findExisting(params.transaction_id)
         if (existing) {
-            if (existing.status === ThirdPartyTxStatus.FAILED) return fail()
+            if (existing.status === ThirdPartyTxStatus.FAILED) return errFail(ATLASV_ERROR.INSUFFICIENT_FUNDS)
             const balance = await currentBalance(user.id)
-            return { player_id: params.player_id, balance: Number(balance.toFixed(2)) }
+            return { player_id: params.player_id, balance: Number(balance.toFixed(2)), error: null }
         }
 
         try {
@@ -159,7 +185,7 @@ export class AtlasVWalletService {
                 providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null,
                 betId: params.transaction_id, amount: Number(params.amount), spendAccount: 'REAL',
             })
-            return { player_id: params.player_id, balance: Number(balanceAfter.toFixed(2)) }
+            return { player_id: params.player_id, balance: Number(balanceAfter.toFixed(2)), error: null }
         } catch (e: any) {
             if (e?.code === 'BALANCE_NOT_ENOUGH' || e?.name === 'InsufficientBonusBalanceError') {
                 try {
@@ -175,24 +201,29 @@ export class AtlasVWalletService {
                         },
                     })
                 } catch { /* ignore duplicate */ }
-                return fail()
+                return errFail(ATLASV_ERROR.INSUFFICIENT_FUNDS)
             }
-            if (e?.code) return fail()
+            if (e?.code) return errFail(ATLASV_ERROR.SERVICE_ERROR)
             throw e
         }
     }
 
     static async processRollback(params: RollbackParams): Promise<AtlasVResponse> {
         const user = await resolveUser(params.player_id)
-        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return errFail(ATLASV_ERROR.PLAYER_BLOCKED)
 
         const cancelTxId = `rollback:${params.bet_transaction_id}`
+        // Note: a replayed request always reports success here, even if the
+        // original attempt found no matching bet (that attempt still writes an
+        // audit row under cancelTxId with amount 0) — a narrow, known gap, not
+        // worth extra state to close given how rarely a not-found rollback gets
+        // retried verbatim.
         const existing = await findExisting(cancelTxId)
-        if (existing) return { success: true }
+        if (existing) return { success: true, error: null }
 
         const providerId = await getAtlasVProviderId()
 
-        const success = await prisma.$transaction(async (tx) => {
+        const wasRefunded = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
@@ -279,20 +310,21 @@ export class AtlasVWalletService {
                 })
             }
 
-            return true
+            return refundable
         })
 
-        return { success }
+        if (!wasRefunded) return errFail(ATLASV_ERROR.BET_NOT_FOUND)
+        return { success: true, error: null }
     }
 
     static async processBetWin(params: BetWinParams): Promise<AtlasVResponse> {
         const user = await resolveUser(params.player_id)
-        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return errFail(ATLASV_ERROR.PLAYER_BLOCKED)
 
         const existing = await findExisting(params.transaction_id)
         if (existing) {
             const balance = await currentBalance(user.id)
-            return { player_id: params.player_id, balance: Number(balance.toFixed(2)) }
+            return { player_id: params.player_id, balance: Number(balance.toFixed(2)), error: null }
         }
 
         const betAmount = new Decimal(params.betAmount).abs()
@@ -308,7 +340,7 @@ export class AtlasVWalletService {
                 },
                 '[atlasv-fraud-flag] betwin failed validation guard',
             )
-            return fail()
+            return errFail(ATLASV_ERROR.SERVICE_ERROR)
         }
 
         try {
@@ -362,24 +394,24 @@ export class AtlasVWalletService {
             emitProviderBet(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: betAmount.toNumber(), spendAccount: 'REAL' })
             emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: betAmount.toNumber() })
 
-            return { player_id: params.player_id, balance: Number(balanceAfter.toFixed(2)) }
+            return { player_id: params.player_id, balance: Number(balanceAfter.toFixed(2)), error: null }
         } catch (e: any) {
-            if (e?.code === 'BALANCE_NOT_ENOUGH' || e?.name === 'InsufficientBonusBalanceError') return fail()
-            if (e?.code) return fail()
+            if (e?.code === 'BALANCE_NOT_ENOUGH' || e?.name === 'InsufficientBonusBalanceError') return errFail(ATLASV_ERROR.INSUFFICIENT_FUNDS)
+            if (e?.code) return errFail(ATLASV_ERROR.SERVICE_ERROR)
             throw e
         }
     }
 
     static async processResult(params: ResultParams): Promise<AtlasVResponse> {
         const user = await resolveUser(params.player_id)
-        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return fail()
+        if (!user || user.accountStatus !== AccountStatus.ACTIVE) return errFail(ATLASV_ERROR.PLAYER_BLOCKED)
 
         const existing = await findExisting(params.transaction_id)
-        if (existing) return { success: true }
+        if (existing) return { success: true, error: null }
 
         const providerId = await getAtlasVProviderId()
 
-        const credited = await prisma.$transaction(async (tx) => {
+        const outcome = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
 
             // Re-read the original bet under the wallet lock so a concurrent
@@ -399,7 +431,7 @@ export class AtlasVWalletService {
                     { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, betRef: params.bet_transaction_id },
                     '[atlasv-fraud-flag] result with no matching completed bet — not crediting',
                 )
-                return null
+                return { errorCode: ATLASV_ERROR.BET_NOT_FOUND } as const
             }
 
             const winAmount = new Decimal(params.amount).abs()
@@ -412,7 +444,7 @@ export class AtlasVWalletService {
                     { component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id), round: params.round_id, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() },
                     '[atlasv-fraud-flag] result failed validation guard',
                 )
-                return null
+                return { errorCode: ATLASV_ERROR.SERVICE_ERROR } as const
             }
 
             const realBefore = new Decimal(wallet.realBalance)
@@ -446,16 +478,16 @@ export class AtlasVWalletService {
                 },
             })
 
-            return { winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() }
+            return { errorCode: null, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() } as const
         })
 
-        if (!credited) return fail()
+        if (outcome.errorCode) return errFail(outcome.errorCode)
 
         emitProviderWin(user.id, {
             providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null,
-            betId: params.bet_transaction_id, amount: credited.winAmount, roundStake: credited.betAmount,
+            betId: params.bet_transaction_id, amount: outcome.winAmount, roundStake: outcome.betAmount,
         })
-        return { success: true }
+        return { success: true, error: null }
     }
 
     static async processFreespinResult(params: FreespinResultParams): Promise<AtlasVResponse> {

@@ -61,7 +61,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't1', amount: 10,
         })
 
-        expect(res).toEqual({ player_id: PLAYER_ID, balance: 90 })
+        expect(res).toEqual({ player_id: PLAYER_ID, balance: 90, error: null })
         expect(fakeTx.wallet.update).toHaveBeenCalledWith({ where: { userId: 'uid1' }, data: { realBalance: expect.anything() } })
         expect(fakeTx.thirdPartyTransaction.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ type: 'BET', transactionId: 't1' }),
@@ -86,7 +86,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't1', amount: 10,
         })
 
-        expect(res).toEqual({ success: false })
+        expect(res).toEqual({ error: 'Insufficient Funds' })
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
     })
 
@@ -101,7 +101,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't1', amount: 10,
         })
 
-        expect(res).toEqual({ player_id: PLAYER_ID, balance: 90 })
+        expect(res).toEqual({ player_id: PLAYER_ID, balance: 90, error: null })
         expect(p.$transaction).not.toHaveBeenCalled()
     })
 
@@ -115,7 +115,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't1', amount: 10,
         })
 
-        expect(res).toEqual({ success: false })
+        expect(res).toEqual({ error: 'Insufficient Funds' })
         expect(p.$transaction).not.toHaveBeenCalled()
     })
 
@@ -141,7 +141,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', bet_transaction_id: 't1',
         })
 
-        expect(res).toEqual({ success: true })
+        expect(res).toEqual({ success: true, error: null })
         expect(fakeTx.wallet.update).toHaveBeenCalledWith({ where: { userId: 'uid1' }, data: { realBalance: expect.anything() } })
         expect(fakeTx.thirdPartyTransaction.update).toHaveBeenCalledWith({ where: { id: 'bet1' }, data: { status: 'ROLLED_BACK' } })
     })
@@ -163,7 +163,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', bet_transaction_id: 'nonexistent',
         })
 
-        expect(res).toEqual({ success: true })
+        expect(res).toEqual({ error: 'Bet not found' })
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
         expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
     })
@@ -185,7 +185,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't2', betAmount: 10, winAmount: 25,
         })
 
-        expect(res).toEqual({ player_id: PLAYER_ID, balance: 115 }) // 100 - 10 + 25
+        expect(res).toEqual({ player_id: PLAYER_ID, balance: 115, error: null }) // 100 - 10 + 25
         expect(fakeTx.thirdPartyTransaction.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ type: 'BET_RESULT', betAmount: expect.anything(), winAmount: expect.anything() }),
         }))
@@ -203,7 +203,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', transaction_id: 't3', betAmount: 10, winAmount: 200,
         })
 
-        expect(res).toEqual({ success: false })
+        expect(res).toEqual({ error: 'Service Error' })
         expect(p.$transaction).not.toHaveBeenCalled()
         vi.unstubAllEnvs()
     })
@@ -232,7 +232,7 @@ describe('AtlasVWalletService', () => {
             transaction_id: 'res1', bet_transaction_id: 't1', amount: 30,
         })
 
-        expect(res).toEqual({ success: true })
+        expect(res).toEqual({ success: true, error: null })
         expect(fakeTx.thirdPartyTransaction.findUnique).toHaveBeenCalledWith({
             where: { providerId_transactionId: { providerId: 'pid1', transactionId: 't1' } },
         })
@@ -258,7 +258,7 @@ describe('AtlasVWalletService', () => {
             transaction_id: 'res2', bet_transaction_id: 'nonexistent', amount: 30,
         })
 
-        expect(res).toEqual({ success: false })
+        expect(res).toEqual({ error: 'Bet not found' })
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
         expect(fakeTx.thirdPartyTransaction.create).not.toHaveBeenCalled()
         expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
@@ -289,7 +289,7 @@ describe('AtlasVWalletService', () => {
             transaction_id: 'res3', bet_transaction_id: 't1', amount: 30,
         })
 
-        expect(res).toEqual({ success: false })
+        expect(res).toEqual({ error: 'Bet not found' })
         expect(fakeTx.wallet.update).not.toHaveBeenCalled()
         expect(fakeTx.thirdPartyTransaction.create).not.toHaveBeenCalled()
         expect(fakeTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
@@ -374,7 +374,7 @@ describe('AtlasVWalletService', () => {
             transaction_id: 'res1', bet_transaction_id: 't1', amount: 30,
         })
 
-        expect(resultRes).toEqual({ success: true })
+        expect(resultRes).toEqual({ success: true, error: null })
         expect(resultTx.thirdPartyTransaction.update).toHaveBeenCalledWith({
             where: { id: 'bet1' },
             data: { rawResponse: { settledBy: 'res1' } },
@@ -399,7 +399,7 @@ describe('AtlasVWalletService', () => {
             player_id: PLAYER_ID, round_id: 'r1', game_code: 'penalty', bet_transaction_id: 't1',
         })
 
-        expect(rollbackRes).toEqual({ success: true })
+        expect(rollbackRes).toEqual({ error: 'Bet not found' })
         expect(rollbackTx.wallet.update).not.toHaveBeenCalled()
         expect(rollbackTx.thirdPartyTransaction.update).not.toHaveBeenCalled()
     })
@@ -432,6 +432,6 @@ describe('AtlasVWalletService', () => {
         expect(new Decimal(updateCall.data.realBalance).toString()).toBe(new Decimal('100.00').plus(25).toString())
 
         // Report back only the account that changed — the bet leg drew from BONUS, so balance reflects the new BONUS balance.
-        expect(res).toEqual({ player_id: PLAYER_ID, balance: bonusBalanceAfter.toNumber() })
+        expect(res).toEqual({ player_id: PLAYER_ID, balance: bonusBalanceAfter.toNumber(), error: null })
     })
 })
