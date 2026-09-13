@@ -15,24 +15,33 @@ export function sha1Hex(input: string): string {
     return crypto.createHash('sha1').update(input).digest('hex')
 }
 
+/**
+ * The exact string Atlas-V hashes: sha1(REQUEST_BODY + PRIVATE_KEY + timestamp),
+ * where REQUEST_BODY is the JSON body with BOTH `hash` and `timestamp` removed
+ * — confirmed against Atlas-V's real staging test tool across /account, /bet,
+ * and /rollback (three independent request/hash pairs, same result each
+ * time): `timestamp` is appended once, raw, at the end — never serialized
+ * inside the JSON. See docs/superpowers/specs/2026-09-09-atlasv-integration-design.md,
+ * "Signature (inbound)" — this was a documented assumption there and got it
+ * wrong (it left `timestamp` inside the JSON); this is the verified formula.
+ */
+function canonicalHashInput(bodyWithoutHash: Record<string, unknown>, timestamp: string, privateKey: string): string {
+    const { timestamp: _timestamp, ...rest } = bodyWithoutHash
+    return JSON.stringify(rest) + privateKey + timestamp
+}
+
 /** Attaches `timestamp` and `hash` to an outbound Atlas-V request body. */
 export function signAtlasVBody<T extends Record<string, unknown>>(
     body: T,
 ): T & { timestamp: string; hash: string } {
     const timestamp = String(Date.now())
-    const withTimestamp = { ...body, timestamp }
-    const hash = sha1Hex(JSON.stringify(withTimestamp) + getPrivateKey() + timestamp)
-    return { ...withTimestamp, hash }
+    const hash = sha1Hex(canonicalHashInput(body, timestamp, getPrivateKey()))
+    return { ...body, timestamp, hash }
 }
 
 /**
  * Verifies an inbound Atlas-V callback body (the parsed JSON, still
- * containing `hash`). Per the Atlas-V API doc: hash = sha1(REQUEST_BODY +
- * PRIVATE_KEY + timestamp). REQUEST_BODY is assumed to be the JSON body with
- * `hash` itself removed, in the same key order Atlas-V sent it (preserved by
- * JSON.parse → destructure → JSON.stringify round-tripping). This is a
- * documented assumption, not a confirmed fact — see the design doc's
- * "Signature (inbound)" row and Risk #1.
+ * containing `hash`). See canonicalHashInput for the confirmed formula.
  */
 export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
     const privateKey = getPrivateKey()
@@ -40,7 +49,7 @@ export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
     const { hash, ...rest } = body
     const timestamp = rest.timestamp
     if (typeof hash !== 'string' || typeof timestamp !== 'string') return false
-    const expected = sha1Hex(JSON.stringify(rest) + privateKey + timestamp)
+    const expected = sha1Hex(canonicalHashInput(rest, timestamp, privateKey))
     if (hash.length !== expected.length) return false
     return crypto.timingSafeEqual(Buffer.from(hash, 'utf8'), Buffer.from(expected, 'utf8'))
 }
@@ -53,6 +62,6 @@ export function verifyAtlasVBody(body: Record<string, unknown>): boolean {
 export function debugAtlasVHash(body: Record<string, unknown>): { expected: string; received: string | null; timestamp: string | null } {
     const { hash, ...rest } = body
     const timestamp = typeof rest.timestamp === 'string' ? rest.timestamp : null
-    const expected = timestamp ? sha1Hex(JSON.stringify(rest) + getPrivateKey() + timestamp) : ''
+    const expected = timestamp ? sha1Hex(canonicalHashInput(rest, timestamp, getPrivateKey())) : ''
     return { expected, received: typeof hash === 'string' ? hash : null, timestamp }
 }
