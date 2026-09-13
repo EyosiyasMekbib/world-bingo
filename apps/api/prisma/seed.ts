@@ -232,6 +232,21 @@ async function main() {
             isActive: true,
         },
     })
+    await prisma.providerGame.upsert({
+        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'keno' } },
+        update: {},
+        create: {
+            providerId: atlasv.id,
+            vendorId: atlasvVendor.id,
+            gameCode: 'keno',
+            gameName: 'Keno',
+            categoryCode: 'ARCADE',
+            languageCodes: ['en', 'am'],
+            platformCodes: ['WEB', 'H5'],
+            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+            isActive: true,
+        },
+    })
     console.log('Atlas-V provider seeded')
 
     // 7. Seed default payment methods
