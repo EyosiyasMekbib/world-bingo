@@ -17,7 +17,6 @@
  * player-round. Logic lives in src/lib and is unit tested; this file is I/O.
  */
 import prisma from '../src/lib/prisma.js'
-import { getGameProviderGateway } from '../src/gateways/game-provider/index.js'
 import {
     parseReconcileArgs,
     summarizeGames,
@@ -34,18 +33,40 @@ import {
     fetchPalaceUserMap,
 } from '../src/lib/provider-round-ledger.js'
 
+/**
+ * `getGameProviderGateway` is imported lazily, and only from here, because
+ * src/gateways/game-provider/index.ts registers `new PalaceGateway()` at
+ * module load for the default `standalone` (and `hub`) deployment role, and
+ * PalaceGateway imports the shared Redis client from src/lib/redis.ts —
+ * `new Redis(url)` with no lazyConnect and no unref, so it keeps Node's event
+ * loop alive forever once created. A run without --palace must never pay for
+ * that: mainline commit 265e405 hit the exact same class of bug in
+ * prisma/seed.ts (redis client imported as a side effect, never closed, api
+ * container stuck "unhealthy" for 8+ minutes in production with Redis up).
+ * `redis.disconnect()` below force-closes the socket and cancels ioredis's
+ * reconnect loop without a network round trip, so this exits cleanly whether
+ * or not Redis is actually reachable.
+ */
 async function fetchPalaceRecords(since: Date, until: Date): Promise<PalaceTxRecord[]> {
-    const gateway = getGameProviderGateway('palace')
-    const records: PalaceTxRecord[] = []
-    for (let page = 1; ; page++) {
-        const res = await gateway.getTransactions(since.getTime(), until.getTime(), page)
-        for (const t of res.transactions) {
-            records.push({ username: t.username, roundId: t.roundId, gameCode: t.gameCode, betAmount: t.betAmount, winAmount: t.winAmount })
+    const [{ getGameProviderGateway }, { default: redis }] = await Promise.all([
+        import('../src/gateways/game-provider/index.js'),
+        import('../src/lib/redis.js'),
+    ])
+    try {
+        const gateway = getGameProviderGateway('palace')
+        const records: PalaceTxRecord[] = []
+        for (let page = 1; ; page++) {
+            const res = await gateway.getTransactions(since.getTime(), until.getTime(), page)
+            for (const t of res.transactions) {
+                records.push({ username: t.username, roundId: t.roundId, gameCode: t.gameCode, betAmount: t.betAmount, winAmount: t.winAmount })
+            }
+            console.error(`[reconcile] Palace page ${page}/${res.totalPages}`)
+            if (page >= res.totalPages) break
         }
-        console.error(`[reconcile] Palace page ${page}/${res.totalPages}`)
-        if (page >= res.totalPages) break
+        return records
+    } finally {
+        redis.disconnect()
     }
-    return records
 }
 
 async function main(): Promise<void> {
