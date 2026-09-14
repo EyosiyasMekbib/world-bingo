@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 import bcrypt from 'bcryptjs'
 import { seedEtfcCard } from './seed-etfc'
+import { FeaturedGameService } from '../src/services/featured-game.service'
 
 const prisma = new PrismaClient()
 
@@ -281,6 +282,13 @@ async function main() {
             },
         })
     }
+    // Unlike GameCatalogService.syncGames (which re-projects the admin's
+    // featured-games pins onto newly synced rows every time it runs), this
+    // hand-maintained catalog has no equivalent trigger — a pin saved before
+    // a game's row existed (or before a rename, e.g. 'Keno' -> 'Fast Keno')
+    // would otherwise sit orphaned (0 matches) until an admin happens to
+    // re-save the featured-games list for an unrelated reason.
+    await FeaturedGameService.applyRanks()
     console.log(`Atlas-V provider seeded (${ATLASV_GAMES.length} games)`)
 
     // 7. Seed default payment methods
