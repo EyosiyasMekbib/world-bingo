@@ -352,14 +352,17 @@ READ ONLY transaction.
 
 The first-deposit bonus and the referral reward are withheld when the paying account (player-entered
 `senderAccount`, or the parsed receipt's masked number + payer name) already funded another account's
-first deposit. Hosted ZareCash checkouts carry no payer, so they are never matched. Upstream fix:
-phone-OTP password reset (P1), which removes the reason locked-out players open second accounts.
+first deposit. Incentives are also withheld if the paying-account lookup or lock fails; these failures log
+`[WalletService] first deposit ... payer` errors to GlitchTip and do not emit `first_deposit_shared_payer` events to PostHog.
+Hosted ZareCash checkouts carry no payer, so they are never matched. Upstream fix: phone-OTP password reset (P1), 
+which removes the reason locked-out players open second accounts.
 
-1. **Admin listing** (admin bearer token, obtained as in the Atlas-V probe step):
+1. **Admin listing** (admin bearer token from an admin login session):
    ```sh
    curl -s "https://api.aradabingo.bet/admin/fraud/shared-payers?days=14&limit=100" -H "Authorization: Bearer $TOKEN" \
      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s).clusters;const by={};for(const x of c)by[x.signal]=(by[x.signal]||0)+1;console.log(by);console.log(JSON.stringify(c.slice(0,5),null,2))})'
    ```
+   The listing caps how many `receipt_payer` groups it scans, so a `receipt_payer` cluster beyond the cap may not be shown; use a narrower `days` window to reduce the scan.
 2. **Devices shared by newly registered accounts** (baseline 2026-09-14: 119 devices, 256 persons, max 5 on one device):
    ```sql
    SELECT count() AS devices_with_multiple_persons, sum(persons) AS persons_on_those_devices, max(persons) AS max_persons_one_device
@@ -401,5 +404,5 @@ phone-OTP password reset (P1), which removes the reason locked-out players open 
    GROUP BY event, source, matched_on, bonus_blocked
    ```
    `first_deposit_shared_payer` rows are farming attempts caught. Compare `accounts` with step 3: first depositors on shared
-   devices that the guard did not catch paid through a hosted checkout or a different wallet. Keep
-   `first_deposit_bonus_amount` at 0 (P1 #9) until this has run for 7 days and step 1 has been reviewed.
+   devices that the guard did not catch paid through a hosted checkout, a different wallet, or were blocked by a payer lookup or lock failure (check GlitchTip for `[WalletService] first deposit` errors). Keep
+   `first_deposit_bonus_amount` at 0 (P1 #9) until this has run for 7 days and step 1's counts have been reviewed.
