@@ -285,3 +285,64 @@ Two dynamic cohorts, created 2026-09-08, recalculate on their own:
   list. Open it, reach out personally.
 
 Both live under Cohorts in the PostHog project. Filter any insight or replay list by them.
+
+## 10. Money-correctness checks
+
+### 10.1 Provider payout reconciliation (PostHog vs wallet ledger vs Palace)
+
+PostHog's `provider_bet` / `provider_win` are emitted post-commit from `PalaceWalletService`, so they
+should match the ledger exactly, except that a cancelled bet keeps its `provider_bet` (cancels emit
+nothing). `scripts/reconcile-provider-rounds.ts` prints the ledger side; all its SQL runs in a
+READ ONLY transaction.
+
+1. **Run the ledger side inside the production api container** (Dokploy → aradabingo → production →
+   app → container `aradabingo-app-wn5mzb-api-1` → Terminal, or `docker exec -it aradabingo-app-wn5mzb-api-1 sh`
+   on the host):
+   ```sh
+   cd /app/apps/api
+   node_modules/.bin/tsx scripts/reconcile-provider-rounds.ts --since 2026-08-31 --until 2026-09-14
+   node_modules/.bin/tsx scripts/reconcile-provider-rounds.ts --since 2026-08-31 --until 2026-09-14 --game aviator --top 30
+   ```
+2. **Run the PostHog side for the same window** (HogQL, `mcp__posthog__exec` → `execute-sql`, or the SQL editor):
+   ```sql
+   SELECT
+     properties.game_code AS game,
+     countIf(event = 'provider_bet') AS bets,
+     sumIf(toFloat(properties.amount), event = 'provider_bet') AS wagered,
+     countIf(event = 'provider_win') AS wins,
+     sumIf(toFloat(properties.amount), event = 'provider_win') AS paid
+   FROM events
+   WHERE timestamp >= toDateTime('2026-08-31 00:00:00')
+     AND timestamp < toDateTime('2026-09-14 00:00:00')
+     AND event IN ('provider_bet', 'provider_win')
+     AND properties.provider_code = 'palace'
+     AND properties.game_code IN ('aviator', 'chicken-road', '313')
+   GROUP BY game
+   ```
+3. **Compare.** Failed bets emit nothing and cancelled bets keep their `provider_bet`, so PostHog `bets`
+   should equal ledger `bets + rolledBackBets`, and PostHog `wagered` should equal
+   `posthogComparableWagered`. PostHog `wins`/`paid` should equal ledger `wins`/`paid`. Allow 1 ETB per
+   game for rounding, and a few rows at the window edges because PostHog `timestamp` is capture time
+   and the ledger uses `createdAt`.
+4. **Decide.**
+   - Integrity table shows any non-zero count → double-write defect in the wallet code. Stop and open a bug with the window and game.
+   - Ledger and PostHog differ beyond step 3's allowance → an emit gap. Compare the round lists (`--game`) against PostHog `round_id`s for one day.
+   - Ledger and PostHog agree → run step 5 to bring in Palace.
+5. **Diff against Palace for one day at a time** (Palace's agent API pages every game):
+   ```sh
+   node_modules/.bin/tsx scripts/reconcile-provider-rounds.ts --since 2026-09-12 --until 2026-09-13 --game aviator --palace --top 50; echo "exit=$?"
+   ```
+   - `exit=0`: Palace's own record agrees with our wallet round by round. Aviator's hold is what players actually lost (cashouts not made); treat it as a product/UX issue (P1 #10, provider game load on Android), not a payout bug.
+   - `exit=2` with `palace_only` or `amount_mismatch` rows where `palacePaid > ledgerPaid`: Palace booked cashouts our wallet never credited. Take those `roundId`s to step 6 and escalate.
+   - Many `palace_only` rows with `palacePaid = 0` near midnight: window edge (Palace's time zone); widen `--since/--until` by a day and re-run.
+6. **Read the raw callbacks for a disputed round.** The callback route logs every request as
+   `[Palace] callback received` (full body) and `[Palace] callback handled` (command, data, result):
+   ```sh
+   docker logs --since 48h aradabingo-app-wn5mzb-api-1 2>&1 | grep '\[Palace\] callback handled' | grep '"round_id":"<roundId>"'
+   docker logs --since 48h aradabingo-app-wn5mzb-api-1 2>&1 | grep '\[Palace\] callback handled' | grep '"command":"win"' | grep -v '"result":0' | head -50
+   docker logs --since 48h aradabingo-app-wn5mzb-api-1 2>&1 | grep -E 'palace-settlement|palace-idempotency-mismatch|palace-fraud-flag' | head -50
+   ```
+   With Loki shipping enabled, the Grafana equivalent is
+   `{app="world-bingo-api-arada"} |= "[Palace] callback handled" |= "\"command\":\"win\""`.
+   Container logs do not survive a redeploy, and Dokploy's `compose.readLogs` `search` returned HTTP 500
+   during the 2026-09-14 investigation — use the host shell or Grafana.
