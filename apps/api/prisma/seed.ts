@@ -223,35 +223,38 @@ async function main() {
     // categoryCode buckets their GAME TYPE column onto the lobby's existing
     // categories (CRASH/MINI/TABLE/SLOTS) rather than inventing new ones —
     // Fast Games/Plinko/Keno/Virtual Sport all land in MINI, Roulette/Video
-    // Poker in TABLE.
-    const ATLASV_GAMES: Array<{ gameCode: string; gameName: string; categoryCode: string }> = [
-        { gameCode: 'wowbow', gameName: 'Wow Bow', categoryCode: 'CRASH' },
-        { gameCode: 'pinkthunder', gameName: 'Pink Thunder', categoryCode: 'CRASH' },
-        { gameCode: 'bluethunder', gameName: 'Blue Thunder', categoryCode: 'CRASH' },
-        { gameCode: 'formula', gameName: 'Fast F1', categoryCode: 'CRASH' },
-        { gameCode: 'penalty', gameName: 'Fast Penalty', categoryCode: 'MINI' },
-        { gameCode: 'plinko', gameName: 'Plinko', categoryCode: 'MINI' },
-        { gameCode: 'keno', gameName: 'Fast Keno', categoryCode: 'MINI' },
-        { gameCode: 'boombasket', gameName: 'Boom Basket', categoryCode: 'MINI' },
-        { gameCode: 'boomball', gameName: 'Boom Ball', categoryCode: 'MINI' },
-        { gameCode: 'winball', gameName: 'Win Ball', categoryCode: 'MINI' },
-        { gameCode: 'wof', gameName: 'Wheel of Fortune', categoryCode: 'TABLE' },
-        { gameCode: 'goldminer', gameName: 'Gold Miner', categoryCode: 'CRASH' },
-        { gameCode: 'goldengate', gameName: 'Golden Gate', categoryCode: 'MINI' },
-        { gameCode: 'striker', gameName: 'Striker', categoryCode: 'MINI' },
-        { gameCode: 'darts', gameName: 'Fast Darts', categoryCode: 'MINI' },
-        { gameCode: 'jacksorbetter', gameName: 'Jacks or Better', categoryCode: 'TABLE' },
-        { gameCode: 'jokerwild', gameName: 'Joker Wild', categoryCode: 'TABLE' },
-        { gameCode: 'greyhoundracing', gameName: 'Greyhound Racing', categoryCode: 'MINI' },
-        { gameCode: 'horseracing', gameName: 'Horse Racing', categoryCode: 'MINI' },
-        { gameCode: 'rocketstar', gameName: 'Rocket Star', categoryCode: 'CRASH' },
-        { gameCode: 'chukchaman', gameName: 'Chukcha Man', categoryCode: 'SLOTS' },
-        { gameCode: 'tavern', gameName: 'Tavern', categoryCode: 'SLOTS' },
-        { gameCode: 'fairyland', gameName: 'Fairy Land', categoryCode: 'SLOTS' },
-        { gameCode: 'monkeyboy', gameName: 'Monkey Boy', categoryCode: 'SLOTS' },
-        { gameCode: 'juicyfruits', gameName: 'Juicy Fruits', categoryCode: 'SLOTS' },
-        { gameCode: 'dragon', gameName: 'DragOn', categoryCode: 'SLOTS' },
-        { gameCode: 'hotkeno', gameName: 'Hot Keno', categoryCode: 'MINI' },
+    // Poker in TABLE. imageLandscape is the thumbnail atlas-v.com/games itself
+    // serves for that game (their site's /game/<slug> link target, read off
+    // its rendered background-image — hyphenated site slugs jacks-or-better/
+    // joker-wild map to gameCode jacksorbetter/jokerwild).
+    const ATLASV_GAMES: Array<{ gameCode: string; gameName: string; categoryCode: string; imageLandscape: string }> = [
+        { gameCode: 'wowbow', gameName: 'Wow Bow', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505994311.png' },
+        { gameCode: 'pinkthunder', gameName: 'Pink Thunder', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/11/1699100267255.png' },
+        { gameCode: 'bluethunder', gameName: 'Blue Thunder', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505988124.png' },
+        { gameCode: 'formula', gameName: 'Fast F1', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506004402.png' },
+        { gameCode: 'penalty', gameName: 'Fast Penalty', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505142870.png' },
+        { gameCode: 'plinko', gameName: 'Plinko', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506058503.png' },
+        { gameCode: 'keno', gameName: 'Fast Keno', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/9/1694675943839.png' },
+        { gameCode: 'boombasket', gameName: 'Boom Basket', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506038079.png' },
+        { gameCode: 'boomball', gameName: 'Boom Ball', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506008317.png' },
+        { gameCode: 'winball', gameName: 'Win Ball', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505998025.png' },
+        { gameCode: 'wof', gameName: 'Wheel of Fortune', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2023/9/1695378213187.png' },
+        { gameCode: 'goldminer', gameName: 'Gold Miner', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/8/1692162855698.jpg' },
+        { gameCode: 'goldengate', gameName: 'Golden Gate', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/7/1690202832687.png' },
+        { gameCode: 'striker', gameName: 'Striker', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506052183.png' },
+        { gameCode: 'darts', gameName: 'Fast Darts', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506025870.png' },
+        { gameCode: 'jacksorbetter', gameName: 'Jacks or Better', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2024/2/1708063108069.png' },
+        { gameCode: 'jokerwild', gameName: 'Joker Wild', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2024/2/1708063338112.png' },
+        { gameCode: 'greyhoundracing', gameName: 'Greyhound Racing', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506018823.png' },
+        { gameCode: 'horseracing', gameName: 'Horse Racing', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506015056.png' },
+        { gameCode: 'rocketstar', gameName: 'Rocket Star', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2024/10/1727882265819.jpg' },
+        { gameCode: 'chukchaman', gameName: 'Chukcha Man', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770675529.jpeg' },
+        { gameCode: 'tavern', gameName: 'Tavern', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770735559.jpeg' },
+        { gameCode: 'fairyland', gameName: 'Fairy Land', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770697060.jpeg' },
+        { gameCode: 'monkeyboy', gameName: 'Monkey Boy', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770755860.jpeg' },
+        { gameCode: 'juicyfruits', gameName: 'Juicy Fruits', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770717173.jpeg' },
+        { gameCode: 'dragon', gameName: 'DragOn', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1729234434222.jpg' },
+        { gameCode: 'hotkeno', gameName: 'Hot Keno', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2025/3/1741158191086.jpg' },
     ]
 
     for (const g of ATLASV_GAMES) {
@@ -264,6 +267,7 @@ async function main() {
             update: {
                 gameName: g.gameName,
                 categoryCode: g.categoryCode,
+                imageLandscape: g.imageLandscape,
                 languageCodes: ['en', 'am'],
                 platformCodes: ['WEB', 'H5'],
                 currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
@@ -274,6 +278,7 @@ async function main() {
                 gameCode: g.gameCode,
                 gameName: g.gameName,
                 categoryCode: g.categoryCode,
+                imageLandscape: g.imageLandscape,
                 languageCodes: ['en', 'am'],
                 platformCodes: ['WEB', 'H5'],
                 currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
