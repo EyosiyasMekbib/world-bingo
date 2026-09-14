@@ -7,6 +7,7 @@ import { wbDepositsTotal, wbWithdrawalsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
+import { PayerIdentityService, type SharedPayerMatch } from './payer-identity.service'
 import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
 import { getQueue, QUEUE_NAMES, ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
 import { reportError } from '../lib/sentry'
@@ -187,12 +188,38 @@ export class WalletService {
             })
 
             let bonusAwarded = 0
+            // Set when this is the account's first deposit but its paying account already
+            // funded another account's first deposit (the duplicate-account farming
+            // pattern). Withholds the first-deposit bonus here and the referral reward below.
+            let sharedPayer: SharedPayerMatch | null = null
+            let firstDepositBonusBlocked = false
+            // Set when that lookup itself failed. Fails closed on the incentives (both are
+            // withheld, as for a shared payer) and open on the deposit credited above.
+            let payerLookupFailure: { error: unknown } | null = null
             if (previousApproved === 0) {
+                // A failed statement aborts the whole Postgres transaction (every later
+                // query errors with 25P02), which would roll back the credit above too.
+                // The savepoint lets a failed lookup be discarded on its own, on this same
+                // transaction and wallet lock.
+                await tx.$executeRaw`SAVEPOINT first_deposit_payer_lookup`
+                try {
+                    sharedPayer = await PayerIdentityService.findPriorFirstDepositByPayer(tx, {
+                        userId: transaction.userId,
+                        transactionId,
+                    })
+                } catch (error) {
+                    payerLookupFailure = { error }
+                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lookup`
+                }
+                await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lookup`
+                const incentivesWithheld = sharedPayer !== null || payerLookupFailure !== null
+
                 // This is their first deposit — check for bonus setting
                 const bonusSetting = await tx.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } })
                 const bonusAmount = Number(bonusSetting?.value ?? '0')
+                firstDepositBonusBlocked = bonusAmount > 0 && incentivesWithheld
 
-                if (bonusAmount > 0) {
+                if (bonusAmount > 0 && !incentivesWithheld) {
                     const grantResult = await BonusService.grant(tx, {
                         userId: transaction.userId,
                         amount: bonusAmount,
@@ -225,8 +252,8 @@ export class WalletService {
             // threshold).
             const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, transaction.createdAt, new Date())
 
-            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }
-        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult }) => {
+            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerLookupFailure }
+        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerLookupFailure }) => {
             const depositBonusTotal = [...depositBonusResult.daily, ...depositBonusResult.weekly]
                 .reduce((sum, grant) => sum.plus(grant.amount), new Decimal(0))
             const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
@@ -241,6 +268,30 @@ export class WalletService {
             // PostHog — post-commit only. The approval itself, then every bonus
             // this approval granted (first-deposit and rule-based).
             void emitDepositApproved(transaction.id)
+            if (sharedPayer) {
+                console.warn(
+                    '[WalletService] first deposit %s shares its paying account with first deposit %s of another account (%s); first-deposit incentives withheld',
+                    transaction.id,
+                    sharedPayer.transactionId,
+                    sharedPayer.matchedOn,
+                )
+                void captureEvent(transaction.userId, 'first_deposit_shared_payer', {
+                    matched_on: sharedPayer.matchedOn,
+                    bonus_blocked: firstDepositBonusBlocked,
+                })
+            }
+            if (payerLookupFailure) {
+                // The log line carries only the error's code or name: a driver message can
+                // echo query values, and this query's values are the player's paying account.
+                const { error } = payerLookupFailure
+                const reason = (error as { code?: unknown } | null)?.code ?? (error as Error | null)?.name ?? 'unknown'
+                console.error(
+                    '[WalletService] first deposit %s payer lookup failed (%s); first-deposit incentives withheld',
+                    transaction.id,
+                    String(reason),
+                )
+                reportError(error, { service: 'wallet', phase: 'first-deposit-payer-lookup', transactionId: transaction.id })
+            }
             if (bonusAwarded > 0) {
                 void captureEvent(transaction.userId, 'bonus_granted', {
                     amount: bonusAwarded,
@@ -297,7 +348,7 @@ export class WalletService {
             if (bonusAwarded > 0) {
                 // bonusAwarded > 0 means this IS the first deposit
                 await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
-            } else {
+            } else if (!sharedPayer && !payerLookupFailure) {
                 // Still check if it's first deposit for referral purposes
                 const previousApproved = await prisma.transaction.count({
                     where: {
