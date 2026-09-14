@@ -189,6 +189,27 @@ export class PayerIdentityService {
      */
     static async listSharedPayerClusters(opts: { since: Date; limit: number }): Promise<SharedPayerCluster[]> {
         const since = opts.since.toISOString()
+        // Caps for the receipt_payer candidate fetch below. Masked numbers have low
+        // entropy (a fixed visible prefix/suffix), so an UNBOUNDED per-row fetch over
+        // the whole `since` window scales with total approved-deposit volume, not
+        // with the handful of clusters an admin actually wants — every auto-verified
+        // deposit in the window has a masked number + payer name, so at days=90 this
+        // is effectively "load most of the table". maskedKeyCap bounds how many
+        // DISTINCT masked-number groups are even considered, chosen after the SQL
+        // has already discarded single-account keys (see the HAVING clause below) so
+        // the cap only ever drops the WEAKEST candidate clusters, never turns a real
+        // cluster into a false negative by itself. receiptRowCap then bounds the
+        // total rows fetched for those admitted keys. Both are proportional to
+        // opts.limit (already 1-200 at the route) with a hard ceiling as a second
+        // line of defence if this method is ever called directly with a larger
+        // limit. TRADE-OFF, not a guarantee: a masked number shared by so many
+        // distinct real payers that its own rows alone exceed receiptRowCap will
+        // have its account list truncated, and a masked-number group ranked below
+        // maskedKeyCap by account-count/recency will not appear at all — mirrors the
+        // same trade-off C1's `findPriorFirstDepositByPayer` accepts with its own
+        // 200-row cap, just extended to cover many keys instead of one.
+        const maskedKeyCap = Math.min(opts.limit * 4, 800)
+        const receiptRowCap = Math.min(maskedKeyCap * 10, 4000)
         const [senderRows, receiptCandidates, phoneRows] = await Promise.all([
             prisma.$queryRaw<Array<{ key: string; userIds: string[] }>>`
                 SELECT right(regexp_replace(t."senderAccount", '[^0-9]', '', 'g'), 9) AS key,
@@ -203,23 +224,50 @@ export class PayerIdentityService {
                 ORDER BY count(DISTINCT t."userId") DESC, 1
                 LIMIT ${opts.limit}::int
             `,
-            // Grouped in JS below (not GROUP BY here, unlike the other two signals):
-            // the key's name half has to run through the SAME `normalizeName` that
+            // Final grouping (by masked-number + normalised name) still happens in JS
+            // below — the name half has to run through the SAME `normalizeName` that
             // C1's matcher and the deposit verifier's PAYER_MISMATCH gate use (NFD
-            // diacritic stripping, punctuation-to-space). A SQL-only
+            // diacritic stripping, punctuation-to-space), and a SQL-only
             // lower()+trim()+collapse-whitespace re-implementation would silently
-            // diverge from that on any accented or punctuated payer name — this
-            // fetch is still bounded by the `since` window, only its GROUP BY moved
-            // to the app.
+            // diverge from that on any accented or punctuated payer name. But WHICH
+            // rows are even worth fetching for that JS step is decided here, in SQL,
+            // by a masked_groups CTE that mirrors `maskedPayerKey`'s own
+            // normalisation (strip whitespace, require >= 8 digits) and keeps only
+            // keys already backed by more than one distinct account — the same
+            // "shared by several accounts" test the JS grouping applies afterwards,
+            // just run before the row fetch instead of after it, so a masked number
+            // used by only one account never reaches Node. Surviving keys are ranked
+            // by account count then recency and cut to maskedKeyCap; the row fetch
+            // for those keys is separately cut to receiptRowCap, ordered by that same
+            // rank so a cap that bites drops the WEAKEST groups' rows first, not an
+            // arbitrary slice through the strongest one (see the cap comment above).
             prisma.$queryRaw<Array<{ userId: string; maskedRaw: string; payerName: string }>>`
+                WITH masked_groups AS (
+                    SELECT regexp_replace(dv."payerNumberMasked", '[[:space:]]', '', 'g') AS masked_key,
+                           count(DISTINCT t."userId") AS acct_count,
+                           max(t."createdAt") AS latest
+                    FROM transactions t
+                    JOIN deposit_verifications dv ON dv."transactionId" = t.id
+                    WHERE t.type = 'DEPOSIT'
+                      AND t.status = 'APPROVED'
+                      AND t."createdAt" >= ${since}::timestamp
+                      AND dv."payerNumberMasked" IS NOT NULL
+                      AND dv."payerName" IS NOT NULL
+                      AND length(regexp_replace(dv."payerNumberMasked", '[^0-9]', '', 'g')) >= 8
+                    GROUP BY 1
+                    HAVING count(DISTINCT t."userId") > 1
+                    ORDER BY count(DISTINCT t."userId") DESC, max(t."createdAt") DESC
+                    LIMIT ${maskedKeyCap}::int
+                )
                 SELECT t."userId" AS "userId", dv."payerNumberMasked" AS "maskedRaw", dv."payerName" AS "payerName"
-                FROM transactions t
-                JOIN deposit_verifications dv ON dv."transactionId" = t.id
+                FROM masked_groups mg
+                JOIN deposit_verifications dv ON regexp_replace(dv."payerNumberMasked", '[[:space:]]', '', 'g') = mg.masked_key
+                JOIN transactions t ON t.id = dv."transactionId"
                 WHERE t.type = 'DEPOSIT'
                   AND t.status = 'APPROVED'
                   AND t."createdAt" >= ${since}::timestamp
-                  AND dv."payerNumberMasked" IS NOT NULL
-                  AND dv."payerName" IS NOT NULL
+                ORDER BY mg.acct_count DESC, mg.latest DESC
+                LIMIT ${receiptRowCap}::int
             `,
             prisma.$queryRaw<Array<{ key: string; ownerId: string; fundedIds: string[] }>>`
                 WITH funded AS (
@@ -272,6 +320,10 @@ export class PayerIdentityService {
         const ids = [...new Set(raw.flatMap((r) => r.userIds))]
         if (ids.length === 0) return []
 
+        // Unlike cluster membership above (scoped to the `since` window), these three
+        // per-account fields are ALL-TIME totals — no `createdAt` filter here — since
+        // an admin reviewing a flagged cluster wants the account's whole deposit
+        // history, not just what fell inside the window that surfaced it.
         const [users, deposits, bonuses] = await Promise.all([
             prisma.user.findMany({
                 where: { id: { in: ids } },
