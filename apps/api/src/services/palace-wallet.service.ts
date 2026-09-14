@@ -119,6 +119,20 @@ async function findExisting(transactionId: string | undefined | null) {
 }
 
 /**
+ * A cancel's `cancle_trans_guid` is attacker-controlled (see the R5 guard
+ * below) — it can name ANY existing trans_guid, including a bet placed by a
+ * different user. Without the `userId` check here, a cancel for restricted
+ * user B naming ACTIVE/COMPLETED user A's bet would pass "is this a real,
+ * completed bet?" and refund A's stake into B's wallet while marking A's bet
+ * rolled back. Used both before the wallet lock (fast-path gate for
+ * non-ACTIVE accounts) and again under the lock (the authoritative,
+ * TOCTOU-safe check) so the two can never disagree.
+ */
+function isRefundableBet(row: { userId: string; type: string; status: string } | null | undefined, userId: string): boolean {
+    return !!row && row.type === ThirdPartyTxType.BET && row.status === ThirdPartyTxStatus.COMPLETED && row.userId === userId
+}
+
+/**
  * A trans_guid already booked under a DIFFERENT ledger type (e.g. a `win`
  * arriving with the guid of an earlier `bet`) is acknowledged as a replay
  * without moving money. That is the safe answer, but it was silent: a provider
@@ -506,9 +520,7 @@ export class PalaceWalletService {
 
         if (user.accountStatus !== AccountStatus.ACTIVE) {
             const original = params.cancle_trans_guid ? await findExisting(params.cancle_trans_guid) : null
-            const refundable =
-                !!original && original.type === ThirdPartyTxType.BET && original.status === ThirdPartyTxStatus.COMPLETED
-            if (!refundable) return palaceErr(22, 'USER_INACTIVE')
+            if (!isRefundableBet(original, user.id)) return palaceErr(22, 'USER_INACTIVE')
         }
 
         const providerId = await getPalaceProviderId()
@@ -532,10 +544,7 @@ export class PalaceWalletService {
                   })
                 : null
 
-            const refundable =
-                !!originalBet &&
-                originalBet.type === ThirdPartyTxType.BET &&
-                originalBet.status === ThirdPartyTxStatus.COMPLETED
+            const refundable = isRefundableBet(originalBet, user.id)
 
             // No verified debit to reverse → credit nothing. Record a zero-amount
             // rollback row so retries short-circuit via findExisting, and never mint.

@@ -337,6 +337,7 @@ describe('PalaceWalletService', () => {
                 // The original bet, re-read under the wallet lock (R5 guard).
                 findUnique: vi.fn().mockResolvedValue({
                     id: 'bet-tx-1',
+                    userId: 'uid1',
                     transactionId: 'g3',
                     type: 'BET',
                     status: 'COMPLETED',
@@ -417,6 +418,7 @@ describe('PalaceWalletService', () => {
             thirdPartyTransaction: {
                 findUnique: vi.fn().mockResolvedValue({
                     id: 'bet-tx-5',
+                    userId: 'uid1',
                     transactionId: 'g5',
                     type: 'BET',
                     status: 'COMPLETED',
@@ -468,6 +470,7 @@ describe('PalaceWalletService', () => {
             thirdPartyTransaction: {
                 findUnique: vi.fn().mockResolvedValue({
                     id: 'bet-tx-2',
+                    userId: 'uid1',
                     transactionId: 'g4',
                     type: 'BET',
                     status: 'COMPLETED',

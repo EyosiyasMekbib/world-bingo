@@ -38,7 +38,7 @@ function walletTx(realBalance: string) {
 
 const WIN = { trans_guid: 'win-1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'aviator', amount: 25, type: 2 }
 const CANCEL = { trans_guid: 'cancel-1', account: 'alice', gplay_id: 'p1', round_id: 'r1', game_code: 'aviator', amount: 20, cancle_trans_guid: 'bet-1' }
-const BET_ROW = { id: 'bet-row', transactionId: 'bet-1', type: 'BET', status: 'COMPLETED', betAmount: '20.00', amount: '-20.00' }
+const BET_ROW = { id: 'bet-row', userId: 'uid1', transactionId: 'bet-1', type: 'BET', status: 'COMPLETED', betAmount: '20.00', amount: '-20.00' }
 
 describe('PalaceWalletService settlement for non-ACTIVE accounts', () => {
     beforeEach(() => {
