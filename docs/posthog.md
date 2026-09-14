@@ -67,6 +67,7 @@ dropped before send.
 | `game_finished` | one per player when a game ends | `outcome` (`won`/`lost`/`no_winner`), `stake`, `prize`, `net`, `duration_secs` |
 | `game_refunded` | game cancelled | `reason`, `refund` |
 | `bonus_granted` | any bonus credit | `amount`, `source` (`FIRST_DEPOSIT`/`DEPOSIT_RULE`/`CAMPAIGN`/`CASHBACK`/`ADMIN`), `rule_id` |
+| `first_deposit_shared_payer` | a first deposit whose paying account already funded another account's first deposit; first-deposit bonus and referral reward withheld | `matched_on` (`sender_account`/`receipt_payer`), `bonus_blocked` |
 | `account_status_changed` | restrict / suspend / reinstate | `from`, `to`, `category`, `has_expiry` |
 | `provider_game_launched` | third-party game launch returned a usable URL | `provider_code`, `game_code` |
 | `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error`, `bad_url`, `provider_inactive`, `game_inactive`) |
@@ -346,3 +347,59 @@ READ ONLY transaction.
    `{app="world-bingo-api-arada"} |= "[Palace] callback handled" |= "\"command\":\"win\""`.
    Container logs do not survive a redeploy, and Dokploy's `compose.readLogs` `search` returned HTTP 500
    during the 2026-09-14 investigation — use the host shell or Grafana.
+
+### 10.2 Duplicate accounts and first-deposit incentive farming
+
+The first-deposit bonus and the referral reward are withheld when the paying account (player-entered
+`senderAccount`, or the parsed receipt's masked number + payer name) already funded another account's
+first deposit. Hosted ZareCash checkouts carry no payer, so they are never matched. Upstream fix:
+phone-OTP password reset (P1), which removes the reason locked-out players open second accounts.
+
+1. **Admin listing** (admin bearer token, obtained as in the Atlas-V probe step):
+   ```sh
+   curl -s "https://api.aradabingo.bet/admin/fraud/shared-payers?days=14&limit=100" -H "Authorization: Bearer $TOKEN" \
+     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s).clusters;const by={};for(const x of c)by[x.signal]=(by[x.signal]||0)+1;console.log(by);console.log(JSON.stringify(c.slice(0,5),null,2))})'
+   ```
+2. **Devices shared by newly registered accounts** (baseline 2026-09-14: 119 devices, 256 persons, max 5 on one device):
+   ```sql
+   SELECT count() AS devices_with_multiple_persons, sum(persons) AS persons_on_those_devices, max(persons) AS max_persons_one_device
+   FROM (
+     SELECT properties.$device_id AS device, uniq(person_id) AS persons
+     FROM events
+     WHERE timestamp >= now() - INTERVAL 14 DAY
+       AND event = '$pageview'
+       AND properties.$device_id IS NOT NULL
+       AND person_id IN (SELECT person_id FROM events WHERE timestamp >= now() - INTERVAL 14 DAY AND event = 'user_registered')
+     GROUP BY device
+     HAVING persons > 1
+   )
+   ```
+3. **First depositors on those devices** (baseline 2026-09-14: 83):
+   ```sql
+   SELECT count(DISTINCT person_id) AS first_depositors_on_shared_devices
+   FROM events
+   WHERE timestamp >= now() - INTERVAL 14 DAY
+     AND event = 'deposit_approved'
+     AND properties.is_first_deposit = true
+     AND person_id IN (
+       SELECT person_id FROM events
+       WHERE timestamp >= now() - INTERVAL 14 DAY
+         AND event = '$pageview'
+         AND properties.$device_id IN (
+           SELECT properties.$device_id FROM events
+           WHERE timestamp >= now() - INTERVAL 14 DAY AND event = '$pageview' AND properties.$device_id IS NOT NULL
+           GROUP BY properties.$device_id
+           HAVING uniq(person_id) > 1))
+   ```
+4. **Guard effect** (after the guard is deployed):
+   ```sql
+   SELECT event, properties.source AS source, properties.matched_on AS matched_on, properties.bonus_blocked AS bonus_blocked,
+          count() AS n, uniq(person_id) AS accounts
+   FROM events
+   WHERE timestamp >= now() - INTERVAL 14 DAY
+     AND (event = 'first_deposit_shared_payer' OR (event = 'bonus_granted' AND properties.source = 'FIRST_DEPOSIT'))
+   GROUP BY event, source, matched_on, bonus_blocked
+   ```
+   `first_deposit_shared_payer` rows are farming attempts caught. Compare `accounts` with step 3: first depositors on shared
+   devices that the guard did not catch paid through a hosted checkout or a different wallet. Keep
+   `first_deposit_bonus_amount` at 0 (P1 #9) until this has run for 7 days and step 1 has been reviewed.
