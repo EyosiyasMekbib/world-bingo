@@ -118,6 +118,32 @@ async function findExisting(transactionId: string | undefined | null) {
     })
 }
 
+/**
+ * A trans_guid already booked under a DIFFERENT ledger type (e.g. a `win`
+ * arriving with the guid of an earlier `bet`) is acknowledged as a replay
+ * without moving money. That is the safe answer, but it was silent: a provider
+ * reusing guids across commands would drop every such payout with no trace.
+ */
+function flagIdempotencyMismatch(
+    command: 'bet' | 'win' | 'cancel',
+    params: { account: string; round_id: string; game_code: string },
+    transGuid: string,
+    existingType: string,
+): void {
+    getLogger().error(
+        {
+            component: 'palace-idempotency-mismatch',
+            command,
+            existingType,
+            account: maskAccount(params.account),
+            round: params.round_id,
+            game: params.game_code,
+            transGuid,
+        },
+        '[palace-idempotency-mismatch] trans_guid already booked as a different ledger type — acknowledged without moving money',
+    )
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export class PalaceWalletService {
@@ -155,6 +181,9 @@ export class PalaceWalletService {
 
         const existing = await findExisting(params.trans_guid)
         if (existing) {
+            if (existing.type !== ThirdPartyTxType.BET) {
+                flagIdempotencyMismatch('bet', params, params.trans_guid, existing.type)
+            }
             if (existing.status === ThirdPartyTxStatus.FAILED) return palaceErr(31, 'BALANCE_NOT_ENOUGH')
             // `existing.balanceAfter` is the ledger's combined real+bonus total captured
             // at bet time — correct for audit purposes, but stale for what Palace should
@@ -291,10 +320,17 @@ export class PalaceWalletService {
     static async processWin(params: WinParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
+        // Account status is checked below, once we know whether this round has a
+        // recorded bet. A win settles a stake we already took: refusing it for a
+        // player restricted mid-round kept the stake and dropped the payout with
+        // no ledger row. Non-ACTIVE accounts still cannot withdraw
+        // (WalletService.requestWithdrawal), so crediting here is safe.
 
         const existing = await findExisting(params.trans_guid)
         if (existing) {
+            if (existing.type !== ThirdPartyTxType.BET_RESULT) {
+                flagIdempotencyMismatch('win', params, params.trans_guid, existing.type)
+            }
             // Same reasoning as processBet's replay branch: `existing.balanceAfter`
             // is the ledger's combined real+bonus total captured at win time —
             // correct for audit purposes, but stale for what Palace should see on a
@@ -325,6 +361,21 @@ export class PalaceWalletService {
         })
         const roundStake = new Decimal(priorBets._sum.betAmount ?? 0)
         const hasBet = priorBets._count > 0
+
+        if (user.accountStatus !== AccountStatus.ACTIVE) {
+            if (!hasBet) return palaceErr(22, 'USER_INACTIVE')
+            getLogger().warn(
+                {
+                    component: 'palace-settlement',
+                    account: maskAccount(params.account),
+                    accountStatus: user.accountStatus,
+                    round: params.round_id,
+                    game: params.game_code,
+                    transGuid: params.trans_guid,
+                },
+                '[palace-settlement] settling a win for a non-active account against its recorded bet',
+            )
+        }
 
         const overAbsolute = MAX_WIN_AMOUNT > 0 && winAmount.greaterThan(MAX_WIN_AMOUNT)
         const overMultiple =
@@ -423,7 +474,8 @@ export class PalaceWalletService {
     static async processCancel(params: CancelParams): Promise<PalaceResponse> {
         const user = await resolveUser(params.account)
         if (!user) return palaceErr(21, 'USER_NOT_FOUND')
-        if (user.accountStatus !== AccountStatus.ACTIVE) return palaceErr(22, 'USER_INACTIVE')
+        // Account status is checked after the replay lookup below: a non-ACTIVE
+        // account may still have a recorded stake refunded (mirror of processWin).
 
         // Idempotency key for this rollback. Prefer the cancel's own trans_guid;
         // if Palace omits it, derive a stable key from the original bet ref so the
@@ -436,6 +488,9 @@ export class PalaceWalletService {
 
         const existing = await findExisting(cancelTxId)
         if (existing) {
+            if (existing.type !== ThirdPartyTxType.ROLLBACK) {
+                flagIdempotencyMismatch('cancel', params, cancelTxId, existing.type)
+            }
             // Same reasoning as processBet's replay branch: `existing.balanceAfter`
             // is the ledger's combined real+bonus total captured at cancel time —
             // correct for audit purposes, but stale for what Palace should see on a
@@ -447,6 +502,13 @@ export class PalaceWalletService {
                     : new Decimal(wallet.realBalance)
                 : new Decimal(0)
             return ok({ balance: Number(current.toFixed(2)) })
+        }
+
+        if (user.accountStatus !== AccountStatus.ACTIVE) {
+            const original = params.cancle_trans_guid ? await findExisting(params.cancle_trans_guid) : null
+            const refundable =
+                !!original && original.type === ThirdPartyTxType.BET && original.status === ThirdPartyTxStatus.COMPLETED
+            if (!refundable) return palaceErr(22, 'USER_INACTIVE')
         }
 
         const providerId = await getPalaceProviderId()
