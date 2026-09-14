@@ -50,6 +50,15 @@ export class PayerIdentityService {
 
         const senderKey = senderAccountKey(current.senderAccount)
         if (senderKey) {
+            // `t.type = 'DEPOSIT' AND t.status = 'APPROVED'` are plain, index-usable
+            // predicates, so Postgres bounds the scan with the transactions
+            // `[type, status]` index before evaluating the regexp match — it never
+            // scans non-deposit or non-approved rows. The correlated NOT EXISTS below
+            // is similarly bounded by `[userId, type]`. There is no index on
+            // `senderAccount` itself, so within the approved-deposit set this is a
+            // scan-and-regex; the follow-up if that set's growth makes it costly is a
+            // normalized-sender-account index built CONCURRENTLY (never inline in a
+            // migration transaction, which would lock out wallet writes).
             const rows = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
                 SELECT t.id, t."userId"
                 FROM transactions t
@@ -74,6 +83,15 @@ export class PayerIdentityService {
         const masked = maskedPayerKey(current.depositVerification?.payerNumberMasked)
         const name = current.depositVerification?.payerName ? normalizeName(current.depositVerification.payerName) : ''
         if (masked && name) {
+            // Same index-bounding as the sender-account query above: `[type, status]`
+            // keeps this to approved deposits before the regexp runs; no index exists
+            // on `payerNumberMasked` (follow-up: a normalized-payer-number index built
+            // CONCURRENTLY, if approved-deposit volume ever makes this costly). Masked
+            // numbers have low entropy (a fixed visible prefix/suffix), so this can
+            // still match many rows across different payer names — capped to the 200
+            // earliest-approved candidates. ORDER BY runs before LIMIT, so the earliest
+            // legitimate match is never dropped by the cap; the name check below then
+            // walks that same ascending order, so the first hit is always the earliest.
             const rows = await tx.$queryRaw<Array<{ id: string; userId: string; payerName: string | null }>>`
                 SELECT t.id, t."userId", dv."payerName"
                 FROM transactions t
@@ -90,6 +108,7 @@ export class PayerIdentityService {
                         AND e."createdAt" < t."createdAt"
                   )
                 ORDER BY t."createdAt" ASC
+                LIMIT 200
             `
             // Names are compared in JS so the normalisation is exactly the one the
             // deposit verifier's PAYER_MISMATCH gate already uses.

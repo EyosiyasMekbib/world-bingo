@@ -131,4 +131,37 @@ describe('PayerIdentityService.findPriorFirstDepositByPayer', () => {
         const current = await deposit(b, { status: 'PENDING_REVIEW', payerNumberMasked: '2519****2528', payerName: 'Sara Tesfaye' })
         await expect(PayerIdentityService.findPriorFirstDepositByPayer(prisma, { userId: b, transactionId: current })).resolves.toBeNull()
     })
+
+    it('returns the earliest qualifying match when two other accounts share the sender account', async () => {
+        const a = await player()
+        const c = await player()
+        const b = await player()
+        // c's first approved deposit is LATER than a's, even though c is created and
+        // deposited "second" in wall-clock call order below — createdAt is what must
+        // decide the winner, not insertion order.
+        const cFirst = await deposit(c, { senderAccount: '0911222333', createdAt: '2026-09-03T10:00:00Z' })
+        const aFirst = await deposit(a, { senderAccount: '0911222333', createdAt: '2026-09-01T10:00:00Z' })
+        const current = await deposit(b, { status: 'PENDING_REVIEW', senderAccount: '0911222333' })
+        await expect(PayerIdentityService.findPriorFirstDepositByPayer(prisma, { userId: b, transactionId: current })).resolves.toEqual({
+            transactionId: aFirst,
+            userId: a,
+            matchedOn: 'sender_account',
+        })
+        expect(aFirst).not.toBe(cFirst)
+    })
+
+    it('returns the earliest qualifying match when two other accounts share the receipt payer', async () => {
+        const a = await player()
+        const c = await player()
+        const b = await player()
+        const cFirst = await deposit(c, { payerNumberMasked: '2519****2528', payerName: 'Abebe Kebede', createdAt: '2026-09-03T10:00:00Z' })
+        const aFirst = await deposit(a, { payerNumberMasked: '2519****2528', payerName: 'Abebe Kebede', createdAt: '2026-09-01T10:00:00Z' })
+        const current = await deposit(b, { status: 'PENDING_REVIEW', payerNumberMasked: '2519****2528', payerName: 'Abebe Kebede' })
+        await expect(PayerIdentityService.findPriorFirstDepositByPayer(prisma, { userId: b, transactionId: current })).resolves.toEqual({
+            transactionId: aFirst,
+            userId: a,
+            matchedOn: 'receipt_payer',
+        })
+        expect(aFirst).not.toBe(cFirst)
+    })
 })
