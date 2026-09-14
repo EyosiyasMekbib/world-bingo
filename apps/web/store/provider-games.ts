@@ -15,6 +15,7 @@ export interface ProviderGame {
   imageSquare: string | null
   imageLandscape: string | null
   vendorCode: string | null
+  providerCode?: string
   providerName?: string
 }
 

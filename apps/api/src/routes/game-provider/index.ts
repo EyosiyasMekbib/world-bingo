@@ -72,6 +72,28 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         },
     })
 
+    // ── List games across every active provider (paginated, filterable) ───────
+    // Distinct from /:providerCode/games — no provider segment, so this can't
+    // collide with a real provider code.
+    fastify.get('/games', {
+        handler: async (req) => {
+            const { category, page = '1', pageSize = '50', search } = req.query as {
+                category?: string
+                page?: string
+                pageSize?: string
+                search?: string
+            }
+            const pg = Math.max(1, parseInt(page, 10))
+            const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10)))
+            return GameCatalogService.getGames({ category, page: pg, pageSize: ps, search })
+        },
+    })
+
+    // ── Get game categories across every active provider ──────────────────────
+    fastify.get('/categories', {
+        handler: async () => GameCatalogService.getCategories(),
+    })
+
     // ── List vendors for a provider ────────────────────────────────────────────
     fastify.get('/:providerCode/vendors', {
         preValidation: [fastify.authenticate],

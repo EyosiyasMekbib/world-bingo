@@ -208,46 +208,118 @@ async function main() {
     })
     const atlasvVendor = await prisma.gameVendor.upsert({
         where: { providerId_code: { providerId: atlasv.id, code: 'atlasv-default' } },
-        update: {},
+        update: { categoryCode: 'CRASH,MINI,TABLE,SLOTS' },
         create: {
             providerId: atlasv.id,
             code: 'atlasv-default',
             name: 'Atlas-V',
-            categoryCode: 'ARCADE',
+            categoryCode: 'CRASH,MINI,TABLE,SLOTS',
             isActive: true,
         },
     })
-    await prisma.providerGame.upsert({
-        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'penalty' } },
-        update: {},
-        create: {
-            providerId: atlasv.id,
-            vendorId: atlasvVendor.id,
-            gameCode: 'penalty',
-            gameName: 'Penalty Shootout',
-            categoryCode: 'ARCADE',
-            languageCodes: ['en', 'am'],
-            platformCodes: ['WEB', 'H5'],
-            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
-            isActive: true,
-        },
+
+    // Atlas-V's own "Games Info - Game List" export (no listing API to sync
+    // from, so this is hand-maintained). gameCode is their GAME ID column;
+    // categoryCode buckets their GAME TYPE column onto the lobby's existing
+    // categories (CRASH/MINI/TABLE/SLOTS) rather than inventing new ones —
+    // Fast Games/Plinko/Keno/Virtual Sport all land in MINI, Roulette/Video
+    // Poker in TABLE. imageLandscape is the thumbnail atlas-v.com/games itself
+    // serves for that game (their site's /game/<slug> link target, read off
+    // its rendered background-image — hyphenated site slugs jacks-or-better/
+    // joker-wild map to gameCode jacksorbetter/jokerwild).
+    const ATLASV_GAMES: Array<{ gameCode: string; gameName: string; categoryCode: string; imageLandscape: string }> = [
+        { gameCode: 'wowbow', gameName: 'Wow Bow', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505994311.png' },
+        { gameCode: 'pinkthunder', gameName: 'Pink Thunder', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/11/1699100267255.png' },
+        { gameCode: 'bluethunder', gameName: 'Blue Thunder', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505988124.png' },
+        { gameCode: 'formula', gameName: 'Fast F1', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506004402.png' },
+        { gameCode: 'penalty', gameName: 'Fast Penalty', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505142870.png' },
+        { gameCode: 'plinko', gameName: 'Plinko', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506058503.png' },
+        { gameCode: 'keno', gameName: 'Fast Keno', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/9/1694675943839.png' },
+        { gameCode: 'boombasket', gameName: 'Boom Basket', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506038079.png' },
+        { gameCode: 'boomball', gameName: 'Boom Ball', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506008317.png' },
+        { gameCode: 'winball', gameName: 'Win Ball', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687505998025.png' },
+        { gameCode: 'wof', gameName: 'Wheel of Fortune', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2023/9/1695378213187.png' },
+        { gameCode: 'goldminer', gameName: 'Gold Miner', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2023/8/1692162855698.jpg' },
+        { gameCode: 'goldengate', gameName: 'Golden Gate', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/7/1690202832687.png' },
+        { gameCode: 'striker', gameName: 'Striker', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506052183.png' },
+        { gameCode: 'darts', gameName: 'Fast Darts', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506025870.png' },
+        { gameCode: 'jacksorbetter', gameName: 'Jacks or Better', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2024/2/1708063108069.png' },
+        { gameCode: 'jokerwild', gameName: 'Joker Wild', categoryCode: 'TABLE', imageLandscape: 'https://atlas-v.com/files/2024/2/1708063338112.png' },
+        { gameCode: 'greyhoundracing', gameName: 'Greyhound Racing', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506018823.png' },
+        { gameCode: 'horseracing', gameName: 'Horse Racing', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2023/6/1687506015056.png' },
+        { gameCode: 'rocketstar', gameName: 'Rocket Star', categoryCode: 'CRASH', imageLandscape: 'https://atlas-v.com/files/2024/10/1727882265819.jpg' },
+        { gameCode: 'chukchaman', gameName: 'Chukcha Man', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770675529.jpeg' },
+        { gameCode: 'tavern', gameName: 'Tavern', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770735559.jpeg' },
+        { gameCode: 'fairyland', gameName: 'Fairy Land', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770697060.jpeg' },
+        { gameCode: 'monkeyboy', gameName: 'Monkey Boy', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770755860.jpeg' },
+        { gameCode: 'juicyfruits', gameName: 'Juicy Fruits', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1727770717173.jpeg' },
+        { gameCode: 'dragon', gameName: 'DragOn', categoryCode: 'SLOTS', imageLandscape: 'https://atlas-v.com/files/2024/10/1729234434222.jpg' },
+        { gameCode: 'hotkeno', gameName: 'Hot Keno', categoryCode: 'MINI', imageLandscape: 'https://atlas-v.com/files/2025/3/1741158191086.jpg' },
+    ]
+
+    for (const g of ATLASV_GAMES) {
+        await prisma.providerGame.upsert({
+            where: { providerId_gameCode: { providerId: atlasv.id, gameCode: g.gameCode } },
+            // Catalog metadata stays in sync with the source list on every reseed,
+            // same as GameCatalogService.syncGames does for synced providers — but
+            // isActive is never touched here, so an admin's manual disable (PATCH
+            // /admin/providers/:code/games/:gameCode/status) survives a reseed.
+            update: {
+                gameName: g.gameName,
+                categoryCode: g.categoryCode,
+                imageLandscape: g.imageLandscape,
+                languageCodes: ['en', 'am'],
+                platformCodes: ['WEB', 'H5'],
+                currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+            },
+            create: {
+                providerId: atlasv.id,
+                vendorId: atlasvVendor.id,
+                gameCode: g.gameCode,
+                gameName: g.gameName,
+                categoryCode: g.categoryCode,
+                imageLandscape: g.imageLandscape,
+                languageCodes: ['en', 'am'],
+                platformCodes: ['WEB', 'H5'],
+                currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+                isActive: true,
+            },
+        })
+    }
+    // Unlike GameCatalogService.syncGames (which re-projects the admin's
+    // featured-games pins onto newly synced rows every time it runs), this
+    // hand-maintained catalog has no equivalent trigger — a pin saved before
+    // a game's row existed (or before a rename, e.g. 'Keno' -> 'Fast Keno')
+    // would otherwise sit orphaned (0 matches) until an admin happens to
+    // re-save the featured-games list for an unrelated reason.
+    //
+    // Reimplemented inline (matches FeaturedGameService.applyRanks() — keep
+    // the two in sync) rather than imported: that service module also pulls
+    // in the live Redis client from lib/redis.ts, which this script never
+    // closes. An open Redis handle keeps the Node process alive forever, so
+    // `tsx prisma/seed.ts` would never exit — entrypoint.sh's run_seed()
+    // would hang waiting for it, and the container would never reach
+    // "Starting API server", failing its healthcheck with nothing ever
+    // listening on the port. Confirmed live on aradabingo production.
+    const pins = await prisma.featuredGame.findMany({
+        orderBy: { position: 'asc' },
+        select: { nameKey: true, position: true },
     })
-    await prisma.providerGame.upsert({
-        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'keno' } },
-        update: {},
-        create: {
-            providerId: atlasv.id,
-            vendorId: atlasvVendor.id,
-            gameCode: 'keno',
-            gameName: 'Keno',
-            categoryCode: 'ARCADE',
-            languageCodes: ['en', 'am'],
-            platformCodes: ['WEB', 'H5'],
-            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
-            isActive: true,
-        },
+    const pinKeys = pins.map((p) => p.nameKey)
+    const pinRanks = pins.map((p) => p.position)
+    await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`UPDATE provider_games SET "featuredRank" = NULL WHERE "featuredRank" IS NOT NULL`
+        if (pinKeys.length === 0) return
+        await tx.$executeRaw`
+            UPDATE provider_games g
+            SET "featuredRank" = v.rank
+            FROM (
+                SELECT unnest(${pinKeys}::text[]) AS key, unnest(${pinRanks}::int[]) AS rank
+            ) v
+            WHERE regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g') = v.key
+        `
     })
-    console.log('Atlas-V provider seeded')
+    console.log(`Atlas-V provider seeded (${ATLASV_GAMES.length} games)`)
 
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')

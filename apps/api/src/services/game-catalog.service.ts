@@ -245,10 +245,15 @@ export class GameCatalogService {
     }
 
     /**
-     * Get paginated games from DB (with Redis cache).
+     * Get paginated games from DB (with Redis cache). Omitting providerCode
+     * queries across every ACTIVE provider — this is what the lobby's "ALL
+     * games" feed actually wants (a curated pin should be able to outrank
+     * another provider's game, not just games within its own provider), and
+     * what /providers/games (no provider segment) exposes it as. The
+     * provider-scoped /providers/:code/games route is unaffected.
      */
     static async getGames(params: {
-        providerCode: string
+        providerCode?: string
         category?: string
         page?: number
         pageSize?: number
@@ -256,42 +261,58 @@ export class GameCatalogService {
         vendorCode?: string
     }) {
         const { providerCode, category, page = 1, pageSize = 50, search, vendorCode } = params
-        const cacheKey = (search || vendorCode) ? null : gameCacheKey(providerCode, category ?? 'ALL', page, pageSize)
+        const cacheKey = (search || vendorCode) ? null : gameCacheKey(providerCode ?? '__all__', category ?? 'ALL', page, pageSize)
 
         if (cacheKey) {
             const cached = await redis.get(cacheKey)
             if (cached) return JSON.parse(cached)
         }
 
-        const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
-        if (!provider) throw new Error(`Provider not found: ${providerCode}`)
+        let providerId: string | undefined
+        if (providerCode) {
+            const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
+            if (!provider) throw new Error(`Provider not found: ${providerCode}`)
+            providerId = provider.id
+        }
 
         let vendorId: string | undefined
-        if (vendorCode) {
+        if (vendorCode && providerId) {
             const v = await prisma.gameVendor.findUnique({
-                where: { providerId_code: { providerId: provider.id, code: vendorCode } },
+                where: { providerId_code: { providerId, code: vendorCode } },
             })
             vendorId = v?.id
         }
 
         const where: any = {
-            providerId: provider.id,
             isActive: true,
+            ...(providerId ? { providerId } : { provider: { is: { status: 'ACTIVE' } } }),
             ...(category && category !== 'ALL' ? { categoryCode: category } : {}),
             ...(search ? { gameName: { contains: search, mode: 'insensitive' } } : {}),
             ...(vendorId ? { vendorId } : {}),
         }
 
-        const [games, totalItems] = await Promise.all([
+        const [rows, totalItems] = await Promise.all([
             prisma.providerGame.findMany({
                 where,
                 orderBy: PROVIDER_GAME_ORDER_BY,
                 take: pageSize,
                 skip: (page - 1) * pageSize,
-                include: { vendor: { select: { code: true, name: true } } },
+                include: {
+                    vendor: { select: { code: true, name: true } },
+                    provider: { select: { code: true, name: true } },
+                },
             }),
             prisma.providerGame.count({ where }),
         ])
+
+        // Flatten vendor/provider onto each row — matches searchCatalog()'s
+        // SearchResult shape and what the frontend's ProviderGame type expects.
+        const games = rows.map((g: any) => ({
+            ...g,
+            vendorCode: g.vendor?.code ?? null,
+            providerCode: g.provider?.code ?? null,
+            providerName: g.provider?.name ?? null,
+        }))
 
         const result = {
             games,
@@ -309,19 +330,26 @@ export class GameCatalogService {
     }
 
     /**
-     * Get distinct game categories for a provider (Redis-cached).
-     * Stable data — same TTL and bust path as the games cache (tp:games:*).
+     * Get distinct game categories for a provider, or across every ACTIVE
+     * provider when providerCode is omitted (Redis-cached either way). Same
+     * TTL and bust path as the games cache (tp:games:* and tp:categories:*).
      */
-    static async getCategories(providerCode: string): Promise<string[]> {
-        const cacheKey = `tp:categories:${providerCode}`
+    static async getCategories(providerCode?: string): Promise<string[]> {
+        const cacheKey = `tp:categories:${providerCode ?? '__all__'}`
         const cached = await redis.get(cacheKey)
         if (cached) return JSON.parse(cached)
 
-        const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
-        if (!provider) return []
+        const where: any = { isActive: true }
+        if (providerCode) {
+            const provider = await prisma.gameProvider.findUnique({ where: { code: providerCode } })
+            if (!provider) return []
+            where.providerId = provider.id
+        } else {
+            where.provider = { is: { status: 'ACTIVE' } }
+        }
 
         const rows = await prisma.providerGame.findMany({
-            where: { providerId: provider.id, isActive: true },
+            where,
             select: { categoryCode: true },
             distinct: ['categoryCode'],
         })
@@ -346,14 +374,17 @@ export class GameCatalogService {
 
     /**
      * Lobby bootstrap — everything the landing page needs for first paint in a
-     * single round-trip: providers, the active provider's categories + first
-     * games page, and active bingo rooms. Dependent reads run server-side where
-     * round-trip latency is negligible.
+     * single round-trip: providers, categories + first games page merged
+     * across every ACTIVE provider (so a curated pin can outrank a game from
+     * a different provider — see getGames()), and active bingo rooms.
+     * activeProviderCode is kept for callers that still want a single
+     * default provider (e.g. /games' own provider switcher); it no longer
+     * scopes games/categories here.
      */
     static async getLobby(opts: { pageSize?: number } = {}) {
         const pageSize = opts.pageSize ?? 60
 
-        const [providers, bingoGames] = await Promise.all([
+        const [providers, bingoGames, categories, page] = await Promise.all([
             prisma.gameProvider.findMany({
                 where: { status: 'ACTIVE' },
                 // Deterministic: the primary provider leads, then the oldest. With no
@@ -363,24 +394,19 @@ export class GameCatalogService {
                 select: { code: true, name: true, currency: true },
             }),
             GameCatalogService.getActiveBingoGames(),
+            GameCatalogService.getCategories(),
+            GameCatalogService.getGames({ page: 1, pageSize }),
         ])
 
-        const activeProviderCode = providers[0]?.code ?? null
-        let categories: string[] = []
-        let games: any[] = []
-        let gamesTotal = 0
-
-        if (activeProviderCode) {
-            const [cats, page] = await Promise.all([
-                GameCatalogService.getCategories(activeProviderCode),
-                GameCatalogService.getGames({ providerCode: activeProviderCode, page: 1, pageSize }),
-            ])
-            categories = cats
-            games = page.games
-            gamesTotal = page.totalItems
+        return {
+            providers,
+            activeProviderCode: providers[0]?.code ?? null,
+            categories,
+            games: page.games,
+            gamesTotal: page.totalItems,
+            pageSize,
+            bingoGames,
         }
-
-        return { providers, activeProviderCode, categories, games, gamesTotal, pageSize, bingoGames }
     }
 
     static async searchCatalog(query: string) {
