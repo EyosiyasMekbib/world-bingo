@@ -7,7 +7,7 @@ import { wbDepositsTotal, wbWithdrawalsTotal } from '../lib/metrics'
 import { DepositVerificationService } from './deposit-verification.service'
 import { BonusService } from './bonus.service'
 import { DepositBonusService } from './deposit-bonus.service'
-import { PayerIdentityService, type SharedPayerMatch } from './payer-identity.service'
+import { PayerIdentityService, FIRST_DEPOSIT_PAYER_LOCK_CLASSID, type SharedPayerMatch } from './payer-identity.service'
 import { isZareCashMethod } from '../gateways/payment/zarecash/method-config'
 import { getQueue, QUEUE_NAMES, ZARECASH_WITHDRAWAL_ATTEMPTS } from '../lib/queue'
 import { reportError } from '../lib/sentry'
@@ -193,26 +193,52 @@ export class WalletService {
             // pattern). Withholds the first-deposit bonus here and the referral reward below.
             let sharedPayer: SharedPayerMatch | null = null
             let firstDepositBonusBlocked = false
-            // Set when that lookup itself failed. Fails closed on the incentives (both are
-            // withheld, as for a shared payer) and open on the deposit credited above.
-            let payerLookupFailure: { error: unknown } | null = null
+            // Set when taking the paying-account lock or running that lookup failed. Fails
+            // closed on the incentives (both are withheld, as for a shared payer) and open
+            // on the deposit credited above.
+            let payerCheckFailure: { stage: 'lock' | 'lookup'; error: unknown } | null = null
             if (previousApproved === 0) {
-                // A failed statement aborts the whole Postgres transaction (every later
-                // query errors with 25P02), which would roll back the credit above too.
-                // The savepoint lets a failed lookup be discarded on its own, on this same
-                // transaction and wallet lock.
-                await tx.$executeRaw`SAVEPOINT first_deposit_payer_lookup`
+                // Serialise first-deposit approvals paid from one account. Otherwise two
+                // accounts' first deposits from the same payer approved at once (the ZareCash
+                // workers run at concurrency 4) each run the lookup below before the other
+                // commits, and both collect both incentives. Only this first-deposit path
+                // locks, so ordinary deposits never queue. Every key the lookup can match on
+                // is locked, in the helper's sorted order so two approvals never wait on each
+                // other. The transaction stays READ COMMITTED on purpose: the lookup's
+                // statement snapshot is taken after the wait, so it sees the earlier
+                // approval's commit; a stricter isolation level would pin it before the wait.
+                //
+                // Lock and lookup each run under a savepoint: a failed statement aborts the
+                // whole Postgres transaction (every later query errors with 25P02), which
+                // would roll back the credit above too. RELEASE hands the acquired locks to
+                // this transaction, which holds them until commit. A failure rolls back to
+                // the savepoint, dropping any lock taken so far, and withholds the incentives,
+                // so there is then nothing left to serialise.
+                await tx.$executeRaw`SAVEPOINT first_deposit_payer_lock`
                 try {
-                    sharedPayer = await PayerIdentityService.findPriorFirstDepositByPayer(tx, {
-                        userId: transaction.userId,
-                        transactionId,
-                    })
+                    for (const key of await PayerIdentityService.firstDepositLockKeys(tx, transactionId)) {
+                        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_DEPOSIT_PAYER_LOCK_CLASSID}::int, hashtext(${key}))`
+                    }
                 } catch (error) {
-                    payerLookupFailure = { error }
-                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lookup`
+                    payerCheckFailure = { stage: 'lock', error }
+                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lock`
                 }
-                await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lookup`
-                const incentivesWithheld = sharedPayer !== null || payerLookupFailure !== null
+                await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lock`
+
+                if (!payerCheckFailure) {
+                    await tx.$executeRaw`SAVEPOINT first_deposit_payer_lookup`
+                    try {
+                        sharedPayer = await PayerIdentityService.findPriorFirstDepositByPayer(tx, {
+                            userId: transaction.userId,
+                            transactionId,
+                        })
+                    } catch (error) {
+                        payerCheckFailure = { stage: 'lookup', error }
+                        await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lookup`
+                    }
+                    await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lookup`
+                }
+                const incentivesWithheld = sharedPayer !== null || payerCheckFailure !== null
 
                 // This is their first deposit — check for bonus setting
                 const bonusSetting = await tx.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } })
@@ -252,8 +278,8 @@ export class WalletService {
             // threshold).
             const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, transaction.createdAt, new Date())
 
-            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerLookupFailure }
-        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerLookupFailure }) => {
+            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerCheckFailure }
+        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerCheckFailure }) => {
             const depositBonusTotal = [...depositBonusResult.daily, ...depositBonusResult.weekly]
                 .reduce((sum, grant) => sum.plus(grant.amount), new Decimal(0))
             const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
@@ -280,17 +306,18 @@ export class WalletService {
                     bonus_blocked: firstDepositBonusBlocked,
                 })
             }
-            if (payerLookupFailure) {
+            if (payerCheckFailure) {
                 // The log line carries only the error's code or name: a driver message can
-                // echo query values, and this query's values are the player's paying account.
-                const { error } = payerLookupFailure
+                // echo query values, and these queries' values are the player's paying account.
+                const { stage, error } = payerCheckFailure
                 const reason = (error as { code?: unknown } | null)?.code ?? (error as Error | null)?.name ?? 'unknown'
                 console.error(
-                    '[WalletService] first deposit %s payer lookup failed (%s); first-deposit incentives withheld',
+                    '[WalletService] first deposit %s payer %s failed (%s); first-deposit incentives withheld',
                     transaction.id,
+                    stage,
                     String(reason),
                 )
-                reportError(error, { service: 'wallet', phase: 'first-deposit-payer-lookup', transactionId: transaction.id })
+                reportError(error, { service: 'wallet', phase: `first-deposit-payer-${stage}`, transactionId: transaction.id })
             }
             if (bonusAwarded > 0) {
                 void captureEvent(transaction.userId, 'bonus_granted', {
@@ -348,7 +375,7 @@ export class WalletService {
             if (bonusAwarded > 0) {
                 // bonusAwarded > 0 means this IS the first deposit
                 await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
-            } else if (!sharedPayer && !payerLookupFailure) {
+            } else if (!sharedPayer && !payerCheckFailure) {
                 // Still check if it's first deposit for referral purposes
                 const previousApproved = await prisma.transaction.count({
                     where: {

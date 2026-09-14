@@ -43,6 +43,14 @@ export function maskedPayerKey(raw: string | null | undefined): string | null {
     return compact.replace(/\D/g, '').length >= 8 ? compact : null
 }
 
+/**
+ * Class id (first argument of the two-integer `pg_advisory_xact_lock(int, int)`) for the
+ * lock that serialises first-deposit approvals paid from one account. 0x57420001 is "WB"
+ * plus namespace 1: no other Postgres advisory lock exists in this codebase, and the
+ * two-integer keyspace is disjoint from the single-bigint key Prisma Migrate locks on.
+ */
+export const FIRST_DEPOSIT_PAYER_LOCK_CLASSID = 0x57420001
+
 export class PayerIdentityService {
     /**
      * First-deposit incentives (the FIRST_DEPOSIT bonus and the referral reward) are
@@ -147,6 +155,28 @@ export class PayerIdentityService {
         }
 
         return null
+    }
+
+    /**
+     * Advisory-lock keys for `transactionId`'s paying account: one per signal
+     * `findPriorFirstDepositByPayer` can match that deposit on, prefixed with the signal
+     * so a sender-account key and a masked-number key never collide, and sorted so every
+     * approval takes them in the same order. Empty when the deposit carries neither
+     * (hosted ZareCash checkouts), so those approvals take no lock. Read-only through `tx`.
+     */
+    static async firstDepositLockKeys(tx: Prisma.TransactionClient, transactionId: string): Promise<string[]> {
+        const current = await tx.transaction.findUnique({
+            where: { id: transactionId },
+            select: { senderAccount: true, depositVerification: { select: { payerNumberMasked: true } } },
+        })
+        if (!current) return []
+
+        const keys: string[] = []
+        const sender = senderAccountKey(current.senderAccount)
+        if (sender) keys.push(`sender_account:${sender}`)
+        const masked = maskedPayerKey(current.depositVerification?.payerNumberMasked)
+        if (masked) keys.push(`receipt_payer:${masked}`)
+        return keys.sort()
     }
 
     /**

@@ -4,7 +4,7 @@ const { captureEvent } = vi.hoisted(() => ({ captureEvent: vi.fn().mockResolvedV
 vi.mock('../lib/posthog', () => ({ captureEvent }))
 
 import { WalletService } from '../services/wallet.service'
-import { PayerIdentityService } from '../services/payer-identity.service'
+import { PayerIdentityService, FIRST_DEPOSIT_PAYER_LOCK_CLASSID } from '../services/payer-identity.service'
 import { prisma, expectInvariantClean } from './setup'
 import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 
@@ -45,6 +45,30 @@ async function approvedDeposit(
 
 const firstDepositBonuses = (userId: string) =>
     prisma.transaction.count({ where: { userId, type: TransactionType.FIRST_DEPOSIT_BONUS } })
+
+/** The lock key an approval for a first deposit paid from 0911222333 takes. */
+const SENDER_LOCK_KEY = 'sender_account:911222333'
+
+/** Takes and immediately releases (autocommit) the paying-account lock; false while another transaction holds it. */
+async function tryPayerLock(key: string): Promise<boolean> {
+    const [row] = await prisma.$queryRaw<Array<{ locked: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(${FIRST_DEPOSIT_PAYER_LOCK_CLASSID}::int, hashtext(${key})) AS locked
+    `
+    return row.locked
+}
+
+async function expectCreditedWithIncentivesWithheld(userId: string): Promise<void> {
+    const deposit = await prisma.transaction.findFirstOrThrow({ where: { userId, type: TransactionType.DEPOSIT } })
+    expect(deposit.status).toBe(PaymentStatus.APPROVED)
+    expect(Number(deposit.balanceBefore)).toBe(0)
+    expect(Number(deposit.balanceAfter)).toBe(200)
+
+    const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId } })
+    expect(Number(wallet.realBalance)).toBe(200)
+    expect(Number(wallet.bonusBalance)).toBe(0)
+    expect(await firstDepositBonuses(userId)).toBe(0)
+    expect(await prisma.referralReward.count({ where: { refereeId: userId } })).toBe(0)
+}
 
 describe('approveDeposit — shared paying account guard', () => {
     beforeEach(async () => {
@@ -142,19 +166,170 @@ describe('approveDeposit — shared paying account guard', () => {
             await approvedDeposit(b, 200, { senderAccount: '0955666777' })
 
             expect(lookup).toHaveBeenCalledTimes(1)
-            const deposit = await prisma.transaction.findFirstOrThrow({ where: { userId: b, type: TransactionType.DEPOSIT } })
-            expect(deposit.status).toBe(PaymentStatus.APPROVED)
-            expect(Number(deposit.balanceBefore)).toBe(0)
-            expect(Number(deposit.balanceAfter)).toBe(200)
-
-            const walletB = await prisma.wallet.findUniqueOrThrow({ where: { userId: b } })
-            expect(Number(walletB.realBalance)).toBe(200)
-            expect(Number(walletB.bonusBalance)).toBe(0)
-            expect(await firstDepositBonuses(b)).toBe(0)
-            expect(await prisma.referralReward.count({ where: { refereeId: b } })).toBe(0)
+            await expectCreditedWithIncentivesWithheld(b)
             expect(captureEvent.mock.calls.some(([, event]) => event === 'first_deposit_shared_payer')).toBe(false)
             expect(JSON.stringify(logged.mock.calls)).not.toContain('955666777')
         } finally {
+            lookup.mockRestore()
+            logged.mockRestore()
+        }
+    })
+})
+
+describe('approveDeposit — paying-account lock for concurrent first deposits', () => {
+    beforeEach(async () => {
+        await prisma.siteSetting.create({ data: { key: 'first_deposit_bonus_amount', value: '100' } })
+    })
+
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    it('derives one signal-prefixed lock key per paying-account signal, sorted, and none without a signal', async () => {
+        const a = await player()
+        const both = await WalletService.initiateDeposit(a, { amount: 200, senderAccount: '+251 911-222-333' })
+        await prisma.depositVerification.create({
+            data: {
+                transactionId: both.id,
+                status: 'MANUAL_REQUIRED',
+                decisionReasons: [],
+                payerNumberMasked: ' 2519 **** 2528 ',
+                payerName: 'Abebe Kebede',
+            },
+        })
+        const neither = await WalletService.initiateDeposit(a, { amount: 200 })
+
+        const keys = await prisma.$transaction((tx) =>
+            Promise.all([
+                PayerIdentityService.firstDepositLockKeys(tx, both.id),
+                PayerIdentityService.firstDepositLockKeys(tx, neither.id),
+            ]),
+        )
+        expect(keys).toEqual([['receipt_payer:2519****2528', SENDER_LOCK_KEY], []])
+    })
+
+    it('waits while another transaction holds its paying-account lock, then credits the deposit', async () => {
+        const b = await player()
+        const deposit = await WalletService.initiateDeposit(b, { amount: 200, senderAccount: '0911222333' })
+
+        let releaseHolder!: () => void
+        const barrier = new Promise<void>((resolve) => {
+            releaseHolder = resolve
+        })
+        let lockTaken!: () => void
+        const taken = new Promise<void>((resolve) => {
+            lockTaken = resolve
+        })
+        const holder = prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_DEPOSIT_PAYER_LOCK_CLASSID}::int, hashtext(${SENDER_LOCK_KEY}))`
+                lockTaken()
+                await barrier
+            },
+            { timeout: 10_000 },
+        )
+        await taken
+
+        let settled = false
+        const approval = WalletService.approveDeposit(deposit.id).finally(() => {
+            settled = true
+        })
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        const settledWhileLockHeld = settled
+
+        releaseHolder()
+        await holder
+        await approval
+
+        expect(settledWhileLockHeld).toBe(false)
+        const credited = await prisma.transaction.findUniqueOrThrow({ where: { id: deposit.id } })
+        expect(credited.status).toBe(PaymentStatus.APPROVED)
+        expect(Number(credited.balanceBefore)).toBe(0)
+        expect(Number(credited.balanceAfter)).toBe(200)
+        const walletB = await prisma.wallet.findUniqueOrThrow({ where: { userId: b } })
+        expect(Number(walletB.realBalance)).toBe(200)
+        expect(await firstDepositBonuses(b)).toBe(1)
+    })
+
+    it('holds its paying-account lock through the shared-payer lookup until the approval commits', async () => {
+        const b = await player()
+        const deposit = await WalletService.initiateDeposit(b, { amount: 200, senderAccount: '0911222333' })
+
+        let releaseLookup!: () => void
+        const barrier = new Promise<void>((resolve) => {
+            releaseLookup = resolve
+        })
+        let enteredLookup!: () => void
+        const entered = new Promise<void>((resolve) => {
+            enteredLookup = resolve
+        })
+        const realLookup = PayerIdentityService.findPriorFirstDepositByPayer.bind(PayerIdentityService)
+        const lookup = vi
+            .spyOn(PayerIdentityService, 'findPriorFirstDepositByPayer')
+            .mockImplementationOnce(async (tx, input) => {
+                enteredLookup()
+                await barrier
+                return realLookup(tx, input)
+            })
+        try {
+            const approval = WalletService.approveDeposit(deposit.id)
+            await entered
+            const heldDuringLookup = !(await tryPayerLock(SENDER_LOCK_KEY))
+            releaseLookup()
+            await approval
+
+            expect(heldDuringLookup).toBe(true)
+            expect(await tryPayerLock(SENDER_LOCK_KEY)).toBe(true)
+        } finally {
+            releaseLookup()
+            lookup.mockRestore()
+        }
+    })
+
+    it('pays first-deposit incentives once when two accounts sharing a paying account are approved at the same time', async () => {
+        const referrer = await player()
+        const a = await player(referrer)
+        const b = await player(referrer)
+        const depositA = await WalletService.initiateDeposit(a, { amount: 200, senderAccount: '0911222333' })
+        const depositB = await WalletService.initiateDeposit(b, { amount: 200, senderAccount: '+251911222333' })
+
+        await Promise.all([WalletService.approveDeposit(depositA.id), WalletService.approveDeposit(depositB.id)])
+
+        expect(await prisma.transaction.count({ where: { type: TransactionType.FIRST_DEPOSIT_BONUS } })).toBe(1)
+        expect(await prisma.referralReward.count()).toBeLessThanOrEqual(1)
+        for (const userId of [a, b]) {
+            const deposit = await prisma.transaction.findFirstOrThrow({ where: { userId, type: TransactionType.DEPOSIT } })
+            expect(deposit.status).toBe(PaymentStatus.APPROVED)
+            expect(Number(deposit.balanceBefore)).toBe(0)
+            expect(Number(deposit.balanceAfter)).toBe(200)
+            const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId } })
+            expect(Number(wallet.realBalance)).toBe(200)
+        }
+    })
+
+    it('still credits the deposit but withholds both incentives when taking the paying-account lock fails', async () => {
+        captureEvent.mockClear()
+        const referrer = await player()
+        const b = await player(referrer)
+        const lockKeys = vi
+            .spyOn(PayerIdentityService, 'firstDepositLockKeys')
+            .mockImplementationOnce(async (tx) => {
+                // A real statement error: Postgres aborts the enclosing transaction.
+                await tx.$queryRaw`SELECT 1 / 0`
+                return []
+            })
+        const lookup = vi.spyOn(PayerIdentityService, 'findPriorFirstDepositByPayer')
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+            await approvedDeposit(b, 200, { senderAccount: '0955666777' })
+
+            expect(lockKeys).toHaveBeenCalledTimes(1)
+            expect(lookup).not.toHaveBeenCalled()
+            await expectCreditedWithIncentivesWithheld(b)
+            expect(captureEvent.mock.calls.some(([, event]) => event === 'first_deposit_shared_payer')).toBe(false)
+            expect(JSON.stringify(logged.mock.calls)).not.toContain('955666777')
+        } finally {
+            lockKeys.mockRestore()
             lookup.mockRestore()
             logged.mockRestore()
         }
