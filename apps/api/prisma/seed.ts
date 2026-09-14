@@ -2,7 +2,6 @@ import { PrismaClient } from '@prisma/client'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 import bcrypt from 'bcryptjs'
 import { seedEtfcCard } from './seed-etfc'
-import { FeaturedGameService } from '../src/services/featured-game.service'
 
 const prisma = new PrismaClient()
 
@@ -288,7 +287,33 @@ async function main() {
     // a game's row existed (or before a rename, e.g. 'Keno' -> 'Fast Keno')
     // would otherwise sit orphaned (0 matches) until an admin happens to
     // re-save the featured-games list for an unrelated reason.
-    await FeaturedGameService.applyRanks()
+    //
+    // Reimplemented inline (matches FeaturedGameService.applyRanks() — keep
+    // the two in sync) rather than imported: that service module also pulls
+    // in the live Redis client from lib/redis.ts, which this script never
+    // closes. An open Redis handle keeps the Node process alive forever, so
+    // `tsx prisma/seed.ts` would never exit — entrypoint.sh's run_seed()
+    // would hang waiting for it, and the container would never reach
+    // "Starting API server", failing its healthcheck with nothing ever
+    // listening on the port. Confirmed live on aradabingo production.
+    const pins = await prisma.featuredGame.findMany({
+        orderBy: { position: 'asc' },
+        select: { nameKey: true, position: true },
+    })
+    const pinKeys = pins.map((p) => p.nameKey)
+    const pinRanks = pins.map((p) => p.position)
+    await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`UPDATE provider_games SET "featuredRank" = NULL WHERE "featuredRank" IS NOT NULL`
+        if (pinKeys.length === 0) return
+        await tx.$executeRaw`
+            UPDATE provider_games g
+            SET "featuredRank" = v.rank
+            FROM (
+                SELECT unnest(${pinKeys}::text[]) AS key, unnest(${pinRanks}::int[]) AS rank
+            ) v
+            WHERE regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g') = v.key
+        `
+    })
     console.log(`Atlas-V provider seeded (${ATLASV_GAMES.length} games)`)
 
     // 7. Seed default payment methods
