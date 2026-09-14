@@ -10,6 +10,12 @@ import { emitProviderLaunch } from '../../lib/posthog-events.js'
 
 const TOKEN_TTL = 4 * 60 * 60 // 4-hour session token cache
 
+const GAME_UNAVAILABLE = {
+    statusCode: 409,
+    error: 'GameUnavailable',
+    message: 'This game is currently unavailable. Please try another.',
+}
+
 /**
  * True when a launch failure means THIS specific game is unavailable upstream
  * (turned off, removed, or under maintenance) — as opposed to a transient or
@@ -132,6 +138,30 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             // server pins TRUST_PROXY_HOPS (see index.ts).
             const ipAddress = req.ip
 
+            // An operator switch-off must stop launches, not just hide tiles. Players
+            // still arrive on stale /play/<provider>/<game> URLs (bookmarks, shared
+            // links, the misrouted lobby links of 2026-09-11..13), and each one used
+            // to reach the upstream launch API. A game with no catalog row keeps the
+            // old behaviour; only an explicit INACTIVE provider or inactive game refuses.
+            const provider = await prisma.gameProvider.findUnique({
+                where: { code: providerCode },
+                select: { id: true, status: true },
+            })
+            if (provider && provider.status !== 'ACTIVE') {
+                emitProviderLaunch(user.id, { providerCode, gameCode, launchOk: false, reason: 'provider_inactive' })
+                return reply.status(409).send(GAME_UNAVAILABLE)
+            }
+            if (provider) {
+                const game = await prisma.providerGame.findUnique({
+                    where: { providerId_gameCode: { providerId: provider.id, gameCode } },
+                    select: { isActive: true },
+                })
+                if (game && !game.isActive) {
+                    emitProviderLaunch(user.id, { providerCode, gameCode, launchOk: false, reason: 'game_inactive' })
+                    return reply.status(409).send(GAME_UNAVAILABLE)
+                }
+            }
+
             const gateway = getGameProviderGateway(providerCode)
             const rawBase = process.env.WEB_BASE_URL || 'https://www.aradabingo.bet'
             const lobbyUrl = rawBase.startsWith('http') ? rawBase.replace(/\/$/, '') + '/' : `https://${rawBase.replace(/\/$/, '')}/`
@@ -177,11 +207,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                         { providerCode, gameCode, userId: user.id, err: msg },
                         'game disabled upstream — hidden from catalog',
                     )
-                    return reply.status(409).send({
-                        statusCode: 409,
-                        error: 'GameUnavailable',
-                        message: 'This game is currently unavailable. Please try another.',
-                    })
+                    return reply.status(409).send(GAME_UNAVAILABLE)
                 }
 
                 req.log.error(

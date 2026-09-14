@@ -69,7 +69,7 @@ dropped before send.
 | `bonus_granted` | any bonus credit | `amount`, `source` (`FIRST_DEPOSIT`/`DEPOSIT_RULE`/`CAMPAIGN`/`CASHBACK`/`ADMIN`), `rule_id` |
 | `account_status_changed` | restrict / suspend / reinstate | `from`, `to`, `category`, `has_expiry` |
 | `provider_game_launched` | third-party game launch returned a usable URL | `provider_code`, `game_code` |
-| `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error` or `bad_url`) |
+| `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error`, `bad_url`, `provider_inactive`, `game_inactive`) |
 | `provider_bet` / `provider_win` | Palace wallet callback committed a bet or a payout | `provider_code`, `game_code`, `round_id`, `bet_id`, `amount`; win adds `round_stake` and `net`; bet adds `spend_account` |
 
 **Browser (`apps/web`)** — `$pageview`, `$pageleave`, plus everything `useAnalytics().track()`
