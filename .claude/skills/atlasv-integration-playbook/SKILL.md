@@ -139,6 +139,20 @@ closest one below.
   reverse). If a *future* endpoint shows the same crash shape, suspect the
   same Content-Type mismatch before anything else.
 
+- **Players launch Palace game codes through Atlas-V** (`/play/atlasv/533`,
+  `/play/atlasv/aviator`; `provider_launch_failed provider_code=atlasv` with numeric
+  game codes). Not an Atlas-V fault: the web lobby kept an `activeProviderCode`
+  chosen on `/games` while `hydrateLobby` loaded the other provider's games. Fixed in
+  `apps/web/store/provider-games.ts` (provider and games adopted together) plus a
+  deterministic provider order (`isPrimary desc, createdAt asc`).
+
+- **The launch error cannot be read** (container recreated by a redeploy, or Dokploy
+  `compose-readLogs` with `search` returns HTTP 500, as on 2026-09-14). Call the admin
+  launch probe instead; it returns Atlas-V's message in the response body:
+  `POST /admin/game-providers/atlasv/launch-probe {"gameCode":"keno"}` with an admin
+  bearer token. `config.*Set: false` or `code: ATLASV_NOT_CONFIGURED` means the
+  container is missing `ATLASV_*` values.
+
 ## Dokploy operational notes
 
 - **The env panel is write-only** — `compose-one`'s `env` field and even a

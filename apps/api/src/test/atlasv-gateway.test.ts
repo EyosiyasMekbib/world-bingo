@@ -40,6 +40,38 @@ describe('AtlasVGateway', () => {
         })).rejects.toMatchObject({ constructor: AtlasVApiError, code: 'ATLASV_EMPTY_RESPONSE' })
     })
 
+    it('names the keys and reason when /init answers without a url', async () => {
+        mockFetch.mockResolvedValue(jsonOk({ success: false, error: 'Game not found' }))
+        const { AtlasVGateway } = await import('../gateways/game-provider/atlasv.gateway.js')
+        await expect(
+            new AtlasVGateway().getGameUrl({
+                username: 'p1', gameCode: '533', language: 'en', platform: 'WEB',
+                currency: 'ETB', lobbyUrl: 'https://lobby/', ipAddress: '127.0.0.1',
+            }),
+        ).rejects.toMatchObject({
+            code: 'ATLASV_EMPTY_RESPONSE',
+            message: 'Atlas-V /init returned no url (keys: success,error; Game not found)',
+        })
+    })
+
+    it('refuses to call /init when ATLASV_SERVER_URL is empty', async () => {
+        vi.resetModules()
+        vi.stubEnv('ATLASV_SERVER_URL', '')
+        try {
+            const { AtlasVGateway } = await import('../gateways/game-provider/atlasv.gateway.js')
+            await expect(
+                new AtlasVGateway().getGameUrl({
+                    username: 'p1', gameCode: 'keno', language: 'en', platform: 'WEB',
+                    currency: 'ETB', lobbyUrl: 'https://lobby/', ipAddress: '127.0.0.1',
+                }),
+            ).rejects.toMatchObject({ code: 'ATLASV_NOT_CONFIGURED', message: expect.stringContaining('ATLASV_SERVER_URL') })
+            expect(mockFetch).not.toHaveBeenCalled()
+        } finally {
+            vi.stubEnv('ATLASV_SERVER_URL', 'https://atlasv.test')
+            vi.resetModules()
+        }
+    })
+
     it('throws AtlasVApiError on non-ok HTTP status', async () => {
         mockFetch.mockResolvedValue({ ok: false, status: 503 })
         const { AtlasVGateway, AtlasVApiError } = await import('../gateways/game-provider/atlasv.gateway.js')

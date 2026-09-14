@@ -89,7 +89,16 @@ export class AtlasVGateway implements GameProviderGateway {
     }
 
     async getGameUrl(params: LaunchGameParams): Promise<{ gameUrl: string; token: string }> {
-        const data = await request<{ url?: string }>(SERVER_URL, '/init', {
+        // An empty base URL makes fetch throw "Failed to parse URL from /init", which
+        // surfaced as a generic "unreachable". Name the missing config instead.
+        if (!SERVER_URL || !CASINO_ID) {
+            throw new AtlasVApiError({
+                message: `Atlas-V is not configured: ${!SERVER_URL ? 'ATLASV_SERVER_URL' : 'ATLASV_CASINO_ID'} is empty in this container`,
+                statusCode: 503,
+                code: 'ATLASV_NOT_CONFIGURED',
+            })
+        }
+        const data = await request<{ url?: string; error?: unknown; message?: unknown }>(SERVER_URL, '/init', {
             game: params.gameCode,
             partner_id: PARTNER_ID,
             casino_id: CASINO_ID,
@@ -98,7 +107,15 @@ export class AtlasVGateway implements GameProviderGateway {
             player_id: params.username,
         })
         if (!data?.url) {
-            throw new AtlasVApiError({ message: 'Atlas-V /init returned no url', statusCode: 502, code: 'ATLASV_EMPTY_RESPONSE' })
+            // Atlas-V answers some refusals with HTTP 200 and no url. Say what came back,
+            // so the launch log line and the admin launch probe show the actual reason.
+            const keys = data && typeof data === 'object' ? Object.keys(data).join(',') : String(data)
+            const reason = typeof data?.error === 'string' ? data.error : typeof data?.message === 'string' ? data.message : ''
+            throw new AtlasVApiError({
+                message: `Atlas-V /init returned no url (keys: ${keys || 'none'}${reason ? `; ${reason.slice(0, 200)}` : ''})`,
+                statusCode: 502,
+                code: 'ATLASV_EMPTY_RESPONSE',
+            })
         }
         return { gameUrl: data.url, token: '' }
     }
