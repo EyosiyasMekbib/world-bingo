@@ -51,11 +51,13 @@ export class PayerIdentityService {
         const senderKey = senderAccountKey(current.senderAccount)
         if (senderKey) {
             // `t.type = 'DEPOSIT' AND t.status = 'APPROVED'` are plain, index-usable
-            // predicates, so Postgres bounds the scan with the transactions
-            // `[type, status]` index before evaluating the regexp match — it never
-            // scans non-deposit or non-approved rows. The correlated NOT EXISTS below
-            // is similarly bounded by `[userId, type]`. There is no index on
-            // `senderAccount` itself, so within the approved-deposit set this is a
+            // predicates, letting the planner use the transactions `[type, status]`
+            // index to bound the scan to approved deposits before evaluating the
+            // regexp match — though on a small table the planner may still choose a
+            // sequential scan instead (confirmed via EXPLAIN against the test
+            // database, where the table was near-empty). The correlated NOT EXISTS
+            // below is similarly index-usable via `[userId, type]`. There is no index
+            // on `senderAccount` itself, so within the approved-deposit set this is a
             // scan-and-regex; the follow-up if that set's growth makes it costly is a
             // normalized-sender-account index built CONCURRENTLY (never inline in a
             // migration transaction, which would lock out wallet writes).
@@ -83,15 +85,23 @@ export class PayerIdentityService {
         const masked = maskedPayerKey(current.depositVerification?.payerNumberMasked)
         const name = current.depositVerification?.payerName ? normalizeName(current.depositVerification.payerName) : ''
         if (masked && name) {
-            // Same index-bounding as the sender-account query above: `[type, status]`
-            // keeps this to approved deposits before the regexp runs; no index exists
-            // on `payerNumberMasked` (follow-up: a normalized-payer-number index built
-            // CONCURRENTLY, if approved-deposit volume ever makes this costly). Masked
-            // numbers have low entropy (a fixed visible prefix/suffix), so this can
-            // still match many rows across different payer names — capped to the 200
-            // earliest-approved candidates. ORDER BY runs before LIMIT, so the earliest
-            // legitimate match is never dropped by the cap; the name check below then
-            // walks that same ascending order, so the first hit is always the earliest.
+            // Same index-usable `type`/`status` predicates as the sender-account query
+            // above, letting the planner bound this to approved deposits via
+            // `[type, status]` (though it may still pick a sequential scan on a small
+            // table). No index exists on `payerNumberMasked` (follow-up: a
+            // normalized-payer-number index built CONCURRENTLY, if approved-deposit
+            // volume ever makes this costly). Masked numbers have low entropy (a fixed
+            // visible prefix/suffix), so this can match many rows across different
+            // payer names — the fetch is capped to the 200 earliest-approved
+            // candidates (ORDER BY before LIMIT), and the name check below walks that
+            // same ascending order so the first hit among the fetched rows is the
+            // earliest. TRADE-OFF, not a guarantee: if 200 or more OTHER approved
+            // deposits share this masked number under different payer names and have
+            // an earlier `createdAt` than the true name match, that true match falls
+            // outside the fetched window and is silently missed. This is accepted to
+            // bound the fetch under the wallet row lock C2 holds; revisit (e.g. a
+            // normalized-key index, or filtering by name in SQL) if that volume of
+            // same-masked-number deposits from other payers proves reachable.
             const rows = await tx.$queryRaw<Array<{ id: string; userId: string; payerName: string | null }>>`
                 SELECT t.id, t."userId", dv."payerName"
                 FROM transactions t
