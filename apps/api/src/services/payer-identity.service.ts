@@ -1,7 +1,27 @@
 import type { Prisma } from '@prisma/client'
+import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import prisma from '../lib/prisma'
 import { normalizeName } from './deposit-verification/matching'
 
 export type SharedPayerSignal = 'sender_account' | 'receipt_payer'
+
+export type ClusterSignal = 'sender_account' | 'receipt_payer' | 'registered_phone'
+
+export interface SharedPayerAccount {
+    userId: string
+    username: string | null
+    phone: string | null
+    registeredAt: string
+    approvedDeposits: number
+    approvedAmount: number
+    firstDepositBonus: boolean
+}
+
+export interface SharedPayerCluster {
+    signal: ClusterSignal
+    key: string
+    accounts: SharedPayerAccount[]
+}
 
 export interface SharedPayerMatch {
     transactionId: string
@@ -127,5 +147,138 @@ export class PayerIdentityService {
         }
 
         return null
+    }
+
+    /**
+     * Admin detection: groups of accounts tied together by one paying account inside
+     * the window. Three signals: one sender account behind approved deposits on several
+     * accounts; one parsed receipt payer (masked number + lower-cased name) behind
+     * several accounts; one account's REGISTERED phone paying another account's deposit.
+     * Telegram ids and phones are unique columns, so no two accounts can share those;
+     * device overlap is only visible in PostHog (docs/posthog.md §10.2).
+     */
+    static async listSharedPayerClusters(opts: { since: Date; limit: number }): Promise<SharedPayerCluster[]> {
+        const since = opts.since.toISOString()
+        const [senderRows, receiptCandidates, phoneRows] = await Promise.all([
+            prisma.$queryRaw<Array<{ key: string; userIds: string[] }>>`
+                SELECT right(regexp_replace(t."senderAccount", '[^0-9]', '', 'g'), 9) AS key,
+                       array_agg(DISTINCT t."userId") AS "userIds"
+                FROM transactions t
+                WHERE t.type = 'DEPOSIT'
+                  AND t.status = 'APPROVED'
+                  AND t."createdAt" >= ${since}::timestamp
+                  AND length(regexp_replace(coalesce(t."senderAccount", ''), '[^0-9]', '', 'g')) >= 9
+                GROUP BY 1
+                HAVING count(DISTINCT t."userId") > 1
+                ORDER BY count(DISTINCT t."userId") DESC, 1
+                LIMIT ${opts.limit}::int
+            `,
+            // Grouped in JS below (not GROUP BY here, unlike the other two signals):
+            // the key's name half has to run through the SAME `normalizeName` that
+            // C1's matcher and the deposit verifier's PAYER_MISMATCH gate use (NFD
+            // diacritic stripping, punctuation-to-space). A SQL-only
+            // lower()+trim()+collapse-whitespace re-implementation would silently
+            // diverge from that on any accented or punctuated payer name — this
+            // fetch is still bounded by the `since` window, only its GROUP BY moved
+            // to the app.
+            prisma.$queryRaw<Array<{ userId: string; maskedRaw: string; payerName: string }>>`
+                SELECT t."userId" AS "userId", dv."payerNumberMasked" AS "maskedRaw", dv."payerName" AS "payerName"
+                FROM transactions t
+                JOIN deposit_verifications dv ON dv."transactionId" = t.id
+                WHERE t.type = 'DEPOSIT'
+                  AND t.status = 'APPROVED'
+                  AND t."createdAt" >= ${since}::timestamp
+                  AND dv."payerNumberMasked" IS NOT NULL
+                  AND dv."payerName" IS NOT NULL
+            `,
+            prisma.$queryRaw<Array<{ key: string; ownerId: string; fundedIds: string[] }>>`
+                WITH funded AS (
+                    SELECT right(regexp_replace(t."senderAccount", '[^0-9]', '', 'g'), 9) AS key, t."userId"
+                    FROM transactions t
+                    WHERE t.type = 'DEPOSIT'
+                      AND t.status IN ('APPROVED', 'PENDING_REVIEW')
+                      AND t."createdAt" >= ${since}::timestamp
+                      AND length(regexp_replace(coalesce(t."senderAccount", ''), '[^0-9]', '', 'g')) >= 9
+                ), owners AS (
+                    SELECT right(regexp_replace(u.phone, '[^0-9]', '', 'g'), 9) AS key, u.id
+                    FROM users u
+                    WHERE u.phone IS NOT NULL
+                      AND length(regexp_replace(u.phone, '[^0-9]', '', 'g')) >= 9
+                )
+                SELECT o.key AS key, o.id AS "ownerId", array_agg(DISTINCT f."userId") AS "fundedIds"
+                FROM funded f
+                JOIN owners o ON o.key = f.key AND o.id <> f."userId"
+                GROUP BY o.key, o.id
+                ORDER BY count(DISTINCT f."userId") DESC, o.key
+                LIMIT ${opts.limit}::int
+            `,
+        ])
+
+        // Same normalisation C1's findPriorFirstDepositByPayer uses for this signal
+        // (maskedPayerKey for the number, normalizeName for the payer name), just
+        // applied per-row instead of per-transaction, then grouped by the composite
+        // key and cut to accounts sharing it.
+        const receiptGroups = new Map<string, Set<string>>()
+        for (const row of receiptCandidates) {
+            const masked = maskedPayerKey(row.maskedRaw)
+            const name = row.payerName ? normalizeName(row.payerName) : ''
+            if (!masked || !name) continue
+            const key = `${masked}|${name}`
+            const group = receiptGroups.get(key) ?? new Set<string>()
+            group.add(row.userId)
+            receiptGroups.set(key, group)
+        }
+        const receiptRows = [...receiptGroups.entries()]
+            .filter(([, userIds]) => userIds.size > 1)
+            .sort(([keyA, a], [keyB, b]) => b.size - a.size || (keyA < keyB ? -1 : keyA > keyB ? 1 : 0))
+            .slice(0, opts.limit)
+            .map(([key, userIds]) => ({ key, userIds: [...userIds] }))
+
+        const raw: Array<{ signal: ClusterSignal; key: string; userIds: string[] }> = [
+            ...senderRows.map((r) => ({ signal: 'sender_account' as const, key: r.key, userIds: r.userIds })),
+            ...receiptRows.map((r) => ({ signal: 'receipt_payer' as const, key: r.key, userIds: r.userIds })),
+            ...phoneRows.map((r) => ({ signal: 'registered_phone' as const, key: r.key, userIds: [r.ownerId, ...r.fundedIds] })),
+        ]
+        const ids = [...new Set(raw.flatMap((r) => r.userIds))]
+        if (ids.length === 0) return []
+
+        const [users, deposits, bonuses] = await Promise.all([
+            prisma.user.findMany({
+                where: { id: { in: ids } },
+                select: { id: true, username: true, phone: true, createdAt: true },
+            }),
+            prisma.transaction.groupBy({
+                by: ['userId'],
+                where: { userId: { in: ids }, type: TransactionType.DEPOSIT, status: PaymentStatus.APPROVED },
+                _count: { _all: true },
+                _sum: { amount: true },
+            }),
+            prisma.transaction.findMany({
+                where: { userId: { in: ids }, type: TransactionType.FIRST_DEPOSIT_BONUS },
+                select: { userId: true },
+                distinct: ['userId'],
+            }),
+        ])
+        const userById = new Map(users.map((u) => [u.id, u]))
+        const depositsByUser = new Map(deposits.map((d) => [d.userId, d]))
+        const bonusUsers = new Set(bonuses.map((b) => b.userId))
+
+        return raw.map((r) => ({
+            signal: r.signal,
+            key: r.key,
+            accounts: [...new Set(r.userIds)].sort().map((id) => {
+                const user = userById.get(id)
+                const dep = depositsByUser.get(id)
+                return {
+                    userId: id,
+                    username: user?.username ?? null,
+                    phone: user?.phone ?? null,
+                    registeredAt: user ? user.createdAt.toISOString() : '',
+                    approvedDeposits: dep?._count._all ?? 0,
+                    approvedAmount: Number(dep?._sum.amount ?? 0),
+                    firstDepositBonus: bonusUsers.has(id),
+                }
+            }),
+        }))
     }
 }

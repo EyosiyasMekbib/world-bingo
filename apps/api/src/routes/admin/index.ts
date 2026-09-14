@@ -5,6 +5,7 @@ import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
 import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
 import atlasVAdminRoutes from './atlasv'
+import fraudAdminRoutes from './fraud'
 import { AdminService } from '../../services/admin.service'
 import { BonusService } from '../../services/bonus.service'
 import { GameService } from '../../services/game.service'
@@ -344,6 +345,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Atlas-V game provider (freespin grants) ────────────────────────────
         await f.register(atlasVAdminRoutes, { prefix: '/game-providers/atlasv' })
+
+        // ── Duplicate-account detection (accounts sharing a paying account) ────
+        await f.register(fraudAdminRoutes, { prefix: '/fraud' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {
