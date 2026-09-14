@@ -737,6 +737,24 @@ model FeaturedGame {
   @@map("featured_games")
 }
 
+// Admin-managed lobby hero banner. Image-only: a required desktop/mobile pair
+// sized to HERO_BANNER_SPEC in @world-bingo/shared-types. With no active rows
+// the lobby falls back to its built-in slides.
+model HeroBanner {
+  id              String   @id @default(uuid())
+  desktopImageUrl String
+  mobileImageUrl  String
+  altText         String   @default("")
+  linkUrl         String?
+  position        Int // 0-based display order; contiguous after reorder and delete
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive, position])
+  @@map("hero_banners")
+}
+
 model ProviderUserAccount {
   id               String       @id @default(uuid())
   providerId       String

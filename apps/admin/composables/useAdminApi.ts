@@ -1,3 +1,5 @@
+import type { HeroBannerDto, HeroBannerUpdateDto } from '@world-bingo/shared-types'
+
 // One pin in the lobby priority list. `matches` is how many catalog rows the
 // pin resolves to right now — 0 means the game is not in the catalog.
 export type FeaturedGameItem = {
@@ -579,6 +581,23 @@ export const useAdminApi = () => {
             form.append('file', file)
             return apiFetch<{ url: string }>('/brand/favicon', { method: 'POST', body: form })
         },
+
+        // ── Hero Banners ──────────────────────────────────────────────────
+        getHeroBanners: () => apiFetch<{ items: HeroBannerDto[] }>('/admin/hero-banners'),
+        createHeroBanner: (data: { desktop: File; mobile: File; altText: string; linkUrl: string }) => {
+            const form = new FormData()
+            form.append('desktop', data.desktop)
+            form.append('mobile', data.mobile)
+            form.append('altText', data.altText)
+            form.append('linkUrl', data.linkUrl)
+            return apiFetch<{ item: HeroBannerDto }>('/admin/hero-banners', { method: 'POST', body: form })
+        },
+        updateHeroBanner: (id: string, patch: HeroBannerUpdateDto) =>
+            apiFetch<{ item: HeroBannerDto }>(`/admin/hero-banners/${id}`, { method: 'PATCH', body: patch }),
+        reorderHeroBanners: (ids: string[]) =>
+            apiFetch<{ items: HeroBannerDto[] }>('/admin/hero-banners/order', { method: 'PUT', body: { ids } }),
+        deleteHeroBanner: (id: string) =>
+            apiFetch<{ ok: true }>(`/admin/hero-banners/${id}`, { method: 'DELETE' }),
     }
 }
 

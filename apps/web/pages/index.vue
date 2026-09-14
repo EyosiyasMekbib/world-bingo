@@ -6,6 +6,16 @@ import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import { heroArtworkFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
 import { launchProviderFor } from '~/utils/provider-launch'
+import {
+  HERO_BANNER_FETCH_TIMEOUT_MS,
+  HERO_BANNER_MOBILE_MEDIA,
+  HERO_BANNER_MODE_STORAGE_KEY,
+  heroBannerAspectRatio,
+  parseHeroBanners,
+  parseStoredHeroBannerMode,
+  resolveHeroBannerMode,
+  type HeroBannerSlide,
+} from '~/utils/hero-banners'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
@@ -107,7 +117,7 @@ const WINNERS: Record<string, Winner[]> = {
 
 const winners = computed(() => WINNERS[activeWinnerTab.value] ?? [])
 
-/* ── Hero carousel (coded slides) ───────────────────────────────────────── */
+/* ── Hero carousel (admin banners, else coded slides) ───────────────────── */
 interface HeroSlide {
   id: string
   cta: string
@@ -191,16 +201,72 @@ const BASE_SLIDES: HeroSlide[] = [
  * over an evergreen bonus offer.
  */
 /**
- * Artwork slides whose file failed to load. A missing or misnamed upload must
- * not leave a broken image sitting in the first slot of the hero, so the slide
- * drops out of rotation instead — the coded slides always remain.
+ * Artwork and banner slides whose file failed to load. A missing or misnamed
+ * upload must not leave a broken image sitting in the first slot of the hero,
+ * so the slide drops out of rotation instead — the coded slides always remain.
  */
 const brokenSlides = ref(new Set<string>())
-function onSlideImageError(id: string) {
-  brokenSlides.value = new Set(brokenSlides.value).add(id)
+// The id comes from the failing element, not activeSlide: an image that errors
+// after the carousel has moved on must drop its own slide, not the one on screen.
+function onSlideImageError(event: Event) {
+  const id = (event.target as HTMLElement | null)?.dataset.slideId
+  if (id) brokenSlides.value = new Set(brokenSlides.value).add(id)
 }
 
-const heroSlides = computed<HeroSlide[]>(() => {
+/**
+ * Admin-managed banners (GET /hero-banners). null until the request settles, so
+ * the hero holds a placeholder rather than flashing the coded slides first —
+ * unless this browser's last visit found no banners, in which case the coded
+ * slides show at once. Any usable banner replaces the coded hero; none, or a
+ * failed request, keeps it.
+ */
+const heroBanners = ref<HeroBannerSlide[] | null>(null)
+const lastHeroBannerMode = readStoredHeroBannerMode()
+const heroBannerMode = computed(() =>
+  resolveHeroBannerMode(heroBanners.value, brokenSlides.value, lastHeroBannerMode),
+)
+
+function readStoredHeroBannerMode() {
+  if (!import.meta.client) return null
+  try {
+    return parseStoredHeroBannerMode(localStorage.getItem(HERO_BANNER_MODE_STORAGE_KEY))
+  } catch {
+    return null
+  }
+}
+
+async function loadHeroBanners() {
+  try {
+    const body = await $fetch<unknown>(`${config.public.apiBase}/hero-banners`, {
+      timeout: HERO_BANNER_FETCH_TIMEOUT_MS,
+      retry: 0,
+    })
+    heroBanners.value = parseHeroBanners(body)
+    try {
+      localStorage.setItem(HERO_BANNER_MODE_STORAGE_KEY, heroBanners.value.length > 0 ? 'banners' : 'fallback')
+    } catch { /* storage blocked */ }
+  } catch {
+    heroBanners.value = []
+  }
+}
+
+// Sized from the same media query the banner's <source> uses, so the box ratio
+// always matches the image the browser picked.
+const heroBannerViewport = import.meta.client ? window.matchMedia(HERO_BANNER_MOBILE_MEDIA) : null
+const heroBannerIsMobile = ref(heroBannerViewport?.matches ?? false)
+function syncHeroBannerViewport() {
+  heroBannerIsMobile.value = heroBannerViewport?.matches ?? false
+}
+const heroBannerBoxStyle = computed(() => ({
+  '--hero-banner-ratio': heroBannerAspectRatio(heroBannerIsMobile.value ? 'mobile' : 'desktop'),
+}))
+
+type LobbyHeroSlide = (HeroSlide & { banner?: undefined }) | { id: string; banner: HeroBannerSlide }
+
+const heroSlides = computed<LobbyHeroSlide[]>(() => {
+  const mode = heroBannerMode.value
+  if (mode.kind === 'loading') return []
+  if (mode.kind === 'banners') return mode.slides.map((banner) => ({ id: banner.id, banner }))
   // Artwork carries its brand in the pixels, so only the deployment it was drawn
   // for gets it. Brands with none run on the coded slides alone.
   const art = heroArtworkFor(brand.value.themeId).filter((s) => !brokenSlides.value.has(s.id))
@@ -212,17 +278,19 @@ const heroSlides = computed<HeroSlide[]>(() => {
 const currentSlide = ref(0)
 
 /**
- * The slide list changes length when the flag resolves, and the flag arrives
- * after first paint. Without this the index can point past the end of the array
- * and `activeSlide` reads undefined, which blanks the whole hero.
+ * The slide list changes length when the flag resolves, when banners arrive, and
+ * when a banner image fails, all after first paint. Without this the index can
+ * point past the end of the array and `activeSlide` reads undefined, which
+ * blanks the whole hero.
  */
 watch(
   () => heroSlides.value.length,
   (len) => {
-    if (currentSlide.value >= len) currentSlide.value = 0
+    if (!(currentSlide.value < len)) currentSlide.value = 0
   },
 )
 
+// Undefined only while banners load, when the template shows the placeholder.
 const activeSlide = computed(() => heroSlides.value[currentSlide.value] ?? heroSlides.value[0])
 let slideTimer: ReturnType<typeof setInterval> | null = null
 
@@ -232,15 +300,22 @@ function goToSlide(idx: number) {
   startSlideTimer()
 }
 function prevSlide() {
-  goToSlide((currentSlide.value - 1 + heroSlides.value.length) % heroSlides.value.length)
+  const len = heroSlides.value.length
+  if (len > 1) goToSlide((currentSlide.value - 1 + len) % len)
 }
 function nextSlide() {
-  goToSlide((currentSlide.value + 1) % heroSlides.value.length)
+  const len = heroSlides.value.length
+  if (len > 1) goToSlide((currentSlide.value + 1) % len)
 }
 function startSlideTimer() {
   slideTimer = setInterval(() => {
-    currentSlide.value = (currentSlide.value + 1) % heroSlides.value.length
+    const len = heroSlides.value.length
+    if (len > 1) currentSlide.value = (currentSlide.value + 1) % len
   }, 6000)
+}
+
+function trackHeroBannerClick(id: string) {
+  track('hero_banner_click', { banner_id: id })
 }
 
 const touchStartX = ref(0)
@@ -530,6 +605,10 @@ function setupFeedObserver() {
 onMounted(async () => {
   track('lobby_view')
 
+  loadHeroBanners()
+  syncHeroBannerViewport()
+  heroBannerViewport?.addEventListener('change', syncHeroBannerViewport)
+
   try {
     const saved = localStorage.getItem('ab_favs')
     if (saved) favorites.value = new Set(JSON.parse(saved))
@@ -618,6 +697,7 @@ watch(
 onUnmounted(() => {
   feedObserver?.disconnect()
   if (slideTimer) clearInterval(slideTimer)
+  heroBannerViewport?.removeEventListener('change', syncHeroBannerViewport)
   // Read the existing socket, never connect() here: connect() creates a new
   // connection when the reuse check doesn't match (e.g. auth identity has
   // already changed by unmount time), so an unsubscribe-on-teardown call
@@ -632,15 +712,56 @@ onUnmounted(() => {
     <!-- ═══════════════ HERO ═══════════════ -->
     <section class="max-wrap">
       <div
+        v-if="heroBannerMode.kind === 'loading'"
+        class="hero hero--banner"
+        :style="heroBannerBoxStyle"
+        aria-hidden="true"
+      />
+      <div
+        v-else
         class="hero"
-        :class="{ 'hero--image': !!activeSlide.image }"
-        :style="activeSlide.gradient ? { background: activeSlide.gradient } : undefined"
+        :class="activeSlide.banner ? 'hero--banner' : { 'hero--image': !!activeSlide.image }"
+        :style="
+          activeSlide.banner
+            ? heroBannerBoxStyle
+            : activeSlide.gradient ? { background: activeSlide.gradient } : undefined
+        "
         @touchstart.passive="onTouchStart"
         @touchend.passive="onTouchEnd"
       >
+        <!-- Admin banner: the image is the whole slide, boxed at the upload
+             spec's ratio. Clickable only when it carries a vetted link. -->
+        <template v-if="activeSlide.banner">
+          <picture :key="activeSlide.id" class="hero-banner-img">
+            <source :media="HERO_BANNER_MOBILE_MEDIA" :srcset="activeSlide.banner.mobileImageUrl" />
+            <img
+              :src="activeSlide.banner.desktopImageUrl"
+              :alt="activeSlide.banner.altText"
+              :data-slide-id="activeSlide.id"
+              @error="onSlideImageError"
+            />
+          </picture>
+          <NuxtLink
+            v-if="activeSlide.banner.link.kind === 'internal'"
+            :to="activeSlide.banner.link.to"
+            class="hero-img-hit"
+            :aria-label="activeSlide.banner.linkLabel"
+            @click="trackHeroBannerClick(activeSlide.id)"
+          />
+          <a
+            v-else-if="activeSlide.banner.link.kind === 'external'"
+            :href="activeSlide.banner.link.href"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hero-img-hit"
+            :aria-label="activeSlide.banner.linkLabel"
+            @click="trackHeroBannerClick(activeSlide.id)"
+          />
+        </template>
+
         <!-- Artwork slide. No `type` sources: the banner is whatever format was
              dropped in, and a 404 on a typed <source> does not fall back. -->
-        <template v-if="activeSlide.image">
+        <template v-else-if="activeSlide.image">
           <picture :key="activeSlide.id" class="hero-img">
             <source
               v-if="activeSlide.image.mobile"
@@ -650,7 +771,8 @@ onUnmounted(() => {
             <img
               :src="activeSlide.image.desktop"
               :alt="activeSlide.image.alt"
-              @error="onSlideImageError(activeSlide.id)"
+              :data-slide-id="activeSlide.id"
+              @error="onSlideImageError"
             />
           </picture>
           <button
@@ -673,25 +795,27 @@ onUnmounted(() => {
           </div>
         </template>
 
-        <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-        </button>
-        <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-        </button>
+        <template v-if="heroSlides.length > 1">
+          <button class="hero-arrow hero-arrow--prev" aria-label="Previous slide" @click="prevSlide">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <button class="hero-arrow hero-arrow--next" aria-label="Next slide" @click="nextSlide">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
 
-        <div class="hero-dots" role="tablist" aria-label="Slides">
-          <button
-            v-for="(s, i) in heroSlides"
-            :key="s.id"
-            class="hdot"
-            :class="{ 'hdot--active': currentSlide === i }"
-            role="tab"
-            :aria-selected="currentSlide === i"
-            :aria-label="`Slide ${i + 1}`"
-            @click="goToSlide(i)"
-          />
-        </div>
+          <div class="hero-dots" role="tablist" aria-label="Slides">
+            <button
+              v-for="(s, i) in heroSlides"
+              :key="s.id"
+              class="hdot"
+              :class="{ 'hdot--active': currentSlide === i }"
+              role="tab"
+              :aria-selected="currentSlide === i"
+              :aria-label="`Slide ${i + 1}`"
+              @click="goToSlide(i)"
+            />
+          </div>
+        </template>
       </div>
     </section>
 
@@ -931,7 +1055,37 @@ onUnmounted(() => {
   background: transparent;
   cursor: pointer;
 }
+.hero-img-hit:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: -3px;
+}
 .hero-arrow, .hero-dots { z-index: 3; }
+
+/* Admin banner. The box takes the upload spec's ratio (--hero-banner-ratio,
+   bound per viewport from the script), so it never reflows when the image
+   lands. Doubled class so the 720px .hero padding rule cannot reach it. */
+.hero.hero--banner {
+  padding: 0;
+  min-height: 0;
+  aspect-ratio: var(--hero-banner-ratio);
+  background: var(--surface-raised);
+}
+.hero.hero--banner::after { content: none; }
+.hero-banner-img {
+  position: absolute;
+  inset: 0;
+  animation: hero-banner-in 0.4s ease both;
+}
+.hero-banner-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@keyframes hero-banner-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 .hero::after {
   content: '';

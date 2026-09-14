@@ -6,6 +6,7 @@ import analyticsRoutes from './analytics'
 import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
 import atlasVAdminRoutes from './atlasv'
 import fraudAdminRoutes from './fraud'
+import heroBannerAdminRoutes from './hero-banners'
 import { AdminService } from '../../services/admin.service'
 import { BonusService } from '../../services/bonus.service'
 import { GameService } from '../../services/game.service'
@@ -348,6 +349,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Duplicate-account detection (accounts sharing a paying account) ────
         await f.register(fraudAdminRoutes, { prefix: '/fraud' })
+
+        // ── Lobby hero banners ────────────────────────────────────────────────
+        await f.register(heroBannerAdminRoutes, { prefix: '/hero-banners' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {
