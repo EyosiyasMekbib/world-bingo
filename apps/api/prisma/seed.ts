@@ -208,46 +208,80 @@ async function main() {
     })
     const atlasvVendor = await prisma.gameVendor.upsert({
         where: { providerId_code: { providerId: atlasv.id, code: 'atlasv-default' } },
-        update: {},
+        update: { categoryCode: 'CRASH,MINI,TABLE,SLOTS' },
         create: {
             providerId: atlasv.id,
             code: 'atlasv-default',
             name: 'Atlas-V',
-            categoryCode: 'ARCADE',
+            categoryCode: 'CRASH,MINI,TABLE,SLOTS',
             isActive: true,
         },
     })
-    await prisma.providerGame.upsert({
-        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'penalty' } },
-        update: {},
-        create: {
-            providerId: atlasv.id,
-            vendorId: atlasvVendor.id,
-            gameCode: 'penalty',
-            gameName: 'Penalty Shootout',
-            categoryCode: 'ARCADE',
-            languageCodes: ['en', 'am'],
-            platformCodes: ['WEB', 'H5'],
-            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
-            isActive: true,
-        },
-    })
-    await prisma.providerGame.upsert({
-        where: { providerId_gameCode: { providerId: atlasv.id, gameCode: 'keno' } },
-        update: {},
-        create: {
-            providerId: atlasv.id,
-            vendorId: atlasvVendor.id,
-            gameCode: 'keno',
-            gameName: 'Keno',
-            categoryCode: 'ARCADE',
-            languageCodes: ['en', 'am'],
-            platformCodes: ['WEB', 'H5'],
-            currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
-            isActive: true,
-        },
-    })
-    console.log('Atlas-V provider seeded')
+
+    // Atlas-V's own "Games Info - Game List" export (no listing API to sync
+    // from, so this is hand-maintained). gameCode is their GAME ID column;
+    // categoryCode buckets their GAME TYPE column onto the lobby's existing
+    // categories (CRASH/MINI/TABLE/SLOTS) rather than inventing new ones —
+    // Fast Games/Plinko/Keno/Virtual Sport all land in MINI, Roulette/Video
+    // Poker in TABLE.
+    const ATLASV_GAMES: Array<{ gameCode: string; gameName: string; categoryCode: string }> = [
+        { gameCode: 'wowbow', gameName: 'Wow Bow', categoryCode: 'CRASH' },
+        { gameCode: 'pinkthunder', gameName: 'Pink Thunder', categoryCode: 'CRASH' },
+        { gameCode: 'bluethunder', gameName: 'Blue Thunder', categoryCode: 'CRASH' },
+        { gameCode: 'formula', gameName: 'Fast F1', categoryCode: 'CRASH' },
+        { gameCode: 'penalty', gameName: 'Fast Penalty', categoryCode: 'MINI' },
+        { gameCode: 'plinko', gameName: 'Plinko', categoryCode: 'MINI' },
+        { gameCode: 'keno', gameName: 'Fast Keno', categoryCode: 'MINI' },
+        { gameCode: 'boombasket', gameName: 'Boom Basket', categoryCode: 'MINI' },
+        { gameCode: 'boomball', gameName: 'Boom Ball', categoryCode: 'MINI' },
+        { gameCode: 'winball', gameName: 'Win Ball', categoryCode: 'MINI' },
+        { gameCode: 'wof', gameName: 'Wheel of Fortune', categoryCode: 'TABLE' },
+        { gameCode: 'goldminer', gameName: 'Gold Miner', categoryCode: 'CRASH' },
+        { gameCode: 'goldengate', gameName: 'Golden Gate', categoryCode: 'MINI' },
+        { gameCode: 'striker', gameName: 'Striker', categoryCode: 'MINI' },
+        { gameCode: 'darts', gameName: 'Fast Darts', categoryCode: 'MINI' },
+        { gameCode: 'jacksorbetter', gameName: 'Jacks or Better', categoryCode: 'TABLE' },
+        { gameCode: 'jokerwild', gameName: 'Joker Wild', categoryCode: 'TABLE' },
+        { gameCode: 'greyhoundracing', gameName: 'Greyhound Racing', categoryCode: 'MINI' },
+        { gameCode: 'horseracing', gameName: 'Horse Racing', categoryCode: 'MINI' },
+        { gameCode: 'rocketstar', gameName: 'Rocket Star', categoryCode: 'CRASH' },
+        { gameCode: 'chukchaman', gameName: 'Chukcha Man', categoryCode: 'SLOTS' },
+        { gameCode: 'tavern', gameName: 'Tavern', categoryCode: 'SLOTS' },
+        { gameCode: 'fairyland', gameName: 'Fairy Land', categoryCode: 'SLOTS' },
+        { gameCode: 'monkeyboy', gameName: 'Monkey Boy', categoryCode: 'SLOTS' },
+        { gameCode: 'juicyfruits', gameName: 'Juicy Fruits', categoryCode: 'SLOTS' },
+        { gameCode: 'dragon', gameName: 'DragOn', categoryCode: 'SLOTS' },
+        { gameCode: 'hotkeno', gameName: 'Hot Keno', categoryCode: 'MINI' },
+    ]
+
+    for (const g of ATLASV_GAMES) {
+        await prisma.providerGame.upsert({
+            where: { providerId_gameCode: { providerId: atlasv.id, gameCode: g.gameCode } },
+            // Catalog metadata stays in sync with the source list on every reseed,
+            // same as GameCatalogService.syncGames does for synced providers — but
+            // isActive is never touched here, so an admin's manual disable (PATCH
+            // /admin/providers/:code/games/:gameCode/status) survives a reseed.
+            update: {
+                gameName: g.gameName,
+                categoryCode: g.categoryCode,
+                languageCodes: ['en', 'am'],
+                platformCodes: ['WEB', 'H5'],
+                currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+            },
+            create: {
+                providerId: atlasv.id,
+                vendorId: atlasvVendor.id,
+                gameCode: g.gameCode,
+                gameName: g.gameName,
+                categoryCode: g.categoryCode,
+                languageCodes: ['en', 'am'],
+                platformCodes: ['WEB', 'H5'],
+                currencyCodes: [process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB'],
+                isActive: true,
+            },
+        })
+    }
+    console.log(`Atlas-V provider seeded (${ATLASV_GAMES.length} games)`)
 
     // 7. Seed default payment methods
     console.log('Seeding Payment Methods...')
