@@ -13,6 +13,16 @@ const palaceGame: ProviderGame = {
   imageSquare: null,
   imageLandscape: null,
   vendorCode: 'palace:15',
+  providerCode: 'palace',
+}
+const atlasvGame: ProviderGame = {
+  gameCode: 'aviator',
+  gameName: 'Aviator',
+  categoryCode: 'CRASH',
+  imageSquare: null,
+  imageLandscape: null,
+  vendorCode: null,
+  providerCode: 'atlasv',
 }
 const providers = [
   { id: 'p1', code: 'palace', name: 'Palace Casino', status: 'ACTIVE', currency: 'ETB' },
@@ -22,12 +32,32 @@ const providers = [
 describe('provider-games store — hydrateLobby', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('adopts the lobby provider together with its games, replacing an earlier selection', () => {
+  it('adopts the lobby default provider when none is selected yet', () => {
+    const store = useProviderGamesStore()
+    store.hydrateLobby({
+      providers,
+      activeProviderCode: 'palace',
+      categories: ['SLOTS', 'CRASH'],
+      games: [palaceGame, atlasvGame],
+      gamesTotal: 2,
+    })
+    expect(store.activeProviderCode).toBe('palace')
+    expect(store.games.map((g) => `${g.providerCode}:${g.gameCode}`)).toEqual(['palace:533', 'atlasv:aviator'])
+  })
+
+  it('keeps a provider already selected on /games, while taking the merged games', () => {
     const store = useProviderGamesStore()
     store.activeProviderCode = 'atlasv' // chosen earlier on /games
-    store.hydrateLobby({ providers, activeProviderCode: 'palace', categories: ['SLOTS'], games: [palaceGame], gamesTotal: 1 })
-    expect(store.activeProviderCode).toBe('palace')
-    expect(store.games.map((g) => g.gameCode)).toEqual(['533'])
+    store.hydrateLobby({
+      providers,
+      activeProviderCode: 'palace',
+      categories: ['SLOTS', 'CRASH'],
+      games: [palaceGame, atlasvGame],
+      gamesTotal: 2,
+    })
+    expect(store.activeProviderCode).toBe('atlasv')
+    // Every row keeps its own provider, so launches never depend on the selection.
+    expect(store.games.map((g) => g.providerCode)).toEqual(['palace', 'atlasv'])
   })
 
   it('keeps the current provider when the lobby reports none', () => {

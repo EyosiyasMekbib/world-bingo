@@ -5,6 +5,7 @@ import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
+import { launchProviderFor } from '~/utils/provider-launch'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
@@ -219,7 +220,7 @@ async function launchGame(game: ProviderGame) {
   if (!auth.isAuthenticated) { showAuthPrompt.value = true; return }
   launching.value = `provider:${game.gameCode}`
   try {
-    const url = await providerStore.launchGame(providerStore.activeProviderCode, game.gameCode)
+    const url = await providerStore.launchGame(launchProviderFor(game, providerStore.activeProviderCode), game.gameCode)
     if (url) window.location.href = url
   } finally {
     launching.value = null

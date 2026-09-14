@@ -92,10 +92,11 @@ export const useProviderGamesStore = defineStore('provider-games', {
       pageSize?: number
     }) {
       this.providers = payload.providers ?? []
-      // payload.games belong to payload.activeProviderCode, so adopt both together.
-      // Keeping an earlier selection (made on /games) paired Palace lobby games with
-      // `atlasv` and sent launches to /play/atlasv/<palace game code>.
-      if (payload.activeProviderCode) {
+      // payload.activeProviderCode is only a default for /games' provider switcher:
+      // payload.games are merged across every ACTIVE provider and each row carries
+      // its own providerCode, which is what launches use (utils/provider-launch).
+      // So keep a provider the player already selected rather than overwriting it.
+      if (payload.activeProviderCode && !this.activeProviderCode) {
         this.activeProviderCode = payload.activeProviderCode
       }
       this.categories = payload.categories ?? []

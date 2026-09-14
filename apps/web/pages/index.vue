@@ -5,6 +5,7 @@ import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import { heroArtworkFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
+import { launchProviderFor } from '~/utils/provider-launch'
 import type { Game } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
@@ -369,7 +370,7 @@ function providerToCard(g: ProviderGame): LobbyCard {
     title: g.gameName,
     image: g.imageSquare ?? g.imageLandscape ?? null,
     letter: (g.gameName?.[0] ?? '?').toUpperCase(),
-    to: `/play/${g.providerCode ?? providerStore.activeProviderCode}/${g.gameCode}`,
+    to: `/play/${launchProviderFor(g, providerStore.activeProviderCode)}/${g.gameCode}`,
     vendor: g.vendorCode ?? g.providerName ?? undefined,
   }
 }

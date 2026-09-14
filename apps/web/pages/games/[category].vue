@@ -5,6 +5,7 @@ import { useProviderGamesStore } from '~/store/provider-games'
 import { useGameStore } from '~/store/game'
 import { useAuthStore } from '~/store/auth'
 import type { ProviderGame } from '~/store/provider-games'
+import { launchProviderFor } from '~/utils/provider-launch'
 import type { Game } from '@world-bingo/shared-types'
 
 const route = useRoute()
@@ -259,7 +260,7 @@ onUnmounted(() => {
           <NuxtLink
             v-for="g in providerGames"
             :key="g.gameCode"
-            :to="`/play/${providerStore.activeProviderCode}/${g.gameCode}`"
+            :to="`/play/${launchProviderFor(g, providerStore.activeProviderCode)}/${g.gameCode}`"
             class="pg-card"
           >
             <div class="pg-thumb">
