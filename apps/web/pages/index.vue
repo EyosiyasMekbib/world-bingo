@@ -364,12 +364,12 @@ function bingoToCard(g: Game): LobbyCard {
 
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
-    key: 'p-' + g.gameCode,
+    key: (g.providerCode ?? providerStore.activeProviderCode) + '-' + g.gameCode,
     badge: CATEGORY_LABELS[g.categoryCode] ?? g.categoryCode,
     title: g.gameName,
     image: g.imageSquare ?? g.imageLandscape ?? null,
     letter: (g.gameName?.[0] ?? '?').toUpperCase(),
-    to: `/play/${providerStore.activeProviderCode}/${g.gameCode}`,
+    to: `/play/${g.providerCode ?? providerStore.activeProviderCode}/${g.gameCode}`,
     vendor: g.vendorCode ?? g.providerName ?? undefined,
   }
 }
@@ -377,18 +377,53 @@ function providerToCard(g: ProviderGame): LobbyCard {
 const categoryGamesMap = ref<Record<string, ProviderGame[]>>({})
 const categoryGamesLoading = ref<Record<string, boolean>>({})
 
-// Pool of every loaded provider game (default page + each fetched category), deduped by gameCode.
-// Ensures featured games living in non-default categories (e.g. INSTWIN) can surface in the ALL grid.
+// Extra pages loaded via infinite scroll for the cross-provider ALL feed —
+// separate from providerStore.games/loadMore, which page a single provider
+// and are still used as-is by /games (its own provider switcher). See
+// loadMoreHomeGames().
+const homeExtraGames = ref<ProviderGame[]>([])
+const homePage = ref(1)
+const homeHasMore = ref(true)
+const homeLoadingMore = ref(false)
+
+// Pool of every loaded provider game (bootstrap page + infinite-scroll pages +
+// each fetched category), deduped by provider+gameCode — two different
+// providers can legitimately share a gameCode (e.g. both calling a game
+// "keno"). Ensures featured games living in non-default categories (e.g.
+// INSTWIN) can surface in the ALL grid.
 const allProviderGames = computed<ProviderGame[]>(() => {
   const seen = new Set<string>()
   const pool: ProviderGame[] = []
-  for (const g of [...providerStore.games, ...Object.values(categoryGamesMap.value).flat()]) {
-    if (seen.has(g.gameCode)) continue
-    seen.add(g.gameCode)
+  for (const g of [
+    ...providerStore.games,
+    ...homeExtraGames.value,
+    ...Object.values(categoryGamesMap.value).flat(),
+  ]) {
+    const key = `${g.providerCode ?? ''}:${g.gameCode}`
+    if (seen.has(key)) continue
+    seen.add(key)
     pool.push(g)
   }
   return pool
 })
+
+async function loadMoreHomeGames() {
+  if (!homeHasMore.value || homeLoadingMore.value) return
+  homeLoadingMore.value = true
+  try {
+    const nextPage = homePage.value + 1
+    const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
+      `${config.public.apiBase}/providers/games?page=${nextPage}&pageSize=60`,
+    )
+    homeExtraGames.value = [...homeExtraGames.value, ...result.games]
+    homePage.value = nextPage
+    homeHasMore.value = nextPage < result.totalPages
+  } catch {
+    homeHasMore.value = false
+  } finally {
+    homeLoadingMore.value = false
+  }
+}
 
 const gridGames = computed<LobbyCard[]>(() => {
   const cat = selectedCategory.value
@@ -439,12 +474,10 @@ const gridLoading = computed(() => {
 })
 
 async function fetchCategoryGames(category: string, pageSize = 24) {
-  const code = providerStore.activeProviderCode
-  if (!code) return
   categoryGamesLoading.value[category] = true
   try {
     const result = await $fetch<{ games: ProviderGame[]; totalPages: number }>(
-      `${config.public.apiBase}/providers/${code}/games?page=1&pageSize=${pageSize}&category=${category}`,
+      `${config.public.apiBase}/providers/games?page=1&pageSize=${pageSize}&category=${category}`,
     )
     categoryGamesMap.value[category] = result.games
   } catch {
@@ -466,8 +499,11 @@ function handleJoinGame(gameId?: string) {
 /* ── Infinite scroll ───────────────────────────────────────────────────────
    The ALL tab starts with the ~60-game lobby bootstrap page, which is a sliver
    of the full catalog (1000+ games across providers). Paging in the rest via
-   providerStore.loadMore() as the user scrolls is what makes "All Games"
-   actually show all games, without shipping the whole catalog on first paint. */
+   loadMoreHomeGames() as the user scrolls is what makes "All Games" actually
+   show all games, without shipping the whole catalog on first paint.
+   loadMoreHomeGames (not providerStore.loadMore) because this feed is merged
+   across every active provider — providerStore's own paging is single-provider
+   and still belongs to /games' provider-switcher browsing. */
 const feedSentinel = ref<HTMLElement | null>(null)
 let feedObserver: IntersectionObserver | null = null
 
@@ -478,10 +514,10 @@ function setupFeedObserver() {
       if (
         entries[0].isIntersecting &&
         selectedCategory.value === 'ALL' &&
-        providerStore.hasMore &&
-        !providerStore.loading
+        homeHasMore.value &&
+        !homeLoadingMore.value
       ) {
-        providerStore.loadMore()
+        loadMoreHomeGames()
       }
     },
     { rootMargin: '800px' },
@@ -516,16 +552,22 @@ onMounted(async () => {
 
     providerStore.hydrateLobby(lobby)
     gameStore.setAvailableGames(lobby.bingoGames ?? [])
+    homeHasMore.value = lobby.pageSize < lobby.gamesTotal
   } catch {
     // Fallback — bootstrap unavailable; fetch the pieces individually.
     const bingoLoad = gameStore.fetchAvailableGames().catch(() => {})
     const providerLoad = (async () => {
       await providerStore.fetchProviders()
       if (providerStore.activeProviderCode) {
-        await Promise.all([
-          providerStore.fetchCategories(),
-          providerStore.fetchGames({ reset: true, pageSize: 60 }),
+        const [cats, page] = await Promise.all([
+          $fetch<string[]>(`${config.public.apiBase}/providers/categories`),
+          $fetch<{ games: ProviderGame[]; totalItems: number }>(
+            `${config.public.apiBase}/providers/games?page=1&pageSize=60`,
+          ),
         ])
+        providerStore.categories = cats
+        providerStore.games = page.games
+        homeHasMore.value = page.games.length < page.totalItems
       }
     })().catch(() => {})
     await Promise.allSettled([bingoLoad, providerLoad])
@@ -818,7 +860,7 @@ onUnmounted(() => {
       </div>
 
       <div ref="feedSentinel" class="feed-sentinel" />
-      <div v-if="providerStore.loading && selectedCategory === 'ALL' && gridGames.length" class="load-more">
+      <div v-if="homeLoadingMore && selectedCategory === 'ALL' && gridGames.length" class="load-more">
         <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
       </div>
     </section>
