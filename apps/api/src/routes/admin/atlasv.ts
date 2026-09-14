@@ -64,13 +64,28 @@ const atlasVAdminRoutes: FastifyPluginAsync = async (fastify) => {
                 lobbyUrl: `${(process.env.WEB_BASE_URL || 'https://aradabingo.bet').replace(/\/$/, '')}/`,
                 ipAddress: req.ip,
             })
-            let gameUrlHost: string | null = null
+            // A truthy gameUrl that isn't a parseable https:// URL (wrong scheme, or a
+            // string the gateway's `!data?.url` check didn't catch) must not fall into
+            // the ok: true shape below, and must never echo the URL itself — it can
+            // carry a player session token in its path.
+            let parsedUrl: URL | null = null
             try {
-                gameUrlHost = new URL(gameUrl).host
+                parsedUrl = new URL(gameUrl)
             } catch {
-                gameUrlHost = null
+                parsedUrl = null
             }
-            return { ok: /^https:\/\//i.test(gameUrl), latencyMs: Date.now() - startedAt, gameUrlHost, config }
+            if (!parsedUrl || parsedUrl.protocol !== 'https:') {
+                return {
+                    ok: false,
+                    latencyMs: Date.now() - startedAt,
+                    code: 'ATLASV_INSECURE_GAME_URL',
+                    message: parsedUrl
+                        ? `Atlas-V /init returned a non-https game URL (scheme: ${parsedUrl.protocol})`
+                        : 'Atlas-V /init returned an unparseable game URL',
+                    config,
+                }
+            }
+            return { ok: true, latencyMs: Date.now() - startedAt, gameUrlHost: parsedUrl.host, config }
         } catch (err: any) {
             req.log.error({ err, gameCode: parsed.data.gameCode }, '[Atlas-V] launch probe failed')
             return {

@@ -151,7 +151,11 @@ closest one below.
   launch probe instead; it returns Atlas-V's message in the response body:
   `POST /admin/game-providers/atlasv/launch-probe {"gameCode":"keno"}` with an admin
   bearer token. `config.*Set: false` or `code: ATLASV_NOT_CONFIGURED` means the
-  container is missing `ATLASV_*` values.
+  container is missing `ATLASV_*` values. `code: ATLASV_INSECURE_GAME_URL` means
+  Atlas-V's `/init` answered with a truthy but non-`https://` (or unparseable)
+  `url` — the probe reports `ok: false` for this rather than treating it as a
+  launchable link, and never echoes the URL itself (it can carry a session
+  token).
 
 ## Dokploy operational notes
 
