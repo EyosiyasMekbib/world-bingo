@@ -356,6 +356,10 @@ export class GameCatalogService {
         const [providers, bingoGames] = await Promise.all([
             prisma.gameProvider.findMany({
                 where: { status: 'ACTIVE' },
+                // Deterministic: the primary provider leads, then the oldest. With no
+                // order Postgres returns physical row order, which changes when a row
+                // is updated, so the lobby's first provider could silently flip.
+                orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
                 select: { code: true, name: true, currency: true },
             }),
             GameCatalogService.getActiveBingoGames(),

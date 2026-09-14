@@ -91,7 +91,10 @@ export const useProviderGamesStore = defineStore('provider-games', {
       pageSize?: number
     }) {
       this.providers = payload.providers ?? []
-      if (payload.activeProviderCode && !this.activeProviderCode) {
+      // payload.games belong to payload.activeProviderCode, so adopt both together.
+      // Keeping an earlier selection (made on /games) paired Palace lobby games with
+      // `atlasv` and sent launches to /play/atlasv/<palace game code>.
+      if (payload.activeProviderCode) {
         this.activeProviderCode = payload.activeProviderCode
       }
       this.categories = payload.categories ?? []

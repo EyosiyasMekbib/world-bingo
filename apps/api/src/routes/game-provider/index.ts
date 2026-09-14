@@ -47,6 +47,9 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         handler: async () => {
             return prisma.gameProvider.findMany({
                 where: { status: 'ACTIVE' },
+                // Same order as GameCatalogService.getLobby — the web store's
+                // fetchProviders fallback takes the first entry as the active provider.
+                orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
                 select: { code: true, name: true, currency: true },
             })
         },
