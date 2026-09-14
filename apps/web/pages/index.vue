@@ -125,8 +125,6 @@ interface HeroSlide {
   watermark?: string
   gradient?: string
   accent?: string
-  /** Deep link for `heroAction` to navigate straight to, bypassing `action`'s generic routing. */
-  to?: string
 }
 
 /**
@@ -151,6 +149,17 @@ const PREDICTION_SLIDE: HeroSlide = {
 }
 
 const BASE_SLIDES: HeroSlide[] = [
+  {
+    id: 'aviator',
+    badge: 'High Flyer',
+    title: 'Aviator — Cash\nOut Before It Flies',
+    sub: 'Watch the multiplier climb and grab your winnings before the plane takes off into the clouds.',
+    cta: 'Fly Now',
+    watermark: 'X10',
+    gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
+    accent: '#34d399',
+    action: 'games',
+  },
   {
     id: 'bingo',
     badge: 'Live Rooms',
@@ -190,55 +199,13 @@ function onSlideImageError(id: string) {
   brokenSlides.value = new Set(brokenSlides.value).add(id)
 }
 
-/**
- * Hero ads for specific games, using that game's own provider-supplied
- * artwork (imageLandscape/imageSquare — the same thumbnail the grid tiles
- * use) rather than hand-drawn banner art, so the ad never drifts from what
- * the provider actually ships and automatically points at whichever
- * provider/gameCode currently carries that title. Matched by name with the
- * same normalization Featured Games uses server-side (toNameKey), so a game
- * absent from this environment's catalog (e.g. Aviator with no GASea sync
- * configured) just drops its slide rather than showing a broken ad.
- */
-const AD_SLIDE_GAMES = [
-  { key: 'ad-aviator', name: 'Aviator', cta: 'Play Aviator' },
-  { key: 'ad-fast-keno', name: 'Fast Keno', cta: 'Play Fast Keno' },
-  { key: 'ad-fast-f1', name: 'Fast F1', cta: 'Play Fast F1' },
-]
-function adNameKey(name: string): string {
-  return (name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-const adSlides = computed<HeroSlide[]>(() => {
-  // providerStore.games (not allProviderGames, declared further down — and
-  // unneeded here anyway): the bootstrap's first page, already sorted by
-  // featuredRank, which is exactly where a pinned ad game like these lands.
-  const byNameKey = new Map<string, ProviderGame>()
-  for (const g of providerStore.games) byNameKey.set(adNameKey(g.gameName), g)
-
-  const slides: HeroSlide[] = []
-  for (const ad of AD_SLIDE_GAMES) {
-    const g = byNameKey.get(adNameKey(ad.name))
-    const image = g?.imageLandscape ?? g?.imageSquare
-    if (!g?.providerCode || !image) continue
-    slides.push({
-      id: ad.key,
-      cta: ad.cta,
-      action: 'games',
-      to: `/play/${g.providerCode}/${g.gameCode}`,
-      image: { desktop: image, alt: g.gameName },
-    })
-  }
-  return slides
-})
-
 const heroSlides = computed<HeroSlide[]>(() => {
   // Artwork carries its brand in the pixels, so only the deployment it was drawn
   // for gets it. Brands with none run on the coded slides alone.
   const art = heroArtworkFor(brand.value.themeId).filter((s) => !brokenSlides.value.has(s.id))
-  const ads = adSlides.value.filter((s) => !brokenSlides.value.has(s.id))
   return predictionsEnabled.value
-    ? [...art, ...ads, PREDICTION_SLIDE, ...BASE_SLIDES]
-    : [...art, ...ads, ...BASE_SLIDES]
+    ? [...art, PREDICTION_SLIDE, ...BASE_SLIDES]
+    : [...art, ...BASE_SLIDES]
 })
 
 const currentSlide = ref(0)
@@ -287,10 +254,6 @@ function onTouchEnd(e: TouchEvent) {
 }
 
 function heroAction(slide: HeroSlide) {
-  if (slide.to) {
-    navigateTo(slide.to)
-    return
-  }
   const action = slide.action
   if (action === 'predictions') {
     track('hero_predictions_click')
