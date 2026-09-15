@@ -18,6 +18,7 @@ async function buildApp() {
   app.decorate('authenticate', async () => {})
   app.decorate('requireAdmin', async () => {})
   app.decorate('requireAdminOrClerk', async () => {})
+  app.decorate('requireSuperAdmin', async () => {})
   await app.register(adminRoutes, { prefix: '/admin' })
   await app.ready()
   return app
