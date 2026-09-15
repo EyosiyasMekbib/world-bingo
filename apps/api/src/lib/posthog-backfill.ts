@@ -140,6 +140,7 @@ export function depositEvents(t: TxRow, knownMethods: Set<string>): BackfillEven
             make('tx', t.id, 'deposit_rejected', t.userId, plusOneSecond(t.createdAt), {
                 amount,
                 method,
+                reason: null,
                 hours_to_decision: null,
                 has_note: null,
                 tx_id: t.id,

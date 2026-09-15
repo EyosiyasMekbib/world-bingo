@@ -157,7 +157,7 @@ const executeAction = async () => {
       await approveTransaction(id)
       toast.add({ title: 'Marked as Transferred ✅', description: 'Player has been notified', color: 'success' })
     } else {
-      await declineTransaction(id, declineNote.value || undefined)
+      await declineTransaction(id, { note: declineNote.value || undefined })
       toast.add({ title: 'Rejected', description: 'Balance refunded to player wallet', color: 'warning' })
     }
     showConfirmModal.value = false

@@ -61,7 +61,7 @@ dropped before send.
 | `user_logged_in` | login, returning Telegram auth | `signup_method` |
 | `deposit_submitted` | manual receipt or ZareCash checkout row created | `amount`, `method`, `gateway`, `tx_id` |
 | `deposit_approved` | credited (manual review or webhook) | `amount`, `method`, `gateway`, `hours_to_approve`, `is_first_deposit` |
-| `deposit_rejected` | admin rejected | `amount`, `method`, `hours_to_decision`, `has_note` |
+| `deposit_rejected` | admin rejected | `amount`, `method`, `reason` (`DUPLICATE_RECEIPT`/`AMOUNT_MISMATCH`/`PAYER_MISMATCH`/`UNREADABLE_RECEIPT`/`NOT_FOUND`/`OTHER`; `null` on backfilled rows), `hours_to_decision`, `has_note` |
 | `withdrawal_requested` / `withdrawal_approved` / `withdrawal_rejected` | payout lifecycle | `amount`, `method`, `gateway`, `hours_to_decision` |
 | `game_joined` / `game_left` | cartelas bought / refunded before start | `game_id`, `template_id`, `ticket_price`, `cartelas`, `stake`, `spend_account` |
 | `game_finished` | one per player when a game ends | `outcome` (`won`/`lost`/`no_winner`), `stake`, `prize`, `net`, `duration_secs` |
@@ -89,6 +89,8 @@ Failure and timing events (added with the retention program, 2026-09-08):
 | `register_failed` | a registration did not complete | `reason` (`validation_*`, `exists` for "User already exists", or the server code), `status` |
 | `deposit_checkout_redirect` | ZareCash checkout created, browser about to leave | `paymentMethod`, `amountBucket`, `ms` (checkout call round trip) |
 | `deposit_checkout_failed` | checkout call failed or timed out (15 s) | `paymentMethod`, `amountBucket`, `ms`, `code`, `status`, `timeout` |
+| `deposit_submit_blocked` | manual-receipt Submit tapped with fields missing | `paymentMethod`, `missing` (array of `amount`/`transactionId`/`senderName`/`senderAccount`/`receipt`) |
+| `deposit_submit_failed` | manual-receipt submit rejected by the api or failed in transit | `paymentMethod`, `code`, `status` |
 | `provider_launch_failed` | browser side of a failed launch | `providerCode`, `gameCode`, `code`, `status` |
 | `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `attempt`, `msToLoad` and `msToUrl`, both measured from the start of this attempt's launch call |
 | `provider_game_load_timeout` | a load attempt passed 20 s without the frame loading; once per attempt | `providerCode`, `gameCode`, `attempt`, `stage` (`launch` = no launch URL yet, `frame` = URL arrived, frame not loaded), `msToUrl` |

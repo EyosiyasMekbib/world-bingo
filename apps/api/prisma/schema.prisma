@@ -180,6 +180,8 @@ model Transaction {
   senderName           String?
   senderAccount        String?
   reviewedById         String? // admin/clerk who approved or rejected (audit + separation-of-duties)
+  /// Set only when a reviewer rejects a DEPOSIT. Null on every other row.
+  rejectionReason      DepositRejectionReason?
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   depositVerification  DepositVerification?
   createdAt            DateTime             @default(now())
@@ -240,6 +242,17 @@ enum PaymentStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+}
+
+/// Why a reviewer rejected a manual deposit. Mirrors DepositRejectionReason in
+/// packages/shared-types/src/enums/index.ts — change both together.
+enum DepositRejectionReason {
+  DUPLICATE_RECEIPT
+  AMOUNT_MISMATCH
+  PAYER_MISMATCH
+  UNREADABLE_RECEIPT
+  NOT_FOUND
+  OTHER
 }
 
 enum PatternType {

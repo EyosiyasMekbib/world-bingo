@@ -186,8 +186,8 @@ export const useAdminApi = () => {
         // the API credits the player-stated amount.
         approveTransaction: (id: string, amount?: number) =>
             apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: { amount } }),
-        declineTransaction: (id: string, note?: string) =>
-            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        declineTransaction: (id: string, body: { reason?: string; note?: string } = {}) =>
+            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body }),
         // The clerk's browser fetches the telebirr receipt the API server can't
         // reach and POSTs the raw HTML here for the parse→match→credit pipeline.
         verifyReceipt: (id: string, html: string) =>
