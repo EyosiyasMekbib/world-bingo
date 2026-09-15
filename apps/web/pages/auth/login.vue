@@ -79,6 +79,43 @@
               </svg>
             </button>
           </div>
+          <!-- There is no self-service reset: this points players at support
+               instead of at Register, where a forgotten password used to turn
+               into a second account. -->
+          <button
+            type="button"
+            class="forgot-link"
+            :aria-expanded="showForgot"
+            aria-controls="forgot-panel"
+            @click="toggleForgot"
+          >
+            {{ t('auth.forgotPassword.link') }}
+          </button>
+        </div>
+
+        <div v-if="showForgot" id="forgot-panel" class="forgot-panel">
+          <p class="forgot-title">{{ t('auth.forgotPassword.title') }}</p>
+          <p>{{ t('auth.forgotPassword.body') }}</p>
+          <p>{{ t('auth.forgotPassword.afterReset') }}</p>
+          <div v-if="hasSupportChannel" class="forgot-contacts">
+            <a v-if="supportPhoneHref" :href="supportPhoneHref" class="forgot-contact">
+              {{ t('auth.forgotPassword.callSupport') }} · {{ supportContact?.phone }}
+            </a>
+            <a
+              v-if="supportTelegramHref"
+              :href="supportTelegramHref"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="forgot-contact"
+            >
+              {{ t('auth.forgotPassword.telegramSupport') }}
+            </a>
+            <p v-if="supportContact?.hours" class="forgot-hours">
+              {{ t('auth.forgotPassword.hours', { hours: supportContact.hours }) }}
+            </p>
+          </div>
+          <p v-else>{{ t('auth.forgotPassword.noContact') }}</p>
+          <p class="forgot-note">{{ t('auth.forgotPassword.doNotRegister') }}</p>
         </div>
 
         <p v-if="errorMsg" class="auth-error" role="alert">
@@ -152,7 +189,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
-import type { TelegramAuthDto } from '@world-bingo/shared-types'
+import type { SupportContactInfo, TelegramAuthDto } from '@world-bingo/shared-types'
 import { validateLoginForm, applyAutofill, type LoginFormError } from '~/utils/auth-form'
 import { describeFailure } from '~/utils/http-failure'
 
@@ -184,6 +221,33 @@ const identifierEl = ref<HTMLInputElement | null>(null)
 const passwordEl = ref<HTMLInputElement | null>(null)
 
 const showWelcomeBack = computed(() => !!auth.user && !auth.isAuthenticated)
+
+// ── Forgot password ─────────────────────────────────────────────────────
+// Support verifies the player and an admin issues a temporary password. The
+// contact shown is the admin-configured one the support widget uses, run
+// through the same allowlisted href builders — the values are typed by staff
+// and never trusted straight into an href.
+const showForgot = ref(false)
+const supportContact = ref<SupportContactInfo | null>(null)
+const supportPhoneHref = computed(() => (supportContact.value?.phone ? telHref(supportContact.value.phone) : null))
+const supportTelegramHref = computed(() =>
+  supportContact.value?.telegram ? telegramHref(supportContact.value.telegram) : null,
+)
+const hasSupportChannel = computed(() => hasUsableContactChannel(supportContact.value))
+
+async function toggleForgot() {
+  showForgot.value = !showForgot.value
+  if (!showForgot.value) return
+  track('forgot_password_opened', {})
+  if (hasUsableContactChannel(supportContact.value)) return
+  try {
+    supportContact.value = await $fetch<SupportContactInfo>(`${config.public.apiBase}/settings/support`, {
+      timeout: 8000,
+    })
+  } catch {
+    // The panel still tells the player to contact support; the next open retries.
+  }
+}
 
 const redirectPath = computed(() => {
   const r = route.query.redirect
@@ -379,6 +443,49 @@ form { display: flex; flex-direction: column; gap: 16px; }
 }
 .eye-btn svg { width: 16px; height: 16px; }
 .eye-btn:hover { color: var(--brand-primary); }
+
+/* ── Forgot password ─────────────────────────────────────────────────── */
+.forgot-link {
+  display: block;
+  margin-left: auto;
+  margin-top: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+.forgot-link:hover { text-decoration: underline; }
+
+.forgot-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 0.85rem 1rem;
+}
+.forgot-panel p { margin: 0; }
+.forgot-title {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.forgot-contacts { display: flex; flex-direction: column; gap: 0.35rem; }
+.forgot-contact {
+  color: var(--brand-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+.forgot-contact:hover { text-decoration: underline; }
+.forgot-hours { font-size: 12px; }
+.forgot-note { color: var(--text-primary); }
 
 /* ── Error ───────────────────────────────────────────────────────────── */
 .auth-error {
