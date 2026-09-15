@@ -120,8 +120,6 @@ services:
         - POSTHOG_CLI_API_KEY
     image: world-bingo-web:arada-stg
     restart: unless-stopped
-    ports:
-      - "3000"
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
       NUXT_PUBLIC_POSTHOG_KEY: ${NUXT_PUBLIC_POSTHOG_KEY:-}
@@ -152,8 +150,6 @@ services:
         NUXT_API_PROXY_TARGET: http://api-arada-stg:8080
     image: world-bingo-admin:arada-stg
     restart: unless-stopped
-    ports:
-      - "3001"
     environment:
       NUXT_PUBLIC_API_BASE: /api
       # Same-origin: the admin's own /socket.io/** routeRule proxies to the API.
