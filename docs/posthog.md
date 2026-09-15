@@ -72,6 +72,7 @@ dropped before send.
 | `provider_game_launched` | third-party game launch returned a usable URL | `provider_code`, `game_code` |
 | `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error`, `bad_url`, `provider_inactive`, `game_inactive`) |
 | `provider_bet` / `provider_win` | Palace wallet callback committed a bet or a payout | `provider_code`, `game_code`, `round_id`, `bet_id`, `amount`; win adds `round_stake` and `net`; bet adds `spend_account` |
+| `password_reset_by_admin` | an admin issued a player a temporary password (support-assisted recovery); distinct id is the player, never the admin | `revoked_sessions` |
 
 **Browser (`apps/web`)** — `$pageview`, `$pageleave`, plus everything `useAnalytics().track()`
 already sent: `lobby_view`, `games_lobby_view`, `game_view`, `join_click`,
@@ -92,6 +93,15 @@ Failure and timing events (added with the retention program, 2026-09-08):
 
 `describeFailure()` in `apps/web/utils/http-failure.ts` produces `code` / `status` / `timeout`
 for all of them, so a failure reason means the same thing on every event.
+
+Password recovery (admin-assisted reset, 2026-09-15). Read with the server's
+`password_reset_by_admin`: reset → `user_logged_in` → `password_changed` is the recovery funnel.
+
+| event | when | properties |
+|---|---|---|
+| `forgot_password_opened` | the login page's "Forgot password?" panel opened | none |
+| `password_changed` | the set-password page saved a new password | `forced` (true when support had reset it) |
+| `password_change_failed` | the set-password page could not save | `forced`, `reason` (`current_password_incorrect`, `password_unchanged`, or a `describeFailure` code), `status` |
 
 Two session-health events come from the auth store:
 
