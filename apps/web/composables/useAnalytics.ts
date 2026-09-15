@@ -30,6 +30,8 @@ const ALLOWED = new Set([
     'deposit_checkout_failed',
     'provider_launch_failed',
     'provider_game_loaded',
+    'provider_game_load_timeout',
+    'provider_game_retry',
     // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.
     // A name missing from either list is dropped by the /events sink (PostHog
     // still gets it).

@@ -22,6 +22,8 @@ export const ALLOWED_EVENTS = [
     'deposit_checkout_failed',
     'provider_launch_failed',
     'provider_game_loaded',
+    'provider_game_load_timeout',
+    'provider_game_retry',
     // Which lobby surface sends players into the fight markets — the hero slide
     // or the lobby card. Worth separating: it is the only way to tell whether
     // the banner is doing the work or the tab is.
