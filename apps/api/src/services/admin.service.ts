@@ -377,10 +377,20 @@ export class AdminService {
         if (!rejectionReason) {
             throw Object.assign(new Error('Choose a rejection reason'), { statusCode: 400 })
         }
-        const transaction = await prisma.transaction.update({
-            where: { id: transactionId },
+        // Conditional on PENDING_REVIEW, like the withdrawal approval claim above.
+        // The status check at the top of this path is only a read: an
+        // approveDeposit committing between that read and this write used to be
+        // overwritten, leaving a credited wallet behind a REJECTED row and a
+        // player told their deposit failed. approveDeposit holds the row lock, so
+        // this update waits for it and then matches nothing.
+        const claim = await prisma.transaction.updateMany({
+            where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
             data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId, rejectionReason },
         })
+        if (claim.count === 0) {
+            throw new Error('Transaction is not pending review')
+        }
+        const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } })
 
         // `existing.note` is the method code initiateDeposit stored; the update
         // above just replaced it with the reviewer's note, which never leaves.
