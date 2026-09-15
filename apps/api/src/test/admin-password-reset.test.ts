@@ -181,6 +181,9 @@ describe('POST /admin/users/:id/reset-password', () => {
         const row = await prisma.user.findUnique({ where: { id: player.id } })
         expect(row?.passwordHash).toBe(`hashed:${body.temporaryPassword}`)
         expect(row?.mustChangePassword).toBe(true)
+        // Starts the withdrawal hold (WalletService.requestWithdrawal).
+        expect(row?.passwordResetAt).toBeInstanceOf(Date)
+        expect(Date.now() - row!.passwordResetAt!.getTime()).toBeLessThan(60_000)
         await app.close()
     })
 
@@ -206,6 +209,7 @@ describe('POST /admin/users/:id/reset-password', () => {
         const row = await prisma.user.findUnique({ where: { id: player.id } })
         expect(row?.passwordHash).toBe('hashed:original-pass')
         expect(row?.mustChangePassword).toBe(false)
+        expect(row?.passwordResetAt).toBeNull()
         expect(await prisma.auditLog.count({ where: { action: 'user.password_reset' } })).toBe(0)
         await app.close()
     })
@@ -422,6 +426,8 @@ describe('POST /auth/change-password after a reset', () => {
         const row = await prisma.user.findUnique({ where: { id: player.id } })
         expect(row?.mustChangePassword).toBe(false)
         expect(row?.passwordHash).toBe('hashed:chosen-by-player')
+        // The withdrawal hold outlasts the password change.
+        expect(row?.passwordResetAt).toBeInstanceOf(Date)
 
         // The session that signed in with the temporary password is retired;
         // the one handed back by this call is the device's session now.

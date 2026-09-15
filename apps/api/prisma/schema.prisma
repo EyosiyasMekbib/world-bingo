@@ -17,7 +17,12 @@ model User {
   /// (AuthService.adminResetPassword); the web app then keeps the player on the
   /// set-password page. Cleared by AuthService.changePassword.
   mustChangePassword       Boolean                   @default(false)
-  telegramId               String?                   @unique
+  /// When support last reset this password. Unlike mustChangePassword it is
+  /// never cleared: WalletService.requestWithdrawal holds withdrawals for
+  /// WITHDRAWAL_HOLD_AFTER_RESET_MS after it, so a caller who talked support
+  /// into a reset cannot change the password and cash out straight away.
+  passwordResetAt          DateTime?
+  telegramId              String?                   @unique
   telegramUsername         String?
   firstName                String?
   lastName                 String?

@@ -383,7 +383,8 @@ export class AuthService {
      * Support-assisted recovery. Replaces a player's password with a temporary
      * one that support reads out, signs the player out on every device, and
      * flags the account so the web app makes them choose their own at the next
-     * sign-in.
+     * sign-in. The reset time starts the withdrawal hold in
+     * WalletService.requestWithdrawal.
      *
      * Authorising the actor is the route's job (admin and super-admin only —
      * see routes/admin/index.ts). The temporary password goes back to that
@@ -429,7 +430,7 @@ export class AuthService {
             // between the check above and this update cannot slip through.
             const { count: updated } = await tx.user.updateMany({
                 where: { id: userId, role: 'PLAYER' },
-                data: { passwordHash, mustChangePassword: true },
+                data: { passwordHash, mustChangePassword: true, passwordResetAt: new Date() },
             })
             if (updated === 0) {
                 throw new PasswordError(403, 'reset_not_allowed', 'Only player accounts can have their password reset')
