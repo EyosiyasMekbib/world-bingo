@@ -175,6 +175,8 @@ onMounted(async () => {
 onUnmounted(() => {
   observer?.disconnect()
 })
+
+const onPlayTap = useTapToPlay()
 </script>
 
 <template>
@@ -262,6 +264,7 @@ onUnmounted(() => {
             :key="g.gameCode"
             :to="`/play/${launchProviderFor(g, providerStore.activeProviderCode)}/${g.gameCode}`"
             class="pg-card"
+            @click="onPlayTap(`/play/${launchProviderFor(g, providerStore.activeProviderCode)}/${g.gameCode}`)"
           >
             <div class="pg-thumb">
               <img

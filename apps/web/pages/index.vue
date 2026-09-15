@@ -438,6 +438,7 @@ function bingoToCard(g: Game): LobbyCard {
 // Which games lead the grid is curated in the admin panel (Featured Games) and
 // applied by the API, so the order here is whatever the API returned.
 
+const onPlayTap = useTapToPlay()
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
     key: (g.providerCode ?? providerStore.activeProviderCode) + '-' + g.gameCode,
@@ -945,7 +946,8 @@ onUnmounted(() => {
       <div v-else class="game-grid">
         <template v-for="card in gridGames" :key="card.key">
           <!-- Provider game → link -->
-          <NuxtLink v-if="card.to" :to="card.to" class="game-card">
+          <!-- The favourite star stops propagation, so a star tap is never recorded. -->
+          <NuxtLink v-if="card.to" :to="card.to" class="game-card" @click="onPlayTap(card.to)">
             <div class="gc-thumb">
               <div class="gc-letter">{{ card.letter }}</div>
               <img

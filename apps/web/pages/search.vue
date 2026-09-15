@@ -56,6 +56,7 @@ function clearSearch() {
   navigateTo('/search')
 }
 
+const onPlayTap = useTapToPlay()
 function resultToHref(result: SearchResult) {
   return result.kind === 'bingo'
     ? '/games/bingo'
@@ -214,6 +215,7 @@ useHead({
               :key="result.kind === 'bingo' ? result.id : `${result.providerCode}:${result.gameCode}`"
               :to="resultToHref(result)"
               class="pg-card"
+              @click="onPlayTap(resultToHref(result))"
             >
               <div class="pg-thumb">
                 <img

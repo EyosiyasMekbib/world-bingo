@@ -211,6 +211,7 @@ const displayCards = computed<Card[]>(() => {
 // ── Launch / join ─────────────────────────────────────────────────────────
 const showAuthPrompt = ref(false)
 
+const onPlayTap = useTapToPlay()
 function playCard(card: Card) {
   if (card.kind === 'bingo') return joinBingo(card.raw.id)
   return launchGame(card.raw as ProviderGame)
@@ -220,7 +221,9 @@ function launchGame(game: ProviderGame) {
   // Through the play page like every other lobby surface: it owns the loading
   // overlay, retry and the provider_game_* events. The old full-page jump to the
   // provider URL sent none of them, so these launches never counted as loaded.
-  return navigateTo(`/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`)
+  const href = `/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`
+  onPlayTap(href)
+  return navigateTo(href)
 }
 function joinBingo(gameId: string) {
   if (!auth.isAuthenticated) { showAuthPrompt.value = true; return }

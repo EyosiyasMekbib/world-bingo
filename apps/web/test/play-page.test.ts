@@ -36,12 +36,29 @@ describe('/games tab', () => {
   it('launches through the play page, not a full-page jump to the provider', () => {
     expect(games).not.toContain('window.location.href = url')
     expect(games).toContain(
-      'navigateTo(`/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`)',
+      'const href = `/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`',
     )
+    expect(games).toContain('onPlayTap(href)')
+    expect(games).toContain('return navigateTo(href)')
   })
 
   it('no longer carries the store launch action', () => {
     expect(store).not.toContain('launchGame(')
     expect(store).not.toMatch(/\blaunching\b/)
+  })
+})
+
+describe('tap-to-page measurement', () => {
+  it.each([
+    ['lobby', 'index.vue'],
+    ['category', 'games/[category].vue'],
+    ['search', 'search.vue'],
+    ['games tab', 'games/index.vue'],
+  ])('%s marks the tap on its way into /play', (_, rel) => {
+    expect(readFileSync(join(PAGES, rel), 'utf8')).toContain('onPlayTap(')
+  })
+
+  it('the play page reports msFromTap on provider_game_view', () => {
+    expect(play).toMatch(/track\('provider_game_view', \{[^}]*msFromTap/)
   })
 })

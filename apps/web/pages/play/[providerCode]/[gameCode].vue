@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
 import { describeFailure } from '~/utils/http-failure'
+import { takeTap } from '~/utils/launch-handoff'
 import {
   crossedReady,
   crossedTimeout,
@@ -137,7 +138,14 @@ onMounted(() => {
     router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
     return
   }
-  track('provider_game_view', { providerCode, gameCode })
+  // null for deep links, reloads and back navigation: only a fresh lobby tap
+  // for this same game counts.
+  const tappedAt = takeTap({ providerCode, gameCode }, performance.now())
+  track('provider_game_view', {
+    providerCode,
+    gameCode,
+    msFromTap: tappedAt === null ? null : Math.round(performance.now() - tappedAt),
+  })
   now.value = performance.now()
   load.value = initialLoadState(now.value)
   startTicker()
