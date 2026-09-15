@@ -183,6 +183,10 @@
                         </div>
                       </div>
 
+                      <ul v-if="showMissing && missing.length" class="wb-hint wb-hint--error deposit-missing" role="alert">
+                        <li v-for="field in missing" :key="field">{{ MISSING_HINTS[field] }}</li>
+                      </ul>
+
                       <div v-if="error" class="wb-notice wb-notice--error">
                         <div class="wb-notice__icon">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -208,9 +212,11 @@
                         </div>
                       </div>
 
+                      <!-- Never disabled for an incomplete form: a tap explains
+                           what is missing instead of doing nothing. -->
                       <button
                         class="wb-btn wb-btn--primary method-card__cta"
-                        :disabled="loading || !canSubmit"
+                        :disabled="loading"
                         @click="submit"
                       >
                         <span v-if="loading">Uploading… {{ uploadProgress }}%</span>
@@ -245,7 +251,13 @@
 </template>
 
 <script setup lang="ts">
-import { amountBucket } from '~/utils/deposit'
+import {
+  amountBucket,
+  missingDepositFields,
+  recallSenderName,
+  rememberSenderName,
+  type DepositFormField,
+} from '~/utils/deposit'
 import { describeFailure } from '~/utils/http-failure'
 import { useAuthStore } from '~/store/auth'
 import { usePromotionsStore } from '~/store/promotions'
@@ -399,14 +411,30 @@ const errorHint = computed(() => {
   return ''
 })
 
-const canSubmit = computed(() =>
-  !!selectedMethod.value &&
-  form.amount >= MIN_DEPOSIT &&
-  form.transactionId.trim().length >= 5 &&
-  form.senderName.trim().length >= 1 &&
-  form.senderAccount.trim().length >= 10 &&
-  selectedFile.value !== null,
+const missing = computed<DepositFormField[]>(() =>
+  missingDepositFields(form, selectedFile.value !== null, MIN_DEPOSIT),
 )
+const canSubmit = computed(() => !!selectedMethod.value && missing.value.length === 0)
+// Shown only after the player taps Submit, never while they are still typing.
+const showMissing = ref(false)
+const MISSING_HINTS: Record<DepositFormField, string> = {
+  amount: `Enter at least ${MIN_DEPOSIT} ETB.`,
+  transactionId: 'Enter the transaction ID from your payment SMS.',
+  senderName: 'Enter the name on the account you paid from.',
+  senderAccount: 'Enter the phone or account number you paid from.',
+  receipt: 'Attach a screenshot of the receipt.',
+}
+
+// Most players pay from the number they registered with and type the same
+// name every time. Prefill both on a manual card; the fields stay editable.
+// The phone lives only in the input (replay masks inputs) and never in an event.
+function prefillPayer(code: string | null) {
+  const method = depositMethods.value.find((m) => m.code === code)
+  if (!method || method.hostedCheckout) return
+  if (!form.senderAccount && auth.user?.phone) form.senderAccount = auth.user.phone
+  if (!form.senderName) form.senderName = recallSenderName()
+}
+watch(openMethod, prefillPayer)
 
 const fetchMethods = async () => {
   loadingMethods.value = true
@@ -415,6 +443,9 @@ const fetchMethods = async () => {
     depositMethods.value = Array.isArray(data) ? data : []
     if (depositMethods.value.length > 0) {
       openMethod.value = depositMethods.value[0].code
+      // The openMethod watcher does not fire when the modal reopens onto the
+      // same first card, so prefill here too. Idempotent: never overwrites.
+      prefillPayer(openMethod.value)
     }
   } catch {
     depositMethods.value = []
@@ -468,7 +499,15 @@ function setFile(file: File) {
 }
 
 async function submit() {
-  if (!canSubmit.value || !selectedFile.value) return
+  if (!canSubmit.value || !selectedFile.value) {
+    showMissing.value = true
+    // Field names only — never what the player typed.
+    track('deposit_submit_blocked', {
+      paymentMethod: selectedMethod.value?.code ?? null,
+      missing: [...missing.value],
+    })
+    return
+  }
   loading.value = true
   error.value = ''
   success.value = false
@@ -491,6 +530,7 @@ async function submit() {
     })
 
     success.value = true
+    rememberSenderName(form.senderName)
     uploadProgress.value = 100
     emit('deposited')
     setTimeout(() => {
@@ -498,6 +538,12 @@ async function submit() {
       resetForm()
     }, 2000)
   } catch (e: any) {
+    const failure = describeFailure(e)
+    track('deposit_submit_failed', {
+      paymentMethod: selectedMethod.value?.code ?? null,
+      code: failure.code,
+      status: failure.status,
+    })
     const status = e?.status ?? e?.statusCode ?? e?.response?.status
     const serverMsg = e?.data?.error ?? e?.data?.message ?? e?.message
     if (status === 409) {
@@ -526,6 +572,7 @@ function resetForm() {
   success.value = false
   error.value = ''
   fieldError.value = ''
+  showMissing.value = false
   openMethod.value = depositMethods.value[0]?.code ?? null
 }
 </script>
@@ -565,6 +612,7 @@ function resetForm() {
   color: var(--text-primary);
 }
 .method-card__cta { width: 100%; justify-content: center; }
+.deposit-missing { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
 .method-card__hint { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
 .chips {
