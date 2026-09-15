@@ -28,3 +28,20 @@ describe('play page', () => {
     expect(play).toContain('attempt !== load.value.attempt')
   })
 })
+
+describe('/games tab', () => {
+  const games = readFileSync(join(PAGES, 'games', 'index.vue'), 'utf8')
+  const store = readFileSync(join(__dirname, '..', 'store', 'provider-games.ts'), 'utf8')
+
+  it('launches through the play page, not a full-page jump to the provider', () => {
+    expect(games).not.toContain('window.location.href = url')
+    expect(games).toContain(
+      'navigateTo(`/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`)',
+    )
+  })
+
+  it('no longer carries the store launch action', () => {
+    expect(store).not.toContain('launchGame(')
+    expect(store).not.toMatch(/\blaunching\b/)
+  })
+})
