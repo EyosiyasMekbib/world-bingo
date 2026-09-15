@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { PatternType, PaymentStatus, TournamentStatus } from '../enums'
+import type { User } from '../entities'
 
 export const LoginSchema = z.object({
     identifier: z.string().min(2).max(32).describe('Username or phone number'),
@@ -80,6 +81,22 @@ export type RegisterDto = z.infer<typeof RegisterSchema>
 export type RefreshTokenDto = z.infer<typeof RefreshTokenSchema>
 export type LogoutDto = z.infer<typeof LogoutSchema>
 export type ChangePasswordDto = z.infer<typeof ChangePasswordSchema>
+
+/**
+ * POST /auth/change-password. Every other session is revoked; the tokens here
+ * are this device's fresh session, and `user.mustChangePassword` is false.
+ */
+export interface ChangePasswordResponse {
+    message: string
+    user: User
+    accessToken: string
+    refreshToken: string
+}
+
+/** POST /admin/users/:id/reset-password. Shown to the admin once, never stored. */
+export interface AdminResetPasswordResponse {
+    temporaryPassword: string
+}
 export type CreateGameDto = z.infer<typeof CreateGameSchema>
 export type DepositDto = z.infer<typeof DepositSchema>
 export type WithdrawalDto = z.infer<typeof WithdrawalSchema>
