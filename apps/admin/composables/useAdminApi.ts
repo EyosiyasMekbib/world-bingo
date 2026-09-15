@@ -445,6 +445,10 @@ export const useAdminApi = () => {
         getPlayer: (id: string) => apiFetch<any>(`/admin/players/${id}`),
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
+        // Support-assisted reset. ADMIN-only: a clerk gets 403. The temporary
+        // password comes back exactly once — show it, never keep it.
+        resetPlayerPassword: (id: string) =>
+            apiFetch<{ temporaryPassword: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' }),
 
         // ── Account status ────────────────────────────────────────────────
         // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and

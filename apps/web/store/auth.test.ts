@@ -172,6 +172,49 @@ describe('refresh — what ends a session', () => {
   })
 })
 
+describe('changePassword', () => {
+  it('adopts the fresh session and the cleared flag the server returns', async () => {
+    store.user = { ...store.user, mustChangePassword: true } as any
+    const fresh = jwt(900)
+    $fetch.mockResolvedValue({
+      message: 'Password changed successfully',
+      user: { ...store.user, mustChangePassword: false },
+      accessToken: fresh,
+      refreshToken: 'rt-after-change',
+    })
+
+    await store.changePassword({ currentPassword: 'TEMP2345', newPassword: 'mine-now' })
+
+    expect($fetch).toHaveBeenCalledWith(
+      '/api/auth/change-password',
+      expect.objectContaining({ method: 'POST', body: { currentPassword: 'TEMP2345', newPassword: 'mine-now' } }),
+    )
+    expect(store.user?.mustChangePassword).toBe(false)
+    expect(store.accessToken).toBe(fresh)
+    expect(store.refreshToken).toBe('rt-after-change')
+  })
+
+  it('still clears the flag locally when the response carries no user', async () => {
+    store.user = { ...store.user, mustChangePassword: true } as any
+    $fetch.mockResolvedValue({ message: 'Password changed successfully' })
+
+    await store.changePassword({ currentPassword: 'TEMP2345', newPassword: 'mine-now' })
+
+    expect(store.user?.mustChangePassword).toBe(false)
+    expect(store.refreshToken).toBe('rt-1')
+  })
+
+  it('leaves the flag set when the server refuses the change', async () => {
+    store.user = { ...store.user, mustChangePassword: true } as any
+    $fetch.mockRejectedValue(httpError(400, 'password_unchanged'))
+
+    await expect(
+      store.changePassword({ currentPassword: 'TEMP2345', newPassword: 'TEMP2345' }),
+    ).rejects.toBeTruthy()
+    expect(store.user?.mustChangePassword).toBe(true)
+  })
+})
+
 describe('ensureFreshToken', () => {
   it('refreshes when inside the margin', async () => {
     store.accessToken = jwt(Math.floor(TOKEN_REFRESH_MARGIN_MS / 1000) - 30)

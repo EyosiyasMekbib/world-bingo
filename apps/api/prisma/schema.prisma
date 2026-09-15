@@ -13,6 +13,10 @@ model User {
   username                 String?                   @unique
   phone                    String?                   @unique
   passwordHash             String?
+  /// Set when support resets a forgotten password to a temporary one
+  /// (AuthService.adminResetPassword); the web app then keeps the player on the
+  /// set-password page. Cleared by AuthService.changePassword.
+  mustChangePassword       Boolean                   @default(false)
   telegramId               String?                   @unique
   telegramUsername         String?
   firstName                String?

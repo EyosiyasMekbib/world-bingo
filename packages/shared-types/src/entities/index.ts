@@ -13,6 +13,9 @@ export interface User {
     firstName?: string
     lastName?: string
     photoUrl?: string
+    /** Set when support reset the password to a temporary one. The web app
+     *  keeps the player on its set-password page until this clears. */
+    mustChangePassword?: boolean
     botTotalSpent?: number
     createdAt: Date
     updatedAt: Date

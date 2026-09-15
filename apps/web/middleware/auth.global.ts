@@ -1,7 +1,18 @@
 import { useAuthStore } from '~/store/auth'
+import { passwordChangeRedirect } from '~/utils/password-change'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
+
+  // Ahead of the public-page return below: a player signed in with a
+  // temporary password from support must choose their own before doing
+  // anything else, on public pages too. /auth/* stays reachable.
+  const forced = passwordChangeRedirect({
+    path: to.path,
+    user: auth.user,
+    isAuthenticated: auth.isAuthenticated,
+  })
+  if (forced) return navigateTo(forced)
 
   // Public routes that don't require auth (exact match)
   const publicPaths = ['/auth/login', '/auth/register', '/', '/tournaments', '/games', '/promotions']

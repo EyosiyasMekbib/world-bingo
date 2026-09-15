@@ -25,7 +25,42 @@
     "registerBtn": "Register",
     "registering": "Creating account…",
     "loginFailed": "Invalid credentials. Please try again.",
-    "registerFailed": "Registration failed. Please try again."
+    "registerFailed": "Registration failed. Please try again.",
+    "forgotPassword": {
+      "link": "Forgot password?",
+      "title": "Forgot your password?",
+      "body": "Our support team can reset it for you. Contact them from the phone number registered on your account, or have the transaction ID of a recent deposit ready so they can confirm it's you.",
+      "afterReset": "Support will give you a temporary password. Sign in with it and you'll be asked to choose a new one straight away.",
+      "callSupport": "Call support",
+      "telegramSupport": "Message support on Telegram",
+      "hours": "Support hours: {hours}",
+      "noContact": "Contact our support team and ask for a password reset.",
+      "doNotRegister": "Please don't create a new account — your balance and history stay on this one."
+    },
+    "setPassword": {
+      "title": "Set a new password",
+      "subtitle": "Support reset your password. Choose a new one to keep playing.",
+      "subtitleVoluntary": "Change the password you use to sign in.",
+      "current": "Temporary password",
+      "currentVoluntary": "Current password",
+      "currentPlaceholder": "The password you signed in with",
+      "new": "New password",
+      "newPlaceholder": "Min. 6 characters",
+      "confirm": "Confirm new password",
+      "confirmPlaceholder": "Type it again",
+      "showPasswords": "Show passwords",
+      "submit": "Save password",
+      "saving": "Saving…",
+      "signOut": "Sign out",
+      "errors": {
+        "currentRequired": "Enter the password you signed in with.",
+        "newShort": "Your new password must be at least 6 characters.",
+        "mismatch": "The new passwords don't match.",
+        "sameAsCurrent": "Choose a password different from the one you signed in with.",
+        "currentIncorrect": "That password is not correct.",
+        "failed": "Could not save your password. Please try again."
+      }
+    }
   },
   "lobby": {
     "title": "Game Lobby",
