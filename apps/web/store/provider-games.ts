@@ -41,7 +41,6 @@ interface ProviderGamesState {
   pageSize: number
   total: number
   loading: boolean
-  launching: string | null // gameCode being launched
   error: string | null
 }
 
@@ -57,7 +56,6 @@ export const useProviderGamesStore = defineStore('provider-games', {
     pageSize: 20,
     total: 0,
     loading: false,
-    launching: null,
     error: null,
   }),
 
@@ -190,28 +188,6 @@ export const useProviderGamesStore = defineStore('provider-games', {
       if (!this.hasMore || this.loading) return
       this.page++
       await this.fetchGames()
-    },
-
-    async launchGame(providerCode: string, gameCode: string): Promise<string | null> {
-      this.launching = gameCode
-      const auth = (await import('~/store/auth')).useAuthStore()
-      try {
-        const origin = typeof window !== 'undefined' ? window.location.origin : ''
-        const lobbyUrl = `${origin}/`
-        const result = await auth.apiFetch<{ gameUrl: string; token: string }>(
-          `/providers/${providerCode}/games/${gameCode}/launch`,
-          {
-            method: 'POST',
-            body: { lobbyUrl, language: 'en', currency: 'ETB' },
-          },
-        )
-        return result.gameUrl
-      } catch (e: any) {
-        this.error = e?.message ?? 'Failed to launch game'
-        return null
-      } finally {
-        this.launching = null
-      }
     },
 
     setCategory(category: string) {

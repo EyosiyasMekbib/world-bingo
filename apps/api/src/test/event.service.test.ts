@@ -67,4 +67,9 @@ describe('ALLOWED_EVENTS', () => {
         expect(ALLOWED_EVENTS).toContain('identify')
         expect(ALLOWED_EVENTS).toContain('deposit_submitted')
     })
+
+    it('records the play page load timeout and retry events', () => {
+        expect(ALLOWED_EVENTS).toContain('provider_game_load_timeout')
+        expect(ALLOWED_EVENTS).toContain('provider_game_retry')
+    })
 })

@@ -79,6 +79,8 @@ already sent: `lobby_view`, `games_lobby_view`, `game_view`, `join_click`,
 `provider_game_view`, `provider_session_ended`, `hero_predictions_click`,
 `lobby_predictions_click`. Super properties on all of them: `brand`, `locale`, `is_pwa`.
 
+`provider_game_view` also carries `msFromTap`: milliseconds from the lobby tap to the play page, `null` for deep links, reloads and back navigation.
+
 Failure and timing events (added with the retention program, 2026-09-08):
 
 | event | when | properties |
@@ -88,7 +90,9 @@ Failure and timing events (added with the retention program, 2026-09-08):
 | `deposit_checkout_redirect` | ZareCash checkout created, browser about to leave | `paymentMethod`, `amountBucket`, `ms` (checkout call round trip) |
 | `deposit_checkout_failed` | checkout call failed or timed out (15 s) | `paymentMethod`, `amountBucket`, `ms`, `code`, `status`, `timeout` |
 | `provider_launch_failed` | browser side of a failed launch | `providerCode`, `gameCode`, `code`, `status` |
-| `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `msToLoad` since the launch call |
+| `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `attempt`, `msToLoad` and `msToUrl`, both measured from the start of this attempt's launch call |
+| `provider_game_load_timeout` | a load attempt passed 20 s without the frame loading; once per attempt | `providerCode`, `gameCode`, `attempt`, `stage` (`launch` = no launch URL yet, `frame` = URL arrived, frame not loaded), `msToUrl` |
+| `provider_game_retry` | the player tapped "Try again" on the play page | `providerCode`, `gameCode`, `attempt` (the new attempt number), `from` (the phase when tapped) |
 
 `describeFailure()` in `apps/web/utils/http-failure.ts` produces `code` / `status` / `timeout`
 for all of them, so a failure reason means the same thing on every event.
