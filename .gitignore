@@ -53,3 +53,6 @@ apps/api/uploads/
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Generated design-canvas bundles (re-seeded from docs/design/**; ~2.6MB of editor payload)
+/bonus-cashback-redesign.html

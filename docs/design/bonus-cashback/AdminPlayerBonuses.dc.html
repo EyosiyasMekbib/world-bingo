@@ -1,0 +1,276 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0a1628;
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #f5a623; text-decoration: none; }
+    a:hover { color: #c8851a; }
+    .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
+    .th {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: rgba(255,255,255,0.4); white-space: nowrap;
+    }
+    .td { padding: 12px 16px; vertical-align: middle; font-size: 13px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .tag {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      display: inline-block; padding: 2px 8px; border-radius: 6px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+      text-transform: uppercase; border: 1px solid transparent; white-space: nowrap;
+    }
+    .fl { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.55); margin-bottom: 6px; display: block; }
+    .inp {
+      width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px;
+      background: #122a4e; border: 1px solid rgba(255,255,255,0.12);
+      font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #fff;
+    }
+    .chip {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      padding: 6px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 700;
+      letter-spacing: 0.03em; background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.65);
+      white-space: nowrap;
+    }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; min-height: 1010px; background: #0a1628; padding: 26px 28px 30px; display: flex; flex-direction: column; gap: 18px">
+
+  <!-- breadcrumb -->
+  <div style="display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: rgba(255,255,255,0.4)">
+    <span>Players</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 12px; height: 12px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span style="color: rgba(255,255,255,0.75)">dawit_a</span>
+  </div>
+
+  <!-- player header -->
+  <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 24px">
+    <div style="display: flex; align-items: center; gap: 14px">
+      <div class="lbl" style="width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(245,166,35,0.13); color: var(--accent); font-size: 18px; font-weight: 700">DA</div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span class="lbl" style="font-size: 19px; font-weight: 700; color: #fff">dawit_a</span>
+          <span class="tag" style="color: #34d399; background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.26)">Active</span>
+        </div>
+        <span style="font-size: 12.5px; color: rgba(255,255,255,0.45)">+251&nbsp;9&bull;&bull;&nbsp;&bull;&bull;&bull;&nbsp;412 &middot; joined Nov 4, 2025 &middot; 214 games</span>
+      </div>
+    </div>
+
+    <div style="flex-shrink: 0; display: flex; gap: 26px">
+      <div style="display: flex; flex-direction: column; gap: 3px; align-items: flex-end">
+        <span class="lbl" style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.35)">Withdrawable</span>
+        <span class="lbl" style="font-size: 18px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums">1,190.00 <span style="font-size: 11px; color: rgba(255,255,255,0.35)">ETB</span></span>
+      </div>
+      <div style="width: 1px; background: rgba(255,255,255,0.1)"></div>
+      <div style="display: flex; flex-direction: column; gap: 3px; align-items: flex-end">
+        <span class="lbl" style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.35)">Bonus</span>
+        <span class="lbl" style="font-size: 18px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums">50.00 <span style="font-size: 11px; color: rgba(255,255,255,0.35)">ETB</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- tabs -->
+  <div style="display: flex; gap: 4px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.09)">
+    <div class="lbl" style="padding: 9px 14px; font-size: 13.5px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Overview</div>
+    <div class="lbl" style="padding: 9px 14px; font-size: 13.5px; font-weight: 700; letter-spacing: 0.03em; color: var(--accent); border-bottom: 2px solid var(--accent); margin-bottom: -1px">Bonuses</div>
+    <div class="lbl" style="padding: 9px 14px; font-size: 13.5px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Transactions</div>
+    <div class="lbl" style="padding: 9px 14px; font-size: 13.5px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Deposits</div>
+    <div class="lbl" style="padding: 9px 14px; font-size: 13.5px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Support</div>
+  </div>
+
+  <!-- per-player reconciliation -->
+  <div style="display: flex; align-items: center; gap: 22px; padding: 12px 16px; border-radius: 12px; background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12)">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" style="width: 17px; height: 17px"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.2 2.4 2.4 4.8-4.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="font-size: 13px; color: rgba(255,255,255,0.7)">Wallet <strong style="color: #fff; font-weight: 600; font-variant-numeric: tabular-nums">50.00</strong> matches active lots <strong style="color: #fff; font-weight: 600; font-variant-numeric: tabular-nums">50.00</strong></span>
+    </div>
+    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.12)"></div>
+    <span style="font-size: 13px; color: rgba(255,255,255,0.7)">Lifetime bonus received <strong style="color: #fff; font-weight: 600; font-variant-numeric: tabular-nums">640.00 ETB</strong></span>
+    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.12)"></div>
+    <span style="font-size: 13px; color: rgba(255,255,255,0.7)">Expired unused <strong style="color: #f87171; font-weight: 600; font-variant-numeric: tabular-nums">120.00 ETB</strong></span>
+  </div>
+
+  <!-- two columns: active lots | manual grant -->
+  <div style="display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start">
+
+    <!-- active lots -->
+    <div style="display: flex; flex-direction: column; gap: 11px">
+      <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: #fff">Active bonus lots</span>
+      <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; overflow: hidden">
+        <table style="width: 100%; border-collapse: collapse">
+          <thead>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.12)">
+              <th class="th">Source</th>
+              <th class="th" style="text-align: right">Granted</th>
+              <th class="th" style="text-align: right">Remaining</th>
+              <th class="th">Expires</th>
+              <th class="th"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06)">
+              <td class="td">
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(6,182,212,0.14); color: #22d3ee">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 15px; height: 15px"><path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 1px">
+                    <span style="font-size: 13px; font-weight: 500; color: #fff">Weekend Cashback</span>
+                    <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Cashback &middot; today 08:00</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td num" style="color: rgba(255,255,255,0.7)">30.00</td>
+              <td class="td num" style="color: #fff">30.00</td>
+              <td class="td">
+                <div style="display: flex; align-items: center; gap: 7px">
+                  <span class="tag" style="color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28)">3h 12m</span>
+                </div>
+              </td>
+              <td class="td" style="text-align: right"><span class="lbl" style="font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255,255,255,0.5)">Extend</span></td>
+            </tr>
+            <tr>
+              <td class="td">
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(59,130,246,0.14); color: #60a5fa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 15px; height: 15px"><rect x="3.5" y="5" width="17" height="15" rx="2.2"/><path d="M8 3.5V7M16 3.5V7M3.5 10.5h17" stroke-linecap="round"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 1px">
+                    <span style="font-size: 13px; font-weight: 500; color: #fff">Daily 500 Bonus</span>
+                    <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Deposit rule &middot; today 06:12</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td num" style="color: rgba(255,255,255,0.7)">20.00</td>
+              <td class="td num" style="color: #fff">20.00</td>
+              <td class="td"><span class="tag" style="color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.12)">21h</span></td>
+              <td class="td" style="text-align: right"><span class="lbl" style="font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255,255,255,0.5)">Extend</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- history -->
+      <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: #fff; margin-top: 8px">Bonus history</span>
+      <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; overflow: hidden">
+        <table style="width: 100%; border-collapse: collapse">
+          <thead>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.12)">
+              <th class="th">Source</th>
+              <th class="th" style="text-align: right">Amount</th>
+              <th class="th">Outcome</th>
+              <th class="th">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06)">
+              <td class="td" style="color: rgba(255,255,255,0.85)">Daily 500 Bonus</td>
+              <td class="td num" style="color: rgba(255,255,255,0.85)">20.00</td>
+              <td class="td"><span class="tag" style="color: #34d399; background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.26)">Spent in full</span></td>
+              <td class="td" style="color: rgba(255,255,255,0.5)">Mar 6</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06)">
+              <td class="td" style="color: rgba(255,255,255,0.85)">Weekend Cashback</td>
+              <td class="td num" style="color: rgba(255,255,255,0.85)">45.00</td>
+              <td class="td"><span class="tag" style="color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28)">Expired &middot; 45.00 unused</span></td>
+              <td class="td" style="color: rgba(255,255,255,0.5)">Mar 2</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06)">
+              <td class="td" style="color: rgba(255,255,255,0.85)">Goodwill &mdash; failed deposit</td>
+              <td class="td num" style="color: rgba(255,255,255,0.85)">50.00</td>
+              <td class="td"><span class="tag" style="color: #34d399; background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.26)">Spent in full</span></td>
+              <td class="td" style="color: rgba(255,255,255,0.5)">Feb 24</td>
+            </tr>
+            <tr>
+              <td class="td" style="color: rgba(255,255,255,0.85)">Welcome Bonus</td>
+              <td class="td num" style="color: rgba(255,255,255,0.85)">50.00</td>
+              <td class="td"><span class="tag" style="color: #34d399; background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.26)">Spent in full</span></td>
+              <td class="td" style="color: rgba(255,255,255,0.5)">Nov 4</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- manual grant -->
+    <div style="display: flex; flex-direction: column; gap: 11px">
+      <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: #fff">Grant bonus manually</span>
+
+      <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px">
+
+        <div>
+          <span class="fl">Amount (ETB)</span>
+          <div class="inp" style="display: flex; align-items: center; justify-content: space-between">
+            <span style="font-variant-numeric: tabular-nums">50.00</span>
+            <span style="font-size: 12px; color: rgba(255,255,255,0.35)">ETB</span>
+          </div>
+        </div>
+
+        <div>
+          <span class="fl">Expires after</span>
+          <div style="display: flex; gap: 7px; flex-wrap: wrap">
+            <div class="chip">24h</div>
+            <div class="chip" style="background: rgba(245,166,35,0.13); border-color: rgba(245,166,35,0.4); color: var(--accent)">48h</div>
+            <div class="chip">7 days</div>
+            <div class="chip">No expiry</div>
+          </div>
+        </div>
+
+        <div>
+          <span class="fl">Reason</span>
+          <div class="inp" style="display: flex; align-items: center; justify-content: space-between">
+            <span>Goodwill &mdash; support resolution</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2.2" style="width: 14px; height: 14px"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+
+        <div>
+          <span class="fl">Note <span style="color: rgba(255,255,255,0.3)">&middot; required, written to the audit log</span></span>
+          <div class="inp" style="min-height: 56px; color: rgba(255,255,255,0.5); line-height: 1.5">Ticket #4182 &mdash; room crashed mid-game, entry not refunded automatically.</div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border-radius: 10px; background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.22)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.9" style="width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7" stroke-linecap="round"/></svg>
+          <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.72)">Admin only. This grant is recorded against <strong style="color: #fff; font-weight: 600">meron.b</strong> and appears in the player's bonus history immediately.</p>
+        </div>
+
+        <div class="lbl" style="text-align: center; padding: 11px; border-radius: 8px; background: var(--accent); color: #12203a; font-size: 13.5px; font-weight: 700; letter-spacing: 0.03em">Grant 50.00 ETB</div>
+
+        <div style="display: flex; align-items: center; gap: 9px; padding-top: 2px">
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.09)"></div>
+          <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.3)">or</span>
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.09)"></div>
+        </div>
+
+        <div class="lbl" style="text-align: center; padding: 10px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.24); color: #f87171; font-size: 13px; font-weight: 700; letter-spacing: 0.03em">Deduct bonus</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f5a623","options":["#f5a623","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1130,"height":1010}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#f5a623' };
+  }
+}
+</script>
+</body>
+</html>

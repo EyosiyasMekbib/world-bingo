@@ -1,0 +1,231 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #060a14;
+      color: #f1f5f9;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #f59e0b; text-decoration: none; }
+    a:hover { color: #d97706; }
+    .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
+    .dsp { font-family: 'Oswald', system-ui, sans-serif; }
+    .cap {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      font-size: 12px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: rgba(255,255,255,0.42);
+    }
+    .screen {
+      width: 360px; height: 600px; border-radius: 20px; overflow: hidden;
+      position: relative; background: #0a0f1e; border: 1px solid #1e2d4a;
+    }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; min-height: 740px; background: #060a14; padding: 28px 24px; display: flex; gap: 24px; align-items: flex-start">
+
+  <!-- ════════ 1 · TOAST ════════ -->
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <span class="cap">1 &middot; Bonus credited &mdash; toast</span>
+    <div class="screen">
+
+      <!-- lobby behind -->
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px; filter: saturate(0.85)">
+        <div style="height: 128px; border-radius: 14px; background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%); position: relative; overflow: hidden">
+          <div style="position: absolute; right: -30px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%)"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+          <div style="height: 96px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a"></div>
+          <div style="height: 96px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a"></div>
+          <div style="height: 96px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a"></div>
+          <div style="height: 96px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a"></div>
+        </div>
+      </div>
+
+      <!-- the toast -->
+      <div style="position: absolute; left: 12px; right: 12px; top: 14px; display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 14px; background: #131d33; border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); box-shadow: 0 16px 40px rgba(0,0,0,0.55)">
+        <div style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 19px; height: 19px"><path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+            <span class="lbl" style="font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">Cashback paid</span>
+            <span class="lbl" style="font-size: 15px; font-weight: 700; color: #10b981; font-variant-numeric: tabular-nums">+30.00 ETB</span>
+          </div>
+          <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: #94a3b8">10% back on last week's losses. Valid for 24 hours.</p>
+          <span class="lbl" style="font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--accent); padding-top: 2px">View bonuses</span>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2" style="width: 15px; height: 15px; flex-shrink: 0"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+      </div>
+
+      <!-- progress line showing auto-dismiss -->
+      <div style="position: absolute; left: 12px; right: 12px; top: 14px; height: 2px; border-radius: 9999px; overflow: hidden; background: transparent">
+        <div style="width: 62%; height: 100%; background: color-mix(in srgb, var(--accent) 70%, transparent)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ 2 · WELCOME MODAL ════════ -->
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <span class="cap">2 &middot; First deposit &mdash; celebration</span>
+    <div class="screen">
+
+      <!-- dimmed wallet behind -->
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px; opacity: 0.35">
+        <div style="height: 150px; border-radius: 14px; background: #111827; border: 1px solid #1e2d4a"></div>
+        <div style="height: 64px; border-radius: 14px; background: #111827; border: 1px solid #1e2d4a"></div>
+        <div style="height: 140px; border-radius: 14px; background: #111827; border: 1px solid #1e2d4a"></div>
+      </div>
+      <div style="position: absolute; inset: 0; background: rgba(4,7,14,0.72)"></div>
+
+      <!-- modal -->
+      <div style="position: absolute; left: 20px; right: 20px; top: 92px; border-radius: 18px; background: #111827; border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent); overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.6)">
+
+        <!-- crest -->
+        <div style="position: relative; padding: 26px 20px 20px; text-align: center; background: linear-gradient(170deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 72%); overflow: hidden">
+          <div class="lbl" style="position: absolute; left: 50%; top: 4px; transform: translateX(-50%); font-weight: 700; font-size: 104px; line-height: 0.8; color: rgba(255,255,255,0.045); pointer-events: none">+50</div>
+          <div style="position: relative; width: 60px; height: 60px; margin: 0 auto 14px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="width: 28px; height: 28px"><rect x="3" y="8" width="18" height="4" rx="1" stroke-linejoin="round"/><path d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h2 class="dsp" style="position: relative; margin: 0 0 8px; font-size: 24px; font-weight: 700; line-height: 1.15; color: #fff; text-wrap: balance">Welcome bonus unlocked</h2>
+          <p style="position: relative; margin: 0; font-size: 13px; line-height: 1.5; color: #94a3b8; text-wrap: pretty">Your deposit is in, and we've added 50 ETB of bonus play on top.</p>
+        </div>
+
+        <!-- ledger rows -->
+        <div style="padding: 0 20px 4px; display: flex; flex-direction: column; gap: 1px">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.07)">
+            <span style="font-size: 13px; color: #94a3b8">Deposit</span>
+            <span class="lbl" style="font-size: 14px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums">500.00 ETB</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.07)">
+            <span style="font-size: 13px; color: #94a3b8">Welcome bonus</span>
+            <span class="lbl" style="font-size: 14px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums">+50.00 ETB</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.07)">
+            <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: rgba(255,255,255,0.55)">Playable now</span>
+            <span class="lbl" style="font-size: 17px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums">550.00 ETB</span>
+          </div>
+        </div>
+
+        <div style="padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 9px">
+          <div class="lbl" style="text-align: center; padding: 13px; border-radius: 10px; background: var(--accent); color: #000; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 34%, transparent)">Pick a room</div>
+          <div class="lbl" style="text-align: center; padding: 11px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: rgba(255,255,255,0.5)">Later</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ 3 · NOTIFICATION INBOX ════════ -->
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <span class="cap">3 &middot; Inbox &mdash; the bell, finally mounted</span>
+    <div class="screen">
+
+      <!-- header with bell -->
+      <div style="height: 56px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; background: #111827; border-bottom: 1px solid rgba(255,255,255,0.06)">
+        <div style="display: flex; align-items: baseline; gap: 4px">
+          <span class="dsp" style="font-size: 19px; font-weight: 700; color: var(--accent); letter-spacing: 0.5px">ARADA</span>
+          <span class="dsp" style="font-size: 19px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.5px">BINGO</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div class="lbl" style="padding: 6px 11px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); font-size: 13px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums">1,240 <span style="color: var(--accent)">ETB</span></div>
+          <div style="position: relative; width: 34px; height: 34px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" style="width: 19px; height: 19px"><path d="M18 15.6V11a6 6 0 1 0-12 0v4.6l-1.4 1.7A.8.8 0 0 0 5.2 18.6h13.6a.8.8 0 0 0 .6-1.3Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 18.6a2.5 2.5 0 0 0 5 0" stroke-linecap="round"/></svg>
+            <span class="lbl" style="position: absolute; top: -1px; right: -1px; min-width: 17px; height: 17px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 0 4px; border: 2px solid #111827">3</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- dropdown -->
+      <div style="position: absolute; right: 10px; top: 54px; width: 330px; border-radius: 14px; background: #111827; border: 1px solid #1e2d4a; overflow: hidden; box-shadow: 0 20px 48px rgba(0,0,0,0.6)">
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.07)">
+          <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: #f1f5f9">Notifications</span>
+          <span class="lbl" style="font-size: 12px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">Mark all read</span>
+        </div>
+
+        <!-- expiry warning -->
+        <div style="display: flex; gap: 11px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(239,68,68,0.06)">
+          <div style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.15); color: #ef4444">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 16px; height: 16px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+              <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: #f1f5f9">Bonus expiring tonight</span>
+              <span style="width: 7px; height: 7px; border-radius: 9999px; background: var(--accent); flex-shrink: 0; margin-top: 5px"></span>
+            </div>
+            <p style="margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #94a3b8">30 ETB expires in 3 hours. Switch to Spend Bonus to use it.</p>
+            <span style="display: block; margin-top: 5px; font-size: 11px; color: rgba(255,255,255,0.32)">12m ago</span>
+          </div>
+        </div>
+
+        <!-- cashback -->
+        <div style="display: flex; gap: 11px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); background: color-mix(in srgb, var(--accent) 5%, transparent)">
+          <div style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(6,182,212,0.15); color: #06b6d4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 16px; height: 16px"><path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+              <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: #f1f5f9">Cashback paid</span>
+              <span style="width: 7px; height: 7px; border-radius: 9999px; background: var(--accent); flex-shrink: 0; margin-top: 5px"></span>
+            </div>
+            <p style="margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #94a3b8">You received 30.00 ETB from Weekend Cashback.</p>
+            <span style="display: block; margin-top: 5px; font-size: 11px; color: rgba(255,255,255,0.32)">2h ago</span>
+          </div>
+        </div>
+
+        <!-- deposit bonus -->
+        <div style="display: flex; gap: 11px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); background: color-mix(in srgb, var(--accent) 5%, transparent)">
+          <div style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 16px; height: 16px"><rect x="3" y="8" width="18" height="4" rx="1" stroke-linejoin="round"/><path d="M5 12v8h14v-8M12 8V4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+              <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: #f1f5f9">Daily bonus earned</span>
+              <span style="width: 7px; height: 7px; border-radius: 9999px; background: var(--accent); flex-shrink: 0; margin-top: 5px"></span>
+            </div>
+            <p style="margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #94a3b8">20.00 ETB from Daily 500 Bonus. Valid 24 hours.</p>
+            <span style="display: block; margin-top: 5px; font-size: 11px; color: rgba(255,255,255,0.32)">Yesterday</span>
+          </div>
+        </div>
+
+        <!-- read: deposit approved -->
+        <div style="display: flex; gap: 11px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05)">
+          <div style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(16,185,129,0.15); color: #10b981">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.2 2.4 2.4 4.8-4.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0">
+            <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: rgba(241,245,249,0.75)">Deposit approved</span>
+            <p style="margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: rgba(148,163,184,0.75)">500.00 ETB added to your wallet.</p>
+            <span style="display: block; margin-top: 5px; font-size: 11px; color: rgba(255,255,255,0.32)">Yesterday</span>
+          </div>
+        </div>
+
+        <div style="padding: 10px 14px; text-align: center; border-top: 1px solid rgba(255,255,255,0.07)">
+          <span class="lbl" style="font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--accent)">See all notifications</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1220,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#f59e0b' };
+  }
+}
+</script>
+</body>
+</html>
