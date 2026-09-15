@@ -18,9 +18,12 @@ COPY packages/ui/package.json ./packages/ui/
 # The store cache is shared by every image built on the host, and compose builds
 # api, web and admin at once. `sharing=locked` makes concurrent installs take turns;
 # unlocked, one copied a native binary another was still writing, and the truncated
-# rollup .node crashed the admin build with SIGBUS. `-v2` drops that corrupted store.
+# rollup .node crashed the admin build with SIGBUS.
+# A cache mount's id is not part of the layer cache key, so a corrupted install layer
+# survives a store change. Bump INSTALL_CACHE_GENERATION to force a fresh install.
+ARG INSTALL_CACHE_GENERATION=2
 RUN --mount=type=cache,id=pnpm-store-v2,target=/root/.local/share/pnpm/store,sharing=locked \
-    pnpm install --frozen-lockfile
+    echo "install cache generation $INSTALL_CACHE_GENERATION" && pnpm install --frozen-lockfile
 
 # Copy source
 COPY packages/shared-types ./packages/shared-types
