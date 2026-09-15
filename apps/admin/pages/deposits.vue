@@ -324,7 +324,7 @@ const confirmApprove = async () => {
     showApproveModal.value = false
     fetchDeposits()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to approve', color: 'error' })
+    toast.add({ title: 'Error', description: e?.data?.message ?? e?.data?.error ?? 'Failed to approve', color: 'error' })
   } finally {
     approveLoading.value = false
   }
@@ -381,7 +381,7 @@ const confirmAdjust = async () => {
     showAdjustModal.value = false
     fetchDeposits()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to adjust', color: 'error' })
+    toast.add({ title: 'Error', description: e?.data?.message ?? e?.data?.error ?? 'Failed to adjust', color: 'error' })
   } finally {
     adjustLoading.value = false
   }

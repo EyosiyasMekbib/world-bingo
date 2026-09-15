@@ -163,7 +163,8 @@ const executeAction = async () => {
     showConfirmModal.value = false
     refreshWithdrawals()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.message ?? 'Action failed', color: 'error' })
+    // Service errors arrive as { error: 'Error', message }; the decline schema's 400 as { error }.
+    toast.add({ title: 'Error', description: e?.data?.message ?? e?.data?.error ?? 'Action failed', color: 'error' })
   }
 }
 
@@ -385,7 +386,7 @@ Reject
           </p>
           <template v-else>
             <p class="text-sm text-zinc-400">The withdrawal will be rejected and the balance returned to the player's wallet.</p>
-            <UInput v-model="declineNote" placeholder="Reason for rejection (optional)" />
+            <UInput v-model="declineNote" :maxlength="500" placeholder="Reason for rejection (optional)" />
           </template>
         </div>
       </template>
