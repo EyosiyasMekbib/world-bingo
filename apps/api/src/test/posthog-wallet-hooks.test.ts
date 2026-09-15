@@ -11,7 +11,7 @@ vi.mock('../lib/posthog-events', async (importOriginal) => {
 import { WalletService } from '../services/wallet.service'
 import { AdminService } from '../services/admin.service'
 import { prisma } from './setup'
-import { PaymentStatus } from '@world-bingo/shared-types'
+import { DepositRejectionReason, PaymentStatus } from '@world-bingo/shared-types'
 
 let userId: string
 
@@ -68,21 +68,30 @@ describe('deposit hooks', () => {
         })
     })
 
-    it('reviewTransaction REJECTED emits deposit_rejected with the method, not the note', async () => {
+    it('reviewTransaction REJECTED emits deposit_rejected with the method and reason, never the note', async () => {
         const tx = await WalletService.initiateDeposit(userId, {
             amount: 300,
             transactionId: 'PH-DEP-4',
             methodCode: 'cbe',
         } as any)
         captureEvent.mockClear()
-        await AdminService.reviewTransaction(tx.id, PaymentStatus.REJECTED, 'blurry receipt')
+        await AdminService.reviewTransaction(
+            tx.id,
+            PaymentStatus.REJECTED,
+            'blurry receipt',
+            undefined,
+            undefined,
+            DepositRejectionReason.UNREADABLE_RECEIPT,
+        )
         expect(captureEvent).toHaveBeenCalledWith(userId, 'deposit_rejected', {
             amount: 300,
             method: 'cbe',
+            reason: 'UNREADABLE_RECEIPT',
             hours_to_decision: expect.any(Number),
             has_note: true,
             tx_id: tx.id,
         })
+        expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('blurry receipt')
     })
 })
 
