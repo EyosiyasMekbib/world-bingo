@@ -339,6 +339,7 @@
     "launching": "Launching…",
     "play": "Play",
     "backToLobby": "Back to Lobby",
-    "loadMore": "Load More"
+    "loadMore": "Load More",
+    "showGameAnyway": "Show game anyway"
   }
 }

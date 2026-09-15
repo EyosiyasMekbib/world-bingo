@@ -3,11 +3,22 @@
  * passes in (performance.now()). Median load was 5.4 s and p90 17.9 s, and for
  * all of it the player saw a blank frame; this state drives a visible overlay,
  * a slow hint with retry, and a once-per-attempt timeout event.
+ *
+ * Some providers' frames never fire `load` although the game is playable
+ * (sessions of 60-180 s+ with no provider_game_loaded), so a slow load with a
+ * URL can also be `dismissed`: the overlay goes and the frame is left alone.
  */
 export const SLOW_AFTER_MS = 8_000
 export const TIMEOUT_AFTER_MS = 20_000
 
-export type LoadPhase = 'launching' | 'loading' | 'slow' | 'timeout' | 'ready' | 'error'
+export type LoadPhase =
+  | 'launching'
+  | 'loading'
+  | 'slow'
+  | 'timeout'
+  | 'ready'
+  | 'error'
+  | 'dismissed'
 
 export interface LoadState {
   phase: LoadPhase
@@ -30,8 +41,19 @@ export type LoadEvent =
   | { type: 'launch_failed'; message: string }
   | { type: 'tick'; now: number }
   | { type: 'retry'; now: number }
+  | { type: 'dismiss' }
 
 const WAITING: readonly LoadPhase[] = ['launching', 'loading', 'slow', 'timeout']
+
+/** The overlay covers the frame only while the load is still waiting. */
+export function showsOverlay(state: LoadState): boolean {
+  return WAITING.includes(state.phase)
+}
+
+/** "Show game anyway": once the load is slow, and only if there is a frame to show. */
+export function canDismiss(state: LoadState): boolean {
+  return (state.phase === 'slow' || state.phase === 'timeout') && state.urlAt !== null
+}
 
 export function initialLoadState(now: number): LoadState {
   return {
@@ -72,9 +94,13 @@ export function reduceLoad(state: LoadState, event: LoadEvent): LoadState {
       return settleWaiting({ ...state, urlAt: event.now }, event.now)
     case 'tick':
       return WAITING.includes(state.phase) ? settleWaiting(state, event.now) : state
+    case 'dismiss':
+      return canDismiss(state) ? { ...state, phase: 'dismissed' } : state
     case 'frame_loaded':
-      // A frame `load` before any URL is the empty frame, not the game.
-      if (state.urlAt === null || !WAITING.includes(state.phase)) return state
+      // A frame `load` before any URL is the empty frame, not the game. One
+      // after a dismissal still counts: the game did load, only late.
+      if (state.urlAt === null) return state
+      if (!WAITING.includes(state.phase) && state.phase !== 'dismissed') return state
       return { ...state, phase: 'ready', loadedAt: event.now }
   }
 }

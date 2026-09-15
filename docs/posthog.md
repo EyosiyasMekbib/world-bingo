@@ -96,6 +96,7 @@ Failure and timing events (added with the retention program, 2026-09-08):
 | `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `attempt`, `msToLoad` and `msToUrl`, both measured from the start of this attempt's launch call |
 | `provider_game_load_timeout` | a load attempt passed 20 s without the frame loading; once per attempt | `providerCode`, `gameCode`, `attempt`, `stage` (`launch` = no launch URL yet, `frame` = URL arrived, frame not loaded), `msToUrl` |
 | `provider_game_retry` | the player tapped "Try again" on the play page | `providerCode`, `gameCode`, `attempt` (the new attempt number), `from` (the phase when tapped) |
+| `provider_game_load_dismissed` | the player tapped "Show game anyway" on a slow or timed-out load that had a launch URL; the overlay goes and a late frame `load` still sends `provider_game_loaded` | `providerCode`, `gameCode`, `attempt`, `from` (`slow` or `timeout`), `msSinceStart` (from the start of this attempt's launch call) |
 
 `describeFailure()` in `apps/web/utils/http-failure.ts` produces `code` / `status` / `timeout`
 for all of them, so a failure reason means the same thing on every event.

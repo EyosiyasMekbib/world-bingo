@@ -68,8 +68,9 @@ describe('ALLOWED_EVENTS', () => {
         expect(ALLOWED_EVENTS).toContain('deposit_submitted')
     })
 
-    it('records the play page load timeout and retry events', () => {
+    it('records the play page load timeout, retry and dismiss events', () => {
         expect(ALLOWED_EVENTS).toContain('provider_game_load_timeout')
         expect(ALLOWED_EVENTS).toContain('provider_game_retry')
+        expect(ALLOWED_EVENTS).toContain('provider_game_load_dismissed')
     })
 })

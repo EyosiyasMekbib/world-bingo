@@ -27,6 +27,29 @@ describe('play page', () => {
   it('ignores a launch answer that belongs to an earlier attempt', () => {
     expect(play).toContain('attempt !== load.value.attempt')
   })
+
+  it('drives the overlay from showsOverlay, so a dismissed load unmounts it', () => {
+    expect(play).toContain('const showOverlay = computed(() => showsOverlay(load.value))')
+    // v-if, not v-show: an overlay left in the DOM would still sit over the frame.
+    expect(play).toMatch(/<div v-if="showOverlay" class="play-state play-state--overlay"/)
+  })
+
+  it('offers "Show game anyway" beside retry once the load can be dismissed', () => {
+    expect(play).toContain('const dismissible = computed(() => canDismiss(load.value))')
+    expect(play).toMatch(/<button v-if="dismissible"[^>]*@click="dismissOverlay"/)
+    expect(play).toContain("t('providers.showGameAnyway')")
+    expect(play).toContain("track('provider_game_load_dismissed'")
+  })
+
+  it('has the "Show game anyway" label in both locales', () => {
+    for (const locale of ['en', 'am']) {
+      const json = JSON.parse(
+        readFileSync(join(__dirname, '..', 'i18n', 'locales', `${locale}.json`), 'utf8'),
+      )
+      const label = json.providers?.showGameAnyway
+      expect(typeof label === 'string' && label.trim().length > 0, locale).toBe(true)
+    }
+  })
 })
 
 describe('/games tab', () => {

@@ -3,11 +3,13 @@ import { useAuthStore } from '~/store/auth'
 import { describeFailure } from '~/utils/http-failure'
 import { takeTap } from '~/utils/launch-handoff'
 import {
+  canDismiss,
   crossedReady,
   crossedTimeout,
   elapsedSeconds,
   initialLoadState,
   reduceLoad,
+  showsOverlay,
   type LoadEvent,
 } from '~/utils/provider-load'
 
@@ -15,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { track } = useAnalytics()
+const { t } = useI18n()
 
 const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
@@ -26,10 +29,9 @@ const sessionStartedAt = ref<number | null>(null)
 let ticker: ReturnType<typeof setInterval> | null = null
 
 const elapsed = computed(() => elapsedSeconds(load.value, now.value))
-const showOverlay = computed(() =>
-  ['launching', 'loading', 'slow', 'timeout'].includes(load.value.phase),
-)
+const showOverlay = computed(() => showsOverlay(load.value))
 const canRetry = computed(() => load.value.phase === 'slow' || load.value.phase === 'timeout')
+const dismissible = computed(() => canDismiss(load.value))
 
 function dispatch(event: LoadEvent) {
   const prev = load.value
@@ -57,7 +59,7 @@ function dispatch(event: LoadEvent) {
       msToUrl: Math.round(next.urlAt! - next.startedAt),
     })
   }
-  if (next.phase === 'ready' || next.phase === 'error') stopTicker()
+  if (next.phase === 'ready' || next.phase === 'error' || next.phase === 'dismissed') stopTicker()
 }
 
 function stopTicker() {
@@ -119,6 +121,25 @@ function retry() {
   track('provider_game_retry', { providerCode, gameCode, attempt: load.value.attempt, from })
   startTicker()
   void launch()
+}
+
+/**
+ * "Show game anyway". Some providers' frames never fire `load` although the
+ * game is playable, and the overlay used to cover it for good. Unmounts the
+ * overlay and leaves the frame alone; a late `load` still reports
+ * provider_game_loaded.
+ */
+function dismissOverlay() {
+  const prev = load.value
+  dispatch({ type: 'dismiss' })
+  if (load.value === prev) return
+  track('provider_game_load_dismissed', {
+    providerCode,
+    gameCode,
+    attempt: prev.attempt,
+    from: prev.phase,
+    msSinceStart: Math.round(performance.now() - prev.startedAt),
+  })
 }
 
 function fireSessionEnd() {
@@ -196,6 +217,9 @@ useHead({
       </p>
       <div v-if="canRetry" class="play-actions">
         <button class="back-btn" @click="retry">Try again</button>
+        <button v-if="dismissible" class="ghost-btn" @click="dismissOverlay">
+          {{ t('providers.showGameAnyway') }}
+        </button>
         <button class="ghost-btn" @click="router.push('/')">Back to Lobby</button>
       </div>
     </div>
@@ -341,7 +365,8 @@ useHead({
 .back-btn:hover { background: #fbbf24; }
 .back-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
 
-/* Covers the blank frame until it fires `load`; the float-back (z 10) stays above it. */
+/* Covers the blank frame until it fires `load` or the player dismisses it
+   (the element is unmounted then, not hidden); the float-back (z 10) stays above it. */
 .play-state--overlay {
   position: absolute;
   inset: 0;
