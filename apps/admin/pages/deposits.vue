@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { DepositRejectionReason, DEPOSIT_REJECTION_REASON_LABELS } from '@world-bingo/shared-types'
 interface DepositTransaction {
   id: string
   amount: number
@@ -67,14 +68,12 @@ const formatUserId = (serial?: number) => {
   return serial.toString().padStart(5, '0')
 }
 
-const DECLINE_REASONS = [
-  'Transaction ID mismatch',
-  'Invalid receipt',
-  'Unrelated image',
-  'Corrupted file',
-  'Sender name mismatch',
-  'Amount mismatch',
-]
+// Coded reasons, not free text: the api requires one to decline a deposit and
+// sends it to PostHog as `reason`. OTHER needs a note (DeclineTransactionSchema).
+const DECLINE_REASONS = Object.values(DepositRejectionReason).map((value) => ({
+  value,
+  label: DEPOSIT_REJECTION_REASON_LABELS[value],
+}))
 
 const columns = [
   { accessorKey: 'id', header: 'TX ID' },
@@ -93,8 +92,8 @@ const columns = [
 
 const pendingDeposits = ref<DepositTransaction[]>([])
 const loading = ref(false)
+const declineReason = ref<DepositRejectionReason | null>(null)
 const declineNote = ref('')
-const customReason = ref('')
 const showDeclineModal = ref(false)
 const selectedDeclineId = ref<string | null>(null)
 const showApproveModal = ref(false)
@@ -333,21 +332,29 @@ const confirmApprove = async () => {
 
 const openDeclineModal = (id: string) => {
   selectedDeclineId.value = id
+  declineReason.value = null
   declineNote.value = ''
-  customReason.value = ''
   showDeclineModal.value = true
 }
 
+const declineNeedsNote = computed(() => declineReason.value === DepositRejectionReason.OTHER)
+const canConfirmDecline = computed(
+  () => !!declineReason.value && (!declineNeedsNote.value || declineNote.value.trim().length > 0),
+)
+
 const handleDecline = async () => {
-  if (!selectedDeclineId.value) return
-  const reason = customReason.value.trim() || declineNote.value
+  if (!selectedDeclineId.value || !declineReason.value || !canConfirmDecline.value) return
   try {
-    await declineTransaction(selectedDeclineId.value, reason || undefined)
+    await declineTransaction(selectedDeclineId.value, {
+      reason: declineReason.value,
+      note: declineNote.value.trim() || undefined,
+    })
     toast.add({ title: 'Declined', description: 'Player has been notified', color: 'warning' })
     showDeclineModal.value = false
     fetchDeposits()
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e?.data?.message ?? 'Failed to decline', color: 'error' })
+    // Service errors arrive as { error: 'Error', message }; the decline schema's 400 as { error }.
+    toast.add({ title: 'Error', description: e?.data?.message ?? e?.data?.error ?? 'Failed to decline', color: 'error' })
   }
 }
 
@@ -729,28 +736,33 @@ Check
     <UModal v-model:open="showDeclineModal" title="Decline Deposit" :ui="{ footer: 'justify-end' }">
       <template #body>
         <div class="space-y-3">
-          <p class="text-sm text-zinc-400">Select a reason or type a custom one. The player will be notified.</p>
+          <p class="text-sm text-zinc-400">Choose why this deposit is declined. The player sees the reason.</p>
           <div class="grid grid-cols-2 gap-2">
             <UButton
               v-for="reason in DECLINE_REASONS"
-              :key="reason"
+              :key="reason.value"
               size="xs"
-              :color="declineNote === reason ? 'error' : 'neutral'"
-              :variant="declineNote === reason ? 'soft' : 'ghost'"
-              @click="declineNote = reason; customReason = ''"
+              :color="declineReason === reason.value ? 'error' : 'neutral'"
+              :variant="declineReason === reason.value ? 'soft' : 'ghost'"
+              @click="declineReason = reason.value"
             >
-{{ reason }}
-</UButton>
+              {{ reason.label }}
+            </UButton>
           </div>
-          <UInput v-model="customReason" placeholder="Custom reason (optional)" @input="declineNote = ''" />
-          <p v-if="declineNote || customReason" class="text-xs text-zinc-500">
-            Reason: <strong class="text-zinc-200">{{ customReason || declineNote }}</strong>
+          <UTextarea
+            v-model="declineNote"
+            :rows="2"
+            :maxlength="500"
+            :placeholder="declineNeedsNote ? 'Explain the reason (required)' : 'Add a note for the player (optional)'"
+          />
+          <p v-if="declineNeedsNote && !declineNote.trim()" class="text-xs text-red-400">
+            A note is required for “Other”.
           </p>
         </div>
       </template>
       <template #footer>
         <UButton color="neutral" variant="ghost" @click="showDeclineModal = false">Cancel</UButton>
-        <UButton color="error" @click="handleDecline">Confirm Decline</UButton>
+        <UButton color="error" :disabled="!canConfirmDecline" @click="handleDecline">Confirm Decline</UButton>
       </template>
     </UModal>
 
