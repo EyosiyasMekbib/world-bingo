@@ -113,7 +113,9 @@
     "bonusNoExpiry": "No expiry",
     "bonusExpiring": "Expiring...",
     "depositDailyHint": "Deposit {amount} ETB today for a bonus.",
-    "depositWeeklyHint": "Deposit {amount} ETB this week for a bonus."
+    "depositWeeklyHint": "Deposit {amount} ETB this week for a bonus.",
+    "withdrawalHoldAfterReset": "Withdrawals are on hold for 24 hours after a password reset, to keep your account safe. Please try again later or contact support.",
+    "withdrawalFailed": "Withdrawal request failed. Please try again."
   },
   "refer": {
     "title": "🎁 Refer & Earn",

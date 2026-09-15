@@ -84,6 +84,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
+import { withdrawalErrorMessage } from '~/utils/withdrawal-error'
 
 const props = defineProps<{ modelValue: boolean; balance: number }>()
 const emit = defineEmits<{
@@ -92,6 +93,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const { t } = useI18n()
 
 type WithdrawalMethod = { code: string; name: string; icon: string | null }
 
@@ -157,7 +159,7 @@ async function submit() {
       resetForm()
     }, 2500)
   } catch (e: any) {
-    error.value = e?.data?.error ?? e?.data?.message ?? e?.message ?? 'Withdrawal request failed. Please try again.'
+    error.value = withdrawalErrorMessage(e, t)
   } finally {
     loading.value = false
   }

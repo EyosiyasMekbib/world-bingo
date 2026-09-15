@@ -113,7 +113,9 @@
     "bonusNoExpiry": "ማብቂያ የለውም",
     "bonusExpiring": "እያበቃ ነው...",
     "depositDailyHint": "ዛሬ {amount} ብር በማስገባት ጉርሻ ያግኙ።",
-    "depositWeeklyHint": "በዚህ ሳምንት {amount} ብር በማስገባት ጉርሻ ያግኙ።"
+    "depositWeeklyHint": "በዚህ ሳምንት {amount} ብር በማስገባት ጉርሻ ያግኙ።",
+    "withdrawalHoldAfterReset": "ድጋፍ የምስጢር ቃልዎን እንደገና ስላስጀመረ፣ ለአካውንትዎ ደህንነት ሲባል ገንዘብ ማውጣት ለ24 ሰዓታት ቆሟል። እባክዎ ቆይተው እንደገና ይሞክሩ ወይም ድጋፍን ያግኙ።",
+    "withdrawalFailed": "የወጪ ጥያቄው አልተሳካም። እባክዎ እንደገና ይሞክሩ።"
   },
   "refer": {
     "title": "🎁 ጓደኛ ጋብዝ፣ ሽልማት ወሰድ",
