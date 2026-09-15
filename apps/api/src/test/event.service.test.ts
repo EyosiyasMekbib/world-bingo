@@ -73,4 +73,14 @@ describe('ALLOWED_EVENTS', () => {
         expect(ALLOWED_EVENTS).toContain('provider_game_retry')
         expect(ALLOWED_EVENTS).toContain('provider_game_load_dismissed')
     })
+
+    it.each([
+        'deposit_submit_blocked',
+        'deposit_submit_failed',
+        'forgot_password_opened',
+        'password_changed',
+        'password_change_failed',
+    ])('records the deposit-form and password-recovery event %s', (name) => {
+        expect(ALLOWED_EVENTS).toContain(name)
+    })
 })
