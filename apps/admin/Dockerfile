@@ -15,7 +15,11 @@ COPY apps/admin/package.json ./apps/admin/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/ui/package.json ./packages/ui/
 
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+# The store cache is shared by every image built on the host, and compose builds
+# api, web and admin at once. `sharing=locked` makes concurrent installs take turns;
+# unlocked, one copied a native binary another was still writing, and the truncated
+# rollup .node crashed the admin build with SIGBUS. `-v2` drops that corrupted store.
+RUN --mount=type=cache,id=pnpm-store-v2,target=/root/.local/share/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile
 
 # Copy source

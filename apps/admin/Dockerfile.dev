@@ -13,7 +13,7 @@ COPY apps/admin/package.json ./apps/admin/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/ui/package.json ./packages/ui/
 
-RUN --mount=type=cache,id=pnpm-store-dev,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,id=pnpm-store-dev,target=/root/.local/share/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile
 
 # Build shared packages so their dist/ is available for imports
