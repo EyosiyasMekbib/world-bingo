@@ -7,7 +7,7 @@
 <body>
 <x-dc>
 <helmet>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
   <style>
     body {
       margin: 0;
@@ -23,7 +23,7 @@
       font-family: 'Barlow Condensed', system-ui, sans-serif;
       padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600;
       letter-spacing: 0.06em; text-transform: uppercase;
-      color: rgba(255,255,255,0.4); white-space: nowrap;
+      color: rgba(255,255,255,0.55); white-space: nowrap;
     }
     .td { padding: 13px 16px; vertical-align: middle; font-size: 13px; }
     .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -97,20 +97,20 @@
     <!-- summary tiles -->
     <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
       <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4)">Paid today</span>
-        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">7,190 <span style="font-size: 13px; color: rgba(255,255,255,0.4)">ETB</span></span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55)">Paid this week</span>
+        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">10,750 <span style="font-size: 13px; color: rgba(255,255,255,0.55)">ETB</span></span>
       </div>
       <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4)">Paid this month</span>
-        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">96,900 <span style="font-size: 13px; color: rgba(255,255,255,0.4)">ETB</span></span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55)">Paid all time</span>
+        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">123,800 <span style="font-size: 13px; color: rgba(255,255,255,0.55)">ETB</span></span>
       </div>
       <div style="background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4)">Players reached</span>
-        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">1,403</span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55)">Players reached</span>
+        <span class="lbl" style="font-size: 23px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1">1,453</span>
       </div>
       <div style="background: #0d1f3c; border: 1px solid rgba(245,166,35,0.3); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4)">Outstanding liability</span>
-        <span class="lbl" style="font-size: 23px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1">18,240 <span style="font-size: 13px; color: rgba(255,255,255,0.4)">ETB</span></span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55)">Outstanding liability</span>
+        <span class="lbl" style="font-size: 23px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1">18,240 <span style="font-size: 13px; color: rgba(255,255,255,0.55)">ETB</span></span>
       </div>
     </div>
 
@@ -124,7 +124,7 @@
         <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.12)"></div>
         <div style="display: flex; align-items: center; gap: 9px">
           <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.9" style="width: 17px; height: 17px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span style="font-size: 13px; color: rgba(255,255,255,0.7)">Next cashback run in <strong style="color: #fff; font-weight: 600">24 min</strong></span>
+          <span style="font-size: 13px; color: rgba(255,255,255,0.7)">Next cashback close <strong style="color: #fff; font-weight: 600">Sun 23:59</strong></span>
         </div>
         <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.12)"></div>
         <div style="display: flex; align-items: center; gap: 9px">
@@ -140,10 +140,10 @@
 
     <!-- filter tabs -->
     <div style="display: flex; gap: 6px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.09)">
-      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; color: var(--accent); border-bottom: 2px solid var(--accent); margin-bottom: -1px">Live <span style="color: rgba(255,255,255,0.4); font-weight: 600">4</span></div>
-      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Scheduled <span style="color: rgba(255,255,255,0.3)">1</span></div>
-      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">Ended <span style="color: rgba(255,255,255,0.3)">1</span></div>
-      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.5)">All <span style="color: rgba(255,255,255,0.3)">6</span></div>
+      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; color: var(--accent); border-bottom: 2px solid var(--accent); margin-bottom: -1px">Live <span style="color: rgba(255,255,255,0.62); font-weight: 600">4</span></div>
+      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.62)">Scheduled <span style="color: rgba(255,255,255,0.55)">1</span></div>
+      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.62)">Ended <span style="color: rgba(255,255,255,0.55)">1</span></div>
+      <div class="lbl" style="padding: 9px 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.62)">All <span style="color: rgba(255,255,255,0.55)">6</span></div>
     </div>
 
     <!-- table -->
@@ -155,7 +155,7 @@
             <th class="th">Status</th>
             <th class="th">Reward</th>
             <th class="th">Audience</th>
-            <th class="th num" style="text-align: right">Paid this period</th>
+            <th class="th num" style="text-align: right">Paid this week</th>
             <th class="th num" style="text-align: right">Total paid</th>
             <th class="th num" style="text-align: right">Players</th>
             <th class="th" style="text-align: center">Hero</th>
@@ -173,7 +173,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: #fff">Welcome Bonus</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">First deposit &middot; no expiry</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">First deposit &middot; no expiry</span>
                 </div>
               </div>
             </td>
@@ -198,7 +198,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: #fff">Weekend Cashback</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Cashback &middot; weekly &middot; site-wide</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">Cashback &middot; weekly &middot; pays at close</span>
                 </div>
               </div>
             </td>
@@ -210,9 +210,9 @@
               </div>
             </td>
             <td class="td" style="color: rgba(255,255,255,0.7)">All players</td>
-            <td class="td num" style="color: #fff">3,240</td>
+            <td class="td num" style="color: #fff">5,900</td>
             <td class="td num" style="color: rgba(255,255,255,0.7)">18,700</td>
-            <td class="td num" style="color: rgba(255,255,255,0.7)">124</td>
+            <td class="td num" style="color: rgba(255,255,255,0.7)">174</td>
             <td class="td" style="text-align: center"><span style="color: rgba(255,255,255,0.2)">&mdash;</span></td>
             <td class="td" style="text-align: right"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2.2" style="width: 16px; height: 16px"><circle cx="12" cy="5.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="18.5" r="1.2"/></svg></td>
           </tr>
@@ -226,7 +226,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: #fff">Daily 500 Bonus</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Deposit rule &middot; daily &middot; valid 24h</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">Deposit rule &middot; daily &middot; valid 24h</span>
                 </div>
               </div>
             </td>
@@ -251,7 +251,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: #fff">Weekly High Roller</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Deposit rule &middot; weekly &middot; valid 72h</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">Deposit rule &middot; weekly &middot; valid 72h</span>
                 </div>
               </div>
             </td>
@@ -276,7 +276,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.75)">Eid Cashback</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.4)">Cashback &middot; daily &middot; 4 bingo rooms</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">Cashback &middot; daily &middot; 4 bingo rooms</span>
                 </div>
               </div>
             </td>
@@ -299,7 +299,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px">
                   <span class="lbl" style="font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.55)">New Year Bonus</span>
-                  <span style="font-size: 11.5px; color: rgba(255,255,255,0.32)">Deposit rule &middot; ended Jan 8</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.5)">Deposit rule &middot; ended Jan 8</span>
                 </div>
               </div>
             </td>

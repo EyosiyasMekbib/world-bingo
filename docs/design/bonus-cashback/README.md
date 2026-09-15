@@ -37,6 +37,32 @@ what ships:
 The brand colour is a per-artboard tweak, so the whole set can be flipped to
 the dash5 palette to check the other deployment.
 
+## The scenario every screen shares
+
+All seven artboards show the same moment, so the figures cross-check. Monday
+9 March 2026, 21:15 Africa/Addis_Ababa. Player `dawit_a` holds 1,190.00
+withdrawable and 100.00 bonus in two lots of 50.00:
+
+- **Daily 500 Bonus**, granted 00:20 today from Sunday's deposit approved after
+  manual review, valid 24h, so it dies tonight. This is the urgent lot, and it
+  also shows the real behaviour where the deposit's own date picks the bucket
+  while the approval instant anchors the expiry.
+- **Weekend Cashback**, paid 00:15 today when last week's period closed, valid
+  7 days.
+
+In flight: 320 of 500 ETB lost this week, and 200 of 500 ETB deposited today.
+Neither has paid out.
+
+Two behaviour changes are baked into the numbers and are deliberate:
+
+- **Cashback pays at period close**, not at the first hourly run that sees the
+  threshold crossed. Paying on first crossing freezes the payout at whatever
+  the loss happened to be that hour, and pays players who then win it back.
+- **The VIP-scoped weekly rule never appears on a player surface.** A
+  segment-targeted rule can only pay its frozen cohort, so advertising it to
+  everyone is worse than not advertising it. It shows in the admin list with
+  its segment badge and nowhere else.
+
 ## What the mockups assume does not exist yet
 
 - `BonusGrant` has no `source` column, so the source chips on four screens need
@@ -48,6 +74,11 @@ the dash5 palette to check the other deployment.
 - Cashback has no max payout per player and no period budget. Deposit rules
   have `maxReward`; cashback has nothing.
 - The notification bell component exists but is not mounted in any layout.
+- Cashback runs hourly on the window containing "now", so period-close payout
+  and the projected-payout preview both need the scheduling change above.
+- Balance adjustment sits in the clerk scope with no cap and no record of the
+  actor. The player Bonuses tab assumes it has moved to admin and writes an
+  audit row.
 
 Sample figures throughout. Copy is drafted in English only and needs an Amharic
 pass before build.

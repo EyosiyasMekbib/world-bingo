@@ -7,7 +7,7 @@
 <body>
 <x-dc>
 <helmet>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
   <style>
     body {
       margin: 0;
@@ -19,38 +19,40 @@
     a { color: #f59e0b; text-decoration: none; }
     a:hover { color: #d97706; }
     .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
+    /* 44px minimum hit target on every control */
+    .tap { display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; }
   </style>
 </helmet>
 
-<div style="--accent: {{accent}}; min-height: 1240px; background: #0a0f1e; padding: 20px 16px 28px; display: flex; flex-direction: column; gap: 20px">
+<div style="--accent: {{accent}}; min-height: 1340px; background: #0a0f1e; padding: 20px 16px 28px; display: flex; flex-direction: column; gap: 20px">
 
   <!-- ══ BALANCE CARD ══ -->
   <div style="position: relative; background: #111827; border: 1px solid #1e2d4a; border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; isolation: isolate">
     <div style="position: absolute; inset: 0; background: radial-gradient(120% 120% at 85% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%); pointer-events: none; z-index: -1"></div>
 
-    <div class="lbl" style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.55)">Total Balance</div>
+    <div class="lbl" style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.62)">Total Balance</div>
 
     <div style="display: flex; align-items: baseline; gap: 8px">
-      <span class="lbl" style="font-size: 2.6rem; font-weight: 700; color: #fff; letter-spacing: 0.5px; line-height: 1; font-variant-numeric: tabular-nums">1,240.00</span>
+      <span class="lbl" style="font-size: 2.6rem; font-weight: 700; color: #fff; letter-spacing: 0.5px; line-height: 1; font-variant-numeric: tabular-nums">1,290.00</span>
       <span class="lbl" style="font-size: 1rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em">ETB</span>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1)">
       <div style="display: flex; flex-direction: column; gap: 2px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.45)">Withdrawable</span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.58)">Withdrawable</span>
         <span class="lbl" style="font-size: 1.05rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums">1,190.00 ETB</span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px">
-        <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.45)">Bonus</span>
-        <span class="lbl" style="font-size: 1.05rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums">50.00 ETB</span>
+        <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.58)">Bonus</span>
+        <span class="lbl" style="font-size: 1.05rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums">100.00 ETB</span>
       </div>
     </div>
 
-    <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1)">
-      <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.45)">Spend From</span>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1)">
+      <span class="lbl" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.58)">Spend From</span>
       <div style="display: flex; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 9999px; padding: 3px; gap: 2px">
-        <div class="lbl" style="padding: 8px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: rgba(255,255,255,0.55)">Real</div>
-        <div class="lbl" style="padding: 8px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; background: var(--accent); color: #000">Bonus</div>
+        <div class="lbl tap" style="padding: 0 18px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; background: var(--accent); color: #000">Real</div>
+        <div class="lbl tap" style="padding: 0 18px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: rgba(255,255,255,0.62)">Bonus</div>
       </div>
     </div>
 
@@ -59,15 +61,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.9" style="width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px">
         <circle cx="12" cy="12" r="9" stroke-linecap="round"/><path d="M12 11v5" stroke-linecap="round"/><path d="M12 8h.01" stroke-linecap="round"/>
       </svg>
-      <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #94a3b8; text-wrap: pretty">Bonus money plays like cash but can't be withdrawn. Anything you win with it lands in your withdrawable balance.</p>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #a9b7c9; text-wrap: pretty">Bonus money plays like cash but can't be withdrawn. Anything you win with it lands in your withdrawable balance.</p>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
-      <div class="lbl" style="display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 16px; border-radius: 12px; background: var(--accent); color: #000; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 34%, transparent)">
+      <div class="lbl tap" style="gap: 7px; padding: 0 16px; border-radius: 12px; background: var(--accent); color: #000; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 34%, transparent)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 15px; height: 15px"><path d="M12 4v16M20 12H4" stroke-linecap="round"/></svg>
         Deposit
       </div>
-      <div class="lbl" style="display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 16px; border-radius: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase">
+      <div class="lbl tap" style="gap: 7px; padding: 0 16px; border-radius: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 15px; height: 15px"><path d="M5 12h14" stroke-linecap="round"/></svg>
         Withdraw
       </div>
@@ -77,35 +79,13 @@
   <!-- ══ MY BONUSES ══ -->
   <div style="display: flex; flex-direction: column; gap: 10px">
     <div style="display: flex; align-items: center; justify-content: space-between">
-      <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8">My Bonuses</span>
-      <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">History</span>
+      <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a9b7c9">My Bonuses</span>
+      <span class="lbl tap" style="padding: 0 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">History</span>
     </div>
 
     <div style="background: #111827; border: 1px solid #1e2d4a; border-radius: 16px; overflow: hidden">
 
-      <!-- Lot 1 — expiring soon, urgency treatment -->
-      <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid color-mix(in srgb, #1e2d4a 60%, transparent)">
-        <div style="display: flex; align-items: center; gap: 14px">
-          <div style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(6,182,212,0.16); color: #06b6d4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px">
-              <path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0">
-            <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: #f1f5f9">Weekend Cashback</span>
-            <div style="display: flex; align-items: center; gap: 6px">
-              <span class="lbl" style="font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #06b6d4; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.26)">Cashback</span>
-              <span style="font-size: 12px; color: #ef4444; font-weight: 600">Expires in 3h 12m</span>
-            </div>
-          </div>
-          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #10b981; flex-shrink: 0">30.00 ETB</span>
-        </div>
-        <div style="height: 4px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden">
-          <div style="width: 13%; height: 100%; border-radius: 9999px; background: #ef4444"></div>
-        </div>
-      </div>
-
-      <!-- Lot 2 — comfortable -->
+      <!-- Lot 1 — expiring tonight, urgency treatment -->
       <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid color-mix(in srgb, #1e2d4a 60%, transparent)">
         <div style="display: flex; align-items: center; gap: 14px">
           <div style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent)">
@@ -115,47 +95,69 @@
           </div>
           <div style="flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0">
             <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: #f1f5f9">Daily 500 Bonus</span>
-            <div style="display: flex; align-items: center; gap: 6px">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
               <span class="lbl" style="font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent)">Deposit Bonus</span>
-              <span style="font-size: 12px; color: #94a3b8">Expires in 21h</span>
+              <span style="font-size: 12.5px; color: #f87171; font-weight: 600">Expires in 3h</span>
             </div>
           </div>
-          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #10b981; flex-shrink: 0">20.00 ETB</span>
+          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #34d399; flex-shrink: 0">50.00 ETB</span>
         </div>
         <div style="height: 4px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden">
-          <div style="width: 68%; height: 100%; border-radius: 9999px; background: var(--accent)"></div>
+          <div style="width: 13%; height: 100%; border-radius: 9999px; background: #ef4444"></div>
+        </div>
+      </div>
+
+      <!-- Lot 2 — comfortable -->
+      <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid color-mix(in srgb, #1e2d4a 60%, transparent)">
+        <div style="display: flex; align-items: center; gap: 14px">
+          <div style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(6,182,212,0.16); color: #22d3ee">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px">
+              <path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0">
+            <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: #f1f5f9">Weekend Cashback</span>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+              <span class="lbl" style="font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; color: #22d3ee; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.26)">Cashback</span>
+              <span style="font-size: 12.5px; color: #a9b7c9">Expires in 6d 3h</span>
+            </div>
+          </div>
+          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #34d399; flex-shrink: 0">50.00 ETB</span>
+        </div>
+        <div style="height: 4px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden">
+          <div style="width: 88%; height: 100%; border-radius: 9999px; background: #22d3ee"></div>
         </div>
       </div>
 
       <!-- Nudge: switch spend account before expiry -->
       <div style="padding: 13px 16px; display: flex; align-items: center; gap: 11px; background: rgba(239,68,68,0.06)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.9" style="width: 17px; height: 17px; flex-shrink: 0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.9" style="width: 17px; height: 17px; flex-shrink: 0">
           <path d="M10.3 4.3 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8A1.8 1.8 0 0 0 21.5 18L13.7 4.3a1.9 1.9 0 0 0-3.4 0Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9.5v4" stroke-linecap="round"/><path d="M12 17h.01" stroke-linecap="round"/>
         </svg>
-        <p style="margin: 0; flex: 1; font-size: 12.5px; line-height: 1.45; color: #cbd5e1">30 ETB expires tonight. Switch to <strong style="color: #f1f5f9">Spend Bonus</strong> to use it first.</p>
-        <div class="lbl" style="flex-shrink: 0; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff">Switch</div>
+        <p style="margin: 0; flex: 1; font-size: 12.5px; line-height: 1.45; color: #cbd5e1">50 ETB expires tonight. Switch to <strong style="color: #f1f5f9">Spend Bonus</strong> to use it first.</p>
+        <div class="lbl tap" style="flex-shrink: 0; padding: 0 14px; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff">Switch</div>
       </div>
     </div>
   </div>
 
   <!-- ══ EARN MORE — progress toward live promotions ══ -->
   <div style="display: flex; flex-direction: column; gap: 10px">
-    <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8">Earn More</span>
+    <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a9b7c9">Earn More</span>
 
     <!-- Cashback progress -->
     <div style="background: #111827; border: 1px solid #1e2d4a; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
         <div style="display: flex; flex-direction: column; gap: 3px">
           <span class="lbl" style="font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">Weekend Cashback</span>
-          <span style="font-size: 12.5px; color: #94a3b8">10% back on your weekly losses</span>
+          <span style="font-size: 12.5px; color: #a9b7c9">10% back on your weekly losses</span>
         </div>
-        <span class="lbl" style="flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; color: #06b6d4; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.26)">Weekly</span>
+        <span class="lbl" style="flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; color: #22d3ee; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.26)">Weekly</span>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 7px">
         <div style="display: flex; align-items: baseline; justify-content: space-between">
-          <span style="font-size: 12px; color: #94a3b8">Your loss this week</span>
-          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #f1f5f9">320 <span style="color: rgba(255,255,255,0.4)">/ 500 ETB</span></span>
+          <span style="font-size: 12.5px; color: #a9b7c9">Your loss this week</span>
+          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #f1f5f9">320 <span style="color: rgba(255,255,255,0.6)">/ 500 ETB</span></span>
         </div>
         <div style="height: 8px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden">
           <div style="width: 64%; height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #0891b2, #06b6d4)"></div>
@@ -163,10 +165,10 @@
       </div>
 
       <div style="display: flex; align-items: center; gap: 7px; padding-top: 2px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.9" style="width: 14px; height: 14px; flex-shrink: 0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#a9b7c9" stroke-width="1.9" style="width: 14px; height: 14px; flex-shrink: 0">
           <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span style="font-size: 12px; color: #94a3b8">180 ETB to go &middot; pays out Sunday 23:59</span>
+        <span style="font-size: 12.5px; color: #a9b7c9">180 ETB to go &middot; pays out Sunday 23:59</span>
       </div>
     </div>
 
@@ -175,15 +177,15 @@
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
         <div style="display: flex; flex-direction: column; gap: 3px">
           <span class="lbl" style="font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">Daily 500 Bonus</span>
-          <span style="font-size: 12.5px; color: #94a3b8">Deposit 500 ETB today, get 50 ETB</span>
+          <span style="font-size: 12.5px; color: #a9b7c9">Deposit 500 ETB today, get 50 ETB</span>
         </div>
         <span class="lbl" style="flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent)">Daily</span>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 7px">
         <div style="display: flex; align-items: baseline; justify-content: space-between">
-          <span style="font-size: 12px; color: #94a3b8">Deposited today</span>
-          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #f1f5f9">200 <span style="color: rgba(255,255,255,0.4)">/ 500 ETB</span></span>
+          <span style="font-size: 12.5px; color: #a9b7c9">Deposited today</span>
+          <span class="lbl" style="font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: #f1f5f9">200 <span style="color: rgba(255,255,255,0.6)">/ 500 ETB</span></span>
         </div>
         <div style="height: 8px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden">
           <div style="width: 40%; height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #d97706, var(--accent))"></div>
@@ -191,35 +193,33 @@
       </div>
 
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px">
-        <div style="display: flex; align-items: center; gap: 7px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.9" style="width: 14px; height: 14px; flex-shrink: 0">
-            <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span style="font-size: 12px; color: #94a3b8">300 ETB to go &middot; resets in 9h</span>
+        <div style="display: flex; flex-direction: column; gap: 3px">
+          <span style="font-size: 12.5px; color: #a9b7c9">300 ETB to go</span>
+          <span style="font-size: 12.5px; color: rgba(255,255,255,0.55)">Resets in 3h &middot; bonus valid 24h</span>
         </div>
-        <div class="lbl" style="flex-shrink: 0; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; background: var(--accent); color: #000">Deposit</div>
+        <div class="lbl tap" style="flex-shrink: 0; padding: 0 20px; border-radius: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; background: var(--accent); color: #000">Deposit</div>
       </div>
     </div>
   </div>
 
   <!-- ══ BONUS HISTORY link row ══ -->
-  <div style="background: #111827; border: 1px solid #1e2d4a; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 14px">
-    <div style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,0.06); color: #94a3b8">
+  <div style="background: #111827; border: 1px solid #1e2d4a; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; min-height: 44px">
+    <div style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,0.06); color: #a9b7c9">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 17px; height: 17px">
         <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.5 2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <div style="flex: 1; display: flex; flex-direction: column; gap: 2px">
       <span class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 0.3px; color: #f1f5f9">Bonus history</span>
-      <span style="font-size: 12px; color: #94a3b8">Everything granted, spent and expired</span>
+      <span style="font-size: 12.5px; color: #a9b7c9">Everything granted, spent and expired</span>
     </div>
-    <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="width: 17px; height: 17px; flex-shrink: 0"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#a9b7c9" stroke-width="2" style="width: 17px; height: 17px; flex-shrink: 0"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
 
 </div>
 </x-dc>
 
-<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":390,"height":1240}}'>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":390,"height":1340}}'>
 class Component extends DCLogic {
   renderVals() {
     return { accent: this.props.accent ?? '#f59e0b' };

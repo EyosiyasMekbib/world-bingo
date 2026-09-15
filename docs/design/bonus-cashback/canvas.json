@@ -5,13 +5,13 @@
   ],
   "artboards": [
     { "file": "LobbyPromo.dc.html", "page": "player", "title": "Lobby — hero promo + offer strip", "x": 0, "y": 0, "w": 1240, "h": 700 },
-    { "file": "Main.dc.html", "page": "player", "title": "Wallet — My Bonuses hub", "x": 0, "y": 820, "w": 390, "h": 1240 },
-    { "file": "Promotions.dc.html", "page": "player", "title": "Promotions — with live progress", "x": 470, "y": 820, "w": 390, "h": 1140 },
+    { "file": "Main.dc.html", "page": "player", "title": "Wallet — My Bonuses hub", "x": 0, "y": 820, "w": 390, "h": 1340 },
+    { "file": "Promotions.dc.html", "page": "player", "title": "Promotions — with live progress", "x": 470, "y": 820, "w": 390, "h": 1120 },
     { "file": "BonusMoments.dc.html", "page": "player", "title": "Arrival moments — toast, welcome, inbox", "x": 940, "y": 820, "w": 1220, "h": 740 },
 
     { "file": "AdminPromotions.dc.html", "page": "admin", "title": "Promotions — one list for every offer", "x": 0, "y": 0, "w": 1340, "h": 830 },
-    { "file": "AdminPromoDetail.dc.html", "page": "admin", "title": "Promotion detail — stats, budget, live preview", "x": 0, "y": 950, "w": 1130, "h": 1080 },
-    { "file": "AdminPlayerBonuses.dc.html", "page": "admin", "title": "Player detail — Bonuses tab", "x": 1210, "y": 950, "w": 1130, "h": 1010 }
+    { "file": "AdminPromoDetail.dc.html", "page": "admin", "title": "Promotion detail — stats, budget, live preview", "x": 0, "y": 950, "w": 1130, "h": 1480 },
+    { "file": "AdminPlayerBonuses.dc.html", "page": "admin", "title": "Player detail — Bonuses tab", "x": 1210, "y": 950, "w": 1130, "h": 1060 }
   ],
   "annotations": [
     {
@@ -20,15 +20,15 @@
       "x": 1320,
       "y": 0,
       "w": 420,
-      "text": "PLAYER — what changes\n\n1. Lobby. The promo strip is new, and the hero slide is generated from the live first-deposit setting instead of the hard-coded \"100% bonus\" that ships today. The red chip only appears for a signed-in player holding a bonus.\n\n2. Wallet. New My Bonuses hub: each lot shows its source and a countdown, and Earn More shows real progress toward cashback and the deposit rules. The explainer under the spend toggle is new.\n\n3. Promotions page. Today it shows slogans only, and never shows the daily or weekly deposit rules at all. Every card now carries progress and a payout time.\n\n4. Arrival moments. The bell exists in the codebase but is never mounted, so players currently get no inbox. Panel 3 is that bell."
+      "text": "PLAYER — what changes\n\n1. Lobby. The offer strip is new, and the hero slide is generated from the live first-deposit setting instead of the hard-coded \"100% bonus\" that ships today. The red chip only appears for a signed-in player holding a bonus.\n\n2. Wallet. New My Bonuses hub: each lot shows its source and a countdown, and Earn More shows real progress toward cashback and the deposit rule. The explainer under the spend toggle is new.\n\n3. Promotions page. Today it shows slogans only and never shows the deposit rules at all. Every card now carries progress and a payout time. The VIP-only weekly rule is deliberately absent — a targeted rule must never be advertised to someone who cannot receive it.\n\n4. Arrival moments. The bell exists in the codebase but is never mounted, so players get no inbox at all today. Panel 3 is that bell."
     },
     {
-      "id": "player-caveats",
+      "id": "player-scenario",
       "page": "player",
       "x": 1320,
-      "y": 420,
+      "y": 440,
       "w": 420,
-      "text": "Worth checking\n\nNumbers are sample values, not real data. Copy is drafted and needs an Amharic pass — the wallet labels are hard-coded English today.\n\nIcons are inline SVG rather than the emoji the app uses in a few places. The bell's current emoji map is missing eight notification types and references two that don't exist, so this replaces it.\n\nBonus lots have no source column in the database yet, so the source chips need that added before any of this can render."
+      "text": "One scenario across every screen\n\nMonday 9 March 2026, 21:15 local. Player holds 1,190.00 withdrawable and 100.00 bonus in two lots of 50.00.\n\nThe deposit-rule lot was granted 00:20 today from Sunday's deposit, approved after review, and dies tonight — that is the urgent one. The cashback lot was paid 00:15 today when last week's period closed, and runs 7 days.\n\nThis week's loss is 320 of 500, and today's deposits are 200 of 500, so neither has paid out yet.\n\nFigures are sample values. Copy is English only and needs an Amharic pass."
     },
     {
       "id": "admin-whats-new",
@@ -36,15 +36,15 @@
       "x": 1420,
       "y": 0,
       "w": 420,
-      "text": "ADMIN — what changes\n\nCashback and Bonus Rules merge into one Promotions section, and the welcome bonus joins them instead of hiding under Settings. Outstanding liability and next run time are new.\n\nThe detail page is entirely new. Today a promotion can only be created and toggled — no edit, no duplicate, no end, no history, and no way to see who received what. Max payout per player and a period budget are new fields; cashback currently has no cap at all.\n\nQualifies right now reuses the net-loss query the hourly job already runs, so the admin sees the bill before it is paid."
+      "text": "ADMIN — what changes\n\nCashback and Bonus Rules merge into one Promotions section, and the welcome bonus joins them instead of hiding under Settings. Outstanding liability is new.\n\nThe detail page is entirely new. Today a promotion can only be created and toggled — no edit, no duplicate, no end, no history, and no way to see who received what. Max payout per player and a period budget are new fields; cashback has no cap at all today.\n\nQualifies right now reuses the net-loss query the sweep already runs, so the admin sees the bill before it is paid — here it is 1,120 ETB over the cap."
     },
     {
       "id": "admin-layout-note",
       "page": "admin",
       "x": 1420,
-      "y": 400,
+      "y": 440,
       "w": 420,
-      "text": "The two lower screens show the content area only. The sidebar is the same one drawn on the list screen above.\n\nOn the player Bonuses tab, note that balance adjustment sits in the admin scope. It is reachable by clerks today with no cap and no record of who did it."
+      "text": "Cashback pays at period close on these screens, not at the first hourly run that sees the threshold crossed. That is the behaviour change, so the numbers assume it.\n\nThe two lower screens show the content area only. The sidebar is the same one drawn on the list screen above.\n\nOn the player Bonuses tab, note that balance adjustment sits in the admin scope. It is reachable by clerks today, with no cap and no record of who did it."
     }
   ],
   "launch": { "view": "canvas", "page": "player" }
