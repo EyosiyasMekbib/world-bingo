@@ -175,6 +175,76 @@ describe('AuthService.firebasePhoneAuth', () => {
         })
     })
 
+    // Support issues a temporary password and the web app then holds the player
+    // on /set-password, which asks for that password as the current one. A
+    // player who signs in by SMS instead has nothing to type there, so the
+    // unused credential is retired rather than left to trap them.
+    describe('a pending support password reset', () => {
+        async function playerWithTempPassword(phone = '+251911234567') {
+            return prisma.user.create({
+                data: {
+                    username: 'reset-me',
+                    phone,
+                    passwordHash: 'temp-hash',
+                    mustChangePassword: true,
+                    passwordResetAt: new Date(),
+                    wallet: { create: {} },
+                },
+            })
+        }
+
+        it('clears the flag and the unused temporary password', async () => {
+            const existing = await playerWithTempPassword()
+
+            const { user } = await AuthService.firebasePhoneAuth({ idToken: 'tok' })
+
+            expect(user.id).toBe(existing.id)
+            expect(user.mustChangePassword).toBe(false)
+            const row = await prisma.user.findUnique({ where: { id: existing.id } })
+            expect(row?.passwordHash).toBeNull()
+        })
+
+        // The 24h hold is keyed on passwordResetAt, not on the flag, so getting
+        // back in by SMS must not shorten it.
+        it('leaves passwordResetAt alone, so the withdrawal hold still applies', async () => {
+            const existing = await playerWithTempPassword()
+
+            await AuthService.firebasePhoneAuth({ idToken: 'tok' })
+
+            const row = await prisma.user.findUnique({ where: { id: existing.id } })
+            expect(row?.passwordResetAt).toEqual(existing.passwordResetAt)
+        })
+
+        it('also clears it on a later sign-in, once the account is already linked', async () => {
+            const { user } = await AuthService.firebasePhoneAuth({ idToken: 'tok' })
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { passwordHash: 'temp-hash', mustChangePassword: true, passwordResetAt: new Date() },
+            })
+
+            const again = await AuthService.firebasePhoneAuth({ idToken: 'tok' })
+
+            expect(again.user.id).toBe(user.id)
+            expect(again.user.mustChangePassword).toBe(false)
+        })
+
+        it('leaves a password the player still uses alone', async () => {
+            const existing = await prisma.user.create({
+                data: {
+                    username: 'has-password',
+                    phone: '+251911234567',
+                    passwordHash: 'real-hash',
+                    wallet: { create: {} },
+                },
+            })
+
+            await AuthService.firebasePhoneAuth({ idToken: 'tok' })
+
+            const row = await prisma.user.findUnique({ where: { id: existing.id } })
+            expect(row?.passwordHash).toBe('real-hash')
+        })
+    })
+
     describe('refusals', () => {
         // An SMS code is one factor and a SIM is swappable. Staff keep the
         // password path at /auth/admin/login.

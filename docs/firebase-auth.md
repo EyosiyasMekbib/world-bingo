@@ -61,6 +61,18 @@ Two deliberate refusals:
 - **A token that is not a phone sign-in is refused** even if it verifies. An anonymous session
   on the same Firebase project is a valid token and proves nothing about a phone number.
 
+### Signing in by SMS after a support password reset
+
+Support issues a temporary password and sets `mustChangePassword`, which holds the player on
+`/set-password` — a page that asks for that temporary password as the current one. A player who
+never received it and signs in by SMS instead would be stuck there with nothing to type, so an
+SMS sign-in on an account in that state **retires the unused temporary password**: the flag and
+the hash are both cleared, and the player lands in the lobby.
+
+`passwordResetAt` is deliberately left alone, so `WalletService.requestWithdrawal` still holds
+withdrawals for 24 hours after the reset however the player got back in. A password the player
+still uses is never touched — only `adminResetPassword` ever sets the flag.
+
 No service-account key is involved anywhere. Verifying an ID token needs only Google's public
 certificates and the project id, so there is no Firebase credential to leak from a deployment.
 

@@ -616,6 +616,37 @@ export class AuthService {
     }
 
     /**
+     * Drops a temporary password the player never used.
+     *
+     * Support verifies a player and issues one, setting `mustChangePassword`;
+     * the web app then holds them on /set-password until they replace it — and
+     * that page asks for the temporary password as the current one. A player
+     * who never received it and signed in by SMS instead would land in that
+     * loop with nothing to type, unable to reach the lobby at all.
+     *
+     * The SMS proves control of the number, which is what support verified
+     * before issuing the password, so the pending credential has done its job
+     * without ever being used: retire it, and the flag with it. Nothing weakens
+     * — `passwordResetAt` is untouched, so WalletService still holds
+     * withdrawals for 24h after the reset however the player got back in, and
+     * the temporary password support read aloud stops working.
+     *
+     * A player whose own password still works keeps it: the flag is written
+     * only by `adminResetPassword`.
+     */
+    private static async retirePendingTempPassword<T extends { id: string; mustChangePassword: boolean }>(
+        user: T,
+    ): Promise<T> {
+        if (!user.mustChangePassword) return user
+
+        const updated = await prisma.user.update({
+            where: { id: user.id },
+            data: { mustChangePassword: false, passwordHash: null },
+        })
+        return updated as unknown as T
+    }
+
+    /**
      * The account behind a verified phone number, creating one on first sight.
      *
      * Match order is `firebaseUid` first, then the phone number: the uid is
@@ -630,7 +661,7 @@ export class AuthService {
      */
     private static async resolvePhoneUser(uid: string, phone: string, referralCode?: string) {
         const byUid = await prisma.user.findUnique({ where: { firebaseUid: uid } })
-        if (byUid) return { user: byUid, created: false }
+        if (byUid) return { user: await AuthService.retirePendingTempPassword(byUid), created: false }
 
         const variants = phoneVariants(phone)
         const byPhone = variants.length
@@ -657,7 +688,7 @@ export class AuthService {
                 where: { id: byPhone.id },
                 data: { firebaseUid: uid },
             })
-            return { user, created: false }
+            return { user: await AuthService.retirePendingTempPassword(user), created: false }
         }
 
         let referredById: string | undefined
