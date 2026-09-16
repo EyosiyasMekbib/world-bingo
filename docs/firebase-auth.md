@@ -1,8 +1,12 @@
 # World Bingo — Firebase Phone Sign-In Runbook
 
-> **Scope:** how players sign in. Phone (SMS) sign-in through Firebase Authentication is the
-> only player sign-in path — there is no player password. Staff (CLERK / ADMIN / SUPER_ADMIN)
-> still sign in with a password at `/auth/admin/login`, from the admin app.
+> **Scope:** phone (SMS) sign-in through Firebase Authentication — one of three ways a player
+> reaches an account, beside the username/password form (`/auth/login`, `/auth/register`) and
+> Telegram. It is the default tab on both auth pages; the other two are unchanged, including
+> the support-issued temporary password for a player who has forgotten theirs.
+>
+> Staff (CLERK / ADMIN / SUPER_ADMIN) sign in with a password at `/auth/admin/login`, from the
+> admin app, and **cannot** sign in by SMS — see the refusals below.
 >
 > **Golden rule, same as every other integration here:** env-gated and inert when unset. With
 > no `FIREBASE_PROJECT_ID` the API answers `503 firebase_not_configured` on `/auth/phone` and
@@ -35,8 +39,9 @@ The ID token is the only thing the browser sends. The phone number is read from 
 **signed claims**, never from the request body — a number in the body would be caller-chosen.
 
 Sign-in and sign-up are the same call. A number the deployment has never seen gets a new
-account (wallet included); a number that matches an existing account signs into it. The client
-is not told which happened and does not need to be.
+account (wallet included); a number that matches an existing account signs into it — including
+an account that was created with a username and password, which keeps working as before. The
+client is not told which happened and does not need to be.
 
 ### What the server does with a verified number
 
@@ -51,7 +56,8 @@ is not told which happened and does not need to be.
 Two deliberate refusals:
 
 - **A staff account is never reachable by SMS** (`403`). An SMS code is one factor and a SIM
-  is swappable; CLERK/ADMIN/SUPER_ADMIN keep the password path.
+  is swappable; CLERK/ADMIN/SUPER_ADMIN keep the password path, and `AuthService.login` refuses
+  any other role at `/auth/admin/login` before it mints a token.
 - **A token that is not a phone sign-in is refused** even if it verifies. An anonymous session
   on the same Firebase project is a valid token and proves nothing about a phone number.
 
@@ -107,15 +113,17 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<host>/api/auth/phone \
 # 401 with {"code":"firebase_token_invalid"}
 ```
 
-Then sign in from the app itself: `/auth/login` → Phone tab → number → code. On success the
-player lands in the lobby with a wallet.
+Then sign in from the app itself: `/auth/login` → Phone tab (the default) → number → code. On
+success the player lands in the lobby with a wallet.
 
 Checks worth doing once per brand, in a staging deployment:
 
 - An existing account whose `users.phone` is stored as `09…` signs into **that** account, with
   its balance, rather than getting a fresh empty one.
+- That same account still signs in on the Password tab with its username and password.
 - A staff phone number is refused with the "sign in from the admin dashboard" message.
-- The admin app still signs in at `/auth/admin/login`.
+- The admin app still signs in at `/auth/admin/login`, and support's temporary-password reset
+  still lands the player on `/set-password`.
 
 ## 5. Automated tests without sending SMS
 

@@ -1,5 +1,14 @@
 import { defineStore } from 'pinia'
-import type { FirebasePhoneAuthDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
+import type {
+  LoginDto,
+  RegisterDto,
+  FirebasePhoneAuthDto,
+  User,
+  Wallet,
+  TelegramAuthDto,
+  ChangePasswordDto,
+  ChangePasswordResponse,
+} from '@world-bingo/shared-types'
 import { isExpiringWithin, TOKEN_REFRESH_MARGIN_MS } from '~/utils/token'
 
 /**
@@ -71,12 +80,46 @@ export const useAuthStore = defineStore('auth', {
 
   actions: {
     /**
-     * Phone sign-in. `idToken` comes from Firebase after the SMS code is
+     * Phone (SMS) sign-in. `idToken` comes from Firebase after the code is
      * accepted (see composables/useFirebasePhoneAuth.ts); the server verifies
-     * it and either signs the player in or creates the account, which is why
-     * there is no separate register action any more. `referralCode` is only
-     * honoured on a brand-new account.
+     * it and either signs the player in or creates the account — so unlike
+     * `login`/`register` above there is only one action for both. A
+     * `referralCode` is honoured only when an account is actually created.
      */
+    async login(credentials: LoginDto) {
+      const config = useRuntimeConfig()
+      const { user, accessToken, refreshToken } = await $fetch<{
+        user: User
+        accessToken: string
+        refreshToken: string
+      }>(`${config.public.apiBase}/auth/login`, {
+        method: 'POST',
+        body: credentials,
+      })
+      this.user = user
+      this.accessToken = accessToken
+      this.refreshToken = refreshToken
+      useAnalytics().identify(user)
+      await this.fetchWallet()
+    },
+
+    async register(data: RegisterDto) {
+      const config = useRuntimeConfig()
+      const { user, accessToken, refreshToken } = await $fetch<{
+        user: User
+        accessToken: string
+        refreshToken: string
+      }>(`${config.public.apiBase}/auth/register`, {
+        method: 'POST',
+        body: data,
+      })
+      this.user = user
+      this.accessToken = accessToken
+      this.refreshToken = refreshToken
+      useAnalytics().identify(user)
+      await this.fetchWallet()
+    },
+
     async phoneLogin(payload: FirebasePhoneAuthDto) {
       const config = useRuntimeConfig()
       const { user, accessToken, refreshToken } = await $fetch<{
@@ -176,6 +219,24 @@ export const useAuthStore = defineStore('auth', {
         // Transient: keep the current token and let the request try it.
         return this.accessToken
       }
+    },
+
+    /**
+     * The server revokes every session on a password change and hands this
+     * device a fresh one. Adopting it is what keeps the player signed in once
+     * the current access token lapses. Clears the forced-change flag either way.
+     */
+    async changePassword(body: ChangePasswordDto) {
+      const res = await this.apiFetch<Partial<ChangePasswordResponse>>('/auth/change-password', {
+        method: 'POST',
+        body,
+      })
+      if (res?.accessToken && res?.refreshToken) {
+        this.accessToken = res.accessToken
+        this.refreshToken = res.refreshToken
+      }
+      if (res?.user) this.user = res.user
+      else if (this.user) this.user = { ...this.user, mustChangePassword: false }
     },
 
     clearStoredUser() {

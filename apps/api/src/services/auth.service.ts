@@ -35,6 +35,39 @@ export const REFRESH_GRACE_MS = 60_000
 const REFRESH_PRUNE_MS = 5 * 60_000
 
 /**
+ * Support reads a temporary password aloud over the phone, so the alphabet
+ * drops every character that looks or sounds like another (0/O, 1/I/l) and
+ * lowercase altogether, so nobody has to say "capital". 32 symbols over 8
+ * characters is 40 bits: plenty for a password the login limiter throttles and
+ * the player must replace at their next sign-in.
+ */
+export const TEMP_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+export const TEMP_PASSWORD_LENGTH = 8
+
+/**
+ * A refusal the client can act on. `code` is what the web and admin apps key
+ * their messages on. These used to be plain `Error`s, which the shared error
+ * handler turned into 500s — a mistyped current password read as a server
+ * fault.
+ */
+export class PasswordError extends Error {
+    constructor(
+        readonly statusCode: 400 | 403 | 404 | 409,
+        readonly code:
+            | 'user_not_found'
+            | 'reset_not_allowed'
+            | 'no_password_login'
+            | 'password_not_set'
+            | 'current_password_incorrect'
+            | 'password_unchanged',
+        message: string,
+    ) {
+        super(message)
+        this.name = 'PasswordError'
+    }
+}
+
+/**
  * A refusal the client can act on. `code` is what the web store keys its
  * "really log out" decision on: anything else (network, 429, 5xx) must leave
  * the session alone.
@@ -55,8 +88,25 @@ function hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex')
 }
 
-/** Staff sign in with a password; players no longer can — see `login()`. */
+/**
+ * Roles that may sign in with a password at /auth/admin/login, and the roles
+ * `firebasePhoneAuth` refuses to reach by SMS.
+ */
 const STAFF_ROLES: string[] = [UserRole.CLERK, UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
+export function generateTemporaryPassword(): string {
+    let password = ''
+    for (let i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
+        // randomInt is uniform over the range; `randomBytes % n` would bias it.
+        password += TEMP_PASSWORD_ALPHABET[crypto.randomInt(TEMP_PASSWORD_ALPHABET.length)]
+    }
+    return password
+}
+
+/** The two markers bot.service.ts writes — the same test lib/posthog.ts uses. */
+function isBotAccount(user: { username: string | null; passwordHash: string | null }): boolean {
+    return user.username?.startsWith('bot_t') === true || user.passwordHash === 'BOT_ACCOUNT'
+}
 
 export class AuthService {
     /**
@@ -81,16 +131,7 @@ export class AuthService {
         return refreshToken
     }
 
-    /**
-     * Username + phone + password account creation.
-     *
-     * No route reaches this any more: players sign in through
-     * `firebasePhoneAuth` below and never have a password, and staff accounts
-     * are created by an admin at `POST /admin/clerks`. It is kept as the one
-     * place that knows how to build a password account with its wallet and
-     * referral link — the test suites build their fixtures with it — and must
-     * not be wired back up to a public route.
-     */
+    /** Username + phone + password sign-up, behind `POST /auth/register`. */
     static async register(data: RegisterDto) {
         const existingUser = await prisma.user.findFirst({
             where: {
@@ -138,15 +179,13 @@ export class AuthService {
     }
 
     /**
-     * Password sign-in. Players no longer have this — they verify a phone
-     * number with Firebase (`firebasePhoneAuth`) and the `/auth/login` and
-     * `/auth/register` routes are gone. What is left is the staff path behind
-     * `/auth/admin/login`, which passes `roles` so a PLAYER row carrying a
-     * legacy `passwordHash` cannot be used to sign in anywhere.
+     * Password sign-in, for players (`/auth/login`) and staff
+     * (`/auth/admin/login`) alike. Players may also arrive by SMS
+     * (`firebasePhoneAuth`) or Telegram; staff have only this.
      *
-     * `roles` is checked BEFORE a refresh token is minted: the controller used
-     * to mint one and then 403, leaving a live 30-day token behind for an
-     * account that was just refused.
+     * `roles`, which only the admin route passes, is checked BEFORE a refresh
+     * token is minted: the controller used to mint one and then 403, leaving a
+     * live 30-day token behind for an account it had just refused.
      */
     static async login(data: LoginDto, options: { roles?: string[] } = {}) {
         // Support login by username OR phone
@@ -302,27 +341,147 @@ export class AuthService {
         }
     }
 
+    /**
+     * The signed-in user's current row, minus the hash. Not the token's own
+     * claims: those are frozen when the token is issued and cannot carry a flag
+     * such as `mustChangePassword` that changed afterwards.
+     */
+    static async me(userId: string) {
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+        if (!user) throw new Error('User not found')
+        const { passwordHash: _, ...result } = user
+        return result
+    }
+
     static async changePassword(userId: string, data: ChangePasswordDto) {
         const user = await prisma.user.findUnique({ where: { id: userId } })
         if (!user) throw new Error('User not found')
 
-        if (!user.passwordHash) throw new Error('Password not set for this account')
+        if (!user.passwordHash) {
+            throw new PasswordError(400, 'password_not_set', 'Password not set for this account')
+        }
 
         const isValid = await bcrypt.compare(data.currentPassword, user.passwordHash)
-        if (!isValid) throw new Error('Current password is incorrect')
+        if (!isValid) {
+            throw new PasswordError(400, 'current_password_incorrect', 'Current password is incorrect')
+        }
+
+        // `currentPassword` was just proven to match the stored hash, so a
+        // string comparison is a comparison against the hash without a second
+        // bcrypt round. Above all it stops a player "changing" a temporary
+        // password to itself, which would clear the flag that forces a real one.
+        if (data.newPassword === data.currentPassword) {
+            throw new PasswordError(
+                400,
+                'password_unchanged',
+                'New password must be different from the current password',
+            )
+        }
 
         const newPasswordHash = await bcrypt.hash(data.newPassword, 10)
 
-        await prisma.$transaction([
+        // Every existing session is revoked and this device gets a fresh one.
+        // Without it the player who just chose a password is signed out again
+        // as soon as their 15-minute access token lapses and the revoked
+        // refresh token is refused.
+        const refreshToken = generateRefreshToken()
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+        const [updated] = await prisma.$transaction([
             prisma.user.update({
                 where: { id: userId },
-                data: { passwordHash: newPasswordHash },
+                data: { passwordHash: newPasswordHash, mustChangePassword: false },
             }),
             // Invalidate all refresh tokens on password change
             prisma.refreshToken.deleteMany({ where: { userId } }),
+            prisma.refreshToken.create({
+                data: { userId, tokenHash: hashToken(refreshToken), expiresAt, familyId: crypto.randomUUID() },
+            }),
         ])
 
-        return { message: 'Password changed successfully' }
+        const { passwordHash: _, ...result } = updated
+        return { message: 'Password changed successfully', user: result, refreshToken }
+    }
+
+    /**
+     * Support-assisted recovery. Replaces a player's password with a temporary
+     * one that support reads out, signs the player out on every device, and
+     * flags the account so the web app makes them choose their own at the next
+     * sign-in. The reset time starts the withdrawal hold in
+     * WalletService.requestWithdrawal.
+     *
+     * Authorising the actor is the route's job (admin and super-admin only —
+     * see routes/admin/index.ts). The temporary password goes back to that
+     * caller once and is never stored, logged or audited.
+     */
+    static async adminResetPassword(userId: string, actorId: string) {
+        const target = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true, username: true, phone: true, passwordHash: true },
+        })
+        if (!target) throw new PasswordError(404, 'user_not_found', 'User not found')
+
+        // Players only. Resetting a staff password hands the account to whoever
+        // issued it — an ADMIN resetting a SUPER_ADMIN would sign in as them —
+        // and a bot is house-operated, not a person who can forget anything.
+        if (target.role !== 'PLAYER' || isBotAccount(target)) {
+            throw new PasswordError(403, 'reset_not_allowed', 'Only player accounts can have their password reset')
+        }
+
+        // Login finds the account by username or phone. A Telegram-only account
+        // with neither could never use the password it was given.
+        if (!target.username && !target.phone) {
+            throw new PasswordError(
+                409,
+                'no_password_login',
+                'This account has no username or phone number to sign in with',
+            )
+        }
+
+        const temporaryPassword = generateTemporaryPassword()
+        // Hashed before the transaction opens: bcrypt is deliberately slow and
+        // must not run while the transaction holds the row.
+        const passwordHash = await bcrypt.hash(temporaryPassword, 10)
+
+        // The JWT carries only { id, role }; the trail should say who, too.
+        const actorName = await prisma.user
+            .findUnique({ where: { id: actorId }, select: { username: true } })
+            .then((u) => u?.username ?? null)
+            .catch(() => null)
+
+        const revokedSessions = await prisma.$transaction(async (tx) => {
+            // Re-asserts PLAYER in the write itself, so a role change landing
+            // between the check above and this update cannot slip through.
+            const { count: updated } = await tx.user.updateMany({
+                where: { id: userId, role: 'PLAYER' },
+                data: { passwordHash, mustChangePassword: true, passwordResetAt: new Date() },
+            })
+            if (updated === 0) {
+                throw new PasswordError(403, 'reset_not_allowed', 'Only player accounts can have their password reset')
+            }
+
+            // The same revocation changePassword uses: every device, every family.
+            const { count } = await tx.refreshToken.deleteMany({ where: { userId } })
+
+            // Written inside the transaction, unlike the CRM helper's best-effort
+            // audit: a reset that hands out account access must not happen
+            // without leaving a trace.
+            await tx.auditLog.create({
+                data: {
+                    action: 'user.password_reset',
+                    actorId,
+                    actorName,
+                    target: `user:${userId}`,
+                    detail: { revokedSessions: count },
+                },
+            })
+            return count
+        })
+
+        void captureEvent(userId, 'password_reset_by_admin', { revoked_sessions: revokedSessions })
+
+        return { temporaryPassword }
     }
 
     static async telegramAuth(data: TelegramAuthDto) {

@@ -21,16 +21,13 @@ import { createHash } from 'crypto'
  * address — a spoofed prefix is ignored no matter how long it is.
  */
 /**
- * Rate-limit bucket for /auth/admin/login: the identifier being tried, hashed,
- * so a shared carrier address is not one budget for a whole neighbourhood — or,
- * for staff, for a whole shop. A brute-force on one account still lands in one
- * bucket. Credential stuffing across many identifiers is caught by the route's
- * IP ceiling, not by this key. Falls back to the resolved ip when the body has
- * no usable identifier (the limiter runs at preValidation, so a malformed body
- * lands here rather than 400ing first).
- *
- * Player sign-in has no counterpart: /auth/phone carries an opaque Firebase ID
- * token and nothing in it can key a bucket that the caller cannot rotate.
+ * Rate-limit bucket for /login: the identifier being tried, hashed, so a
+ * shared carrier address is not one 10/min budget for a whole neighbourhood.
+ * A brute-force on one account still lands in one bucket. Credential
+ * stuffing across many identifiers is caught by the route's IP ceiling, not
+ * by this key. Falls back to the resolved ip when the body has no usable
+ * identifier (the limiter runs at preValidation, so a malformed body lands
+ * here rather than 400ing first).
  */
 function identityRateLimitKey(scope: string, identifier: unknown, ip: string | undefined): string {
     const id = typeof identifier === 'string' ? identifier.trim().toLowerCase() : ''
@@ -40,6 +37,15 @@ function identityRateLimitKey(scope: string, identifier: unknown, ip: string | u
 
 export function loginRateLimitKey(input: { identifier: unknown; ip: string | undefined }): string {
     return identityRateLimitKey('login', input.identifier, input.ip)
+}
+
+/**
+ * Same idea for /register, keyed on the phone being registered. Its own
+ * namespace: a login attempt and a registration on the same number must not
+ * spend each other's budget. 25 people hit the old per-IP 5/min in 14 hours.
+ */
+export function registerRateLimitKey(input: { phone: unknown; ip: string | undefined }): string {
+    return identityRateLimitKey('register', input.phone, input.ip)
 }
 
 export function rateLimitKey(input: {

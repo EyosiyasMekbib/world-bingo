@@ -11,7 +11,7 @@ import { WalletService } from '../services/wallet.service'
 import { GameService } from '../services/game.service'
 import { AdminService } from '../services/admin.service'
 import { RefundService } from '../services/refund.service'
-import { PaymentStatus, TransactionType, PatternType, GameStatus } from '@world-bingo/shared-types'
+import { PaymentStatus, TransactionType, PatternType, GameStatus, DepositRejectionReason } from '@world-bingo/shared-types'
 import { generateCartela, generateSerial } from '@world-bingo/game-logic'
 
 // Mock socket.io — joinGame emits to the room after the DB transaction
@@ -152,7 +152,7 @@ describe('Integration: Deposit flow', () => {
         const user = await createUser('integ_deposit2', '+251900000011', 0)
 
         const tx = await WalletService.initiateDeposit(user.id, { amount: 200 })
-        await AdminService.reviewTransaction(tx.id, PaymentStatus.REJECTED, 'Transaction ID mismatch')
+        await AdminService.reviewTransaction(tx.id, PaymentStatus.REJECTED, 'Transaction ID mismatch', undefined, undefined, DepositRejectionReason.NOT_FOUND)
 
         const wallet = await WalletService.getBalance(user.id)
         expect(Number(wallet.realBalance)).toBe(0)

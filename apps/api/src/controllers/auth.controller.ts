@@ -1,7 +1,10 @@
+import { STATUS_CODES } from 'http'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthService } from '../services'
+import { PasswordError } from '../services/auth.service'
 import type {
     LoginDto,
+    RegisterDto,
     RefreshTokenDto,
     LogoutDto,
     ChangePasswordDto,
@@ -11,14 +14,33 @@ import type {
 import { UserRole } from '@world-bingo/shared-types'
 
 export class AuthController {
+    static async register(request: FastifyRequest<{ Body: RegisterDto }>, reply: FastifyReply) {
+        const { user, refreshToken } = await AuthService.register(request.body)
+        const accessToken = await reply.jwtSign(
+            { id: user.id, role: user.role },
+            { expiresIn: '15m' }
+        )
+        return { user, accessToken, refreshToken }
+    }
+
     /**
-     * The only password sign-in left. Players verify a phone number with
-     * Firebase instead (`firebasePhone` below), and the routes that used to
-     * take a player password are gone.
-     *
-     * The role check moved into the service so it runs BEFORE a refresh token
-     * is minted — this used to issue a live 30-day token and then 403, leaving
-     * the refused account with a working session credential.
+     * Username/phone + password. One of three ways a player signs in, beside
+     * `firebasePhone` (SMS) and `telegramLogin` — and the one support's
+     * password reset hands a player back to.
+     */
+    static async login(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {
+        const { user, refreshToken } = await AuthService.login(request.body)
+        const accessToken = await reply.jwtSign(
+            { id: user.id, role: user.role },
+            { expiresIn: '15m' }
+        )
+        return { user, accessToken, refreshToken }
+    }
+
+    /**
+     * The staff door. The role check lives in the service so it runs BEFORE a
+     * refresh token is minted — this used to issue a live 30-day token and then
+     * 403, leaving the refused account with a working session credential.
      */
     static async adminLogin(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {
         const { user, refreshToken } = await AuthService.login(request.body, {
@@ -46,14 +68,31 @@ export class AuthController {
     }
 
     static async me(request: FastifyRequest, reply: FastifyReply) {
-        return request.user
+        // @ts-ignore
+        return AuthService.me(request.user.id)
     }
 
     static async changePassword(request: FastifyRequest<{ Body: ChangePasswordDto }>, reply: FastifyReply) {
         // @ts-ignore
         const userId = request.user.id
-        const result = await AuthService.changePassword(userId, request.body)
-        return result
+        try {
+            const { message, user, refreshToken } = await AuthService.changePassword(userId, request.body)
+            const accessToken = await reply.jwtSign(
+                { id: user.id, role: user.role },
+                { expiresIn: '15m' }
+            )
+            return { message, user, accessToken, refreshToken }
+        } catch (err) {
+            if (err instanceof PasswordError) {
+                return reply.status(err.statusCode).send({
+                    statusCode: err.statusCode,
+                    error: STATUS_CODES[err.statusCode],
+                    message: err.message,
+                    code: err.code,
+                })
+            }
+            throw err
+        }
     }
 
     /**

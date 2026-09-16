@@ -28,10 +28,10 @@ function vueFiles(dir: string): string[] {
 }
 
 describe('provider game launch sites', () => {
-  it("/games launches with the game's own provider code", () => {
+  it("/games launches through /play with the game's own provider code", () => {
     const src = read('pages/games/index.vue')
     expect(src).toMatch(
-      /providerStore\.launchGame\(\s*launchProviderFor\(\s*game\s*,\s*providerStore\.activeProviderCode\s*\)\s*,\s*game\.gameCode\s*\)/,
+      /`\/play\/\$\{launchProviderFor\(\s*game\s*,\s*providerStore\.activeProviderCode\s*\)\}\/\$\{game\.gameCode\}`/,
     )
   })
 

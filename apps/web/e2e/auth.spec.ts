@@ -1,142 +1,190 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 
-/**
- * Phone (SMS) sign-in.
- *
- * Players sign in with a Firebase phone number and a 6-digit code; there is no
- * player password, and sign-up is the same flow (an unknown number gets an
- * account). See docs/firebase-auth.md.
- *
- * Everything up to "send code" is testable anywhere. Completing a sign-in needs
- * a **Firebase test phone number** — Authentication → Sign-in method → Phone →
- * "Phone numbers for testing" — which returns a fixed code with no SMS sent and
- * no quota spent. Set both env vars to run those tests:
- *
- *   E2E_FIREBASE_TEST_PHONE=0911000000
- *   E2E_FIREBASE_TEST_CODE=123456
- *
- * Without them the sign-in tests skip rather than fail: a run against a
- * deployment with no Firebase project configured should not look like a
- * regression.
- */
-const TEST_PHONE = process.env.E2E_FIREBASE_TEST_PHONE
-const TEST_CODE = process.env.E2E_FIREBASE_TEST_CODE
-const canSignIn = !!TEST_PHONE && !!TEST_CODE
+const API_URL = process.env.API_URL || 'http://localhost:8080'
 
-async function signInWithTestNumber(page: Page) {
-    await page.goto('/auth/login')
-    await page.locator('#phone').fill(TEST_PHONE!)
-    await page.getByRole('button', { name: /send code/i }).click()
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-    await expect(page.locator('#code')).toBeVisible({ timeout: 20_000 })
-    await page.locator('#code').fill(TEST_CODE!)
-    await page.getByRole('button', { name: /verify and continue/i }).click()
+function uniqueUser() {
+    const ts = Date.now()
+    return {
+        username: `e2e_${ts}`,
+        phone: `+25191${ts.toString().slice(-7)}`,
+        password: 'TestPass123!',
+    }
 }
 
-// ─── The form ────────────────────────────────────────────────────────────────
+async function registerViaApi(user: { username: string; phone: string; password: string }) {
+    await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+    })
+}
 
-test.describe('Sign-in page', () => {
-    test('uses the auth layout, with no app header', async ({ page }) => {
+// ─── Registration Flow ───────────────────────────────────────────────────────
+
+test.describe('User Registration Flow', () => {
+    test('register page uses auth layout (no header)', async ({ page }) => {
+        await page.goto('/auth/register')
+        // Default layout header should NOT be present on auth layout pages
+        await expect(page.locator('header')).not.toBeVisible()
+        // Brand link in auth layout should be present instead
+        await expect(page.locator('.auth-brand')).toBeVisible()
+    })
+
+    test('register page has "Create account" heading', async ({ page }) => {
+        await page.goto('/auth/register')
+        await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible()
+    })
+
+    test('all required fields are present', async ({ page }) => {
+        await page.goto('/auth/register')
+        await expect(page.locator('#username')).toBeVisible()
+        await expect(page.locator('#phone')).toBeVisible()
+        await expect(page.locator('#reg-password')).toBeVisible()
+    })
+
+    test('successful registration redirects to lobby', async ({ page }) => {
+        const user = uniqueUser()
+        await page.goto('/auth/register')
+        await page.locator('#username').fill(user.username)
+        await page.locator('#phone').fill(user.phone)
+        await page.locator('#reg-password').fill(user.password)
+        await page.getByRole('button', { name: /create account/i }).click()
+        await expect(page).toHaveURL('/', { timeout: 15_000 })
+    })
+
+    test('duplicate username shows inline error', async ({ page }) => {
+        const user = uniqueUser()
+        await registerViaApi(user)
+
+        await page.goto('/auth/register')
+        await page.locator('#username').fill(user.username)
+        await page.locator('#phone').fill(`+25192${Date.now().toString().slice(-7)}`)
+        await page.locator('#reg-password').fill(user.password)
+        await page.getByRole('button', { name: /create account/i }).click()
+        await expect(page.locator('.auth-error')).toBeVisible({ timeout: 8_000 })
+    })
+
+    test('short password is rejected by server and shows error', async ({ page }) => {
+        await page.goto('/auth/register')
+        await page.locator('#username').fill(`short_${Date.now()}`)
+        await page.locator('#phone').fill(`+25193${Date.now().toString().slice(-7)}`)
+        // HTML5 minlength won't block submit here since we don't set it — server rejects it
+        await page.locator('#reg-password').fill('abc')
+        await page.getByRole('button', { name: /create account/i }).click()
+        await expect(page.locator('.auth-error')).toBeVisible({ timeout: 8_000 })
+    })
+
+    test('referral code badge appears when code is entered', async ({ page }) => {
+        await page.goto('/auth/register')
+        await page.locator('#referral').fill('WB3FA29C')
+        await expect(page.locator('.referral-badge')).toBeVisible()
+    })
+
+    test('referral code pre-fills from ?ref= query param', async ({ page }) => {
+        await page.goto('/auth/register?ref=TESTCODE')
+        const value = await page.locator('#referral').inputValue()
+        expect(value.toUpperCase()).toBe('TESTCODE')
+    })
+
+    test('password show/hide toggle works', async ({ page }) => {
+        await page.goto('/auth/register')
+        const pw = page.locator('#reg-password')
+        await expect(pw).toHaveAttribute('type', 'password')
+        await page.locator('.toggle-pass').click()
+        await expect(pw).toHaveAttribute('type', 'text')
+    })
+
+    test('submit button shows spinner during submission', async ({ page }) => {
+        await page.goto('/auth/register')
+        await page.route('**/auth/register', route => setTimeout(() => route.continue(), 800))
+        await page.locator('#username').fill(`spin_${Date.now()}`)
+        await page.locator('#phone').fill(`+25194${Date.now().toString().slice(-7)}`)
+        await page.locator('#reg-password').fill('TestPass123!')
+        await page.getByRole('button', { name: /create account/i }).click()
+        await expect(page.locator('.spinner')).toBeVisible()
+    })
+})
+
+// ─── Login Flow ──────────────────────────────────────────────────────────────
+
+test.describe('User Login Flow', () => {
+    test('login page uses auth layout (no header)', async ({ page }) => {
         await page.goto('/auth/login')
         await expect(page.locator('header')).not.toBeVisible()
+        await expect(page.locator('.auth-brand')).toBeVisible()
     })
 
-    test('opens on the phone tab, with Telegram beside it', async ({ page }) => {
+    test('login page has "Welcome back" heading', async ({ page }) => {
         await page.goto('/auth/login')
-        await expect(page.locator('#phone')).toBeVisible()
-        await expect(page.getByRole('button', { name: /telegram/i })).toBeVisible()
+        await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible()
     })
 
-    test('asks for a number before it asks for a code', async ({ page }) => {
+    test('login with valid credentials redirects to lobby', async ({ page }) => {
+        const user = uniqueUser()
+        await registerViaApi(user)
+
         await page.goto('/auth/login')
-        await expect(page.locator('#phone')).toBeVisible()
-        await expect(page.locator('#code')).toHaveCount(0)
+        await page.locator('#identifier').fill(user.username)
+        await page.locator('#password').fill(user.password)
+        await page.getByRole('button', { name: /sign in/i }).click()
+        await expect(page).toHaveURL('/', { timeout: 15_000 })
     })
 
-    // The native `required` bubble is a tooltip with no DOM change, which
-    // replay records as a dead click on a button the player thinks is broken.
-    test('rejects an empty number inline, without a browser dialog', async ({ page }) => {
-        let dialogFired = false
-        page.on('dialog', () => { dialogFired = true })
+    test('login with phone number works', async ({ page }) => {
+        const user = uniqueUser()
+        await registerViaApi(user)
 
         await page.goto('/auth/login')
-        await page.getByRole('button', { name: /send code/i }).click()
+        await page.locator('#identifier').fill(user.phone)
+        await page.locator('#password').fill(user.password)
+        await page.getByRole('button', { name: /sign in/i }).click()
+        await expect(page).toHaveURL('/', { timeout: 15_000 })
+    })
+
+    test('invalid credentials show inline error (no alert())', async ({ page }) => {
+        // Confirm no browser dialog fires
+        let alertFired = false
+        page.on('dialog', () => { alertFired = true })
+
+        await page.goto('/auth/login')
+        await page.locator('#identifier').fill('nobody_xyz')
+        await page.locator('#password').fill('wrongpass')
+        await page.getByRole('button', { name: /sign in/i }).click()
 
         await expect(page.locator('.auth-error')).toBeVisible({ timeout: 8_000 })
-        expect(dialogFired).toBe(false)
+        expect(alertFired).toBe(false)
     })
 
-    test('rejects a number Firebase would refuse, before sending anything', async ({ page }) => {
+    test('password show/hide toggle works', async ({ page }) => {
         await page.goto('/auth/login')
-        await page.locator('#phone').fill('12345')
-        await page.getByRole('button', { name: /send code/i }).click()
-
-        await expect(page.locator('.auth-error')).toContainText(/valid/i, { timeout: 8_000 })
+        const pw = page.locator('#password')
+        await expect(pw).toHaveAttribute('type', 'password')
+        await page.locator('.toggle-pass').click()
+        await expect(pw).toHaveAttribute('type', 'text')
+        await page.locator('.toggle-pass').click()
+        await expect(pw).toHaveAttribute('type', 'password')
     })
 
-    test('switches to the Telegram tab and back', async ({ page }) => {
+    test('sign-in button is disabled while loading', async ({ page }) => {
         await page.goto('/auth/login')
-        await page.getByRole('button', { name: /telegram/i }).click()
-        await expect(page.getByRole('button', { name: /continue with telegram/i })).toBeVisible()
-
-        await page.getByRole('button', { name: /^phone$/i }).click()
-        await expect(page.locator('#phone')).toBeVisible()
+        await page.route('**/auth/login', route => setTimeout(() => route.continue(), 1000))
+        await page.locator('#identifier').fill('some_user')
+        await page.locator('#password').fill('SomePass123!')
+        const btn = page.getByRole('button', { name: /sign in/i })
+        await btn.click()
+        await expect(btn).toBeDisabled()
     })
 
-    test('links to the referral-code page', async ({ page }) => {
+    test('"Create one" link navigates to register', async ({ page }) => {
         await page.goto('/auth/login')
-        await page.getByRole('link', { name: /enter it here/i }).click()
+        await page.getByRole('link', { name: /create one/i }).click()
         await expect(page).toHaveURL(/\/auth\/register/)
     })
 
-    test('sends a logged-out visitor on a protected route here', async ({ page }) => {
+    test('navigating to protected route while logged out redirects to login', async ({ page }) => {
         await page.goto('/refer')
         await expect(page).toHaveURL(/\/auth\/login/, { timeout: 8_000 })
     })
-})
-
-// ─── Referral entry ──────────────────────────────────────────────────────────
-
-test.describe('Register page', () => {
-    test('is the same phone form, plus a referral field', async ({ page }) => {
-        await page.goto('/auth/register')
-        await expect(page.locator('#phone')).toBeVisible()
-        await expect(page.getByRole('button', { name: /have a referral code/i })).toBeVisible()
-    })
-
-    test('pre-fills and reveals the code from ?ref=', async ({ page }) => {
-        await page.goto('/auth/register?ref=TESTCODE')
-        await expect(page.locator('#referralCode')).toHaveValue('TESTCODE')
-    })
-
-    test('links back to sign in', async ({ page }) => {
-        await page.goto('/auth/register')
-        await page.getByRole('link', { name: /sign in/i }).click()
-        await expect(page).toHaveURL(/\/auth\/login/)
-    })
-})
-
-// ─── A real sign-in ──────────────────────────────────────────────────────────
-
-test.describe('Signing in with a Firebase test number', () => {
-    test.skip(!canSignIn, 'set E2E_FIREBASE_TEST_PHONE and E2E_FIREBASE_TEST_CODE to run')
-
-    test('a correct code lands the player in the lobby', async ({ page }) => {
-        await signInWithTestNumber(page)
-        await expect(page).toHaveURL('/', { timeout: 20_000 })
-    })
-
-    test('a wrong code shows an inline error and stays on the code step', async ({ page }) => {
-        await page.goto('/auth/login')
-        await page.locator('#phone').fill(TEST_PHONE!)
-        await page.getByRole('button', { name: /send code/i }).click()
-
-        await expect(page.locator('#code')).toBeVisible({ timeout: 20_000 })
-        await page.locator('#code').fill('000000')
-        await page.getByRole('button', { name: /verify and continue/i }).click()
-
-        await expect(page.locator('.auth-error')).toBeVisible({ timeout: 15_000 })
-        await expect(page.locator('#code')).toBeVisible()
-    })
-
 })

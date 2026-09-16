@@ -142,3 +142,18 @@ export enum AccountStatus {
     RESTRICTED = 'RESTRICTED',
     SUSPENDED = 'SUSPENDED',
 }
+
+/**
+ * Why a reviewer rejected a manual deposit. Stored on
+ * Transaction.rejectionReason and sent as `reason` on `deposit_rejected`.
+ * OTHER must carry a note. Mirrors `enum DepositRejectionReason` in
+ * apps/api/prisma/schema.prisma — change both together.
+ */
+export enum DepositRejectionReason {
+    DUPLICATE_RECEIPT = 'DUPLICATE_RECEIPT',
+    AMOUNT_MISMATCH = 'AMOUNT_MISMATCH',
+    PAYER_MISMATCH = 'PAYER_MISMATCH',
+    UNREADABLE_RECEIPT = 'UNREADABLE_RECEIPT',
+    NOT_FOUND = 'NOT_FOUND',
+    OTHER = 'OTHER',
+}

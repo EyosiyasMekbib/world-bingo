@@ -19,6 +19,8 @@ import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../..
 import { NotificationService } from '../../services/notification.service'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
 import { SupportService } from '../../services/support/support.service'
+import { AuthService, PasswordError } from '../../services/auth.service'
+import { rateLimitKey } from '../../lib/rate-limit-key'
 import { TransactionType, PaymentStatus, UserRole } from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import { captureEvent } from '../../lib/posthog'
@@ -393,6 +395,42 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── User management ───────────────────────────────────────────────────
         f.get('/users', AdminController.getUsers)
+
+        // Support-assisted password reset. ADMIN scope, never the clerk one:
+        // the response IS access to the account. Support verifies the player
+        // first (they call from the registered phone, or quote a recent
+        // deposit's transaction id); the audit row and this per-admin budget
+        // are what bound a careless or compromised admin session.
+        f.post('/users/:id/reset-password', {
+            config: {
+                rateLimit: {
+                    max: 10,
+                    timeWindow: '10 minutes',
+                    // preValidation, so this runs after the scope's
+                    // requireAdmin hook has verified the token and the bucket
+                    // is the admin. At onRequest req.user does not exist yet
+                    // and every admin behind the office NAT would share one IP
+                    // budget. Namespaced so it never shares a key with the
+                    // global per-user limiter.
+                    hook: 'preValidation',
+                    keyGenerator: (req: any) =>
+                        `password-reset:${rateLimitKey({ userId: req.user?.id, ip: req.ip })}`,
+                },
+            },
+        }, async (req: any, reply) => {
+            try {
+                const { temporaryPassword } = await AuthService.adminResetPassword(req.params.id, req.user.id)
+                // A credential in a response body: nothing between here and the
+                // admin's screen may keep a copy.
+                reply.header('Cache-Control', 'no-store')
+                return { temporaryPassword }
+            } catch (err: any) {
+                if (err instanceof PasswordError) {
+                    return reply.status(err.statusCode).send({ error: err.message, code: err.code })
+                }
+                throw err
+            }
+        })
 
         // ── Game management ───────────────────────────────────────────────────
         f.get('/games', AdminController.getGames)

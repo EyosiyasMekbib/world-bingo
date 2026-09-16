@@ -213,11 +213,25 @@ export default defineNuxtConfig({
 
     pwa: {
         registerType: 'autoUpdate',
+        // sw.js and manifest.webmanifest were served with no Cache-Control, so
+        // a browser could sit on an old worker. This adds
+        // `max-age=0, must-revalidate` for both.
+        registerWebManifestInRouteRules: true,
         manifest: {
             name: 'Arada Bingo',
             short_name: 'Arada',
             theme_color: '#f5a623',
             background_color: '#0a1628',
+        },
+        workbox: {
+            // The worker must never answer navigations. @vite-pwa/nuxt defaults
+            // navigateFallback to '/', but this is an SSR app and '/' is never
+            // precached, so every worker start rejected with Workbox's
+            // `non-precached-url` and the navigation route silently never
+            // registered. Had '/' ever been precached, the worker would have
+            // served that one HTML shell, pointing at chunks later deploys
+            // delete, to every visit. null keeps navigations on the network.
+            navigateFallback: null,
         },
     },
 

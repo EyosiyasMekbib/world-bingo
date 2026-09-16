@@ -3,10 +3,26 @@ import { toE164 } from '@world-bingo/shared-types'
 /**
  * Sign-in form validation in code rather than the browser's native bubbles.
  * On phones a `required` / `minlength` bubble is a tooltip with no DOM
- * change, which session replay records as a dead click on the submit button
- * and the player reads as a broken button. Returning a reason lets the page
- * show an inline message and track why the submit never left the device.
+ * change, which session replay records as a dead click on "Sign In" and the
+ * player reads as a broken button. Returning a reason lets the page show an
+ * inline message and track why the submit never left the device.
  */
+export type LoginFormError = 'identifier_required' | 'password_required' | 'password_short'
+
+/** Same floor the server enforces on the password. */
+export const MIN_PASSWORD_LENGTH = 6
+
+export function validateLoginForm(form: {
+  identifier: string
+  password: string
+}): LoginFormError | null {
+  if (!form.identifier || !form.identifier.trim()) return 'identifier_required'
+  if (!form.password) return 'password_required'
+  if (form.password.length < MIN_PASSWORD_LENGTH) return 'password_short'
+  return null
+}
+
+/** The phone tab's two fields, validated the same way as the password form. */
 export type PhoneFormError = 'phone_required' | 'phone_invalid'
 
 export type CodeFormError = 'code_required' | 'code_invalid'
@@ -38,9 +54,6 @@ export function validateCodeForm(form: { code: string }): CodeFormError | null {
  * holds '' while the player sees their phone number in the box; 155 people
  * in 14 hours were told to "enter your username" that way. Never overwrites
  * a non-empty model value.
- *
- * Still load-bearing for phone sign-in: both fields here are autofill targets
- * (`autocomplete="tel"` and the SMS one-time-code hint).
  */
 export function applyAutofill<T extends Record<string, string>>(
   form: T,

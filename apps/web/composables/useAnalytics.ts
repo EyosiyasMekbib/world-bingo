@@ -30,6 +30,19 @@ const ALLOWED = new Set([
     'deposit_checkout_failed',
     'provider_launch_failed',
     'provider_game_loaded',
+    'provider_game_load_timeout',
+    'provider_game_retry',
+    'provider_game_load_dismissed',
+    // Deposit form and password recovery (2026-09-15).
+    'deposit_submit_blocked',
+    'deposit_submit_failed',
+    'forgot_password_opened',
+    'password_changed',
+    'password_change_failed',
+    // Phone (SMS) sign-in: how many players ask for a code, against the
+    // login_failed events that follow. The only way to see an SMS problem
+    // (a quota, a carrier) as a funnel rather than as silence.
+    'otp_requested',
     // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.
     // A name missing from either list is dropped by the /events sink (PostHog
     // still gets it).

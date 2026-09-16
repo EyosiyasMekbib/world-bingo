@@ -86,6 +86,19 @@ export function mapErrorToResponse(error: FastifyError, _request: FastifyRequest
         })
     }
 
+    // WithdrawalHoldError (wallet.service.ts): a withdrawal inside the hold after
+    // a support password reset. Keyed on the name, like PalaceApiError, so this
+    // file imports no service. The default branch below would drop `code`, which
+    // is what the web withdrawal modal picks its copy by.
+    if (anyErr?.name === 'WithdrawalHoldError') {
+        return reply.status(403).send({
+            statusCode: 403,
+            error: 'Forbidden',
+            message: error.message,
+            code: anyErr.code,
+        })
+    }
+
     // Default error handler
     const statusCode = error.statusCode || 500
     return reply.status(statusCode).send({

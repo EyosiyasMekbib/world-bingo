@@ -156,15 +156,16 @@ pnpm lint
 ### Player App (`http://localhost:3000`)
 
 #### 1. Sign In
-- Go to `/auth/login` and enter your phone number. Firebase sends a 6-digit code by SMS;
-  entering it signs you in — and creates the account if the number is new, so there is no
-  separate registration step. `/auth/register` is the same form with a referral-code field,
-  which is where a `/ref/<code>` link lands.
-- Requires a Firebase project for the deployment (`FIREBASE_PROJECT_ID` +
-  `NUXT_PUBLIC_FIREBASE_*`); see `docs/firebase-auth.md`. Without it the page says phone
-  sign-in is unavailable.
-- Telegram login is still available as a second option.
-- Staff do not use this: admins and clerks sign in with a password from the admin app.
+- `/auth/login` opens on the **Phone** tab: enter your number, Firebase sends a 6-digit code by
+  SMS, and entering it signs you in — creating the account if the number is new, so no separate
+  registration step. Needs a Firebase project for the deployment (`FIREBASE_PROJECT_ID` +
+  `NUXT_PUBLIC_FIREBASE_*`, see `docs/firebase-auth.md`); without one the tab says phone
+  sign-in is unavailable and the other tabs still work.
+- **Password** and **Telegram** are the other two tabs. `/auth/register` has the same two
+  options, with the referral field a `/ref/<code>` link fills in.
+- Forgotten a password? Support verifies you and issues a temporary one — there is no
+  self-service reset, and signing in by phone reaches the same account.
+- Staff do not use any of this: admins and clerks sign in with a password from the admin app.
 
 #### 2. Depositing Funds
 1. From the lobby, click **+ Deposit** in the wallet summary bar.

@@ -210,21 +210,20 @@ const displayCards = computed<Card[]>(() => {
 
 // ── Launch / join ─────────────────────────────────────────────────────────
 const showAuthPrompt = ref(false)
-const launching = ref<string | null>(null)
 
+const onPlayTap = useTapToPlay()
 function playCard(card: Card) {
   if (card.kind === 'bingo') return joinBingo(card.raw.id)
   return launchGame(card.raw as ProviderGame)
 }
-async function launchGame(game: ProviderGame) {
+function launchGame(game: ProviderGame) {
   if (!auth.isAuthenticated) { showAuthPrompt.value = true; return }
-  launching.value = `provider:${game.gameCode}`
-  try {
-    const url = await providerStore.launchGame(launchProviderFor(game, providerStore.activeProviderCode), game.gameCode)
-    if (url) window.location.href = url
-  } finally {
-    launching.value = null
-  }
+  // Through the play page like every other lobby surface: it owns the loading
+  // overlay, retry and the provider_game_* events. The old full-page jump to the
+  // provider URL sent none of them, so these launches never counted as loaded.
+  const href = `/play/${launchProviderFor(game, providerStore.activeProviderCode)}/${game.gameCode}`
+  onPlayTap(href)
+  return navigateTo(href)
 }
 function joinBingo(gameId: string) {
   if (!auth.isAuthenticated) { showAuthPrompt.value = true; return }
@@ -393,7 +392,7 @@ onUnmounted(() => {
         >
           <div
             class="tile"
-            :class="{ launching: launching === card.key, bingo: card.kind === 'bingo' }"
+            :class="{ bingo: card.kind === 'bingo' }"
             :style="{ background: card.thumb }"
             @click="playCard(card)"
           >
@@ -439,10 +438,7 @@ onUnmounted(() => {
             </button>
 
             <div class="tile-overlay">
-              <span v-if="launching === card.key" class="tile-spin">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-              </span>
-              <span v-else class="tile-play">Play</span>
+              <span class="tile-play">Play</span>
             </div>
           </div>
           <span class="game-name">{{ card.name }}</span>
@@ -733,7 +729,6 @@ onUnmounted(() => {
   transform: translateY(-3px) scale(1.02);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
-.tile.launching { pointer-events: none; }
 .tile-img {
   position: absolute;
   inset: 0;
@@ -859,7 +854,7 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.16s;
 }
-.tile:hover .tile-overlay, .tile.launching .tile-overlay { opacity: 1; }
+.tile:hover .tile-overlay { opacity: 1; }
 .tile-play {
   background: var(--brand-primary);
   color: var(--text-on-brand);
@@ -871,7 +866,6 @@ onUnmounted(() => {
   padding: 8px 20px;
   border-radius: 7px;
 }
-.tile-spin svg { width: 26px; height: 26px; color: var(--brand-primary); animation: spin 0.8s linear infinite; }
 
 .game-name {
   font-size: 12px;

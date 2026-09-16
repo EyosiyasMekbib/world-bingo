@@ -3,45 +3,36 @@
  *
  * Tests the full deposit, withdrawal, wallet UI, and notification flows.
  * Requires: web app running at BASE_URL (default http://localhost:3000)
- *           API running (default http://localhost:8080)
+ *           API running at API_URL (default http://localhost:8080)
  *
  * Run with: pnpm --filter @world-bingo/web exec playwright test
  */
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+const API_URL = process.env.API_URL || 'http://localhost:8080'
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Signs in as the Firebase **test phone number** for this deployment.
- *
- * This used to register a throwaway player over the API and log in with a
- * password. Players have no password now — they sign in with an SMS code — so
- * the fixture is a test number configured in the Firebase console
- * (Authentication → Sign-in method → Phone → "Phone numbers for testing"),
- * which returns a fixed code with no SMS sent. See docs/firebase-auth.md.
- *
- *   E2E_FIREBASE_TEST_PHONE=0911000000
- *   E2E_FIREBASE_TEST_CODE=123456
- *
- * Every suite that needs a signed-in player skips without them, so a run
- * against a deployment with no Firebase project does not look like a
- * regression.
- */
-const TEST_PHONE = process.env.E2E_FIREBASE_TEST_PHONE
-const TEST_CODE = process.env.E2E_FIREBASE_TEST_CODE
-const canSignIn = !!TEST_PHONE && !!TEST_CODE
-const NO_SIGN_IN = 'set E2E_FIREBASE_TEST_PHONE and E2E_FIREBASE_TEST_CODE (see docs/firebase-auth.md)'
+async function registerAndLogin(
+    page: Page,
+    username: string,
+    phone: string,
+    password = 'TestPass123!',
+) {
+    // Register via API directly (faster than UI for setup)
+    await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, phone, password }),
+    })
 
-async function signIn(page: Page) {
+    // Login via UI
     await page.goto('/auth/login')
-    await page.locator('#phone').fill(TEST_PHONE!)
-    await page.getByRole('button', { name: /send code/i }).click()
-
-    await expect(page.locator('#code')).toBeVisible({ timeout: 20_000 })
-    await page.locator('#code').fill(TEST_CODE!)
-    await page.getByRole('button', { name: /verify and continue/i }).click()
-    await page.waitForURL('/', { timeout: 20_000 })
+    await page.fill('input[name="identifier"]', username)
+    await page.fill('input[name="password"]', password)
+    await page.click('button[type="submit"]')
+    await page.waitForURL('/', { timeout: 10000 })
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
@@ -53,8 +44,11 @@ test.describe('Lobby page', () => {
     })
 
     test('authenticated user sees the lobby', async ({ page }) => {
-        test.skip(!canSignIn, NO_SIGN_IN)
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `lobby_${Date.now()}`,
+            `+251910${Date.now().toString().slice(-6)}`,
+        )
         await page.goto('/')
         await expect(page.locator('h1, h2')).toContainText([/lobby|games|bingo/i], { timeout: 8000 })
     })
@@ -72,10 +66,12 @@ async function openManualDepositCard(page: Page) {
 }
 
 test.describe('Deposit flow', () => {
-    test.skip(!canSignIn, NO_SIGN_IN)
-
     test('deposit modal shows TeleBirr instructions and merchant number', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `dep_${Date.now()}`,
+            `+251911${Date.now().toString().slice(-6)}`,
+        )
 
         // Open deposit modal (click Deposit button in wallet UI)
         await page.goto('/')
@@ -96,7 +92,11 @@ test.describe('Deposit flow', () => {
     })
 
     test('deposit form requires all TeleBirr fields', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `dep2_${Date.now()}`,
+            `+251912${Date.now().toString().slice(-6)}`,
+        )
 
         await page.goto('/')
         await page.getByRole('button', { name: /deposit/i }).click()
@@ -109,7 +109,11 @@ test.describe('Deposit flow', () => {
     })
 
     test('deposit form submits successfully with all fields', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `dep3_${Date.now()}`,
+            `+251913${Date.now().toString().slice(-6)}`,
+        )
 
         await page.goto('/')
         await page.getByRole('button', { name: /deposit/i }).click()
@@ -139,7 +143,11 @@ test.describe('Deposit flow', () => {
     })
 
     test('hosted-checkout card redirects to the ZareCash payment page', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `dep4_${Date.now()}`,
+            `+251915${Date.now().toString().slice(-6)}`,
+        )
 
         // The seeded ZareCash method ships disabled, so serve the catalog with it
         // enabled — this test is about the card's behaviour, not the operator toggle.
@@ -179,10 +187,12 @@ test.describe('Deposit flow', () => {
 // ─── Withdrawal Flow ──────────────────────────────────────────────────────────
 
 test.describe('Withdrawal flow', () => {
-    test.skip(!canSignIn, NO_SIGN_IN)
-
     test('withdrawal modal requires amount and account', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `wd_${Date.now()}`,
+            `+251914${Date.now().toString().slice(-6)}`,
+        )
 
         await page.goto('/')
         const wdBtn = page.getByRole('button', { name: /withdraw/i })
@@ -198,10 +208,12 @@ test.describe('Withdrawal flow', () => {
 // ─── Notification Bell ────────────────────────────────────────────────────────
 
 test.describe('Notification bell', () => {
-    test.skip(!canSignIn, NO_SIGN_IN)
-
     test('notification bell is present in the header', async ({ page }) => {
-        await signIn(page)
+        await registerAndLogin(
+            page,
+            `notif_${Date.now()}`,
+            `+251915${Date.now().toString().slice(-6)}`,
+        )
 
         await page.goto('/')
         // Notification bell should be visible (bell icon or notification element)
@@ -213,9 +225,35 @@ test.describe('Notification bell', () => {
 // ─── Auth: Redirect after login ──────────────────────────────────────────────
 
 test.describe('Auth redirect', () => {
-    // 'successful login redirects to lobby' and 'invalid credentials show error
-    // message' lived here and drove the username/password form. That form is
-    // gone; the SMS flow that replaced it is covered by auth.spec.ts.
+    test('successful login redirects to lobby', async ({ page }) => {
+        const username = `redir_${Date.now()}`
+        const phone = `+251916${Date.now().toString().slice(-6)}`
+
+        // Register via API
+        await fetch(`${API_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, phone, password: 'TestPass123!' }),
+        })
+
+        await page.goto('/auth/login')
+        await page.fill('input[name="identifier"]', username)
+        await page.fill('input[name="password"]', 'TestPass123!')
+        await page.click('button[type="submit"]')
+
+        await expect(page).toHaveURL('/', { timeout: 10000 })
+    })
+
+    test('invalid credentials show error message', async ({ page }) => {
+        await page.goto('/auth/login')
+        await page.fill('input[name="identifier"]', 'nonexistent_user_xyz')
+        await page.fill('input[name="password"]', 'wrongpassword')
+        await page.click('button[type="submit"]')
+
+        await expect(
+            page.getByText(/invalid|incorrect|not found|failed/i)
+        ).toBeVisible({ timeout: 6000 })
+    })
 
     test('protected route redirects unauthenticated user', async ({ page }) => {
         // Navigate to a protected quick game route

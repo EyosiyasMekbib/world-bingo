@@ -39,6 +39,48 @@ async function getAdminToken(): Promise<string> {
     return data.accessToken as string
 }
 
+/** Register a player via the public API. */
+async function registerPlayer(suffix: string): Promise<{ userId: string; token: string }> {
+    const username = `gm_player_${suffix}`
+    const phone = `+25196${suffix.slice(-7).padStart(7, '0')}`
+    const res = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, phone, password: 'Player123!' }),
+    })
+    const data = await res.json()
+    return { userId: data.user.id, token: data.accessToken }
+}
+
+/** Fund a player by submitting + approving a deposit. */
+async function fundPlayer(playerToken: string, adminToken: string, amount = 500) {
+    const pngBytes = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+    )
+    const form = new FormData()
+    form.append('amount', String(amount))
+    form.append('transactionId', `FUND${Date.now()}`)
+    form.append('senderName', 'Fund Bot')
+    form.append('senderAccount', '0900000000')
+    form.append('receipt', new Blob([pngBytes], { type: 'image/png' }), 'receipt.png')
+
+    const depRes = await fetch(`${API_URL}/wallet/deposit`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${playerToken}` },
+        body: form,
+    })
+    const tx = await depRes.json()
+
+    await fetch(`${API_URL}/admin/transactions/${tx.id}/approve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${adminToken}`,
+        },
+    })
+}
+
 // ─── Games Page — Navigation & Layout ─────────────────────────────────────────
 
 test.describe('Games page — Navigation & Layout', () => {
@@ -281,13 +323,69 @@ test.describe('Game Actions — Start', () => {
         await expect(page.getByText(/not enough players|failed to start/i)).toBeVisible({ timeout: 8000 })
     })
 
-    // Removed: 'starting a game with enough players shows success toast'.
-    // It registered two throwaway players over the public API to reach
-    // minPlayers. Players sign in by SMS now and have no password, so nothing
-    // a test can call creates an account (see docs/firebase-auth.md), and the
-    // single fixture account in helpers/test-player.ts cannot join a game
-    // twice. Restoring this test means seeding two players into the database
-    // first, then joining them with their own tokens.
+    test('starting a game with enough players shows success toast', async ({ page }) => {
+        const adminToken = await getAdminToken()
+
+        // Create game with minPlayers=2
+        const gameRes = await fetch(`${API_URL}/games`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${adminToken}`,
+            },
+            body: JSON.stringify({
+                title: `ReadyGame ${Date.now()}`,
+                ticketPrice: 20,
+                maxPlayers: 10,
+                minPlayers: 2,
+                houseEdgePct: 10,
+                pattern: 'ANY_LINE',
+            }),
+        })
+        const game = await gameRes.json()
+
+        // Register and fund 2 players, then join them to the game
+        const p1 = await registerPlayer(`start1_${Date.now()}`)
+        const p2 = await registerPlayer(`start2_${Date.now() + 1}`)
+        await fundPlayer(p1.token, adminToken)
+        await fundPlayer(p2.token, adminToken)
+
+        // Get available cartelas
+        const cartelasRes = await fetch(`${API_URL}/games/${game.id}/cartelas`, {
+            headers: { Authorization: `Bearer ${p1.token}` },
+        })
+        const cartelas = await cartelasRes.json()
+
+        // Players join the game
+        await fetch(`${API_URL}/games/${game.id}/join`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${p1.token}`,
+            },
+            body: JSON.stringify({ cartelaSerials: [cartelas[0].serial] }),
+        })
+
+        await fetch(`${API_URL}/games/${game.id}/join`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${p2.token}`,
+            },
+            body: JSON.stringify({ cartelaSerials: [cartelas[1].serial] }),
+        })
+
+        await adminLogin(page)
+        await page.goto('/games')
+
+        const row = page.locator('tr').filter({ hasText: game.title })
+        await expect(row).toBeVisible({ timeout: 8000 })
+
+        await row.getByRole('button', { name: /start/i }).click()
+
+        // Success toast
+        await expect(page.getByText(/starting|started/i)).toBeVisible({ timeout: 8000 })
+    })
 })
 
 // ─── Game Actions — Cancel ────────────────────────────────────────────────────

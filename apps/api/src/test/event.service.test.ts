@@ -67,4 +67,27 @@ describe('ALLOWED_EVENTS', () => {
         expect(ALLOWED_EVENTS).toContain('identify')
         expect(ALLOWED_EVENTS).toContain('deposit_submitted')
     })
+
+    it('records the play page load timeout, retry and dismiss events', () => {
+        expect(ALLOWED_EVENTS).toContain('provider_game_load_timeout')
+        expect(ALLOWED_EVENTS).toContain('provider_game_retry')
+        expect(ALLOWED_EVENTS).toContain('provider_game_load_dismissed')
+    })
+
+    it.each([
+        'deposit_submit_blocked',
+        'deposit_submit_failed',
+        'forgot_password_opened',
+        'password_changed',
+        'password_change_failed',
+    ])('records the deposit-form and password-recovery event %s', (name) => {
+        expect(ALLOWED_EVENTS).toContain(name)
+    })
+
+    // Phone sign-in's funnel: codes asked for, against the login_failed events
+    // that follow. Without it an SMS quota or a carrier problem reads as
+    // silence on the analytics page rather than as a drop-off.
+    it('records the phone sign-in code request', () => {
+        expect(ALLOWED_EVENTS).toContain('otp_requested')
+    })
 })

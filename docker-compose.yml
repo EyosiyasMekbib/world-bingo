@@ -61,7 +61,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Firebase phone (SMS) sign-in. This brand's Firebase project id —
       # the API accepts ID tokens from this project and no other. Unset
-      # means /auth/phone answers 503 and players cannot sign in.
+      # means /auth/phone answers 503; password and Telegram sign-in still work.
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
       GASEA_API_KEY: ${GASEA_API_KEY:-}

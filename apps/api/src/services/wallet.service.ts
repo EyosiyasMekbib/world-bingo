@@ -14,6 +14,31 @@ import { reportError } from '../lib/sentry'
 import { captureEvent } from '../lib/posthog'
 import { emitDepositApproved, hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
+/**
+ * How long withdrawals stay held after support resets a player's password
+ * (AuthService.adminResetPassword). If an impostor talked their way past
+ * support, the real player has just been signed out everywhere; this is their
+ * window to call back before any money leaves. Counted from the reset, so
+ * changing the temporary password straight away does not shorten it.
+ */
+export const WITHDRAWAL_HOLD_AFTER_RESET_MS = 24 * 60 * 60 * 1000
+
+/**
+ * A withdrawal refused because support reset this account's password too
+ * recently. error-handler.ts answers it with a 403 that keeps `code`, which the
+ * web withdrawal modal keys its copy on.
+ */
+export class WithdrawalHoldError extends Error {
+    readonly statusCode = 403
+    readonly code = 'withdrawal_hold_after_reset'
+    constructor() {
+        super(
+            `Withdrawals are on hold for ${WITHDRAWAL_HOLD_AFTER_RESET_MS / 3_600_000} hours after a password reset, to keep your account safe. Please try again later or contact support.`,
+        )
+        this.name = 'WithdrawalHoldError'
+    }
+}
+
 export class WalletService {
     static async getBalance(userId: string) {
         const wallet = await prisma.wallet.findUnique({
@@ -404,13 +429,31 @@ export class WalletService {
         // Reads the column directly rather than going through
         // AccountStatusService: that service imports ZareCashService, which
         // imports this one, and the cycle is not worth a cache hit here.
-        const account = await prisma.user.findUnique({ where: { id: userId }, select: { accountStatus: true } })
+        const account = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { accountStatus: true, mustChangePassword: true, passwordResetAt: true },
+        })
         if (!account) throw new Error('User not found')
         if (account.accountStatus !== AccountStatus.ACTIVE) {
             throw Object.assign(
                 new Error('This account is under review. Withdrawals are temporarily disabled — please contact support.'),
                 { statusCode: 403 },
             )
+        }
+
+        // Held after a support-assisted password reset: while the temporary
+        // password is still in use, and for WITHDRAWAL_HOLD_AFTER_RESET_MS after
+        // the reset whatever has happened since. Only the web app reads
+        // mustChangePassword; whoever holds a temporary password can skip it and
+        // call this route directly, and a ZareCash method would then go straight
+        // to the payout queue. A reset stamped in the future (clock skew) counts
+        // as recent.
+        if (
+            account.mustChangePassword ||
+            (account.passwordResetAt !== null &&
+                Date.now() - account.passwordResetAt.getTime() < WITHDRAWAL_HOLD_AFTER_RESET_MS)
+        ) {
+            throw new WithdrawalHoldError()
         }
 
         const pendingWithdrawal = await prisma.transaction.findFirst({

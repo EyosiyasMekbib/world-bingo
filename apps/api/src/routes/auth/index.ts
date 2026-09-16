@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import {
     LoginSchema,
+    RegisterSchema,
     RefreshTokenSchema,
     LogoutSchema,
     ChangePasswordSchema,
@@ -10,7 +11,7 @@ import {
 } from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { rateLimitKey, loginRateLimitKey } from '../../lib/rate-limit-key'
+import { rateLimitKey, loginRateLimitKey, registerRateLimitKey } from '../../lib/rate-limit-key'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Independent per-IP ceiling for /auth/refresh, built with
@@ -107,11 +108,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const refreshIpCeiling = ipCeilingHook(checkIpCeiling)
 
-    // Sign-in backstop: 120/min per IP, shared by /phone and /admin/login.
-    // Generous enough for a carrier NAT at peak, tight enough that hammering
-    // either route from one address still hits a wall. It is a backstop, not
-    // the guard: /admin/login has a per-identifier budget below it, and /phone
-    // sits behind Firebase's own per-number SMS metering.
+    // Sign-in backstop: 120/min per IP, shared by every sign-in route.
+    // Generous enough for a carrier NAT at peak, tight enough that stuffing
+    // many identifiers from one address still hits a wall. It is a backstop,
+    // not the guard: /register, /login and /admin/login each have a
+    // per-identifier budget below it, and /phone sits behind Firebase's own
+    // per-number SMS metering.
     const loginIpCeiling = ipCeilingHook(
         fastify.createRateLimit({
             max: 120,
@@ -120,9 +122,50 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }),
     )
 
-    // Firebase phone (SMS) sign-in — the only way a player reaches an account.
-    // Signs in and signs up in one call: the client cannot tell which happened
-    // and does not need to.
+    // Strict rate limit for auth endpoints to prevent brute-force
+    fastify.post('/register', {
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '1 minute',
+                // Per phone being registered, not per IP: 25 people were
+                // refused with a 429 in 14 hours behind carrier NATs. The
+                // IP ceiling below still caps a single address.
+                hook: 'preValidation',
+                keyGenerator: (req: any) => registerRateLimitKey({ phone: req.body?.phone, ip: req.ip }),
+            },
+        },
+        onRequest: loginIpCeiling,
+        schema: {
+            body: zodToJsonSchema(RegisterSchema),
+        },
+        handler: AuthController.register,
+    })
+
+    fastify.post('/login', {
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute',
+                // Body is parsed by preValidation, so the key can read the
+                // identifier (see /refresh below for why not onRequest).
+                hook: 'preValidation',
+                // Per identifier tried, not per IP: behind a carrier NAT a
+                // per-IP 10/min was one budget for a whole neighbourhood and
+                // showed up as unexplained "Sign In" failures at peak.
+                keyGenerator: (req: any) => loginRateLimitKey({ identifier: req.body?.identifier, ip: req.ip }),
+            },
+        },
+        onRequest: loginIpCeiling,
+        schema: {
+            body: zodToJsonSchema(LoginSchema),
+        },
+        handler: AuthController.login,
+    })
+
+    // Firebase phone (SMS) sign-in, beside the password routes above and
+    // /telegram below. Signs in and signs up in one call: the client cannot
+    // tell which happened and does not need to.
     //
     // Keyed on the IP alone, unlike the routes it replaced. The body is one
     // opaque ID token, and the two things that could be read out of it — a
@@ -147,9 +190,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         handler: AuthController.firebasePhone,
     })
 
-    // The only password sign-in left, and staff-only: AuthController.adminLogin
-    // passes the allowed roles to AuthService.login, which refuses anything
-    // else before minting a token.
+    // The staff door. AuthController.adminLogin passes the allowed roles to
+    // AuthService.login, which refuses anything else before minting a token —
+    // a player's own password only works at /login above.
     fastify.post('/admin/login', {
         config: {
             rateLimit: {

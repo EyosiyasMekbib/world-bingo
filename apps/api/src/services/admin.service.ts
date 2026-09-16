@@ -1,5 +1,15 @@
 import prisma from '../lib/prisma'
-import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType, AccountStatus, phoneVariants } from '@world-bingo/shared-types'
+import {
+    GameStatus,
+    PaymentStatus,
+    TransactionType,
+    UserRole,
+    NotificationType,
+    AccountStatus,
+    DepositRejectionReason,
+    DEPOSIT_REJECTION_REASON_LABELS,
+    phoneVariants,
+} from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { HouseWalletService } from './house-wallet.service'
@@ -283,6 +293,7 @@ export class AdminService {
         note?: string,
         adjustedAmount?: number,
         reviewerId?: string,
+        rejectionReason?: DepositRejectionReason,
     ) {
         if (status === PaymentStatus.APPROVED) {
             // Check transaction type — deposits go through WalletService (credits wallet)
@@ -378,28 +389,48 @@ export class AdminService {
             return await WalletService.rejectWithdrawal(transactionId, note, reviewerId)
         }
 
-        // DEPOSIT rejection — no wallet change (balance was never credited)
-        const transaction = await prisma.transaction.update({
-            where: { id: transactionId },
-            data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId },
+        // DEPOSIT rejection — no wallet change (balance was never credited).
+        // A coded reason is mandatory: 653 rejections in one week carried only
+        // free text, so nobody could say which receipts fail or why.
+        if (!rejectionReason) {
+            throw Object.assign(new Error('Choose a rejection reason'), { statusCode: 400 })
+        }
+        // Conditional on PENDING_REVIEW, like the withdrawal approval claim above.
+        // The status check at the top of this path is only a read: an
+        // approveDeposit committing between that read and this write used to be
+        // overwritten, leaving a credited wallet behind a REJECTED row and a
+        // player told their deposit failed. approveDeposit holds the row lock, so
+        // this update waits for it and then matches nothing.
+        const claim = await prisma.transaction.updateMany({
+            where: { id: transactionId, status: PaymentStatus.PENDING_REVIEW },
+            data: { status: PaymentStatus.REJECTED, note, reviewedById: reviewerId, rejectionReason },
         })
+        if (claim.count === 0) {
+            throw new Error('Transaction is not pending review')
+        }
+        const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } })
 
         // `existing.note` is the method code initiateDeposit stored; the update
-        // above just replaced it with the reviewer's note.
+        // above just replaced it with the reviewer's note, which never leaves.
         void captureEvent(transaction.userId, 'deposit_rejected', {
             amount: Number(existing.amount),
             method: existing.note ?? null,
+            reason: rejectionReason,
             hours_to_decision: hoursBetween(existing.createdAt, new Date()),
             has_note: !!note,
             tx_id: transactionId,
         })
 
+        const reasonText =
+            rejectionReason === DepositRejectionReason.OTHER
+                ? (note ?? '')
+                : `${DEPOSIT_REJECTION_REASON_LABELS[rejectionReason]}${note ? ` — ${note}` : ''}`
         await NotificationService.create(
             transaction.userId,
             NotificationType.DEPOSIT_REJECTED,
             'Deposit Rejected',
-            `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB was rejected.${note ? ` Reason: ${note}` : ''}`,
-            { transactionId, amount: Number(transaction.amount), note },
+            `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB was rejected. Reason: ${reasonText}`,
+            { transactionId, amount: Number(transaction.amount), note, reason: rejectionReason },
         ).catch(() => {})
 
         return transaction

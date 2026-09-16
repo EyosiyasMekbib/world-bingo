@@ -186,8 +186,8 @@ export const useAdminApi = () => {
         // the API credits the player-stated amount.
         approveTransaction: (id: string, amount?: number) =>
             apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: { amount } }),
-        declineTransaction: (id: string, note?: string) =>
-            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        declineTransaction: (id: string, body: { reason?: string; note?: string } = {}) =>
+            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body }),
         // The clerk's browser fetches the telebirr receipt the API server can't
         // reach and POSTs the raw HTML here for the parse→match→credit pipeline.
         verifyReceipt: (id: string, html: string) =>
@@ -445,6 +445,10 @@ export const useAdminApi = () => {
         getPlayer: (id: string) => apiFetch<any>(`/admin/players/${id}`),
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
+        // Support-assisted reset. ADMIN-only: a clerk gets 403. The temporary
+        // password comes back exactly once — show it, never keep it.
+        resetPlayerPassword: (id: string) =>
+            apiFetch<{ temporaryPassword: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' }),
 
         // ── Account status ────────────────────────────────────────────────
         // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and
