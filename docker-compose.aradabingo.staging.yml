@@ -59,6 +59,10 @@ services:
       API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Firebase phone (SMS) sign-in. This brand's Firebase project id —
+      # the API accepts ID tokens from this project and no other. Unset
+      # means /auth/phone answers 503 and players cannot sign in.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       GASEA_API_BASE_URL: ${GASEA_API_BASE_URL:-}
       GASEA_API_KEY: ${GASEA_API_KEY:-}
       GASEA_API_SECRET: ${GASEA_API_SECRET:-}
@@ -133,6 +137,13 @@ services:
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api-arada-stg:8080}
       NUXT_PUBLIC_TELEGRAM_BOT_NAME: ${NUXT_PUBLIC_TELEGRAM_BOT_NAME:-}
       NUXT_PUBLIC_TELEGRAM_BOT_ID: ${NUXT_PUBLIC_TELEGRAM_BOT_ID:-}
+      # Firebase web config for this brand's project. Public by design:
+      # these identify the project, they do not authorise anything.
+      # FIREBASE_PROJECT_ID above must name the same project.
+      NUXT_PUBLIC_FIREBASE_API_KEY: ${NUXT_PUBLIC_FIREBASE_API_KEY:-}
+      NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+      NUXT_PUBLIC_FIREBASE_PROJECT_ID: ${NUXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NUXT_PUBLIC_FIREBASE_APP_ID: ${NUXT_PUBLIC_FIREBASE_APP_ID:-}
       # Mock "Past results" on the fight card. STAGING ONLY — the markets,
       # volumes and winners are invented. Deliberately absent from every
       # production compose file; see apps/web/utils/mockSettledMarkets.ts.

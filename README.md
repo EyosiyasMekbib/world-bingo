@@ -155,9 +155,16 @@ pnpm lint
 
 ### Player App (`http://localhost:3000`)
 
-#### 1. Registration & Login
-- Navigate to `/auth/register` and create an account with a username and phone number.
-- Log in at `/auth/login`. A JWT is stored in memory; a refresh token is kept in an HTTP-only cookie.
+#### 1. Sign In
+- Go to `/auth/login` and enter your phone number. Firebase sends a 6-digit code by SMS;
+  entering it signs you in — and creates the account if the number is new, so there is no
+  separate registration step. `/auth/register` is the same form with a referral-code field,
+  which is where a `/ref/<code>` link lands.
+- Requires a Firebase project for the deployment (`FIREBASE_PROJECT_ID` +
+  `NUXT_PUBLIC_FIREBASE_*`); see `docs/firebase-auth.md`. Without it the page says phone
+  sign-in is unavailable.
+- Telegram login is still available as a second option.
+- Staff do not use this: admins and clerks sign in with a password from the admin app.
 
 #### 2. Depositing Funds
 1. From the lobby, click **+ Deposit** in the wallet summary bar.

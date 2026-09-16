@@ -30,6 +30,23 @@ export function mapErrorToResponse(error: FastifyError, _request: FastifyRequest
         })
     }
 
+    // Firebase phone sign-in. The code is what lets the web app tell "verify
+    // again" (401 firebase_token_invalid) from "this server can't check tokens
+    // right now" (503 firebase_not_configured / firebase_keys_unavailable) —
+    // the second must not read as a rejected code to the player. Matched on
+    // `name`, because `code` here is ours and the default branch below would
+    // drop it.
+    if ((error as { name?: string }).name === 'FirebaseAuthError') {
+        const status = error.statusCode || 401
+        const label = status === 403 ? 'Forbidden' : status >= 500 ? 'Service Unavailable' : 'Unauthorized'
+        return reply.status(status).send({
+            statusCode: status,
+            error: label,
+            message: error.message,
+            code: (error as { code?: string }).code,
+        })
+    }
+
     // Map common service errors to appropriate status codes
     if (error.message === 'Invalid credentials' || error.message === 'Invalid refresh token') {
         return reply.status(401).send({

@@ -156,6 +156,22 @@ export default defineNuxtConfig({
                 dsn: '',
                 environment: '',
             },
+            // Firebase phone (SMS) sign-in — the only way a player signs in.
+            // Auto-mapped from NUXT_PUBLIC_FIREBASE_API_KEY,
+            // NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NUXT_PUBLIC_FIREBASE_PROJECT_ID,
+            // NUXT_PUBLIC_FIREBASE_APP_ID. Each brand runs its own Firebase
+            // project, so every one of these differs per deployment; the
+            // project id here must match the API's FIREBASE_PROJECT_ID or the
+            // tokens this app mints will not verify. All four are public by
+            // design (they identify the project, they do not authorise
+            // anything) and ship in the client bundle. Empty apiKey = sign-in
+            // is unavailable and the auth pages say so.
+            firebase: {
+                apiKey: '',
+                authDomain: '',
+                projectId: '',
+                appId: '',
+            },
             // PostHog product analytics. Auto-mapped from NUXT_PUBLIC_POSTHOG_KEY,
             // NUXT_PUBLIC_POSTHOG_HOST, NUXT_PUBLIC_POSTHOG_UI_HOST,
             // NUXT_PUBLIC_POSTHOG_REPLAY, NUXT_PUBLIC_POSTHOG_BRAND.

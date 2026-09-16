@@ -67,6 +67,35 @@ describe('compose apps can reach the socket', () => {
   }
 })
 
+describe('compose apps can sign a player in', () => {
+  // Phone (SMS) sign-in is the ONLY way a player reaches an account — there is
+  // no player password to fall back on. A compose file that forgets these vars
+  // therefore ships a deployment nobody can sign into, and the failure only
+  // shows up in the browser. See docs/firebase-auth.md.
+  for (const file of ALL_COMPOSE_FILES) {
+    it(`${file} passes the Firebase project id to the api service`, () => {
+      const content = readFileSync(path.join(repoRoot, file), 'utf8')
+      const api = serviceBlock(content, 'api')
+      if (api === null) return // file ships no api service
+      expect(api).toMatch(/FIREBASE_PROJECT_ID:/)
+    })
+
+    it(`${file} passes the Firebase web config to the web service`, () => {
+      const content = readFileSync(path.join(repoRoot, file), 'utf8')
+      const web = serviceBlock(content, 'web')
+      if (web === null) return
+      for (const key of [
+        'NUXT_PUBLIC_FIREBASE_API_KEY',
+        'NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+        'NUXT_PUBLIC_FIREBASE_PROJECT_ID',
+        'NUXT_PUBLIC_FIREBASE_APP_ID',
+      ]) {
+        expect(web).toMatch(new RegExp(`${key}:`))
+      }
+    })
+  }
+})
+
 describe('production compose seed safety', () => {
   for (const file of PROD_COMPOSE_FILES) {
     it(`${file} never hardcodes RUN_SEED to true`, () => {

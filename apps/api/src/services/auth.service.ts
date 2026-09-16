@@ -1,11 +1,20 @@
 import prisma from '../lib/prisma'
-import { LoginDto, RegisterDto, ChangePasswordDto, TelegramAuthDto } from '@world-bingo/shared-types'
+import {
+    LoginDto,
+    RegisterDto,
+    ChangePasswordDto,
+    TelegramAuthDto,
+    FirebasePhoneAuthDto,
+    UserRole,
+    phoneVariants,
+} from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { ReferralService } from './referral.service'
 import { captureEvent } from '../lib/posthog'
 import { personPropsFor } from '../lib/posthog-events'
 import { wbAuthRefreshTotal } from '../lib/metrics'
+import { FirebaseAuthError, verifyFirebaseIdToken } from '../lib/firebase'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
 
@@ -46,7 +55,42 @@ function hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex')
 }
 
+/** Staff sign in with a password; players no longer can — see `login()`. */
+const STAFF_ROLES: string[] = [UserRole.CLERK, UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
 export class AuthService {
+    /**
+     * Mints a refresh token that starts its own rotation chain. Every sign-in
+     * path ends here, and each gets a fresh `familyId`: logging out of one
+     * device must not end a session started by another.
+     */
+    private static async issueRefreshToken(userId: string): Promise<string> {
+        const refreshToken = generateRefreshToken()
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+        await prisma.refreshToken.create({
+            data: {
+                userId,
+                tokenHash: hashToken(refreshToken),
+                expiresAt,
+                familyId: crypto.randomUUID(),
+            },
+        })
+
+        return refreshToken
+    }
+
+    /**
+     * Username + phone + password account creation.
+     *
+     * No route reaches this any more: players sign in through
+     * `firebasePhoneAuth` below and never have a password, and staff accounts
+     * are created by an admin at `POST /admin/clerks`. It is kept as the one
+     * place that knows how to build a password account with its wallet and
+     * referral link — the test suites build their fixtures with it — and must
+     * not be wired back up to a public route.
+     */
     static async register(data: RegisterDto) {
         const existingUser = await prisma.user.findFirst({
             where: {
@@ -80,21 +124,7 @@ export class AuthService {
             },
         })
 
-        const refreshToken = generateRefreshToken()
-        const tokenHash = hashToken(refreshToken)
-        const expiresAt = new Date()
-        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
-
-        await prisma.refreshToken.create({
-            data: {
-                userId: user.id,
-                tokenHash,
-                expiresAt,
-                // Starts this device's own rotation chain — see logout()'s
-                // family-wide revoke and refreshToken()'s propagation below.
-                familyId: crypto.randomUUID(),
-            },
-        })
+        const refreshToken = await AuthService.issueRefreshToken(user.id)
 
         void captureEvent(
             user.id,
@@ -107,7 +137,18 @@ export class AuthService {
         return { user: result, refreshToken }
     }
 
-    static async login(data: LoginDto) {
+    /**
+     * Password sign-in. Players no longer have this — they verify a phone
+     * number with Firebase (`firebasePhoneAuth`) and the `/auth/login` and
+     * `/auth/register` routes are gone. What is left is the staff path behind
+     * `/auth/admin/login`, which passes `roles` so a PLAYER row carrying a
+     * legacy `passwordHash` cannot be used to sign in anywhere.
+     *
+     * `roles` is checked BEFORE a refresh token is minted: the controller used
+     * to mint one and then 403, leaving a live 30-day token behind for an
+     * account that was just refused.
+     */
+    static async login(data: LoginDto, options: { roles?: string[] } = {}) {
         // Support login by username OR phone
         const user = await prisma.user.findFirst({
             where: {
@@ -132,21 +173,13 @@ export class AuthService {
             throw new Error('Invalid credentials')
         }
 
-        const refreshToken = generateRefreshToken()
-        const tokenHash = hashToken(refreshToken)
-        const expiresAt = new Date()
-        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+        // Same message as a wrong password on purpose: which accounts are staff
+        // is not something an anonymous caller gets to probe for.
+        if (options.roles && !options.roles.includes(user.role)) {
+            throw new Error('Invalid credentials')
+        }
 
-        await prisma.refreshToken.create({
-            data: {
-                userId: user.id,
-                tokenHash,
-                expiresAt,
-                // Starts this device's own rotation chain — a logout on this
-                // login must not touch a session started by a different login.
-                familyId: crypto.randomUUID(),
-            },
-        })
+        const refreshToken = await AuthService.issueRefreshToken(user.id)
 
         void captureEvent(user.id, 'user_logged_in', {
             signup_method: user.telegramId ? 'telegram' : 'phone',
@@ -351,12 +384,7 @@ export class AuthService {
         })
 
         // 4. Issue refresh token (same pattern as login())
-        const refreshToken = generateRefreshToken()
-        const tokenHash = hashToken(refreshToken)
-        const expiresAt = new Date()
-        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
-        // Starts this device's own rotation chain — see login()'s comment.
-        await prisma.refreshToken.create({ data: { userId: user.id, tokenHash, expiresAt, familyId: crypto.randomUUID() } })
+        const refreshToken = await AuthService.issueRefreshToken(user.id)
 
         if (existed) {
             void captureEvent(user.id, 'user_logged_in', { signup_method: 'telegram' })
@@ -371,6 +399,140 @@ export class AuthService {
 
         const { passwordHash: _, ...result } = user
         return { user: result, refreshToken }
+    }
+
+    /**
+     * Firebase phone (SMS) sign-in — the only way a player reaches an account.
+     *
+     * The browser does the SMS round trip with Firebase and sends us the ID
+     * token it ends up with; `verifyFirebaseIdToken` checks Google's signature
+     * and this deployment's project id. The phone number is read from the
+     * token's signed claims, never from the request body.
+     *
+     * Sign-up and sign-in are the same call on purpose: a player types a number
+     * and a code, and whether an account already existed is our problem, not
+     * theirs. `referralCode` is only honoured when an account is actually
+     * created.
+     */
+    static async firebasePhoneAuth(data: FirebasePhoneAuthDto) {
+        const claims = await verifyFirebaseIdToken(data.idToken)
+
+        // A token minted by any other provider on the same Firebase project
+        // (an anonymous session, say) verifies just fine — it is simply not a
+        // proof that anyone controls a phone number, which is the whole point.
+        if (claims.signInProvider !== 'phone') {
+            throw new FirebaseAuthError(
+                'firebase_token_invalid',
+                'That sign-in method is not supported. Please verify your phone number.',
+            )
+        }
+        if (!claims.phoneNumber) {
+            throw new FirebaseAuthError(
+                'firebase_token_invalid',
+                'Sign-in token carries no verified phone number',
+            )
+        }
+
+        const { user, created } = await AuthService.resolvePhoneUser(
+            claims.uid,
+            claims.phoneNumber,
+            data.referralCode,
+        )
+
+        const refreshToken = await AuthService.issueRefreshToken(user.id)
+
+        if (created) {
+            void captureEvent(
+                user.id,
+                'user_registered',
+                { signup_method: 'phone', referred: user.referredById !== null },
+                { set: personPropsFor(user, 'phone') },
+            )
+        } else {
+            void captureEvent(user.id, 'user_logged_in', { signup_method: 'phone' })
+        }
+
+        const { passwordHash: _, ...result } = user
+        return { user: result, refreshToken }
+    }
+
+    /**
+     * The account behind a verified phone number, creating one on first sight.
+     *
+     * Match order is `firebaseUid` first, then the phone number: the uid is
+     * stable for a number within a brand's Firebase project, so once an account
+     * is linked, support correcting the stored phone does not strand it.
+     *
+     * The phone match is an exact comparison against every spelling that number
+     * could be stored under (`phoneVariants`) — accounts created before phone
+     * sign-in hold whatever the player typed, from `0911234567` to
+     * `+251911234567`. A `contains` match on the last digits would eventually
+     * sign one player into another player's account.
+     */
+    private static async resolvePhoneUser(uid: string, phone: string, referralCode?: string) {
+        const byUid = await prisma.user.findUnique({ where: { firebaseUid: uid } })
+        if (byUid) return { user: byUid, created: false }
+
+        const variants = phoneVariants(phone)
+        const byPhone = variants.length
+            ? await prisma.user.findFirst({ where: { phone: { in: variants } } })
+            : null
+
+        if (byPhone) {
+            // An SMS code is a single factor and a SIM is swappable, so it must
+            // not be enough to reach a CLERK/ADMIN/SUPER_ADMIN account — those
+            // keep the password path at /auth/admin/login.
+            if (STAFF_ROLES.includes(byPhone.role)) {
+                throw new FirebaseAuthError(
+                    'firebase_token_invalid',
+                    'This number belongs to a staff account. Please sign in from the admin dashboard.',
+                    403,
+                )
+            }
+
+            // Claim (or re-claim) the account for this uid. A different uid on
+            // the row means the number was re-registered in Firebase — the SMS
+            // just proved who holds the number now, and that is the stronger
+            // claim of the two.
+            const user = await prisma.user.update({
+                where: { id: byPhone.id },
+                data: { firebaseUid: uid },
+            })
+            return { user, created: false }
+        }
+
+        let referredById: string | undefined
+        if (referralCode) {
+            const referrerId = await ReferralService.resolveCode(referralCode)
+            if (referrerId) referredById = referrerId
+        }
+
+        try {
+            const user = await prisma.user.create({
+                data: {
+                    // E.164, exactly as Firebase verified it. New accounts are
+                    // all one shape; `phoneVariants` is what bridges to the
+                    // older rows.
+                    phone,
+                    firebaseUid: uid,
+                    referredById,
+                    wallet: { create: { realBalance: 0 } },
+                },
+            })
+            return { user, created: true }
+        } catch (err) {
+            // Two tabs finishing the same first sign-in at once: one wins the
+            // unique index on firebaseUid/phone and the loser lands here. The
+            // account exists and is the right one — hand it back rather than
+            // failing a sign-in that actually succeeded.
+            if ((err as { code?: string }).code !== 'P2002') throw err
+
+            const existing = await prisma.user.findFirst({
+                where: { OR: [{ firebaseUid: uid }, { phone: { in: variants } }] },
+            })
+            if (!existing) throw err
+            return { user: existing, created: false }
+        }
     }
 }
 

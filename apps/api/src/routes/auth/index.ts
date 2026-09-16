@@ -1,9 +1,16 @@
 import { createHash } from 'crypto'
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
-import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
+import {
+    LoginSchema,
+    RefreshTokenSchema,
+    LogoutSchema,
+    ChangePasswordSchema,
+    TelegramAuthSchema,
+    FirebasePhoneAuthSchema,
+} from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { rateLimitKey, loginRateLimitKey, registerRateLimitKey } from '../../lib/rate-limit-key'
+import { rateLimitKey, loginRateLimitKey } from '../../lib/rate-limit-key'
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Independent per-IP ceiling for /auth/refresh, built with
@@ -100,10 +107,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const refreshIpCeiling = ipCeilingHook(checkIpCeiling)
 
-    // /login backstop: 120/min per IP. Generous enough for a carrier NAT at
-    // peak, tight enough that stuffing many identifiers from one address
-    // still hits a wall. The per-identifier 10/min below is the real
-    // brute-force guard.
+    // Sign-in backstop: 120/min per IP, shared by /phone and /admin/login.
+    // Generous enough for a carrier NAT at peak, tight enough that hammering
+    // either route from one address still hits a wall. It is a backstop, not
+    // the guard: /admin/login has a per-identifier budget below it, and /phone
+    // sits behind Firebase's own per-number SMS metering.
     const loginIpCeiling = ipCeilingHook(
         fastify.createRateLimit({
             max: 120,
@@ -112,54 +120,49 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }),
     )
 
-    // Strict rate limit for auth endpoints to prevent brute-force
-    fastify.post('/register', {
+    // Firebase phone (SMS) sign-in — the only way a player reaches an account.
+    // Signs in and signs up in one call: the client cannot tell which happened
+    // and does not need to.
+    //
+    // Keyed on the IP alone, unlike the routes it replaced. The body is one
+    // opaque ID token, and the two things that could be read out of it — a
+    // token hash, or the phone number in its unverified payload — are both
+    // chosen by the caller, so either would let an attacker mint a fresh
+    // bucket per request and make the limiter a no-op. The real brute-force
+    // guard is upstream: Firebase will not issue an ID token without a
+    // reCAPTCHA-gated SMS round trip, and meters those per number and per
+    // project.
+    fastify.post('/phone', {
         config: {
             rateLimit: {
-                max: 5,
+                max: 30,
                 timeWindow: '1 minute',
-                // Per phone being registered, not per IP: 25 people were
-                // refused with a 429 in 14 hours behind carrier NATs. The
-                // IP ceiling below still caps a single address.
-                hook: 'preValidation',
-                keyGenerator: (req: any) => registerRateLimitKey({ phone: req.body?.phone, ip: req.ip }),
+                keyGenerator: (req: any) => rateLimitKey({ userId: null, ip: req.ip }),
             },
         },
         onRequest: loginIpCeiling,
         schema: {
-            body: zodToJsonSchema(RegisterSchema),
+            body: zodToJsonSchema(FirebasePhoneAuthSchema),
         },
-        handler: AuthController.register,
+        handler: AuthController.firebasePhone,
     })
 
-    fastify.post('/login', {
-        config: {
-            rateLimit: {
-                max: 10,
-                timeWindow: '1 minute',
-                // Body is parsed by preValidation, so the key can read the
-                // identifier (see /refresh below for why not onRequest).
-                hook: 'preValidation',
-                // Per identifier tried, not per IP: behind a carrier NAT a
-                // per-IP 10/min was one budget for a whole neighbourhood and
-                // showed up as unexplained "Sign In" failures at peak.
-                keyGenerator: (req: any) => loginRateLimitKey({ identifier: req.body?.identifier, ip: req.ip }),
-            },
-        },
-        onRequest: loginIpCeiling,
-        schema: {
-            body: zodToJsonSchema(LoginSchema),
-        },
-        handler: AuthController.login,
-    })
-
+    // The only password sign-in left, and staff-only: AuthController.adminLogin
+    // passes the allowed roles to AuthService.login, which refuses anything
+    // else before minting a token.
     fastify.post('/admin/login', {
         config: {
             rateLimit: {
                 max: 5,
                 timeWindow: '1 minute',
+                // Per identifier tried, not per IP — clerks in one shop are one
+                // NAT address, and a 5/min shared budget locks out the shift.
+                // The body is parsed by preValidation, so the key can read it.
+                hook: 'preValidation',
+                keyGenerator: (req: any) => loginRateLimitKey({ identifier: req.body?.identifier, ip: req.ip }),
             },
         },
+        onRequest: loginIpCeiling,
         schema: {
             body: zodToJsonSchema(LoginSchema),
         },

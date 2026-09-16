@@ -99,6 +99,19 @@ export const TelegramAuthSchema = z.object({
 })
 export type TelegramAuthDto = z.infer<typeof TelegramAuthSchema>
 
+/**
+ * Firebase phone sign-in. `idToken` is what the browser gets back from
+ * Firebase after the SMS code is accepted; the server verifies its signature
+ * and reads the phone number out of the token's claims. A phone number in the
+ * body would be caller-controlled and is deliberately not accepted.
+ */
+export const FirebasePhoneAuthSchema = z.object({
+    idToken: z.string().min(1),
+    /** Only honoured when the token creates a new account. */
+    referralCode: z.string().min(6).max(12).optional(),
+})
+export type FirebasePhoneAuthDto = z.infer<typeof FirebasePhoneAuthSchema>
+
 // ─── Referral ─────────────────────────────────────────────────────────────────
 /** Bonus awarded to referrer when their referee completes their first deposit */
 export const REFERRAL_BONUS_ETB = 50

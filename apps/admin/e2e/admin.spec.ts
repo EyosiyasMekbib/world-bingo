@@ -12,6 +12,7 @@
  * Run with: pnpm --filter @world-bingo/admin test:e2e
  */
 import { test, expect, type Page } from '@playwright/test'
+import { NO_PLAYER_FIXTURE, testPlayer } from './helpers/test-player'
 
 const API_URL = process.env.API_URL || 'http://localhost:8080'
 const ADMIN_USER = process.env.ADMIN_USER || 'kira'
@@ -29,20 +30,14 @@ async function adminLogin(page: Page, identifier = ADMIN_USER, password = ADMIN_
 }
 
 /**
- * Register a normal (non-admin) player via the public API and
- * submit a deposit request, returning the transaction ID.
+ * Submit a deposit request as the fixture player, returning the transaction id.
+ *
+ * This used to register a throwaway player first. Players sign in by SMS now
+ * and have no password, so the account comes from the environment instead —
+ * see helpers/test-player.ts.
  */
 async function seedPlayerDeposit(suffix: string): Promise<{ userId: string; txId: string }> {
-    const username = `player_${suffix}`
-    const phone = `+25191${suffix.slice(-7).padStart(7, '0')}`
-
-    // Register
-    const regRes = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, phone, password: 'Player123!' }),
-    })
-    const { user, accessToken } = await regRes.json()
+    const { userId, accessToken } = testPlayer()!
 
     // Create a 1-pixel PNG blob to use as fake receipt
     const pngB64 =
@@ -66,24 +61,16 @@ async function seedPlayerDeposit(suffix: string): Promise<{ userId: string; txId
         body: form,
     })
     const tx = await depRes.json()
-    return { userId: user.id, txId: tx.id }
+    return { userId, txId: tx.id }
 }
 
 /**
- * Register a player, fund them (bypass normal deposit flow via admin approve),
- * then submit a withdrawal request, returning the transaction ID.
+ * Fund the fixture player (deposit, then admin approve) and submit a withdrawal
+ * request, returning the transaction id. See seedPlayerDeposit above for why
+ * the player comes from the environment.
  */
 async function seedPlayerWithdrawal(suffix: string, adminToken: string): Promise<{ txId: string }> {
-    const username = `wplayer_${suffix}`
-    const phone = `+25192${suffix.slice(-7).padStart(7, '0')}`
-
-    // Register player
-    const regRes = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, phone, password: 'Player123!' }),
-    })
-    const { user: player, accessToken: playerToken } = await regRes.json()
+    const { accessToken: playerToken } = testPlayer()!
 
     // Seed a deposit and approve it so the player has funds
     const pngBytes = Buffer.from(
@@ -150,18 +137,16 @@ test.describe('Admin authentication', () => {
         await expect(page.getByText(/Admin Portal/i)).toBeVisible()
     })
 
-    test('non-admin player cannot log in to admin portal', async ({ page }) => {
-        // Register a normal player
+    // The old version of this registered a player and tried their password
+    // here. Players have no password now — they sign in by SMS — and
+    // /auth/admin/login refuses any role but CLERK/ADMIN/SUPER_ADMIN before it
+    // mints a token, so what is left to check is that credentials this portal
+    // does not recognise get nowhere.
+    test('unrecognised credentials cannot log in to admin portal', async ({ page }) => {
         const ts = Date.now().toString()
-        const phone = `+25193${ts.slice(-7)}`
-        await fetch(`${API_URL}/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: `nonadmin_${ts}`, phone, password: 'Player123!' }),
-        })
 
         await page.goto('/login')
-        await page.fill('input[placeholder*="Username"]', `nonadmin_${ts}`)
+        await page.fill('input[placeholder*="Username"]', `nobody_${ts}`)
         await page.fill('input[type="password"]', 'Player123!')
         await page.click('button[type="submit"]')
 
@@ -190,6 +175,8 @@ test.describe('Admin authentication', () => {
 // ─── Deposit verification ─────────────────────────────────────────────────────
 
 test.describe('Deposit verification', () => {
+    test.skip(!testPlayer(), NO_PLAYER_FIXTURE)
+
     let adminToken: string
 
     test.beforeEach(async () => {
@@ -285,6 +272,8 @@ test.describe('Deposit verification', () => {
 // ─── Withdrawal management ────────────────────────────────────────────────────
 
 test.describe('Withdrawal management', () => {
+    test.skip(!testPlayer(), NO_PLAYER_FIXTURE)
+
     let adminToken: string
 
     test.beforeEach(async () => {

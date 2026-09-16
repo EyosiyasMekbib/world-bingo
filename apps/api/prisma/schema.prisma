@@ -14,6 +14,12 @@ model User {
   phone                    String?                   @unique
   passwordHash             String?
   telegramId               String?                   @unique
+  /// Firebase Authentication uid, set on the player's first phone sign-in and
+  /// stable for that number within one brand's Firebase project. Matched on
+  /// before `phone`, so a player who later changes the number on the account
+  /// still signs in as themselves. Null for accounts that predate phone
+  /// sign-in and for staff.
+  firebaseUid              String?                   @unique
   telegramUsername         String?
   firstName                String?
   lastName                 String?

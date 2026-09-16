@@ -1,22 +1,34 @@
+import { toE164 } from '@world-bingo/shared-types'
+
 /**
- * Login form validation in code rather than the browser's native bubbles.
+ * Sign-in form validation in code rather than the browser's native bubbles.
  * On phones a `required` / `minlength` bubble is a tooltip with no DOM
- * change, which session replay records as a dead click on "Sign In" and the
- * player reads as a broken button. Returning a reason lets the page show an
- * inline message and track why the submit never left the device.
+ * change, which session replay records as a dead click on the submit button
+ * and the player reads as a broken button. Returning a reason lets the page
+ * show an inline message and track why the submit never left the device.
  */
-export type LoginFormError = 'identifier_required' | 'password_required' | 'password_short'
+export type PhoneFormError = 'phone_required' | 'phone_invalid'
 
-/** Same floor the server enforces on the password. */
-export const MIN_PASSWORD_LENGTH = 6
+export type CodeFormError = 'code_required' | 'code_invalid'
 
-export function validateLoginForm(form: {
-  identifier: string
-  password: string
-}): LoginFormError | null {
-  if (!form.identifier || !form.identifier.trim()) return 'identifier_required'
-  if (!form.password) return 'password_required'
-  if (form.password.length < MIN_PASSWORD_LENGTH) return 'password_short'
+/** Firebase always sends six digits. */
+export const SMS_CODE_LENGTH = 6
+
+/**
+ * The number has to be one Firebase will accept, which means E.164 — so this
+ * validates by trying the conversion the send actually uses, rather than by a
+ * second, looser rule that would let a number through here and fail there.
+ */
+export function validatePhoneForm(form: { phone: string }): PhoneFormError | null {
+  if (!form.phone || !form.phone.trim()) return 'phone_required'
+  if (!toE164(form.phone)) return 'phone_invalid'
+  return null
+}
+
+export function validateCodeForm(form: { code: string }): CodeFormError | null {
+  const code = (form.code ?? '').trim()
+  if (!code) return 'code_required'
+  if (!/^\d+$/.test(code) || code.length !== SMS_CODE_LENGTH) return 'code_invalid'
   return null
 }
 
@@ -26,6 +38,9 @@ export function validateLoginForm(form: {
  * holds '' while the player sees their phone number in the box; 155 people
  * in 14 hours were told to "enter your username" that way. Never overwrites
  * a non-empty model value.
+ *
+ * Still load-bearing for phone sign-in: both fields here are autofill targets
+ * (`autocomplete="tel"` and the SMS one-time-code hint).
  */
 export function applyAutofill<T extends Record<string, string>>(
   form: T,

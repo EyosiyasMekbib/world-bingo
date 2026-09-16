@@ -12,10 +12,13 @@
     <div class="auth-tabs">
       <button
         class="tab-btn"
-        :class="{ active: activeTab === 'credentials' }"
-        @click="activeTab = 'credentials'; errorMsg = ''"
+        :class="{ active: activeTab === 'phone' }"
+        @click="activeTab = 'phone'; errorMsg = ''"
       >
-        Sign In
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 4h10a1 1 0 011 1v14a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1zm4 14h2" />
+        </svg>
+        Phone
       </button>
       <button
         class="tab-btn"
@@ -29,74 +32,15 @@
       </button>
     </div>
 
-    <!-- ── Username / Password tab ──────────────────────────────────── -->
-    <div v-if="activeTab === 'credentials'" class="auth-actions">
-      <!-- novalidate: the native required/minlength bubble is a tooltip with no
-           DOM change, which replay records as a dead click on Sign In. Errors
-           now render inline and are tracked. -->
-      <form novalidate @submit.prevent="handleCredentialsLogin">
-        <div class="wb-field">
-          <label class="wb-label" for="identifier">Username or Phone</label>
-          <input
-            id="identifier"
-            ref="identifierEl"
-            v-model="form.identifier"
-            type="text"
-            autocomplete="username"
-            placeholder="e.g. john_doe or 0911234567"
-            class="wb-input"
-            :disabled="loading"
-            required
-          />
-        </div>
-        <div class="wb-field">
-          <label class="wb-label" for="password">Password</label>
-          <div class="input-wrap">
-            <input
-              id="password"
-              ref="passwordEl"
-              v-model="form.password"
-              :type="showPassword ? 'text' : 'password'"
-              autocomplete="current-password"
-              placeholder="Min. 6 characters"
-              class="wb-input"
-              :disabled="loading"
-              required
-              minlength="6"
-            />
-            <!-- v-show, not v-if/v-else: swapping the svg node on click means
-                 the element PostHog's autocapture just saw is gone by the
-                 time it checks for a reaction, so it reports a dead click on
-                 a toggle that actually worked. v-show mutates a persistent
-                 node instead. -->
-            <button type="button" class="eye-btn" tabindex="-1" @click="showPassword = !showPassword">
-              <svg v-show="showPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88L6.59 6.59m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-              </svg>
-              <svg v-show="!showPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <p v-if="errorMsg" class="auth-error" role="alert">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          {{ errorMsg }}
-        </p>
-
-        <button type="submit" class="btn-primary-auth wb-btn--block" :disabled="loading">
-          <span v-if="loading" class="spinner" />
-          <span>{{ loading ? 'Signing in…' : 'Sign In' }}</span>
-        </button>
-      </form>
+    <!-- ── Phone (SMS) tab ──────────────────────────────────────────────
+         Sign-in and sign-up in one: a number we have never seen gets an
+         account, so there is nothing for the player to choose between. -->
+    <div v-if="activeTab === 'phone'" class="auth-actions">
+      <PhoneSignIn @authenticated="router.push(redirectPath)" />
 
       <p class="auth-footer-link">
-        Don't have an account?
-        <NuxtLink to="/auth/register">Register</NuxtLink>
+        Have a referral code?
+        <NuxtLink to="/auth/register">Enter it here</NuxtLink>
       </p>
     </div>
 
@@ -141,11 +85,6 @@
         </svg>
         {{ errorMsg }}
       </p>
-
-      <p class="auth-footer-link">
-        Don't have an account?
-        <NuxtLink to="/auth/register">Register</NuxtLink>
-      </p>
     </div>
   </div>
 </template>
@@ -153,7 +92,6 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
 import type { TelegramAuthDto } from '@world-bingo/shared-types'
-import { validateLoginForm, applyAutofill, type LoginFormError } from '~/utils/auth-form'
 import { describeFailure } from '~/utils/http-failure'
 
 declare global {
@@ -174,14 +112,7 @@ const { t } = useI18n()
 const { track } = useAnalytics()
 const errorMsg = ref('')
 const loading = ref(false)
-const showPassword = ref(false)
-const activeTab = ref<'credentials' | 'telegram'>('credentials')
-
-const form = reactive({ identifier: '', password: '' })
-// Some Android browsers autofill without firing `input`, so v-model stays
-// empty while the box shows a value; applyAutofill reads the DOM back.
-const identifierEl = ref<HTMLInputElement | null>(null)
-const passwordEl = ref<HTMLInputElement | null>(null)
+const activeTab = ref<'phone' | 'telegram'>('phone')
 
 const showWelcomeBack = computed(() => !!auth.user && !auth.isAuthenticated)
 
@@ -189,40 +120,6 @@ const redirectPath = computed(() => {
   const r = route.query.redirect
   return typeof r === 'string' && r.startsWith('/') ? r : '/'
 })
-
-const VALIDATION_MESSAGES: Record<LoginFormError, string> = {
-  identifier_required: 'Enter your username or phone number.',
-  password_required: 'Enter your password.',
-  password_short: 'Password must be at least 6 characters.',
-}
-
-async function handleCredentialsLogin() {
-  errorMsg.value = ''
-  applyAutofill(form, { identifier: identifierEl.value, password: passwordEl.value })
-  const invalid = validateLoginForm(form)
-  if (invalid) {
-    errorMsg.value = VALIDATION_MESSAGES[invalid]
-    track('login_failed', { method: 'password', reason: invalid, status: null })
-    return
-  }
-  loading.value = true
-  try {
-    await auth.login({ identifier: form.identifier.trim(), password: form.password })
-    await router.push(redirectPath.value)
-  } catch (e: any) {
-    const failure = describeFailure(e)
-    track('login_failed', { method: 'password', reason: failure.code, status: failure.status })
-    // A suspended account fails authentication with its own code; showing
-    // "invalid credentials" for it sends the player to reset a password that
-    // was never the problem.
-    errorMsg.value =
-      e?.data?.code === 'account_suspended'
-        ? t('wallet.accountSuspended')
-        : e?.data?.message || 'Invalid credentials. Please try again.'
-  } finally {
-    loading.value = false
-  }
-}
 
 function handleTelegramCallback(user: TelegramAuthDto) {
   loading.value = true
@@ -328,59 +225,89 @@ form { display: flex; flex-direction: column; gap: 16px; }
   justify-content: center;
   gap: 0.4rem;
   padding: 0.6rem 1rem;
+  background: none;
   border: none;
   border-radius: var(--radius-sm, 8px);
-  background: transparent;
-  color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.18s, color 0.18s;
+  transition: background 0.2s, color 0.2s;
 }
-
 .tab-btn.active {
-  background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
-  color: var(--brand-primary);
-}
-
-.tab-btn:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-raised);
   color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
-
-.tg-tab-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
+.tab-icon,
+.tg-tab-icon { width: 15px; height: 15px; }
 
 /* ── Actions ─────────────────────────────────────────────────────────── */
 .auth-actions { display: flex; flex-direction: column; gap: 1rem; }
 
-/* ── Password field eye toggle ───────────────────────────────────────── */
-.input-wrap { position: relative; }
-.input-wrap .wb-input { padding-right: 2.75rem; }
+/* ── Welcome back (Telegram) ─────────────────────────────────────────── */
+.welcome-back {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
 
-.eye-btn {
-  position: absolute;
-  right: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
+.wb-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand-primary);
+  overflow: hidden;
+}
+.wb-photo { width: 100%; height: 100%; object-fit: cover; }
+
+.wb-name {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0;
+}
+.wb-name strong { color: var(--text-primary); font-size: 16px; }
+
+.wb-switch {
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
-  display: flex;
-  align-items: center;
+  text-decoration: underline;
 }
-.eye-btn svg { width: 16px; height: 16px; }
-.eye-btn:hover { color: var(--brand-primary); }
 
-/* ── Error ───────────────────────────────────────────────────────────── */
+/* ── Footer link ─────────────────────────────────────────────────────── */
+.auth-footer-link {
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.auth-footer-link a {
+  color: var(--brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-footer-link a:hover { text-decoration: underline; }
+
+/* ── Errors ──────────────────────────────────────────────────────────── */
 .auth-error {
   display: flex;
   align-items: center;
@@ -437,93 +364,13 @@ form { display: flex; flex-direction: column; gap: 16px; }
 
 /* Spinner */
 .spinner {
-  width: 16px; height: 16px;
-  border: 2px solid rgba(0,0,0,0.3);
-  border-top-color: #000;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  flex-shrink: 0;
+  animation: spin 0.7s linear infinite;
 }
-.btn-telegram .spinner {
-  border-color: rgba(255,255,255,0.3);
-  border-top-color: #fff;
-}
+
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Footer link ─────────────────────────────────────────────────────── */
-.auth-footer-link {
-  margin: 0;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.auth-footer-link a {
-  color: var(--brand-primary);
-  font-weight: 700;
-  text-decoration: none;
-}
-.auth-footer-link a:hover {
-  text-decoration: underline;
-}
-
-/* ── Welcome-back ────────────────────────────────────────────────────── */
-.welcome-back {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  text-align: center;
-}
-
-.wb-avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dim));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-ui);
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--text-on-brand);
-  overflow: hidden;
-  border: 2px solid color-mix(in srgb, var(--brand-primary) 40%, transparent);
-  flex-shrink: 0;
-}
-
-.wb-photo {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.wb-name {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.wb-name strong {
-  color: var(--text-primary);
-  font-size: 1.1rem;
-}
-
-.wb-switch {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  font-family: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: color 0.2s;
-}
-
-.wb-switch:hover {
-  color: var(--text-primary);
-}
 </style>

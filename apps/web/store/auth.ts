@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { LoginDto, RegisterDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
+import type { FirebasePhoneAuthDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
 import { isExpiringWithin, TOKEN_REFRESH_MARGIN_MS } from '~/utils/token'
 
 /**
@@ -70,15 +70,22 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    async login(credentials: LoginDto) {
+    /**
+     * Phone sign-in. `idToken` comes from Firebase after the SMS code is
+     * accepted (see composables/useFirebasePhoneAuth.ts); the server verifies
+     * it and either signs the player in or creates the account, which is why
+     * there is no separate register action any more. `referralCode` is only
+     * honoured on a brand-new account.
+     */
+    async phoneLogin(payload: FirebasePhoneAuthDto) {
       const config = useRuntimeConfig()
       const { user, accessToken, refreshToken } = await $fetch<{
         user: User
         accessToken: string
         refreshToken: string
-      }>(`${config.public.apiBase}/auth/login`, {
+      }>(`${config.public.apiBase}/auth/phone`, {
         method: 'POST',
-        body: credentials,
+        body: payload,
       })
       this.user = user
       this.accessToken = accessToken
@@ -96,23 +103,6 @@ export const useAuthStore = defineStore('auth', {
       }>(`${config.public.apiBase}/auth/telegram`, {
         method: 'POST',
         body: payload,
-      })
-      this.user = user
-      this.accessToken = accessToken
-      this.refreshToken = refreshToken
-      useAnalytics().identify(user)
-      await this.fetchWallet()
-    },
-
-    async register(data: RegisterDto) {
-      const config = useRuntimeConfig()
-      const { user, accessToken, refreshToken } = await $fetch<{
-        user: User
-        accessToken: string
-        refreshToken: string
-      }>(`${config.public.apiBase}/auth/register`, {
-        method: 'POST',
-        body: data,
       })
       this.user = user
       this.accessToken = accessToken

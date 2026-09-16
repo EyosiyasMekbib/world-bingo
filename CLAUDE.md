@@ -61,6 +61,11 @@ pnpm --filter @world-bingo/game-logic test
 
 ### API (`apps/api`)
 - **Fastify v5** with plugins: JWT auth, rate-limit (100 req/min), Helmet, CORS, Swagger at `/docs`
+- **Auth**: players sign in with Firebase phone (SMS) only — `POST /auth/phone` verifies a
+  Firebase ID token against `FIREBASE_PROJECT_ID` (public certs, no service-account key) and
+  signs in or creates the account. There is no player password: `/auth/login` and
+  `/auth/register` are gone, and `/auth/admin/login` is staff-only. Telegram login is unchanged.
+  Each brand has its own Firebase project — see `docs/firebase-auth.md`.
 - **Socket.io v4** with Redis adapter for horizontal scaling
 - **BullMQ** workers (3): `game-countdown`, `game-scheduler`, `game-engine` — auto-started on server boot
 - ZareCash queues run alongside them: deposit/withdrawal submission, webhook event
@@ -119,6 +124,6 @@ with unrelated stacks — a bare alias like `api` once cross-served. Per-brand e
 `apps/api/.env.example` (api-consumed `SENTRY_*`/`OTEL_*`/`LOKI_*`). See `docs/observability.md` for the runbook.
 
 ### Environment Setup
-Copy `.env.example` → `.env` at repo root and `apps/api/.env.example` → `apps/api/.env`. The `JWT_SECRET` must be a 64-byte hex string and must match between API and admin app (`NUXT_JWT_SECRET`).
+Copy `.env.example` → `.env` at repo root and `apps/api/.env.example` → `apps/api/.env`. The `JWT_SECRET` must be a 64-byte hex string and must match between API and admin app (`NUXT_JWT_SECRET`). Player sign-in needs a Firebase project per brand: `FIREBASE_PROJECT_ID` (api) and the four `NUXT_PUBLIC_FIREBASE_*` vars (web), all env-gated and inert when unset.
 
 For shared-provider multi-deployment setups, one deployment is elected the **hub** (owns the provider token + the single callback URL) and the others are **spokes** that forward provider calls through it. Set `DEPLOYMENT_ROLE`/`DEPLOYMENT_CODE` plus the hub/spoke vars — see `apps/api/.env.example`. Default `standalone` preserves single-deployment behaviour.

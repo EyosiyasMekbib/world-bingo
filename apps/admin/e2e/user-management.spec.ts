@@ -6,14 +6,13 @@
  *
  * Requires:
  *   - Admin app running at ADMIN_BASE_URL (default http://localhost:3001)
- *   - API running at API_URL (default http://localhost:8080)
+ *   - API running (default http://localhost:8080)
  *   - A seeded ADMIN user in the DB (see seed.ts)
  *
  * Run with: pnpm --filter @world-bingo/admin exec playwright test user-management.spec.ts
  */
 import { test, expect, type Page } from '@playwright/test'
 
-const API_URL = process.env.API_URL || 'http://localhost:8080'
 const ADMIN_USER = process.env.ADMIN_USER || 'kira'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123'
 
@@ -25,17 +24,6 @@ async function adminLogin(page: Page) {
     await page.fill('input[type="password"]', ADMIN_PASSWORD)
     await page.click('button[type="submit"]')
     await page.waitForURL('/', { timeout: 15000 })
-}
-
-async function registerPlayer(suffix: string): Promise<string> {
-    const username = `usr_test_${suffix}`
-    const phone = `+25197${suffix.slice(-7).padStart(7, '0')}`
-    await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, phone, password: 'Player123!' }),
-    })
-    return username
 }
 
 // ─── Users Page — Layout ──────────────────────────────────────────────────────
@@ -72,8 +60,12 @@ test.describe('Users page — Layout', () => {
 // ─── User Search ──────────────────────────────────────────────────────────────
 
 test.describe('User Search', () => {
+    // Searches for the seeded admin rather than a throwaway player: players sign
+    // in by SMS and have no password, so a test cannot create one (see
+    // docs/firebase-auth.md). Any account that is definitely in the table
+    // exercises the filter just as well.
     test('searching for a username filters the table', async ({ page }) => {
-        const username = await registerPlayer(Date.now().toString())
+        const username = ADMIN_USER
 
         await adminLogin(page)
         await page.goto('/users')

@@ -1,11 +1,31 @@
 import prisma from '../lib/prisma'
-import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType, AccountStatus } from '@world-bingo/shared-types'
+import { GameStatus, PaymentStatus, TransactionType, UserRole, NotificationType, AccountStatus, phoneVariants } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
 import { HouseWalletService } from './house-wallet.service'
 import { wbWithdrawalsTotal } from '../lib/metrics'
 import { captureEvent } from '../lib/posthog'
 import { hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
+
+/**
+ * The `OR` a clerk's free-text search expands to: username, or phone.
+ *
+ * The `phone` exact-match arm is what makes a phone number findable at all now.
+ * Accounts created by SMS sign-in store E.164 (`+251911234567`), but a player
+ * on the phone to support reads their number out as `0911234567` — and
+ * `contains` never matches that against the stored spelling. `phoneVariants`
+ * turns the typed number into every spelling it could be stored under, so both
+ * directions work: the old rows a clerk finds by `contains`, and the new ones
+ * only an exact match reaches.
+ */
+export function userSearchOr(search: string) {
+    const variants = phoneVariants(search)
+    return [
+        { username: { contains: search, mode: 'insensitive' as const } },
+        { phone: { contains: search } },
+        ...(variants.length > 1 ? [{ phone: { in: variants } }] : []),
+    ]
+}
 
 /**
  * Is this row owned by a payment gateway rather than by the manual review queue?
@@ -229,10 +249,7 @@ export class AdminService {
             userFilter.serial = params.userSerial
         }
         if (params.search) {
-            userFilter.OR = [
-                { username: { contains: params.search, mode: 'insensitive' } },
-                { phone: { contains: params.search } },
-            ]
+            userFilter.OR = userSearchOr(params.search)
         }
         if (Object.keys(userFilter).length > 0) {
             where.user = userFilter
@@ -395,10 +412,7 @@ export class AdminService {
 
         const where: any = {}
         if (params.search) {
-            where.OR = [
-                { username: { contains: params.search, mode: 'insensitive' as const } },
-                { phone: { contains: params.search } },
-            ]
+            where.OR = userSearchOr(params.search)
         }
         if (params.role) {
             where.role = params.role
@@ -526,12 +540,7 @@ export class AdminService {
                 where: {
                     ...dateFilter,
                     ...(params.search && {
-                        user: {
-                            OR: [
-                                { username: { contains: params.search, mode: 'insensitive' } },
-                                { phone: { contains: params.search } },
-                            ],
-                        },
+                        user: { OR: userSearchOr(params.search) },
                     }),
                 },
                 include: { user: { select: { username: true, id: true } } },

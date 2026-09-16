@@ -21,6 +21,7 @@
         "@world-bingo/game-logic": "workspace:*",
         "@world-bingo/shared-types": "workspace:*",
         "@world-bingo/ui": "workspace:*",
+        "firebase": "^12.19.0",
         "motion": "^12.0.0",
         "pinia": "^2.3.0",
         "pinia-plugin-persistedstate": "^4.7.1",

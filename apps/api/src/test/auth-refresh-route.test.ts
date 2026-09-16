@@ -163,22 +163,27 @@ describe('POST /auth/refresh — wire-level response shape', () => {
     })
 
     it('does not attach a "code" to an unrelated failure through the same handler', async () => {
-        // A wrong-password login runs through the exact same setErrorHandler
+        // A wrong-password sign-in runs through the exact same setErrorHandler
         // via the pre-existing 'Invalid credentials' branch — a different
         // shape of 401 that the client must NOT treat as a refresh refusal.
         // Guards against a future change giving that branch a colliding
         // `code` field.
+        //
+        // Through /auth/admin/login, since players no longer have a password:
+        // it is the only password route left, and the account is promoted to
+        // ADMIN so the request fails on the password rather than on the role.
         const app = await buildApp()
         const username = 'refresh_route_003'
-        await AuthService.register({
+        const { user } = await AuthService.register({
             username,
             phone: '+251977100003',
             password: 'password123',
         })
+        await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } })
 
         const res = await app.inject({
             method: 'POST',
-            url: '/auth/login',
+            url: '/auth/admin/login',
             payload: { identifier: username, password: 'wrong-password' },
         })
 
