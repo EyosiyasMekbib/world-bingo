@@ -17,7 +17,7 @@ carries the review notes.
 | `PromoCards.dc.html` | The promo tile: five across, generated vs artwork, phone, expiry bar |
 | `LobbyPromo.dc.html` | Lobby hero, expiry bar and the five-across offer carousel |
 | `Main.dc.html` | Wallet — the My Bonuses hub |
-| `Promotions.dc.html` | Promotions page — two-up grid of tiles with progress |
+| `Promotions.dc.html` | Promotions page — full-width tiles with progress |
 | `BonusMoments.dc.html` | Bonus arrival toast, first-deposit modal, notification inbox |
 | `AdminPromotions.dc.html` | Admin — one Promotions list for every offer type |
 | `AdminPromoArtwork.dc.html` | Admin — artwork upload, requirements and live preview |
