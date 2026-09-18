@@ -15,7 +15,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (forced) return navigateTo(forced)
 
   // Public routes that don't require auth (exact match)
-  const publicPaths = ['/auth/login', '/auth/register', '/', '/tournaments', '/games', '/promotions']
+  // /aviator is public so a guest reaches the play page, whose login redirect
+  // brings them back into the game; the middleware's own redirect would not.
+  const publicPaths = ['/auth/login', '/auth/register', '/', '/tournaments', '/games', '/promotions', '/aviator']
 
   // Public path prefixes (any sub-path is also public for guests to browse)
   const publicPrefixes = ['/auth/', '/ref/', '/tournaments/', '/games/']

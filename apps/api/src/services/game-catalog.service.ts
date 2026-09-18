@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getGameProviderGateway } from '../gateways/game-provider/index.js'
-import { FeaturedGameService, PROVIDER_GAME_ORDER_BY, PROVIDER_ORDER_BY } from './featured-game.service.js'
+import { FeaturedGameService, PROVIDER_GAME_ORDER_BY, PROVIDER_ORDER_BY, toNameKey } from './featured-game.service.js'
 import { PatternType } from '@world-bingo/shared-types'
 
 const CURRENCY = process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB'
@@ -31,6 +31,19 @@ type SearchResult = {
     imageSquare: string | null
     imageLandscape: string | null
 }
+
+/** One launchable catalog row, as findGameByName() returns it. */
+type NamedGameRow = Pick<
+    SearchResult,
+    | 'providerCode'
+    | 'providerName'
+    | 'vendorCode'
+    | 'gameCode'
+    | 'gameName'
+    | 'categoryCode'
+    | 'imageSquare'
+    | 'imageLandscape'
+>
 
 function normalizeQuery(query: string) {
     return query.trim().toLowerCase()
@@ -487,6 +500,43 @@ export class GameCatalogService {
             pageSize,
             bingoGames,
         }
+    }
+
+    /**
+     * The one catalog row a named entry point (the Aviator nav tab) launches.
+     *
+     * Game codes are provider-specific, so the lookup is by normalized name —
+     * the same key featured pins use (toNameKey / featured_games.nameKey). Only
+     * rows the lobby would show qualify (active game, ACTIVE provider, active
+     * vendor, not shadowed), and among those the admin's provider priority
+     * decides, so this launches the same copy the lobby tile does.
+     * null when no ACTIVE provider carries the title right now.
+     */
+    static async findGameByName(nameKey: string): Promise<NamedGameRow | null> {
+        const key = toNameKey(nameKey)
+        if (!key) return null
+
+        const rows = await prisma.$queryRaw<NamedGameRow[]>`
+            SELECT p.code            AS "providerCode",
+                   p.name            AS "providerName",
+                   v.code            AS "vendorCode",
+                   g."gameCode",
+                   g."gameName",
+                   g."categoryCode",
+                   g."imageSquare",
+                   g."imageLandscape"
+            FROM provider_games g
+            JOIN game_providers p ON p.id = g."providerId"
+            JOIN game_vendors v ON v.id = g."vendorId"
+            WHERE g."isActive" = true
+              AND g."shadowed" = false
+              AND p.status = 'ACTIVE'
+              AND v."isActive" = true
+              AND regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g') = ${key}
+            ORDER BY p.priority ASC, p."isPrimary" DESC, p."createdAt" ASC, g."sortOrder" ASC, g.id ASC
+            LIMIT 1
+        `
+        return rows[0] ?? null
     }
 
     static async searchCatalog(query: string) {

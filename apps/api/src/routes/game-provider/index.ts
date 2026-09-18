@@ -90,6 +90,23 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
         },
     })
 
+    // ── One game by normalized name, for named entry points like the Aviator tab
+    // Static "games" segment, so it can't collide with /:providerCode/games.
+    fastify.get('/games/by-name/:nameKey', {
+        handler: async (req, reply) => {
+            const { nameKey } = req.params as { nameKey: string }
+            const game = await GameCatalogService.findGameByName(nameKey)
+            if (!game) {
+                return reply.code(404).send({
+                    statusCode: 404,
+                    error: 'NotFound',
+                    message: 'No active provider carries this game right now.',
+                })
+            }
+            return game
+        },
+    })
+
     // ── Get game categories across every active provider ──────────────────────
     fastify.get('/categories', {
         handler: async () => GameCatalogService.getCategories(),
