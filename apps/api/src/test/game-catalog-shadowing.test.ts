@@ -11,6 +11,7 @@ vi.mock('../lib/redis', () => ({
     },
 }))
 
+import redis from '../lib/redis'
 import { GameCatalogService } from '../services/game-catalog.service'
 import gameProviderRoutes from '../routes/game-provider/index'
 import adminRoutes from '../routes/admin/index'
@@ -296,5 +297,15 @@ describe('cross-provider lobby de-duplication', () => {
         const page = await GameCatalogService.getGames({ page: 1, pageSize: 10 })
         expect(page.games).toHaveLength(1)
         expect(page.games[0]).toMatchObject({ vendorCode: 'SPRIBE', vendorName: 'Pragmatic Play', providerName: 'shadow-palace' })
+    })
+
+    it('bustCatalogCache drops every cached catalog page and category list (runs at API boot)', async () => {
+        vi.mocked(redis.keys)
+            .mockResolvedValueOnce(['tp:games:__all__:ALL:1:60', 'tp:games:palace:ALL:1:50'])
+            .mockResolvedValueOnce(['tp:categories:__all__'])
+        await GameCatalogService.bustCatalogCache()
+        expect(redis.keys).toHaveBeenCalledWith('tp:games:*')
+        expect(redis.keys).toHaveBeenCalledWith('tp:categories:*')
+        expect(redis.del).toHaveBeenCalledWith('tp:games:__all__:ALL:1:60', 'tp:games:palace:ALL:1:50', 'tp:categories:__all__')
     })
 })

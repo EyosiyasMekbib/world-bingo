@@ -465,6 +465,19 @@ try {
         }
     }
 
+    // The catalog cache must not outlive a deploy: entrypoint.sh has just run
+    // the migrations, and one of those can re-project provider_games (which
+    // copy of a duplicated title the lobby shows) while Redis still holds the
+    // feed built before it. Lazy import, same as the admin routes: the catalog
+    // service pulls in the provider gateways.
+    try {
+        const { GameCatalogService } = await import('./services/game-catalog.service.js')
+        await GameCatalogService.bustCatalogCache()
+        console.log('[Startup] Cleared the game catalog cache')
+    } catch (err) {
+        console.error('[Startup] Failed to clear the game catalog cache (continuing):', (err as Error)?.message)
+    }
+
     await server.listen({ port, host })
 
     // Say the effective value out loud. Over-setting this hands `request.ip`
