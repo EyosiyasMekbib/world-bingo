@@ -17,7 +17,7 @@ import { HouseWalletService } from '../../services/house-wallet.service'
 import { CashbackService } from '../../services/cashback.service'
 import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
-import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
+import { FeaturedGameService, PROVIDER_GAME_ORDER_BY, PROVIDER_ORDER_BY } from '../../services/featured-game.service'
 import { SupportService } from '../../services/support/support.service'
 import { AuthService, PasswordError } from '../../services/auth.service'
 import { rateLimitKey } from '../../lib/rate-limit-key'
@@ -615,13 +615,39 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         // ── Game Providers ────────────────────────────────────────────────────
-        f.get('/providers', async (_req, _reply) => prisma.gameProvider.findMany({ orderBy: { createdAt: 'asc' } }))
+        // Any change to which providers / vendors / games are live, or to a
+        // provider's priority, can change which provider's copy of a title the
+        // lobby shows — re-project the shadowed flags and drop the cached feed.
+        // Same lazy import as the sync route: the catalog service pulls in the
+        // provider gateways, which the rest of this file never needs.
+        const reprojectCatalog = async (providerCode?: string) => {
+            const { GameCatalogService } = await import('../../services/game-catalog.service.js')
+            await GameCatalogService.applyShadowing()
+            if (providerCode) await GameCatalogService.bustProviderCache(providerCode)
+            else await GameCatalogService.bustAllProvidersCache()
+        }
+
+        f.get('/providers', async (_req, _reply) => prisma.gameProvider.findMany({ orderBy: PROVIDER_ORDER_BY }))
 
         f.patch('/providers/:id/status', async (req: any, reply) => {
             const { status } = req.body as { status: string }
             const allowed = ['ACTIVE', 'INACTIVE', 'MAINTENANCE']
             if (!allowed.includes(status)) return reply.status(400).send({ error: 'Invalid status' })
-            return prisma.gameProvider.update({ where: { id: req.params.id }, data: { status: status as any } })
+            const provider = await prisma.gameProvider.update({ where: { id: req.params.id }, data: { status: status as any } })
+            await reprojectCatalog(provider.code)
+            return provider
+        })
+
+        // Lobby de-dup priority: lowest number wins when several providers carry
+        // the same title. Whole numbers so the dashboard can show plain ranks.
+        f.patch('/providers/:id/priority', async (req: any, reply) => {
+            const { priority } = req.body as { priority: unknown }
+            if (typeof priority !== 'number' || !Number.isInteger(priority) || priority < 0 || priority > 1000) {
+                return reply.status(400).send({ error: 'priority must be an integer between 0 and 1000' })
+            }
+            const provider = await prisma.gameProvider.update({ where: { id: req.params.id }, data: { priority } })
+            await reprojectCatalog()
+            return provider
         })
 
         f.post('/providers/:code/sync', async (req: any, reply) => {
@@ -641,7 +667,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             if (!provider) return reply.status(404).send({ error: 'Provider not found' })
             const vendor = await prisma.gameVendor.findUnique({ where: { providerId_code: { providerId: provider.id, code: req.params.vendorCode } } })
             if (!vendor) return reply.status(404).send({ error: 'Vendor not found' })
-            return prisma.gameVendor.update({ where: { id: vendor.id }, data: { isActive: req.body.isActive } })
+            const updated = await prisma.gameVendor.update({ where: { id: vendor.id }, data: { isActive: req.body.isActive } })
+            await reprojectCatalog(provider.code)
+            return updated
         })
 
         f.get('/providers/:code/games', async (req: any, _reply) => {
@@ -689,7 +717,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             if (!game) return reply.status(404).send({ error: 'Game not found' })
             // Manual admin action always wins — clear the auto-hidden flag so a
             // later sync won't override a deliberate enable/disable.
-            return prisma.providerGame.update({ where: { id: game.id }, data: { isActive: req.body.isActive, autoHidden: false } })
+            const updated = await prisma.providerGame.update({ where: { id: game.id }, data: { isActive: req.body.isActive, autoHidden: false } })
+            await reprojectCatalog(provider.code)
+            return updated
         })
 
         f.get('/providers/:code/transactions', async (req: any, _reply) => {
@@ -712,6 +742,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 await prisma.gameProvider.updateMany({ data: { isPrimary: false } })
             }
             const provider = await prisma.gameProvider.update({ where: { id }, data: { isPrimary } })
+            await reprojectCatalog()
             return provider
         })
 

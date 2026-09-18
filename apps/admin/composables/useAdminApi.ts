@@ -496,6 +496,8 @@ export const useAdminApi = () => {
 
         // ── Game Providers ────────────────────────────────────────────────
         getProviders: () => apiFetch<any[]>('/admin/providers'),
+        updateProviderPriority: (id: string, priority: number) =>
+            apiFetch<any>(`/admin/providers/${id}/priority`, { method: 'PATCH', body: { priority } }),
         updateProviderStatus: (id: string, status: string) =>
             apiFetch(`/admin/providers/${id}/status`, { method: 'PATCH', body: { status } }),
         syncProvider: (code: string) =>

@@ -166,6 +166,7 @@ async function main() {
             code: 'gasea',
             name: 'GASea',
             status: 'ACTIVE',
+            priority: 10, // lobby de-dup: lowest wins when providers share a title
             apiBaseUrl: process.env.GASEA_API_BASE_URL ?? '',
             currency: process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB',
             config: {},
@@ -183,6 +184,7 @@ async function main() {
             name: 'Palace Casino',
             status: 'ACTIVE',
             isPrimary: false,
+            priority: 20,
             apiBaseUrl: process.env.PALACE_API_BASE_URL ?? '',
             currency: process.env.PALACE_CURRENCY ?? 'ETB',
             config: {},
@@ -201,6 +203,7 @@ async function main() {
             name: 'Atlas-V',
             status: 'ACTIVE',
             isPrimary: false,
+            priority: 30,
             apiBaseUrl: process.env.ATLASV_SERVER_URL ?? '',
             currency: process.env.ATLASV_DEFAULT_CURRENCY ?? 'ETB',
             config: { catalogSync: false },
