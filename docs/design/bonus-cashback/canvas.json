@@ -13,11 +13,11 @@
     {
       "file": "PromoCards.dc.html",
       "page": "player",
-      "title": "Promo tile \u2014 five across, 225 x 675",
+      "title": "Promo tile \u2014 five across, 225 x 75",
       "x": 0,
       "y": 0,
       "w": 1240,
-      "h": 1530
+      "h": 860
     },
     {
       "file": "LobbyPromo.dc.html",
@@ -26,14 +26,14 @@
       "x": 1320,
       "y": 0,
       "w": 1240,
-      "h": 1300
+      "h": 700
     },
     {
       "file": "Main.dc.html",
       "page": "player",
       "title": "Wallet \u2014 My Bonuses hub",
       "x": 0,
-      "y": 1650,
+      "y": 980,
       "w": 390,
       "h": 1340
     },
@@ -42,16 +42,16 @@
       "page": "player",
       "title": "Promotions \u2014 tiles with live progress",
       "x": 470,
-      "y": 1650,
+      "y": 980,
       "w": 390,
-      "h": 1310
+      "h": 860
     },
     {
       "file": "BonusMoments.dc.html",
       "page": "player",
       "title": "Arrival moments \u2014 toast, welcome, inbox",
       "x": 940,
-      "y": 1650,
+      "y": 980,
       "w": 1220,
       "h": 740
     },
@@ -71,7 +71,7 @@
       "x": 0,
       "y": 950,
       "w": 1130,
-      "h": 1470
+      "h": 900
     },
     {
       "file": "AdminPromoDetail.dc.html",
@@ -99,15 +99,15 @@
       "x": 2640,
       "y": 0,
       "w": 420,
-      "text": "THE TILE\n\n225 x 675 \u2014 the width is exactly a third of the height. Five fit a 1192px row with 16px gaps and three pixels to spare.\n\nHEAD, 3:8 (600px). Either an uploaded portrait image, or a generated composition centred like a poster: a tone-on-tone diamond lattice over a top glow, a seal, a kicker, then the amount in Oswald under one gold gradient clipped to the text, its bevel and glow from two drop shadows.\n\nFOOT, 75px. The player's own progress, or the single action worth a button. Always system-drawn, so uploading artwork never costs you personalisation.\n\nOne metal for the whole family, like a tournament set. Variety comes from the artwork, not from five competing accent colours."
+      "text": "THE TILE\n\n225 x 75 \u2014 the height is exactly a third of the width. Five fit a 1192px row with 16px gaps and three pixels to spare.\n\n3:1 throughout. Either an uploaded wide banner filling the tile, or a generated composition: a tone-on-tone diamond lattice over a left glow, the amount in Oswald under one gold gradient clipped to the text, and a kicker beneath it. An amber chip where there is something to do, a chevron where there is not.\n\nPROGRESS rides the bottom edge as a 3px hairline, over a soft scrim when there is artwork behind it. It is the only thing ever drawn over an uploaded image, so a personalised tile costs almost none of the design.\n\nAt this height a banner carries a wordmark and one figure. Detail belongs in the promotion copy, not the image."
     },
     {
       "id": "player-notes",
       "page": "player",
       "x": 2640,
-      "y": 620,
+      "y": 560,
       "w": 420,
-      "text": "Five per row, and the row is a carousel: arrows beside the section link, dots underneath, more offers on the next page. On phones the same tile drops to 168 wide and shows two and a peek.\n\nThe expiry bar sits above the carousel and out of the card set. It is player state, not an offer, so it is never artwork.\n\nThe promotions page uses the same tile in a two-up grid rather than one tile per screen.\n\nThe artwork here is drawn placeholder standing in for an uploaded asset. Figures are sample values and the copy is English only."
+      "text": "Five per row and the row is a carousel: arrows beside the section link, dots underneath, more offers on the next page. On phones the same 3:1 tile runs 300 x 100, one and a peek. The promotions page uses it full width at 342 x 114 with the progress figures on a line beneath, so artwork is never written over.\n\nThe expiry bar sits above the carousel and out of the tile set. It is player state, not an offer, so it is never artwork.\n\nThe artwork here is a drawn placeholder standing in for an uploaded asset. Figures are sample values and the copy is English only."
     },
     {
       "id": "admin-artwork",
@@ -115,7 +115,7 @@
       "x": 1420,
       "y": 0,
       "w": 420,
-      "text": "ARTWORK UPLOAD\n\nOne portrait image per promotion at 3:8, 750 x 2000 or larger. The same file is used at every width \u2014 scaled, never re-cropped \u2014 so no separate mobile asset.\n\nAnything that is not 3:8 is refused rather than cropped. A crop on a portrait card eats the headline and the admin never sees it happen.\n\nThe preview renders the real tile at real size beside the generated fallback, so removing an image has a visible consequence before it is removed. Carousel position is set here too.\n\nThis needs an artwork field and alt text per promotion plus the existing upload storage. The welcome bonus is a site setting today, so it has nothing to hang an image on."
+      "text": "ARTWORK UPLOAD\n\nOne wide banner per promotion at 3:1, 900 x 300 or larger. The same file is used at every width \u2014 scaled, never re-cropped \u2014 so no separate mobile asset.\n\nAnything that is not 3:1 is refused rather than cropped.\n\nThe preview renders the real tile at real size beside the generated fallback, so removing an image has a visible consequence before it happens. Carousel position is set here too.\n\nThis needs an artwork field and alt text per promotion plus the existing upload storage. The welcome bonus is a site setting today, so it has nothing to hang an image on."
     },
     {
       "id": "admin-notes",

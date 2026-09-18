@@ -26,35 +26,38 @@ carries the review notes.
 
 ## The promo tile
 
-**225 x 675** — the width is exactly a third of the height. Five fit a 1192px
-row with 16px gaps and three pixels to spare. One tile, the same shape whether
-or not artwork exists, which is what lets the two modes mix freely in a row.
+**225 x 75** — the height is exactly a third of the width. Five fit a 1192px
+row with 16px gaps and three pixels to spare. **3:1 throughout**, whether or
+not artwork exists, which is what lets the two modes mix freely in a row.
 
-- **Head, 3:8 (600px).** Either an uploaded portrait image, or a generated
-  composition centred like a poster: a tone-on-tone diamond lattice over a top
-  glow, a seal, a kicker, then the amount in Oswald under one gold gradient
-  clipped to the text, its bevel and glow from two drop shadows.
-- **Foot, 75px.** The player's own progress, or the single action worth a
-  button. Always system-drawn, so uploading artwork never costs personalisation.
+- **Generated.** A tone-on-tone diamond lattice over a left glow, the amount in
+  Oswald under one gold gradient clipped to the text, and a kicker beneath it.
+  An amber chip where there is something to do, a chevron where there is not.
+- **Uploaded.** One wide banner fills the tile edge to edge.
+- **Progress** rides the bottom edge as a 3px hairline, over a soft scrim when
+  there is artwork behind it. It is the only thing ever drawn over an uploaded
+  image, so a personalised tile costs almost none of the design.
 
 One metal for the whole family rather than a different accent per offer.
 Variety is meant to come from the artwork, not from five competing colours.
 
 The row is a carousel: arrows beside the section link, dots underneath, more
-offers on the next page. On phones the same tile drops to 168 wide and shows
-two and a peek; the promotions page uses it in a two-up grid at 165.
+offers on the next page. On phones the same tile runs 300 x 100, one and a
+peek. The promotions page uses it full width at 342 x 114, with the progress
+figures on a line beneath so artwork is never written over.
 
 The expiry warning is not a tile. It is player state, so it sits above the
 carousel as a full-width bar and is never artwork.
 
 ## Artwork upload
 
-One portrait image per promotion at **3:8, 750 x 2000 or larger**, JPG, PNG or
-WebP under 2 MB. The same file is used at every width, scaled and never
-re-cropped, so there is no separate mobile asset. Anything that is not 3:8 is
-refused rather than cropped: a crop on a portrait card eats the headline and
-the admin never sees it happen. That mirrors the existing hero banner code,
-which already refuses to draw anything over admin artwork.
+One wide banner per promotion at **3:1, 900 x 300 or larger**, JPG, PNG or WebP
+under 1 MB. The same file is used at every width, scaled and never re-cropped,
+so there is no separate mobile asset. Anything that is not 3:1 is refused
+rather than cropped.
+
+At 75px tall a banner carries a wordmark and one figure, and nothing more.
+Detail belongs in the promotion copy, not in the image.
 
 ## Design values
 
