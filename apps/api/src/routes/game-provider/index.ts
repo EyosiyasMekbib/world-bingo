@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import redis from '../../lib/redis.js'
 import prisma from '../../lib/prisma.js'
 import { GameCatalogService } from '../../services/game-catalog.service.js'
+import { PROVIDER_ORDER_BY } from '../../services/featured-game.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { EventService } from '../../services/event.service.js'
 import { accountForLaunch } from './account-for-launch.js'
@@ -49,7 +50,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { status: 'ACTIVE' },
                 // Same order as GameCatalogService.getLobby — the web store's
                 // fetchProviders fallback takes the first entry as the active provider.
-                orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+                orderBy: PROVIDER_ORDER_BY,
                 select: { code: true, name: true, currency: true },
             })
         },
@@ -224,9 +225,10 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                             data: { isActive: false, autoHidden: true },
                         })
                         .catch(() => {})
-                    const keys = await redis.keys(`tp:games:${providerCode}:*`)
-                    if (keys.length > 0) await redis.del(...keys)
-                    await redis.del(`tp:categories:${providerCode}`)
+                    // Hiding this copy may un-shadow another provider's copy of
+                    // the same title, so the merged feed changes as well.
+                    await GameCatalogService.applyShadowing().catch(() => {})
+                    await GameCatalogService.bustProviderCache(providerCode)
 
                     req.log.warn(
                         { providerCode, gameCode, userId: user.id, err: msg },

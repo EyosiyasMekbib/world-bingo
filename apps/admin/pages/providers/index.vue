@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { getProviders, updateProviderStatus, syncProvider } = useAdminApi()
+const { getProviders, updateProviderStatus, updateProviderPriority, syncProvider } = useAdminApi()
 const toast = useToast()
 
 const loading = ref(true)
@@ -32,6 +32,29 @@ const cycleStatus = async (provider: any) => {
   }
 }
 
+// Lobby priority: when two providers carry the same game, the lower number's
+// copy is the one players see. Saved on change; the list re-sorts on reload.
+const savingPriority = ref<string | null>(null)
+const savePriority = async (provider: any, value: string | number) => {
+  const priority = Number(value)
+  if (!Number.isInteger(priority) || priority < 0 || priority > 1000) {
+    toast.add({ title: 'Invalid priority', description: 'Use a whole number from 0 to 1000', color: 'error' })
+    return
+  }
+  if (priority === provider.priority) return
+  savingPriority.value = provider.id
+  try {
+    const updated = await updateProviderPriority(provider.id, priority)
+    const idx = providers.value.findIndex((p) => p.id === provider.id)
+    if (idx !== -1) providers.value[idx] = { ...providers.value[idx], priority: updated.priority }
+    toast.add({ title: 'Updated', description: `${provider.name} priority set to ${priority}`, color: 'success' })
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to update priority', color: 'error' })
+  } finally {
+    savingPriority.value = null
+  }
+}
+
 const runSync = async (code: string) => {
   syncing.value = code
   try {
@@ -53,6 +76,9 @@ onMounted(fetchProviders)
       <div>
         <h1 class="text-2xl font-bold text-white tracking-tight">Game Providers</h1>
         <p class="text-sm text-white/50 mt-0.5 font-medium">Manage third-party game provider integrations</p>
+        <p class="text-xs text-white/40 mt-1">
+          Priority decides which provider's copy of a game the lobby shows when two providers carry the same title. Lower wins.
+        </p>
       </div>
     </div>
 
@@ -84,6 +110,22 @@ onMounted(fetchProviders)
         </div>
 
         <div class="flex items-center gap-2 flex-shrink-0">
+          <label class="flex items-center gap-1.5 text-xs text-white/50">
+            Priority
+            <UInput
+              :model-value="p.priority"
+              type="number"
+              min="0"
+              max="1000"
+              step="1"
+              size="xs"
+              class="w-20"
+              :loading="savingPriority === p.id"
+              :aria-label="`Lobby priority for ${p.name}`"
+              @change="savePriority(p, ($event.target as HTMLInputElement).value)"
+              @keydown.enter.prevent="savePriority(p, ($event.target as HTMLInputElement).value)"
+            />
+          </label>
           <NuxtLink :to="`/providers/${p.code}`">
             <UButton size="xs" color="neutral" variant="outline" icon="i-heroicons:eye">
               Manage
