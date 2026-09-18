@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const { getProviderVendors, updateVendorStatus, getProviderGames, updateGameStatus, syncProvider, getProviderTransactions } = useAdminApi()
+const { getProviderVendors, updateVendorStatus, updateVendorAlias, getProviderGames, updateGameStatus, syncProvider, getProviderTransactions } = useAdminApi()
 const toast = useToast()
 
 const code = route.params.code as string
@@ -54,6 +54,29 @@ const fetchTransactions = async (page = 1) => {
     toast.add({ title: 'Error', description: 'Failed to load transactions', color: 'error' })
   } finally {
     txLoading.value = false
+  }
+}
+
+// Lobby de-dup alias: vendors on different providers with the same alias are
+// treated as one studio, so the lobby shows only the higher-priority provider's
+// copy of a title they both carry. Empty clears it (falls back to the name).
+const savingAlias = ref<string | null>(null)
+const saveAlias = async (vendor: any, value: string) => {
+  const alias = value.trim() || null
+  if (alias === (vendor.dedupAlias ?? null)) return
+  savingAlias.value = vendor.id
+  try {
+    const updated = await updateVendorAlias(code, vendor.code, alias)
+    vendor.dedupAlias = updated.dedupAlias ?? null
+    toast.add({
+      title: 'Updated',
+      description: alias ? `${vendor.name} now de-dups as "${alias}"` : `${vendor.name} de-dups by its own name`,
+      color: 'success',
+    })
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to update alias', color: 'error' })
+  } finally {
+    savingAlias.value = null
   }
 }
 
@@ -199,6 +222,19 @@ onMounted(async () => {
             <p class="text-sm font-bold text-white">{{ v.name }}</p>
             <p class="text-xs text-white/40 font-mono">{{ v.code }} · {{ v.categoryCode }}</p>
           </div>
+          <label class="flex items-center gap-1.5 text-xs text-white/50 flex-shrink-0">
+            De-dup alias
+            <UInput
+              :model-value="v.dedupAlias ?? ''"
+              size="xs"
+              class="w-32"
+              :placeholder="v.name"
+              :loading="savingAlias === v.id"
+              :aria-label="`Lobby de-dup alias for ${v.name}`"
+              @change="saveAlias(v, ($event.target as HTMLInputElement).value)"
+              @keydown.enter.prevent="saveAlias(v, ($event.target as HTMLInputElement).value)"
+            />
+          </label>
           <UToggle :model-value="v.isActive" size="sm" @change="toggleVendor(v)" />
         </div>
       </div>

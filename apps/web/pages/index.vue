@@ -358,10 +358,13 @@ const vendorsAreReal = computed(() =>
   providerStore.games.some((g) => g.vendorCode || g.providerName),
 )
 
+// One chip per vendor (studio), labelled with the vendor's own name. Falling
+// back to the provider name for the label made every Palace vendor read
+// "Palace Casino", so the row showed the same chip nine times.
 const vendorChips = computed<{ code: string; name: string }[]>(() => {
   const map = new Map<string, string>()
   for (const g of providerStore.games) {
-    const name = g.providerName ?? g.vendorCode
+    const name = g.vendorName ?? g.providerName ?? g.vendorCode
     const code = g.vendorCode ?? g.providerName
     if (name && code) map.set(code, name)
   }

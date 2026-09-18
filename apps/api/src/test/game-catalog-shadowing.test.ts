@@ -239,4 +239,62 @@ describe('cross-provider lobby de-duplication', () => {
         expect(game2.statusCode).toBe(200)
         expect(await lobbyProviders()).toEqual([])
     })
+
+    it('a vendor de-dup alias joins differently named vendors into one group', async () => {
+        // Atlas-V seeds its catalog under a vendor named "Atlas-V"; Palace lists
+        // the same studio as "ATLAS V2". Without an alias the names differ and
+        // both copies show; with the same alias on both, priority decides.
+        const atlasv = await provider('shadow-atlasv', { priority: 0, vendorName: 'Atlas-V' })
+        const palace = await provider('shadow-palace', { priority: 100, vendorName: 'ATLAS V2' })
+        await game(atlasv, 'wof', 'Wheel of Fortune')
+        await game(palace, '1234', 'WheelOfFortune')
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Wheel of Fortune', 'shadow-palace:WheelOfFortune'])
+
+        await prisma.gameVendor.update({ where: { id: palace.vendorId }, data: { dedupAlias: 'Atlas V' } })
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Wheel of Fortune'])
+
+        // Clearing the alias splits the group again.
+        await prisma.gameVendor.update({ where: { id: palace.vendorId }, data: { dedupAlias: null } })
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Wheel of Fortune', 'shadow-palace:WheelOfFortune'])
+    })
+
+    it('admin vendor alias endpoint validates, saves and re-projects across providers', async () => {
+        const atlasv = await provider('shadow-atlasv', { priority: 0, vendorName: 'Atlas-V' })
+        const palace = await provider('shadow-palace', { priority: 100, vendorName: 'ATLAS V2' })
+        await game(atlasv, 'horseracing', 'Horse Racing')
+        await game(palace, '5678', 'HorseRacing')
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Horse Racing', 'shadow-palace:HorseRacing'])
+
+        const app = await buildAdminApp()
+        const url = `/admin/providers/${palace.code}/vendors/SPRIBE/alias`
+
+        const bad = await app.inject({ method: 'PATCH', url, payload: { alias: 42 } })
+        expect(bad.statusCode).toBe(400)
+        const blank = await app.inject({ method: 'PATCH', url, payload: { alias: '---' } })
+        expect(blank.statusCode).toBe(400)
+        const missing = await app.inject({ method: 'PATCH', url: `/admin/providers/${palace.code}/vendors/NOPE/alias`, payload: { alias: 'x' } })
+        expect(missing.statusCode).toBe(404)
+
+        const ok = await app.inject({ method: 'PATCH', url, payload: { alias: '  atlasv  ' } })
+        expect(ok.statusCode).toBe(200)
+        expect(ok.json().dedupAlias).toBe('atlasv')
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Horse Racing'])
+
+        const cleared = await app.inject({ method: 'PATCH', url, payload: { alias: '' } })
+        expect(cleared.statusCode).toBe(200)
+        expect(cleared.json().dedupAlias).toBeNull()
+        expect(await lobbyProviders()).toEqual(['shadow-atlasv:Horse Racing', 'shadow-palace:HorseRacing'])
+    })
+
+    it('lobby rows carry the vendor name so the filter chips can label vendors, not providers', async () => {
+        const palace = await provider('shadow-palace', { priority: 100, vendorName: 'Pragmatic Play' })
+        await game(palace, '9', 'Sweet Bonanza')
+        const page = await GameCatalogService.getGames({ page: 1, pageSize: 10 })
+        expect(page.games).toHaveLength(1)
+        expect(page.games[0]).toMatchObject({ vendorCode: 'SPRIBE', vendorName: 'Pragmatic Play', providerName: 'shadow-palace' })
+    })
 })
