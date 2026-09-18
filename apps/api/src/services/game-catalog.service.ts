@@ -304,6 +304,18 @@ export class GameCatalogService {
         await GameCatalogService.bustAllProvidersCache()
     }
 
+    /**
+     * Drop every cached catalog page and category list, for every provider and
+     * the merged feed. Runs once at API boot: a migration can re-project
+     * provider_games (priority backfill, vendor alias) while Redis still holds
+     * the feed from before the deploy, which then served the old lobby for up
+     * to GAME_CACHE_TTL after the fix had landed.
+     */
+    static async bustCatalogCache(): Promise<void> {
+        const keys = [...(await redis.keys('tp:games:*')), ...(await redis.keys('tp:categories:*'))]
+        if (keys.length > 0) await redis.del(...keys)
+    }
+
     /** Drop only the merged all-providers feed + categories. */
     static async bustAllProvidersCache(): Promise<void> {
         const keys = await redis.keys('tp:games:__all__:*')
