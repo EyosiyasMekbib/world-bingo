@@ -122,6 +122,37 @@ export const useAdminApi = () => {
             }>(`/admin/analytics/conversion-kpis${query ? `?${query}` : ''}`)
         },
 
+        getProviderBrowseFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                stages: Array<{ name: string; count: number; dropOffPct: number }>
+                hasEnoughData: boolean
+            }>(`/admin/analytics/provider-browse-funnel${query ? `?${query}` : ''}`)
+        },
+
+        getAnalyticsGamePnl: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<Array<{
+                gameId: string
+                title: string
+                ticketPrice: number
+                houseEdgePct: number
+                endedAt: string | null
+                playerCount: number
+                grossRevenue: number
+                totalPrizes: number
+                netPnl: number
+                expectedHouse: number
+                shortfall: number
+            }>>(`/admin/analytics/game-pnl${query ? `?${query}` : ''}`)
+        },
+
         getPendingDeposits: (params?: {
             status?: string
             search?: string
