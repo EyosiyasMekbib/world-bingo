@@ -20,12 +20,20 @@ type Seeded = { id: string; code: string; vendorId: string }
 
 async function provider(
     code: string,
-    opts: { priority?: number; isPrimary?: boolean; createdAt?: string; vendorName?: string } = {},
+    opts: {
+        priority?: number
+        isPrimary?: boolean
+        createdAt?: string
+        vendorName?: string
+        name?: string
+        studio?: boolean
+    } = {},
 ): Promise<Seeded> {
     const p = await prisma.gameProvider.create({
         data: {
             code,
-            name: code,
+            name: opts.name ?? code,
+            ...(opts.studio ? { config: { catalogSync: false } } : {}),
             apiBaseUrl: 'https://p.test',
             status: 'ACTIVE',
             isPrimary: opts.isPrimary ?? false,
@@ -307,5 +315,48 @@ describe('cross-provider lobby de-duplication', () => {
         expect(redis.keys).toHaveBeenCalledWith('tp:games:*')
         expect(redis.keys).toHaveBeenCalledWith('tp:categories:*')
         expect(redis.del).toHaveBeenCalledWith('tp:games:__all__:ALL:1:60', 'tp:games:palace:ALL:1:50', 'tp:categories:__all__')
+    })
+
+    it('recognises a studio provider\'s games on another provider by vendor name alone, no alias needed', async () => {
+        // Atlas-V is a direct studio integration (config.catalogSync false,
+        // seeded under one vendor named after it). Palace carries the same
+        // studio under its own vendor name; whatever that name is, as long
+        // as it contains "atlasv" (or is contained in it), it is Atlas-V.
+        const atlasv = await provider('shadow-atlasv', { priority: 0, name: 'Atlas-V', studio: true, vendorName: 'Atlas-V' })
+        await game(atlasv, 'wof', 'Wheel of Fortune')
+        await game(atlasv, 'boombasket', 'Boom Basket')
+        await game(atlasv, 'horseracing', 'Horse Racing')
+        await game(atlasv, 'plinko', 'Plinko')
+
+        const palace = await provider('shadow-palace', { priority: 100, name: 'Palace Casino' })
+        const v2 = await prisma.gameVendor.create({ data: { providerId: palace.id, code: 'palace:1', name: 'ATLAS V2', isActive: true } })
+        const games = await prisma.gameVendor.create({ data: { providerId: palace.id, code: 'palace:2', name: 'Atlas-V Games', isActive: true } })
+        const short = await prisma.gameVendor.create({ data: { providerId: palace.id, code: 'palace:3', name: 'Atlas', isActive: true } })
+        const spribe = await prisma.gameVendor.create({ data: { providerId: palace.id, code: 'palace:4', name: 'Spribe', isActive: true } })
+        await game({ ...palace, vendorId: v2.id }, '101', 'WheelOfFortune')
+        await game({ ...palace, vendorId: games.id }, '102', 'Boom Basket')
+        await game({ ...palace, vendorId: short.id }, '103', 'HorseRacing')
+        await game({ ...palace, vendorId: spribe.id }, '104', 'Plinko')
+
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual([
+            'shadow-atlasv:Boom Basket',
+            'shadow-atlasv:Horse Racing',
+            'shadow-atlasv:Plinko',
+            'shadow-atlasv:Wheel of Fortune',
+            // Spribe's Plinko is a different game from Atlas-V's: different studio, both stay.
+            'shadow-palace:Plinko',
+        ])
+    })
+
+    it('does not treat a non-studio provider\'s name as a vendor match', async () => {
+        // "Palace Casino" syncs many studios; a vendor that happens to contain
+        // a provider name only merges when that provider is a studio provider.
+        const palace = await provider('shadow-palace', { priority: 0, name: 'Palace Casino', vendorName: 'Palace Casino Originals' })
+        const other = await provider('shadow-other', { priority: 100, name: 'Other', vendorName: 'Palace Casino Live' })
+        await game(palace, '1', 'Roulette')
+        await game(other, '2', 'Roulette')
+        await GameCatalogService.applyShadowing()
+        expect(await lobbyProviders()).toEqual(['shadow-other:Roulette', 'shadow-palace:Roulette'])
     })
 })

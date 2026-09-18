@@ -259,9 +259,13 @@ export class GameCatalogService {
      * Project cross-provider duplicates onto provider_games.shadowed.
      *
      * Among the ACTIVE games of ACTIVE providers (with an active vendor), rows
-     * are grouped by normalized vendor + game name, where "vendor" is the
-     * vendor's dedupAlias when set and its name otherwise (providers name the
-     * same studio differently, e.g. "Atlas-V" vs "ATLAS V2"). One row per group wins: the
+     * are grouped by normalized vendor + game name. The vendor half is, in
+     * order: the vendor's dedupAlias when set; else the name of a "studio
+     * provider" (config.catalogSync === false: a direct integration whose whole
+     * catalog is one studio, e.g. Atlas-V) when the vendor's name contains it
+     * or is contained in it, so Palace's "ATLAS V2" / "Atlas-V Games" / "Atlas"
+     * all read as Atlas-V without anyone typing an alias; else the vendor's
+     * own name. One row per group wins: the
      * provider with the lowest priority number, then the primary provider,
      * then the oldest provider. Every other row in the group is shadowed and
      * the all-providers lobby feed, categories and search leave it out.
@@ -274,19 +278,37 @@ export class GameCatalogService {
     static async applyShadowing(): Promise<void> {
         await prisma.$transaction(async (tx) => {
             await tx.$executeRaw`
-                WITH ranked AS (
+                WITH studio AS (
+                    SELECT regexp_replace(lower(name), '[^a-z0-9]', '', 'g') AS key
+                    FROM game_providers
+                    WHERE COALESCE(config->>'catalogSync', 'true') = 'false'
+                      AND length(regexp_replace(lower(name), '[^a-z0-9]', '', 'g')) >= 4
+                ),
+                vendor_key AS (
+                    SELECT v.id,
+                           COALESCE(
+                               NULLIF(regexp_replace(lower(v."dedupAlias"), '[^a-z0-9]', '', 'g'), ''),
+                               (SELECT s.key FROM studio s
+                                 WHERE regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g') LIKE '%' || s.key || '%'
+                                    OR (length(regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')) >= 5
+                                        AND s.key LIKE '%' || regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g') || '%')
+                                 ORDER BY length(s.key) DESC
+                                 LIMIT 1),
+                               regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')
+                           ) AS key
+                    FROM game_vendors v
+                ),
+                ranked AS (
                     SELECT g.id,
                            ROW_NUMBER() OVER (
-                               PARTITION BY COALESCE(
-                                                NULLIF(regexp_replace(lower(v."dedupAlias"), '[^a-z0-9]', '', 'g'), ''),
-                                                regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')
-                                            ),
+                               PARTITION BY vk.key,
                                             regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g')
                                ORDER BY p.priority ASC, p."isPrimary" DESC, p."createdAt" ASC, g.id ASC
                            ) AS rn
                     FROM provider_games g
                     JOIN game_providers p ON p.id = g."providerId"
                     JOIN game_vendors v ON v.id = g."vendorId"
+                    JOIN vendor_key vk ON vk.id = v.id
                     WHERE g."isActive" = true AND p.status = 'ACTIVE' AND v."isActive" = true
                 )
                 UPDATE provider_games g
