@@ -672,6 +672,30 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             return updated
         })
 
+        // Lobby de-dup alias: vendors from different providers that carry the
+        // same alias form one de-dup group even when their names differ
+        // ("Atlas-V" vs "ATLAS V2"). Empty or null clears it (back to the name).
+        // Re-projects every provider: the alias changes which of another
+        // provider's rows win, not just this one's.
+        f.patch('/providers/:code/vendors/:vendorCode/alias', async (req: any, reply) => {
+            const raw = (req.body ?? {}).alias as unknown
+            if (raw !== null && raw !== undefined && typeof raw !== 'string') {
+                return reply.status(400).send({ error: 'alias must be a string or null' })
+            }
+            const alias = typeof raw === 'string' ? raw.trim() : ''
+            if (alias.length > 64) return reply.status(400).send({ error: 'alias must be at most 64 characters' })
+            if (alias && !/[a-z0-9]/i.test(alias)) {
+                return reply.status(400).send({ error: 'alias must contain at least one letter or digit' })
+            }
+            const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
+            if (!provider) return reply.status(404).send({ error: 'Provider not found' })
+            const vendor = await prisma.gameVendor.findUnique({ where: { providerId_code: { providerId: provider.id, code: req.params.vendorCode } } })
+            if (!vendor) return reply.status(404).send({ error: 'Vendor not found' })
+            const updated = await prisma.gameVendor.update({ where: { id: vendor.id }, data: { dedupAlias: alias || null } })
+            await reprojectCatalog()
+            return updated
+        })
+
         f.get('/providers/:code/games', async (req: any, _reply) => {
             const provider = await prisma.gameProvider.findUnique({ where: { code: req.params.code } })
             if (!provider) return _reply.status(404).send({ error: 'Provider not found' })

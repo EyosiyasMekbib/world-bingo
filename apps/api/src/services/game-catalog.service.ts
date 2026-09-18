@@ -246,8 +246,9 @@ export class GameCatalogService {
      * Project cross-provider duplicates onto provider_games.shadowed.
      *
      * Among the ACTIVE games of ACTIVE providers (with an active vendor), rows
-     * are grouped by normalized vendor name + game name — the same key
-     * searchCatalog() used to de-dup in memory. One row per group wins: the
+     * are grouped by normalized vendor + game name, where "vendor" is the
+     * vendor's dedupAlias when set and its name otherwise (providers name the
+     * same studio differently, e.g. "Atlas-V" vs "ATLAS V2"). One row per group wins: the
      * provider with the lowest priority number, then the primary provider,
      * then the oldest provider. Every other row in the group is shadowed and
      * the all-providers lobby feed, categories and search leave it out.
@@ -263,7 +264,10 @@ export class GameCatalogService {
                 WITH ranked AS (
                     SELECT g.id,
                            ROW_NUMBER() OVER (
-                               PARTITION BY regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g'),
+                               PARTITION BY COALESCE(
+                                                NULLIF(regexp_replace(lower(v."dedupAlias"), '[^a-z0-9]', '', 'g'), ''),
+                                                regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')
+                                            ),
                                             regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g')
                                ORDER BY p.priority ASC, p."isPrimary" DESC, p."createdAt" ASC, g.id ASC
                            ) AS rn
@@ -375,6 +379,7 @@ export class GameCatalogService {
         const games = rows.map((g: any) => ({
             ...g,
             vendorCode: g.vendor?.code ?? null,
+            vendorName: g.vendor?.name ?? null,
             providerCode: g.provider?.code ?? null,
             providerName: g.provider?.name ?? null,
         }))

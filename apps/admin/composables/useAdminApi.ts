@@ -522,6 +522,8 @@ export const useAdminApi = () => {
             apiFetch<any[]>(`/admin/providers/${code}/vendors`),
         updateVendorStatus: (providerCode: string, vendorCode: string, isActive: boolean) =>
             apiFetch(`/admin/providers/${providerCode}/vendors/${vendorCode}/status`, { method: 'PATCH', body: { isActive } }),
+        updateVendorAlias: (providerCode: string, vendorCode: string, alias: string | null) =>
+            apiFetch<{ dedupAlias: string | null }>(`/admin/providers/${providerCode}/vendors/${vendorCode}/alias`, { method: 'PATCH', body: { alias } }),
         getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))

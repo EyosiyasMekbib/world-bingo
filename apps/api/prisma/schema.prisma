@@ -709,6 +709,10 @@ model GameVendor {
   name         String // e.g. "Pragmatic Play"
   categoryCode String? // e.g. "SLOTS,LIVE"
   isActive     Boolean        @default(true)
+  // Lobby de-dup group override. Two providers can name the same studio
+  // differently ("Atlas-V" vs "ATLAS V2"); setting the same alias on both
+  // vendors puts their games in one de-dup group. Null falls back to `name`.
+  dedupAlias   String?
   lastSyncedAt DateTime?
   provider     GameProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
   games        ProviderGame[]
