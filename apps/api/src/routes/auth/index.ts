@@ -166,6 +166,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         handler: AuthController.adminLogin,
     })
 
+    fastify.post('/agent/login', {
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(LoginSchema),
+        },
+        handler: AuthController.agentLogin,
+    })
+
     fastify.post('/refresh', {
         config: {
             rateLimit: {

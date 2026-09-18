@@ -22,7 +22,7 @@ model User {
   /// WITHDRAWAL_HOLD_AFTER_RESET_MS after it, so a caller who talked support
   /// into a reset cannot change the password and cash out straight away.
   passwordResetAt          DateTime?
-  telegramId              String?                   @unique
+  telegramId               String?                   @unique
   telegramUsername         String?
   firstName                String?
   lastName                 String?
@@ -61,6 +61,8 @@ model User {
   supportAssignments       SupportConversation[]     @relation("SupportAssignments")
   zarecashCheckoutSessions ZareCashCheckoutSession[]
   statusChanges            AccountStatusChange[]
+  agent                    Agent?
+  agentDepositRequests     AgentDepositRequest[]
 
   @@index([role])
   @@index([referralCode])
@@ -164,36 +166,37 @@ model GameEntry {
 }
 
 model Transaction {
-  id                   String               @id @default(uuid())
+  id                   String                  @id @default(uuid())
   userId               String
   type                 TransactionType
-  amount               Decimal              @db.Decimal(12, 2)
-  originalAmount       Decimal?             @db.Decimal(12, 2)
-  status               PaymentStatus        @default(PENDING)
+  amount               Decimal                 @db.Decimal(12, 2)
+  originalAmount       Decimal?                @db.Decimal(12, 2)
+  status               PaymentStatus           @default(PENDING)
   referenceId          String?
   receiptUrl           String?
   note                 String?
-  balanceBefore        Decimal?             @db.Decimal(12, 2)
-  balanceAfter         Decimal?             @db.Decimal(12, 2)
-  bonusBalanceBefore   Decimal?             @db.Decimal(12, 2)
-  bonusBalanceAfter    Decimal?             @db.Decimal(12, 2)
+  balanceBefore        Decimal?                @db.Decimal(12, 2)
+  balanceAfter         Decimal?                @db.Decimal(12, 2)
+  bonusBalanceBefore   Decimal?                @db.Decimal(12, 2)
+  bonusBalanceAfter    Decimal?                @db.Decimal(12, 2)
   bonusExpiresAtSpend  DateTime?
-  paymentTransactionId String?              @unique
+  paymentTransactionId String?                 @unique
   /// Which payment gateway owns this row, recorded at creation time (e.g. "zarecash").
   /// Null means the manual/admin-reviewed flow. This is the ROUTING DECISION and is
   /// set the moment we decide to route — unlike `gatewayRef`, which is the upstream
   /// id and only exists once the provider has told us what it is. The admin
   /// double-pay guard keys on this, because `gatewayRef` arrives too late to be safe.
   gateway              String?
-  gatewayRef           String?              @unique
+  gatewayRef           String?                 @unique
   senderName           String?
   senderAccount        String?
   reviewedById         String? // admin/clerk who approved or rejected (audit + separation-of-duties)
   /// Set only when a reviewer rejects a DEPOSIT. Null on every other row.
   rejectionReason      DepositRejectionReason?
-  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   depositVerification  DepositVerification?
-  createdAt            DateTime             @default(now())
+  agentDepositRequest  AgentDepositRequest?
+  createdAt            DateTime                @default(now())
 
   @@index([userId])
   @@index([type, status])
@@ -207,6 +210,7 @@ model Transaction {
 enum UserRole {
   PLAYER
   CLERK
+  AGENT
   ADMIN
   SUPER_ADMIN
 }
@@ -1399,4 +1403,103 @@ model AccountStatusChange {
   @@index([userId, createdAt])
   @@index([expiresAt])
   @@map("account_status_changes")
+}
+
+// ─── Cash agents ─────────────────────────────────────────────────────────────
+// An agent is a shop holding PREPAID float. The operator takes cash from the
+// agent up front and issues float (plus a commission bonus the agent sells on);
+// the agent then credits players who hand over cash across a counter. Cash never
+// touches the platform: the only thing that crosses is the player's deposit code.
+//
+// `float` also carries a raw CHECK (>= 0) at the database level (see migration
+// 20260918120000_add_agent_network). Prisma's schema DSL doesn't model CHECK
+// constraints, so it exists only in the migration SQL. Same backstop as
+// `wallets`: if any present or future path fails to prevent an overdraw in
+// application code, the transaction fails loudly instead of minting credit.
+model Agent {
+  id        String                @id @default(uuid())
+  userId    String                @unique
+  shopName  String
+  float     Decimal               @default(0) @db.Decimal(12, 2)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger    AgentLedger[]
+  fulfilled AgentDepositRequest[]
+
+  @@map("agents")
+}
+
+/// Mirrors AgentLedgerType in packages/shared-types/src/enums/index.ts - change both together.
+enum AgentLedgerType {
+  TOP_UP
+  COMMISSION
+  FULFILLMENT
+  ADJUSTMENT
+}
+
+/// Append-only record of every movement in and out of an agent's float.
+/// Never updated. `balanceBefore`/`balanceAfter` snapshot the float either side
+/// of the movement, the same audit shape `Transaction` uses for wallets.
+model AgentLedger {
+  id            String               @id @default(uuid())
+  agentId       String
+  type          AgentLedgerType
+  /// Signed: positive credits the float, negative debits it.
+  amount        Decimal              @db.Decimal(12, 2)
+  balanceBefore Decimal              @db.Decimal(12, 2)
+  balanceAfter  Decimal              @db.Decimal(12, 2)
+  /// The deposit request this row settled. Set on FULFILLMENT rows only.
+  requestId     String?              @unique
+  /// Staff account that issued or adjusted the float. Null on FULFILLMENT,
+  /// where the agent themselves moved it.
+  actorId       String?
+  note          String?
+  createdAt     DateTime             @default(now())
+  agent         Agent                @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  request       AgentDepositRequest? @relation(fields: [requestId], references: [id])
+
+  @@index([agentId, createdAt])
+  @@index([type, createdAt])
+  @@map("agent_ledger")
+}
+
+/// Mirrors AgentDepositRequestStatus in packages/shared-types/src/enums/index.ts - change both together.
+enum AgentDepositRequestStatus {
+  PENDING
+  FULFILLED
+  EXPIRED
+  CANCELLED
+}
+
+/// A player's standing request to pay cash at an agent. The player picks the
+/// amount, so there is no wrong-account risk; any agent may fulfil the code and
+/// the first to confirm wins.
+///
+/// Two PARTIAL unique indexes carry the rules and live in the migration SQL,
+/// because Prisma's DSL cannot express a `WHERE` on an index:
+///   - one PENDING row per `code`   (a live code is unambiguous)
+///   - one PENDING row per `userId` (a player holds at most one live code)
+/// Both are scoped to PENDING so settled rows accumulate freely as history.
+model AgentDepositRequest {
+  id            String                    @id @default(uuid())
+  /// Six digits, read aloud at the counter.
+  code          String
+  userId        String
+  amount        Decimal                   @db.Decimal(12, 2)
+  status        AgentDepositRequestStatus @default(PENDING)
+  expiresAt     DateTime
+  agentId       String?
+  transactionId String?                   @unique
+  fulfilledAt   DateTime?
+  createdAt     DateTime                  @default(now())
+  user          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent         Agent?                    @relation(fields: [agentId], references: [id])
+  transaction   Transaction?              @relation(fields: [transactionId], references: [id])
+  ledgerEntry   AgentLedger?
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@index([agentId, createdAt])
+  @@map("agent_deposit_requests")
 }

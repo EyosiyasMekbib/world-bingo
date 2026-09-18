@@ -5,6 +5,7 @@ import { AdminController } from '../../controllers/admin.controller'
 import analyticsRoutes from './analytics'
 import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
 import atlasVAdminRoutes from './atlasv'
+import agentAdminRoutes from './agents'
 import fraudAdminRoutes from './fraud'
 import heroBannerAdminRoutes from './hero-banners'
 import { AdminService } from '../../services/admin.service'
@@ -354,6 +355,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Lobby hero banners ────────────────────────────────────────────────
         await f.register(heroBannerAdminRoutes, { prefix: '/hero-banners' })
+
+        // ── Cash agent network (float, deposit codes, agent accounts) ─────────
+        await f.register(agentAdminRoutes, { prefix: '/agents' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {

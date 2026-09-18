@@ -28,6 +28,7 @@ import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import adminRoutes from './routes/admin'
+import agentRoutes from './routes/agent'
 import notificationRoutes from './routes/user/index.js'
 import referralRoutes from './routes/referral'
 import tournamentRoutes from './routes/tournament'
@@ -341,6 +342,9 @@ await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
 await server.register(adminRoutes, { prefix: '/admin' })
+// Cash agent app. Its own prefix, not a branch of /admin: an agent holds float
+// and fulfils deposit codes, and must never reach the back office.
+await server.register(agentRoutes, { prefix: '/agent' })
 await server.register(notificationRoutes, { prefix: '/user' })
 await server.register(referralRoutes, { prefix: '/referral' })
 await server.register(tournamentRoutes, { prefix: '/tournaments' })

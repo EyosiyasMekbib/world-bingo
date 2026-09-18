@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { DepositDto, TransactionType, PaymentStatus, NotificationType, AccountStatus } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
@@ -37,6 +38,39 @@ export class WithdrawalHoldError extends Error {
         )
         this.name = 'WithdrawalHoldError'
     }
+}
+
+/**
+ * Everything the in-transaction half of a deposit approval computed, and
+ * everything the post-commit half needs to replay it.
+ *
+ * Exported because the agent network drives the two halves itself: a cash agent
+ * fulfilment has to debit the shop's prepaid float in the same commit as the
+ * player credit, so it opens its own transaction, calls
+ * `creditApprovedDepositInTx` inside it, and calls `runPostApprovalEffects` with
+ * this result once that commit lands.
+ */
+export interface DepositApprovalResult {
+    /** The raw locked row, exactly the columns the FOR UPDATE read selects. */
+    transaction: {
+        id: string
+        userId: string
+        amount: Decimal
+        status: string
+        type: string
+        note: string | null
+        createdAt: Date
+    }
+    realAfter: Decimal
+    bonusAwarded: number
+    bonusBefore: Decimal
+    creditAmount: Decimal
+    isAdjusted: boolean
+    statedAmount: Decimal
+    depositBonusResult: Awaited<ReturnType<typeof DepositBonusService.evaluateAndGrant>>
+    sharedPayer: SharedPayerMatch | null
+    firstDepositBonusBlocked: boolean
+    payerCheckFailure: { stage: 'lock' | 'lookup'; error: unknown } | null
 }
 
 export class WalletService {
@@ -140,285 +174,339 @@ export class WalletService {
         return transaction
     }
 
-    // Called by Admin — uses SELECT FOR UPDATE to prevent double-crediting
-    static async approveDeposit(transactionId: string, adjustedAmount?: number, reviewerId?: string) {
-        return await prisma.$transaction(async (tx) => {
-            // Lock the transaction row first to prevent concurrent approvals from both
-            // passing the PENDING_REVIEW check before either commits.
-            const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string; note: string | null; createdAt: Date }>>`
-                SELECT id, "userId", amount, status, type, note, "createdAt" FROM transactions WHERE id = ${transactionId} FOR UPDATE
-            `
-            const transaction = transactions[0]
-            if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
-                throw new Error('Invalid transaction')
+    /**
+     * Credit an approved deposit INSIDE a caller-supplied interactive transaction.
+     *
+     * Split out of `approveDeposit` so a caller that must move other money in the
+     * SAME commit can drive it: the agent network debits the shop's prepaid float
+     * and credits the player atomically (agent-deposit.service.ts). Every rule that
+     * used to live inline still lives here: the transaction row lock, the
+     * separation-of-duties check, the wallet row lock, the first-deposit paying
+     * account lock and lookup, and the bonus grants.
+     *
+     * Post-commit effects deliberately do NOT run here: they push sockets, call
+     * PostHog and write notifications, none of which may happen while a money
+     * transaction is still open (and none of which may happen at all if it rolls
+     * back). The caller runs `runPostApprovalEffects` on the returned result once
+     * the transaction has committed.
+     */
+    static async creditApprovedDepositInTx(
+        tx: Prisma.TransactionClient,
+        transactionId: string,
+        opts?: { adjustedAmount?: number; reviewerId?: string },
+    ): Promise<DepositApprovalResult> {
+        const adjustedAmount = opts?.adjustedAmount
+        const reviewerId = opts?.reviewerId
+
+        // Lock the transaction row first to prevent concurrent approvals from both
+        // passing the PENDING_REVIEW check before either commits.
+        const transactions = await tx.$queryRaw<Array<{ id: string; userId: string; amount: Decimal; status: string; type: string; note: string | null; createdAt: Date }>>`
+            SELECT id, "userId", amount, status, type, note, "createdAt" FROM transactions WHERE id = ${transactionId} FOR UPDATE
+        `
+        const transaction = transactions[0]
+        if (!transaction || transaction.status !== PaymentStatus.PENDING_REVIEW) {
+            throw new Error('Invalid transaction')
+        }
+
+        // Separation of duties (defense-in-depth; also enforced in reviewTransaction):
+        // a reviewer may never credit a deposit into their own account.
+        if (reviewerId && reviewerId === transaction.userId) {
+            throw new Error('You cannot approve your own deposit')
+        }
+
+        // Lock the wallet row before reading and updating
+        const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
+            SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${transaction.userId} FOR UPDATE
+        `
+        const wallet = wallets[0]
+        if (!wallet) throw new Error('Wallet not found')
+
+        // Determine the amount to credit. When an admin adjusts the deposit
+        // during review, `adjustedAmount` overrides the player-stated value and
+        // the original is preserved in `originalAmount` for the audit trail.
+        const statedAmount = new Decimal(transaction.amount)
+        const creditAmount = adjustedAmount != null ? new Decimal(adjustedAmount) : statedAmount
+        if (!creditAmount.isFinite() || creditAmount.lte(0)) {
+            throw new Error('Adjusted amount must be a positive number')
+        }
+        const isAdjusted = adjustedAmount != null && !creditAmount.equals(statedAmount)
+
+        const realBefore = new Decimal(wallet.realBalance)
+        const realAfter = realBefore.plus(creditAmount)
+        const bonusBefore = new Decimal(wallet.bonusBalance)
+
+        // Update transaction status with balance snapshot. If the amount was
+        // adjusted, overwrite `amount` with the credited value and keep the
+        // player-stated figure in `originalAmount`.
+        await tx.transaction.update({
+            where: { id: transactionId },
+            data: {
+                status: PaymentStatus.APPROVED,
+                reviewedById: reviewerId,
+                balanceBefore: realBefore,
+                balanceAfter: realAfter,
+                bonusBalanceBefore: bonusBefore,
+                bonusBalanceAfter: bonusBefore,
+                ...(isAdjusted ? { amount: creditAmount, originalAmount: statedAmount } : {}),
+            },
+        })
+
+        // Credit realBalance with the (possibly adjusted) amount
+        await tx.wallet.update({
+            where: { userId: transaction.userId },
+            data: { realBalance: { increment: creditAmount } },
+        })
+
+        // ── First Deposit Bonus ──────────────────────────────────────────
+        const previousApproved = await tx.transaction.count({
+            where: {
+                userId: transaction.userId,
+                type: TransactionType.DEPOSIT,
+                status: PaymentStatus.APPROVED,
+                id: { not: transactionId },
+            },
+        })
+
+        let bonusAwarded = 0
+        // Set when this is the account's first deposit but its paying account already
+        // funded another account's first deposit (the duplicate-account farming
+        // pattern). Withholds the first-deposit bonus here and the referral reward below.
+        let sharedPayer: SharedPayerMatch | null = null
+        let firstDepositBonusBlocked = false
+        // Set when taking the paying-account lock or running that lookup failed. Fails
+        // closed on the incentives (both are withheld, as for a shared payer) and open
+        // on the deposit credited above.
+        let payerCheckFailure: { stage: 'lock' | 'lookup'; error: unknown } | null = null
+        if (previousApproved === 0) {
+            // Serialise first-deposit approvals paid from one account. Otherwise two
+            // accounts' first deposits from the same payer approved at once (the ZareCash
+            // workers run at concurrency 4) each run the lookup below before the other
+            // commits, and both collect both incentives. Only this first-deposit path
+            // locks, so ordinary deposits never queue. Every key the lookup can match on
+            // is locked, in the helper's sorted order so two approvals never wait on each
+            // other. The transaction stays READ COMMITTED on purpose: the lookup's
+            // statement snapshot is taken after the wait, so it sees the earlier
+            // approval's commit; a stricter isolation level would pin it before the wait.
+            //
+            // Lock and lookup each run under a savepoint: a failed statement aborts the
+            // whole Postgres transaction (every later query errors with 25P02), which
+            // would roll back the credit above too. RELEASE hands the acquired locks to
+            // this transaction, which holds them until commit. A failure rolls back to
+            // the savepoint, dropping any lock taken so far, and withholds the incentives,
+            // so there is then nothing left to serialise.
+            await tx.$executeRaw`SAVEPOINT first_deposit_payer_lock`
+            try {
+                for (const key of await PayerIdentityService.firstDepositLockKeys(tx, transactionId)) {
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_DEPOSIT_PAYER_LOCK_CLASSID}::int, hashtext(${key}))`
+                }
+            } catch (error) {
+                payerCheckFailure = { stage: 'lock', error }
+                await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lock`
             }
+            await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lock`
 
-            // Separation of duties (defense-in-depth; also enforced in reviewTransaction):
-            // a reviewer may never credit a deposit into their own account.
-            if (reviewerId && reviewerId === transaction.userId) {
-                throw new Error('You cannot approve your own deposit')
+            if (!payerCheckFailure) {
+                await tx.$executeRaw`SAVEPOINT first_deposit_payer_lookup`
+                try {
+                    sharedPayer = await PayerIdentityService.findPriorFirstDepositByPayer(tx, {
+                        userId: transaction.userId,
+                        transactionId,
+                    })
+                } catch (error) {
+                    payerCheckFailure = { stage: 'lookup', error }
+                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lookup`
+                }
+                await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lookup`
             }
+            const incentivesWithheld = sharedPayer !== null || payerCheckFailure !== null
 
-            // Lock the wallet row before reading and updating
-            const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
-                SELECT id, "realBalance", "bonusBalance" FROM wallets WHERE "userId" = ${transaction.userId} FOR UPDATE
-            `
-            const wallet = wallets[0]
-            if (!wallet) throw new Error('Wallet not found')
+            // This is their first deposit — check for bonus setting
+            const bonusSetting = await tx.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } })
+            const bonusAmount = Number(bonusSetting?.value ?? '0')
+            firstDepositBonusBlocked = bonusAmount > 0 && incentivesWithheld
 
-            // Determine the amount to credit. When an admin adjusts the deposit
-            // during review, `adjustedAmount` overrides the player-stated value and
-            // the original is preserved in `originalAmount` for the audit trail.
-            const statedAmount = new Decimal(transaction.amount)
-            const creditAmount = adjustedAmount != null ? new Decimal(adjustedAmount) : statedAmount
-            if (!creditAmount.isFinite() || creditAmount.lte(0)) {
-                throw new Error('Adjusted amount must be a positive number')
+            if (bonusAmount > 0 && !incentivesWithheld) {
+                const grantResult = await BonusService.grant(tx, {
+                    userId: transaction.userId,
+                    amount: bonusAmount,
+                    source: 'FIRST_DEPOSIT',
+                })
+
+                if (grantResult.granted) {
+                    await tx.transaction.create({
+                        data: {
+                            userId: transaction.userId,
+                            type: TransactionType.FIRST_DEPOSIT_BONUS,
+                            amount: bonusAmount,
+                            status: PaymentStatus.APPROVED,
+                            note: 'First deposit bonus',
+                            balanceBefore: realAfter,
+                            balanceAfter: realAfter,
+                            bonusBalanceBefore: grantResult.bonusBalanceBefore,
+                            bonusBalanceAfter: grantResult.bonusBalanceAfter,
+                        },
+                    })
+                    bonusAwarded = bonusAmount
+                }
             }
-            const isAdjusted = adjustedAmount != null && !creditAmount.equals(statedAmount)
+        }
 
-            const realBefore = new Decimal(wallet.realBalance)
-            const realAfter = realBefore.plus(creditAmount)
-            const bonusBefore = new Decimal(wallet.bonusBalance)
+        // ── Deposit Bonus Rules (daily / weekly threshold) ──────────────
+        // Runs regardless of whether a first-deposit bonus was just granted
+        // above — the two are independent and both can fire on the same
+        // deposit (e.g. a large first deposit that also crosses a daily
+        // threshold).
+        const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, transaction.createdAt, new Date())
 
-            // Update transaction status with balance snapshot. If the amount was
-            // adjusted, overwrite `amount` with the credited value and keep the
-            // player-stated figure in `originalAmount`.
-            await tx.transaction.update({
-                where: { id: transactionId },
-                data: {
-                    status: PaymentStatus.APPROVED,
-                    reviewedById: reviewerId,
-                    balanceBefore: realBefore,
-                    balanceAfter: realAfter,
-                    bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
-                    ...(isAdjusted ? { amount: creditAmount, originalAmount: statedAmount } : {}),
-                },
+        return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerCheckFailure }
+    }
+
+    /**
+     * Every post-commit side effect of a deposit approval: the wallet socket push,
+     * the PostHog events, the Prometheus counter, the player notification and the
+     * referral first-deposit reward.
+     *
+     * Runs AFTER the money transaction has committed, never inside it. Returns the
+     * transaction reflecting the credited (possibly adjusted) amount, which is what
+     * `approveDeposit` answers with.
+     */
+    static async runPostApprovalEffects(result: DepositApprovalResult) {
+        const {
+            transaction,
+            realAfter,
+            bonusAwarded,
+            bonusBefore,
+            creditAmount,
+            isAdjusted,
+            statedAmount,
+            depositBonusResult,
+            sharedPayer,
+            firstDepositBonusBlocked,
+            payerCheckFailure,
+        } = result
+
+        const depositBonusTotal = [...depositBonusResult.daily, ...depositBonusResult.weekly]
+            .reduce((sum, grant) => sum.plus(grant.amount), new Decimal(0))
+        const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
+
+        // Push balance update
+        NotificationService.pushWalletUpdate(
+            transaction.userId,
+            realAfter.toNumber(),
+            finalBonusBalance,
+        )
+
+        // PostHog — post-commit only. The approval itself, then every bonus
+        // this approval granted (first-deposit and rule-based).
+        void emitDepositApproved(transaction.id)
+        if (sharedPayer) {
+            console.warn(
+                '[WalletService] first deposit %s shares its paying account with first deposit %s of another account (%s); first-deposit incentives withheld',
+                transaction.id,
+                sharedPayer.transactionId,
+                sharedPayer.matchedOn,
+            )
+            void captureEvent(transaction.userId, 'first_deposit_shared_payer', {
+                matched_on: sharedPayer.matchedOn,
+                bonus_blocked: firstDepositBonusBlocked,
             })
-
-            // Credit realBalance with the (possibly adjusted) amount
-            await tx.wallet.update({
-                where: { userId: transaction.userId },
-                data: { realBalance: { increment: creditAmount } },
+        }
+        if (payerCheckFailure) {
+            // The log line carries only the error's code or name: a driver message can
+            // echo query values, and these queries' values are the player's paying account.
+            const { stage, error } = payerCheckFailure
+            const reason = (error as { code?: unknown } | null)?.code ?? (error as Error | null)?.name ?? 'unknown'
+            console.error(
+                '[WalletService] first deposit %s payer %s failed (%s); first-deposit incentives withheld',
+                transaction.id,
+                stage,
+                String(reason),
+            )
+            reportError(error, { service: 'wallet', phase: `first-deposit-payer-${stage}`, transactionId: transaction.id })
+        }
+        if (bonusAwarded > 0) {
+            void captureEvent(transaction.userId, 'bonus_granted', {
+                amount: bonusAwarded,
+                source: 'FIRST_DEPOSIT',
+                rule_id: null,
             })
+        }
+        for (const grant of [...depositBonusResult.daily, ...depositBonusResult.weekly]) {
+            void captureEvent(transaction.userId, 'bonus_granted', {
+                amount: Number(grant.amount),
+                source: 'DEPOSIT_RULE',
+                rule_id: grant.ruleId,
+            })
+        }
 
-            // ── First Deposit Bonus ──────────────────────────────────────────
-            const previousApproved = await tx.transaction.count({
+        // Metrics: deposit approved (post-commit). The payment method is stored
+        // in `note` (the client-supplied methodCode) by initiateDeposit. Bound
+        // the label to the configured PaymentMethod catalog so an arbitrary
+        // client value can never explode Prometheus label cardinality: unknown
+        // codes collapse to 'other', a missing code to 'unknown'.
+        let methodLabel = 'unknown'
+        if (transaction.note) {
+            const known = await prisma.paymentMethod
+                .findUnique({ where: { code: transaction.note }, select: { code: true } })
+                .catch(() => null)
+            methodLabel = known ? transaction.note : 'other'
+        }
+        wbDepositsTotal.labels(methodLabel, 'approved').inc()
+
+        // Send notification (reflects the credited amount, which may have been adjusted)
+        const credited = creditAmount.toNumber()
+        const metadata: Record<string, unknown> = {
+            transactionId: transaction.id,
+            amount: credited,
+        }
+        if (isAdjusted) {
+            metadata.originalAmount = statedAmount.toNumber()
+        }
+        if (bonusAwarded > 0) {
+            metadata.bonusAwarded = bonusAwarded
+        }
+
+        await NotificationService.create(
+            transaction.userId,
+            NotificationType.DEPOSIT_APPROVED,
+            'Deposit Approved ✅',
+            bonusAwarded > 0
+                ? `Your deposit of ${credited.toFixed(2)} ETB has been approved! You also received a ${bonusAwarded.toFixed(2)} ETB first deposit bonus!`
+                : `Your deposit of ${credited.toFixed(2)} ETB has been approved and added to your wallet.`,
+            metadata,
+        ).catch(() => {})
+
+        // Check referral bonus (only on first deposit, bonus already handled above)
+        if (bonusAwarded > 0) {
+            // bonusAwarded > 0 means this IS the first deposit
+            await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+        } else if (!sharedPayer && !payerCheckFailure) {
+            // Still check if it's first deposit for referral purposes
+            const previousApproved = await prisma.transaction.count({
                 where: {
                     userId: transaction.userId,
                     type: TransactionType.DEPOSIT,
                     status: PaymentStatus.APPROVED,
-                    id: { not: transactionId },
+                    id: { not: transaction.id },
                 },
             })
-
-            let bonusAwarded = 0
-            // Set when this is the account's first deposit but its paying account already
-            // funded another account's first deposit (the duplicate-account farming
-            // pattern). Withholds the first-deposit bonus here and the referral reward below.
-            let sharedPayer: SharedPayerMatch | null = null
-            let firstDepositBonusBlocked = false
-            // Set when taking the paying-account lock or running that lookup failed. Fails
-            // closed on the incentives (both are withheld, as for a shared payer) and open
-            // on the deposit credited above.
-            let payerCheckFailure: { stage: 'lock' | 'lookup'; error: unknown } | null = null
             if (previousApproved === 0) {
-                // Serialise first-deposit approvals paid from one account. Otherwise two
-                // accounts' first deposits from the same payer approved at once (the ZareCash
-                // workers run at concurrency 4) each run the lookup below before the other
-                // commits, and both collect both incentives. Only this first-deposit path
-                // locks, so ordinary deposits never queue. Every key the lookup can match on
-                // is locked, in the helper's sorted order so two approvals never wait on each
-                // other. The transaction stays READ COMMITTED on purpose: the lookup's
-                // statement snapshot is taken after the wait, so it sees the earlier
-                // approval's commit; a stricter isolation level would pin it before the wait.
-                //
-                // Lock and lookup each run under a savepoint: a failed statement aborts the
-                // whole Postgres transaction (every later query errors with 25P02), which
-                // would roll back the credit above too. RELEASE hands the acquired locks to
-                // this transaction, which holds them until commit. A failure rolls back to
-                // the savepoint, dropping any lock taken so far, and withholds the incentives,
-                // so there is then nothing left to serialise.
-                await tx.$executeRaw`SAVEPOINT first_deposit_payer_lock`
-                try {
-                    for (const key of await PayerIdentityService.firstDepositLockKeys(tx, transactionId)) {
-                        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_DEPOSIT_PAYER_LOCK_CLASSID}::int, hashtext(${key}))`
-                    }
-                } catch (error) {
-                    payerCheckFailure = { stage: 'lock', error }
-                    await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lock`
-                }
-                await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lock`
-
-                if (!payerCheckFailure) {
-                    await tx.$executeRaw`SAVEPOINT first_deposit_payer_lookup`
-                    try {
-                        sharedPayer = await PayerIdentityService.findPriorFirstDepositByPayer(tx, {
-                            userId: transaction.userId,
-                            transactionId,
-                        })
-                    } catch (error) {
-                        payerCheckFailure = { stage: 'lookup', error }
-                        await tx.$executeRaw`ROLLBACK TO SAVEPOINT first_deposit_payer_lookup`
-                    }
-                    await tx.$executeRaw`RELEASE SAVEPOINT first_deposit_payer_lookup`
-                }
-                const incentivesWithheld = sharedPayer !== null || payerCheckFailure !== null
-
-                // This is their first deposit — check for bonus setting
-                const bonusSetting = await tx.siteSetting.findUnique({ where: { key: 'first_deposit_bonus_amount' } })
-                const bonusAmount = Number(bonusSetting?.value ?? '0')
-                firstDepositBonusBlocked = bonusAmount > 0 && incentivesWithheld
-
-                if (bonusAmount > 0 && !incentivesWithheld) {
-                    const grantResult = await BonusService.grant(tx, {
-                        userId: transaction.userId,
-                        amount: bonusAmount,
-                        source: 'FIRST_DEPOSIT',
-                    })
-
-                    if (grantResult.granted) {
-                        await tx.transaction.create({
-                            data: {
-                                userId: transaction.userId,
-                                type: TransactionType.FIRST_DEPOSIT_BONUS,
-                                amount: bonusAmount,
-                                status: PaymentStatus.APPROVED,
-                                note: 'First deposit bonus',
-                                balanceBefore: realAfter,
-                                balanceAfter: realAfter,
-                                bonusBalanceBefore: grantResult.bonusBalanceBefore,
-                                bonusBalanceAfter: grantResult.bonusBalanceAfter,
-                            },
-                        })
-                        bonusAwarded = bonusAmount
-                    }
-                }
-            }
-
-            // ── Deposit Bonus Rules (daily / weekly threshold) ──────────────
-            // Runs regardless of whether a first-deposit bonus was just granted
-            // above — the two are independent and both can fire on the same
-            // deposit (e.g. a large first deposit that also crosses a daily
-            // threshold).
-            const depositBonusResult = await DepositBonusService.evaluateAndGrant(tx, transaction.userId, transaction.createdAt, new Date())
-
-            return { transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerCheckFailure }
-        }).then(async ({ transaction, realAfter, bonusAwarded, bonusBefore, creditAmount, isAdjusted, statedAmount, depositBonusResult, sharedPayer, firstDepositBonusBlocked, payerCheckFailure }) => {
-            const depositBonusTotal = [...depositBonusResult.daily, ...depositBonusResult.weekly]
-                .reduce((sum, grant) => sum.plus(grant.amount), new Decimal(0))
-            const finalBonusBalance = bonusBefore.plus(new Decimal(bonusAwarded)).plus(depositBonusTotal).toNumber()
-
-            // Push balance update
-            NotificationService.pushWalletUpdate(
-                transaction.userId,
-                realAfter.toNumber(),
-                finalBonusBalance,
-            )
-
-            // PostHog — post-commit only. The approval itself, then every bonus
-            // this approval granted (first-deposit and rule-based).
-            void emitDepositApproved(transaction.id)
-            if (sharedPayer) {
-                console.warn(
-                    '[WalletService] first deposit %s shares its paying account with first deposit %s of another account (%s); first-deposit incentives withheld',
-                    transaction.id,
-                    sharedPayer.transactionId,
-                    sharedPayer.matchedOn,
-                )
-                void captureEvent(transaction.userId, 'first_deposit_shared_payer', {
-                    matched_on: sharedPayer.matchedOn,
-                    bonus_blocked: firstDepositBonusBlocked,
-                })
-            }
-            if (payerCheckFailure) {
-                // The log line carries only the error's code or name: a driver message can
-                // echo query values, and these queries' values are the player's paying account.
-                const { stage, error } = payerCheckFailure
-                const reason = (error as { code?: unknown } | null)?.code ?? (error as Error | null)?.name ?? 'unknown'
-                console.error(
-                    '[WalletService] first deposit %s payer %s failed (%s); first-deposit incentives withheld',
-                    transaction.id,
-                    stage,
-                    String(reason),
-                )
-                reportError(error, { service: 'wallet', phase: `first-deposit-payer-${stage}`, transactionId: transaction.id })
-            }
-            if (bonusAwarded > 0) {
-                void captureEvent(transaction.userId, 'bonus_granted', {
-                    amount: bonusAwarded,
-                    source: 'FIRST_DEPOSIT',
-                    rule_id: null,
-                })
-            }
-            for (const grant of [...depositBonusResult.daily, ...depositBonusResult.weekly]) {
-                void captureEvent(transaction.userId, 'bonus_granted', {
-                    amount: Number(grant.amount),
-                    source: 'DEPOSIT_RULE',
-                    rule_id: grant.ruleId,
-                })
-            }
-
-            // Metrics: deposit approved (post-commit). The payment method is stored
-            // in `note` (the client-supplied methodCode) by initiateDeposit. Bound
-            // the label to the configured PaymentMethod catalog so an arbitrary
-            // client value can never explode Prometheus label cardinality: unknown
-            // codes collapse to 'other', a missing code to 'unknown'.
-            let methodLabel = 'unknown'
-            if (transaction.note) {
-                const known = await prisma.paymentMethod
-                    .findUnique({ where: { code: transaction.note }, select: { code: true } })
-                    .catch(() => null)
-                methodLabel = known ? transaction.note : 'other'
-            }
-            wbDepositsTotal.labels(methodLabel, 'approved').inc()
-
-            // Send notification (reflects the credited amount, which may have been adjusted)
-            const credited = creditAmount.toNumber()
-            const metadata: Record<string, unknown> = {
-                transactionId: transaction.id,
-                amount: credited,
-            }
-            if (isAdjusted) {
-                metadata.originalAmount = statedAmount.toNumber()
-            }
-            if (bonusAwarded > 0) {
-                metadata.bonusAwarded = bonusAwarded
-            }
-
-            await NotificationService.create(
-                transaction.userId,
-                NotificationType.DEPOSIT_APPROVED,
-                'Deposit Approved ✅',
-                bonusAwarded > 0
-                    ? `Your deposit of ${credited.toFixed(2)} ETB has been approved! You also received a ${bonusAwarded.toFixed(2)} ETB first deposit bonus!`
-                    : `Your deposit of ${credited.toFixed(2)} ETB has been approved and added to your wallet.`,
-                metadata,
-            ).catch(() => {})
-
-            // Check referral bonus (only on first deposit, bonus already handled above)
-            if (bonusAwarded > 0) {
-                // bonusAwarded > 0 means this IS the first deposit
                 await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
-            } else if (!sharedPayer && !payerCheckFailure) {
-                // Still check if it's first deposit for referral purposes
-                const previousApproved = await prisma.transaction.count({
-                    where: {
-                        userId: transaction.userId,
-                        type: TransactionType.DEPOSIT,
-                        status: PaymentStatus.APPROVED,
-                        id: { not: transaction.id },
-                    },
-                })
-                if (previousApproved === 0) {
-                    await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
-                }
             }
+        }
 
-            // Return the transaction reflecting the credited (possibly adjusted) amount
-            return { ...transaction, amount: creditAmount, originalAmount: isAdjusted ? statedAmount : null }
-        })
+        // Return the transaction reflecting the credited (possibly adjusted) amount
+        return { ...transaction, amount: creditAmount, originalAmount: isAdjusted ? statedAmount : null }
     }
+
+    // Called by Admin — uses SELECT FOR UPDATE to prevent double-crediting
+    static async approveDeposit(transactionId: string, adjustedAmount?: number, reviewerId?: string) {
+        const result = await prisma.$transaction(async (tx) =>
+            WalletService.creditApprovedDepositInTx(tx, transactionId, { adjustedAmount, reviewerId }),
+        )
+        return WalletService.runPostApprovalEffects(result)
+    }
+
 
     static async requestWithdrawal(userId: string, data: { amount: number, paymentMethod: string, accountNumber: string }) {
         // Anything other than ACTIVE cannot withdraw. The route already carries
