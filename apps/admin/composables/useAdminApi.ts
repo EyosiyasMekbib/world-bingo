@@ -1,5 +1,21 @@
 import type { HeroBannerDto, HeroBannerUpdateDto } from '@world-bingo/shared-types'
 
+// Shape of GET /settings/game. featured_template_id is '' when unset and the
+// form sends null to clear it. The deposit_auto_verify_* keys are accepted by
+// PUT but not returned by GET, hence optional.
+export type GameSettings = {
+    ball_interval_secs: number
+    bot_max_spend_etb: number
+    first_deposit_bonus_amount: number
+    featured_template_id: string | null
+    min_deposit_amount: number
+    min_withdrawal_amount: number
+    max_deposit_amount: number
+    max_withdrawal_amount: number
+    deposit_auto_verify_enabled?: boolean
+    deposit_auto_verify_max_amount?: number
+}
+
 // One pin in the lobby priority list. `matches` is how many catalog rows the
 // pin resolves to right now — 0 means the game is not in the catalog.
 export type FeaturedGameItem = {
@@ -409,8 +425,8 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string; min_deposit_amount: number; min_withdrawal_amount: number }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }) =>
+        getGameSettings: () => apiFetch<GameSettings>('/settings/game'),
+        updateGameSettings: (data: Partial<GameSettings>) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
 
         // ── House Wallet ──────────────────────────────────────────────────────

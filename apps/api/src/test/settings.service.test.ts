@@ -1,26 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import Fastify from 'fastify'
-import jwt from '@fastify/jwt'
 import settingsRoutes from '../routes/settings'
 import { prisma } from './setup'
-import { jwtPrivateKey, jwtPublicKey } from '../lib/jwt-keys'
 
+// Only the public route is exercised here, so the auth hooks are stubbed the
+// way the other route suites do it. Registering @fastify/jwt needs the RSA
+// keys from the root .env, which CI (and a fresh checkout) does not have —
+// the plugin then throws "missing public key" before any test runs.
 async function buildApp() {
   const app = Fastify()
-  await app.register(jwt, {
-    secret: {
-      private: jwtPrivateKey,
-      public: jwtPublicKey,
-    },
-    sign: { algorithm: 'RS256', expiresIn: '15m' },
-  })
-  app.decorate('authenticate', async function (request: any, reply: any) {
-    try {
-      await request.jwtVerify()
-    } catch (err) {
-      reply.send(err)
-    }
-  })
+  app.decorate('authenticate', async () => {})
+  app.decorate('requireAdmin', async () => {})
   await app.register(settingsRoutes, { prefix: '/settings' })
   return app
 }

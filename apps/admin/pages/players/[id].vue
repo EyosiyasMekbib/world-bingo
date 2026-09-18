@@ -49,7 +49,7 @@ const statusTarget = ref<'RESTRICTED' | 'SUSPENDED' | 'ACTIVE'>('RESTRICTED')
 
 const statusForm = reactive({ reason: '', category: '', expiresAt: '' })
 
-const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+const STATUS_STYLE: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'neutral' }> = {
   ACTIVE: { label: 'Active', color: 'success' },
   RESTRICTED: { label: 'Restricted', color: 'warning' },
   SUSPENDED: { label: 'Suspended', color: 'error' },
