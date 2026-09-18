@@ -470,12 +470,16 @@ try {
     // copy of a duplicated title the lobby shows) while Redis still holds the
     // feed built before it. Lazy import, same as the admin routes: the catalog
     // service pulls in the provider gateways.
+    // Re-projecting the duplicates first means the rule lives in code, not in
+    // whichever migration last ran it: a deploy that changes how duplicates
+    // are recognised takes effect on boot, with nothing to type in the admin.
     try {
         const { GameCatalogService } = await import('./services/game-catalog.service.js')
+        await GameCatalogService.applyShadowing()
         await GameCatalogService.bustCatalogCache()
-        console.log('[Startup] Cleared the game catalog cache')
+        console.log('[Startup] Re-projected lobby duplicates and cleared the game catalog cache')
     } catch (err) {
-        console.error('[Startup] Failed to clear the game catalog cache (continuing):', (err as Error)?.message)
+        console.error('[Startup] Failed to re-project duplicates / clear the game catalog cache (continuing):', (err as Error)?.message)
     }
 
     await server.listen({ port, host })
