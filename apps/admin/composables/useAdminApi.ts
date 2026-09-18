@@ -524,11 +524,12 @@ export const useAdminApi = () => {
             apiFetch(`/admin/providers/${providerCode}/vendors/${vendorCode}/status`, { method: 'PATCH', body: { isActive } }),
         updateVendorAlias: (providerCode: string, vendorCode: string, alias: string | null) =>
             apiFetch<{ dedupAlias: string | null }>(`/admin/providers/${providerCode}/vendors/${vendorCode}/alias`, { method: 'PATCH', body: { alias } }),
-        getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string }) => {
+        getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string; vendor?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
             if (params?.search) qs.set('search', params.search)
+            if (params?.vendor) qs.set('vendor', params.vendor)
             const query = qs.toString()
             return apiFetch<any>(`/admin/providers/${code}/games${query ? `?${query}` : ''}`)
         },
