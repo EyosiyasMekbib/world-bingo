@@ -1,0 +1,230 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0a1628;
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #f5a623; text-decoration: none; }
+    a:hover { color: #c8851a; }
+    .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
+    .dsp { font-family: 'Oswald', system-ui, sans-serif; }
+    .card { background: #0d1f3c; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; }
+    .h { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: #fff; }
+    .k { font-size: 12.5px; color: rgba(255,255,255,0.55); }
+    .v { font-size: 13px; font-weight: 500; color: #fff; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); }
+    .btn {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 40px; padding: 0 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap;
+    }
+    .cap { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+
+    /* the player tile, rendered here at real size so the admin sees the truth */
+    .tile { width: 384px; flex-shrink: 0; border-radius: 18px; overflow: hidden; background: #0e1729; border: 1px solid rgba(255,255,255,0.09); box-shadow: 0 16px 38px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+    .head { position: relative; height: 240px; isolation: isolate; display: flex; flex-direction: column; justify-content: flex-end; padding: 22px; box-sizing: border-box; }
+    .ground { position: absolute; inset: 0; z-index: -3; background: radial-gradient(118% 132% at 14% -12%, var(--glow), transparent 58%), linear-gradient(162deg, #182442 0%, #111c33 55%, #0a1020 100%); }
+    .lattice { position: absolute; inset: 0; z-index: -2; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px); }
+    .vignette { position: absolute; inset: 0; z-index: -1; background: radial-gradient(132% 108% at 50% 116%, rgba(0,0,0,0.44), transparent 58%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.11); }
+    .mark { position: absolute; right: -14px; bottom: -28px; z-index: -1; font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 148px; line-height: 0.78; letter-spacing: -4px; color: rgba(255,255,255,0.042); }
+    .metal { background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 27%, #f0a51b 58%, #a8570a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26)); }
+    .fig { font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 68px; line-height: 0.92; letter-spacing: -0.5px; margin: 0; }
+    .fig .unit { font-size: 30px; letter-spacing: 0.5px; }
+    .kick { font-family: 'Barlow Condensed', system-ui, sans-serif; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 1.9px; text-transform: uppercase; padding: 5px 11px; border-radius: 999px; margin-bottom: 16px; }
+    .sub { margin: 9px 0 0; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,0.68); max-width: 250px; }
+    .foot { border-top: 1px solid rgba(255,255,255,0.08); background: rgba(6,10,20,0.55); padding: 13px 20px; box-sizing: border-box; min-height: 54px; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+    .footrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .footlbl { font-size: 12.5px; color: rgba(255,255,255,0.62); }
+    .footnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    .footnum em { font-style: normal; color: rgba(255,255,255,0.5); }
+    .track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
+    .art { position: absolute; inset: 0; overflow: hidden; }
+    .art .rays { position: absolute; inset: -40%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.055) 0deg 4deg, transparent 4deg 12deg); }
+    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
+    .ribbon { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; padding: 5px 16px; color: #1a1205; background: linear-gradient(180deg, #fde68a, #f0a51b); box-shadow: 0 4px 12px rgba(0,0,0,0.4); clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; min-height: 1090px; background: #0a1628; padding: 26px 28px 30px; display: flex; flex-direction: column; gap: 20px">
+
+  <!-- breadcrumb -->
+  <div style="display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: rgba(255,255,255,0.55)">
+    <span>Promotions</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 12px; height: 12px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Weekend Cashback</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 12px; height: 12px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span style="color: rgba(255,255,255,0.85)">Card artwork</span>
+  </div>
+
+  <!-- title -->
+  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px">
+    <div>
+      <h1 class="lbl" style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; color: #fff">Card artwork</h1>
+      <p style="margin: 4px 0 0; font-size: 13.5px; color: rgba(255,255,255,0.62)">Upload a banner and it replaces the generated card everywhere this promotion appears. Leave it empty and the generated card is used.</p>
+    </div>
+    <div class="btn" style="flex-shrink: 0; background: var(--accent); color: #12203a">Save artwork</div>
+  </div>
+
+  <!-- ── uploader + spec ── -->
+  <div style="display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start">
+
+    <div class="card" style="padding: 16px 18px; display: flex; flex-direction: column; gap: 14px">
+      <span class="h">Uploaded image</span>
+
+      <div style="display: flex; gap: 16px; align-items: flex-start">
+        <!-- thumbnail at the real 16:10 ratio -->
+        <div style="position: relative; width: 256px; height: 160px; border-radius: 10px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.14); background: linear-gradient(158deg, #0b3b34 0%, #0d5148 48%, #07271f 100%)">
+          <div style="position: absolute; inset: -40%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.055) 0deg 4deg, transparent 4deg 12deg)"></div>
+          <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px">
+            <span class="ribbon" style="font-size: 8.5px; letter-spacing: 1.7px; padding: 3px 11px">Weekend Special</span>
+            <div class="dsp metal" style="font-size: 36px; font-weight: 700; line-height: 0.94; letter-spacing: -0.7px">10% BACK</div>
+            <div class="lbl" style="font-size: 9px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; color: rgba(255,255,255,0.72)">Every Monday</div>
+          </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.2 2.4 2.4 4.8-4.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span style="font-size: 13px; color: rgba(255,255,255,0.85)">1280 &times; 800 &middot; 16:10 &middot; 214 KB</span>
+          </div>
+          <span style="font-size: 12.5px; color: rgba(255,255,255,0.55); word-break: break-all">weekend-cashback-card.webp</span>
+          <div style="display: flex; gap: 8px; margin-top: 2px">
+            <div class="btn" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: rgba(255,255,255,0.85)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Replace
+            </div>
+            <div class="btn" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.28); color: #f87171">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px"><path d="M5 7h14M10 7V5h4v2M7.5 7l.8 12h7.4l.8-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Remove
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- alt text: the artwork carries the message, so it needs an accessible name -->
+      <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px">
+        <span class="k" style="display: block; margin-bottom: 6px">Alt text <span style="color: rgba(255,255,255,0.4)">&middot; read aloud instead of the image</span></span>
+        <div style="padding: 11px 12px; border-radius: 8px; background: #122a4e; border: 1px solid rgba(255,255,255,0.12); font-size: 13px; min-height: 44px; box-sizing: border-box; display: flex; align-items: center">Weekend Special &mdash; 10% back every Monday</div>
+      </div>
+
+      <!-- wrong-aspect state, shown so the rule is obvious before it bites -->
+      <div style="display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border-radius: 10px; background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.22)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.9" style="width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px"><path d="M10.3 4.3 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8A1.8 1.8 0 0 0 21.5 18L13.7 4.3a1.9 1.9 0 0 0-3.4 0Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9.5v4" stroke-linecap="round"/><path d="M12 17h.01" stroke-linecap="round"/></svg>
+        <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.8)"><strong style="color: #fff; font-weight: 600">If the aspect is not 16:10</strong> the upload is refused rather than cropped silently &mdash; a crop would cut the headline off somebody's finished design.</p>
+      </div>
+    </div>
+
+    <!-- spec -->
+    <div class="card" style="padding: 16px 18px">
+      <span class="h" style="display: block; padding-bottom: 12px">Image requirements</span>
+      <div class="row"><span class="k">Aspect ratio</span><span class="v">16:10 &middot; required</span></div>
+      <div class="row"><span class="k">Recommended size</span><span class="v">1280 &times; 800 or larger</span></div>
+      <div class="row"><span class="k">Formats</span><span class="v">JPG, PNG, WebP</span></div>
+      <div class="row"><span class="k">Maximum file size</span><span class="v">2 MB</span></div>
+      <div class="row"><span class="k">Mobile crop</span><span class="v">Not needed &mdash; one image</span></div>
+      <div class="row"><span class="k">Safe area</span><span class="v">Keep type off the outer 6%</span></div>
+      <p style="margin: 14px 0 0; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 12.5px; line-height: 1.55; color: rgba(255,255,255,0.62)">The artwork owns the whole picture area &mdash; nothing is drawn over it. The player's own progress renders in the strip underneath, so a personalised card never costs you the design.</p>
+    </div>
+  </div>
+
+  <!-- ── live preview, at the size players actually see ── -->
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <span class="h">How players will see it</span>
+      <div style="display: flex; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; padding: 3px; gap: 2px">
+        <div class="lbl" style="min-height: 32px; display: flex; align-items: center; padding: 0 16px; border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: #12203a">Desktop</div>
+        <div class="lbl" style="min-height: 32px; display: flex; align-items: center; padding: 0 16px; border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; color: rgba(255,255,255,0.62)">Phone</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 22px; align-items: flex-start">
+
+      <div style="display: flex; flex-direction: column; gap: 9px">
+        <div class="tile">
+          <div class="head" style="padding: 0">
+            <div class="art" style="background: linear-gradient(158deg, #0b3b34 0%, #0d5148 48%, #07271f 100%)">
+              <div class="rays"></div>
+              <div style="position: absolute; inset: 0; background: radial-gradient(120% 110% at 50% 118%, rgba(0,0,0,0.5), transparent 58%)"></div>
+              <div class="artwrap">
+                <span class="ribbon">Weekend Special</span>
+                <div class="dsp metal" style="font-size: 54px; font-weight: 700; line-height: 0.94; letter-spacing: -1px">10% BACK</div>
+                <div class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: rgba(255,255,255,0.72)">Every Monday</div>
+              </div>
+            </div>
+          </div>
+          <div class="foot">
+            <div class="footrow">
+              <span class="footlbl">Your loss this week</span>
+              <span class="footnum">320 <em>/ 500 ETB</em></span>
+            </div>
+            <div class="track"><div style="width: 64%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
+          </div>
+        </div>
+        <span class="cap" style="color: #34d399">With your artwork</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 9px">
+        <div class="tile">
+          <div class="head" style="--glow: rgba(34,211,238,0.24)">
+            <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+            <div class="mark">%</div>
+            <span class="kick" style="color: #67e8f9; background: rgba(34,211,238,0.13); border: 1px solid rgba(34,211,238,0.32)">Weekly Cashback</span>
+            <p class="fig metal">10<span class="unit">% back</span></p>
+            <p class="sub">On everything you lose from Monday to Sunday</p>
+          </div>
+          <div class="foot">
+            <div class="footrow">
+              <span class="footlbl">Your loss this week</span>
+              <span class="footnum">320 <em>/ 500 ETB</em></span>
+            </div>
+            <div class="track"><div style="width: 64%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
+          </div>
+        </div>
+        <span class="cap">Generated, if you remove it</span>
+      </div>
+
+      <!-- where it appears -->
+      <div class="card" style="flex: 1; min-width: 0; padding: 16px 18px; align-self: stretch; display: flex; flex-direction: column; gap: 12px">
+        <span class="h">Where this artwork appears</span>
+        <div style="display: flex; align-items: center; gap: 11px">
+          <div style="width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(245,166,35,0.13); color: var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 17px; height: 17px"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-4 4 3 3.5-3L21 15" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div style="display: flex; flex-direction: column; gap: 1px"><span class="v">Lobby offer strip</span><span class="k">Under the hero carousel</span></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px">
+          <div style="width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(245,166,35,0.13); color: var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 17px; height: 17px"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke-linecap="round"/></svg></div>
+          <div style="display: flex; flex-direction: column; gap: 1px"><span class="v">Promotions page</span><span class="k">Full width, one per offer</span></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px">
+          <div style="width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 17px; height: 17px"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M16.5 12h.01" stroke-linecap="round"/></svg></div>
+          <div style="display: flex; flex-direction: column; gap: 1px"><span class="v" style="color: rgba(255,255,255,0.6)">Wallet &mdash; Earn More</span><span class="k">Generated only, too small for artwork</span></div>
+        </div>
+        <p style="margin: auto 0 0; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.55)">A promotion that is paused or outside its window keeps its artwork but stops appearing anywhere.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f5a623","options":["#f5a623","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1130,"height":1090}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#f5a623' };
+  }
+}
+</script>
+</body>
+</html>

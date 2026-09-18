@@ -19,128 +19,218 @@
     a { color: #f59e0b; text-decoration: none; }
     a:hover { color: #d97706; }
     .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
+    .dsp { font-family: 'Oswald', system-ui, sans-serif; }
+
+    .tile {
+      width: 384px; flex-shrink: 0; border-radius: 18px; overflow: hidden;
+      background: #0e1729; border: 1px solid rgba(255,255,255,0.09);
+      box-shadow: 0 16px 38px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column;
+    }
+    .head {
+      position: relative; height: 240px; isolation: isolate;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 22px; box-sizing: border-box;
+    }
+    .ground { position: absolute; inset: 0; z-index: -3;
+      background:
+        radial-gradient(118% 132% at 14% -12%, var(--glow), transparent 58%),
+        linear-gradient(162deg, #182442 0%, #111c33 55%, #0a1020 100%);
+    }
+    .lattice { position: absolute; inset: 0; z-index: -2;
+      background-image:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px),
+        repeating-linear-gradient(-45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px);
+    }
+    .vignette { position: absolute; inset: 0; z-index: -1;
+      background: radial-gradient(132% 108% at 50% 116%, rgba(0,0,0,0.44), transparent 58%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.11);
+    }
+    .mark {
+      position: absolute; right: -14px; bottom: -28px; z-index: -1;
+      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
+      font-size: 148px; line-height: 0.78; letter-spacing: -4px;
+      color: rgba(255,255,255,0.042); pointer-events: none; user-select: none;
+    }
+    .metal {
+      background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 27%, #f0a51b 58%, #a8570a 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26));
+    }
+    .fig {
+      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
+      font-size: 68px; line-height: 0.92; letter-spacing: -0.5px; margin: 0;
+    }
+    .fig .unit { font-size: 30px; letter-spacing: 0.5px; }
+    .kick {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      align-self: flex-start; font-size: 11px; font-weight: 700;
+      letter-spacing: 1.9px; text-transform: uppercase;
+      padding: 5px 11px; border-radius: 999px; margin-bottom: 16px;
+    }
+    .sub { margin: 9px 0 0; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,0.68); max-width: 250px; }
+    .seal {
+      position: absolute; top: 20px; right: 20px; width: 72px; height: 72px;
+      border-radius: 999px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 1px;
+      background: radial-gradient(circle at 50% 18%, rgba(252,211,77,0.16), transparent 62%), rgba(8,13,26,0.58);
+      border: 1px solid rgba(252,211,77,0.42);
+      box-shadow: inset 0 0 0 4px rgba(252,211,77,0.09), 0 6px 18px rgba(0,0,0,0.45);
+    }
+    .foot {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(6,10,20,0.55);
+      padding: 13px 20px; box-sizing: border-box; min-height: 54px;
+      display: flex; flex-direction: column; justify-content: center; gap: 7px;
+    }
+    .footrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .footlbl { font-size: 12.5px; color: rgba(255,255,255,0.62); }
+    .footnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    .footnum em { font-style: normal; color: rgba(255,255,255,0.5); }
+    .track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
+    .fill { height: 100%; border-radius: 999px; }
+    .cta {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      min-height: 44px; padding: 0 20px; border-radius: 10px;
+      background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #1a1205;
+      font-size: 14px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
+      box-shadow: 0 6px 16px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
+    }
+    .art { position: absolute; inset: 0; overflow: hidden; }
+    .art .rays {
+      position: absolute; inset: -40%;
+      background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.055) 0deg 4deg, transparent 4deg 12deg);
+    }
+    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
+    .ribbon {
+      font-family: 'Barlow Condensed', system-ui, sans-serif;
+      font-size: 12px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase;
+      padding: 5px 16px; color: #1a1205;
+      background: linear-gradient(180deg, #fde68a, #f0a51b);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%);
+    }
   </style>
 </helmet>
 
-<div style="--accent: {{accent}}; min-height: 700px; background: #0a0f1e; padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 22px">
+<div style="--accent: {{accent}}; min-height: 900px; background: #0a0f1e; padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 22px">
 
-  <!-- ══ HERO — a promo slide generated from the LIVE first-deposit setting ══ -->
-  <div style="position: relative; border-radius: 18px; overflow: hidden; min-height: 200px; padding: 28px 60px; display: flex; align-items: center; color: #fff; isolation: isolate; background: linear-gradient(105deg, #3a2407 0%, #5c3a0d 45%, #7a4f12 100%)">
+  <!-- ══ HERO — generated from the live first-deposit setting ══ -->
+  <div style="position: relative; border-radius: 18px; overflow: hidden; min-height: 200px; padding: 28px 60px; display: flex; align-items: center; color: #fff; isolation: isolate; background: linear-gradient(162deg, #2b1d06 0%, #57380c 46%, #1a1104 100%)">
+    <div style="position: absolute; inset: 0; z-index: -2; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 18px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 18px)"></div>
+    <div style="position: absolute; inset: 0; z-index: -1; background: radial-gradient(90% 130% at 78% 40%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%)"></div>
+    <div class="dsp" style="position: absolute; right: 44px; bottom: -34px; z-index: -1; font-weight: 700; font-size: 190px; color: rgba(255,255,255,0.045); line-height: 0.78; letter-spacing: -6px; pointer-events: none">+50</div>
 
-    <div style="position: absolute; inset: 0; background: radial-gradient(120% 120% at 80% 50%, rgba(255,255,255,0.06), transparent 60%); pointer-events: none"></div>
-    <div style="position: absolute; right: -60px; top: -90px; width: 380px; height: 380px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%); pointer-events: none"></div>
-    <div class="lbl" style="position: absolute; right: 54px; bottom: -10px; font-weight: 700; font-size: 150px; color: rgba(255,255,255,0.05); line-height: 0.8; pointer-events: none; letter-spacing: -2px">+50</div>
+    <div style="position: relative; z-index: 2; max-width: 620px; display: flex; flex-direction: column; align-items: flex-start">
+      <div class="lbl" style="background: rgba(0,0,0,0.34); border: 1px solid rgba(252,211,77,0.3); color: #fcd34d; font-weight: 700; font-size: 12px; letter-spacing: 1.9px; text-transform: uppercase; padding: 6px 14px; border-radius: 999px; margin-bottom: 18px">Welcome Offer</div>
 
-    <div style="position: relative; z-index: 2; max-width: 600px; display: flex; flex-direction: column; align-items: flex-start">
-      <div class="lbl" style="background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.85); font-weight: 700; font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; padding: 6px 14px; border-radius: 6px; margin-bottom: 20px">Welcome Offer</div>
+      <h1 class="dsp" style="font-weight: 700; font-size: 52px; line-height: 1.02; letter-spacing: -0.5px; text-transform: uppercase; margin: 0; color: #fff">
+        First deposit &mdash;<br><span class="metal">50 ETB bonus</span>
+      </h1>
 
-      <h1 class="lbl" style="font-weight: 700; font-size: 54px; line-height: 1.04; letter-spacing: 0.5px; text-transform: uppercase; margin: 0; color: #fff">First Deposit —<br>50 ETB Bonus</h1>
+      <p style="font-size: 15px; line-height: 1.55; color: rgba(255,255,255,0.8); max-width: 440px; margin: 16px 0 24px">Deposit once and we add 50 ETB of bonus play on top. Yours to spend in any room.</p>
 
-      <p style="font-size: 15px; line-height: 1.55; color: rgba(255,255,255,0.82); max-width: 460px; margin: 18px 0 26px">Make your first deposit and we'll add 50 ETB of bonus play on top. Yours to spend on any room or game.</p>
-
-      <div class="lbl" style="background: var(--accent); color: #000; font-weight: 700; font-size: 16px; letter-spacing: 0.8px; text-transform: uppercase; padding: 13px 32px; border-radius: 9px; box-shadow: 0 8px 26px color-mix(in srgb, var(--accent) 34%, transparent)">Deposit Now</div>
+      <div class="cta" style="min-height: 48px; padding: 0 30px; font-size: 16px">Deposit now</div>
     </div>
 
-    <!-- carousel controls, matching the live hero -->
-    <div style="position: absolute; right: 22px; top: 50%; transform: translateY(-50%); z-index: 3; width: 38px; height: 38px; border-radius: 9999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center">
+    <div style="position: absolute; right: 22px; top: 50%; transform: translateY(-50%); z-index: 3; width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.38); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" style="width: 17px; height: 17px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <div style="position: absolute; left: 22px; top: 50%; transform: translateY(-50%); z-index: 3; width: 38px; height: 38px; border-radius: 9999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center">
+    <div style="position: absolute; left: 22px; top: 50%; transform: translateY(-50%); z-index: 3; width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.38); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" style="width: 17px; height: 17px"><path d="m15 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <div style="position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 3; display: flex; gap: 7px">
-      <div style="width: 22px; height: 5px; border-radius: 9999px; background: var(--accent)"></div>
-      <div style="width: 5px; height: 5px; border-radius: 9999px; background: rgba(255,255,255,0.4)"></div>
-      <div style="width: 5px; height: 5px; border-radius: 9999px; background: rgba(255,255,255,0.4)"></div>
-      <div style="width: 5px; height: 5px; border-radius: 9999px; background: rgba(255,255,255,0.4)"></div>
+      <div style="width: 22px; height: 5px; border-radius: 999px; background: var(--accent)"></div>
+      <div style="width: 5px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.42)"></div>
+      <div style="width: 5px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.42)"></div>
     </div>
   </div>
 
-  <!-- ══ PROMO STRIP — every live offer, one compact row ══ -->
-  <div style="display: flex; flex-direction: column; gap: 11px">
+  <!-- ══ PLAYER STATE — above the offers, never artwork ══ -->
+  <div style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 14px; background: linear-gradient(100deg, rgba(127,29,29,0.34), rgba(14,23,41,0.5) 62%); border: 1px solid rgba(248,113,113,0.34); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07)">
+    <div style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(248,113,113,0.16); color: #fca5a5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 19px; height: 19px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span class="lbl" style="font-size: 15px; font-weight: 700; letter-spacing: 0.4px; color: #fff">50 ETB of bonus expires tonight</span>
+      <span style="font-size: 12.5px; color: rgba(255,255,255,0.62)">You are set to spend from your real balance, so it will go unused</span>
+    </div>
+    <span class="dsp" style="margin-left: auto; font-size: 26px; font-weight: 600; color: #fca5a5; font-variant-numeric: tabular-nums; letter-spacing: 0.5px">02:47:13</span>
+    <div class="lbl" style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase">Spend bonus first</div>
+  </div>
 
+  <!-- ══ LIVE OFFERS ══ -->
+  <div style="display: flex; flex-direction: column; gap: 13px">
     <div style="display: flex; align-items: center; justify-content: space-between">
-      <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a9b7c9">Live Offers</span>
+      <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #a9b7c9">Live Offers</span>
       <span class="lbl" style="display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">
         All promotions
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
     </div>
 
-    <div style="display: flex; gap: 11px; align-items: stretch">
+    <div style="display: flex; gap: 16px">
 
-      <!-- Personal / urgent chip — only for a signed-in player holding a bonus -->
-      <div style="flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.32)">
-        <div style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.14); color: #ef4444">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <!-- admin artwork -->
+      <div class="tile">
+        <div class="head" style="padding: 0">
+          <div class="art" style="background: linear-gradient(158deg, #0b3b34 0%, #0d5148 48%, #07271f 100%)">
+            <div class="rays"></div>
+            <div style="position: absolute; inset: 0; background: radial-gradient(120% 110% at 50% 118%, rgba(0,0,0,0.5), transparent 58%)"></div>
+            <div class="artwrap">
+              <span class="ribbon">Weekend Special</span>
+              <div class="dsp metal" style="font-size: 54px; font-weight: 700; line-height: 0.94; letter-spacing: -1px">10% BACK</div>
+              <div class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: rgba(255,255,255,0.72)">Every Monday</div>
+            </div>
+          </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
-          <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">50 ETB expiring</span>
-          <span style="font-size: 12px; color: #fca5a5">Use it within 3h</span>
-        </div>
-      </div>
-
-      <!-- Welcome bonus -->
-      <div style="flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <div style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px"><rect x="3" y="8" width="18" height="4" rx="1" stroke-linejoin="round"/><path d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
-          <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">50 ETB welcome</span>
-          <span style="font-size: 12px; color: #a9b7c9">On your first deposit</span>
-        </div>
-      </div>
-
-      <!-- Cashback -->
-      <div style="flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <div style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(6,182,212,0.15); color: #06b6d4">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px"><path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
-          <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">10% cashback</span>
-          <span style="font-size: 12px; color: #a9b7c9">320 / 500 ETB this week</span>
+        <div class="foot">
+          <div class="footrow">
+            <span class="footlbl">Your loss this week</span>
+            <span class="footnum">320 <em>/ 500 ETB</em></span>
+          </div>
+          <div class="track"><div class="fill" style="width: 64%; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
         </div>
       </div>
 
-      <!-- Daily deposit -->
-      <div style="flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <div style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(59,130,246,0.15); color: #60a5fa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px"><rect x="3.5" y="5" width="17" height="15" rx="2.2"/><path d="M8 3.5V7M16 3.5V7M3.5 10.5h17" stroke-linecap="round"/></svg>
+      <!-- generated -->
+      <div class="tile">
+        <div class="head" style="--glow: rgba(245,158,11,0.22)">
+          <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+          <div class="mark">24H</div>
+          <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Daily Bonus</span>
+          <p class="fig metal">+50 <span class="unit">ETB</span></p>
+          <p class="sub">Deposit 500 ETB in a day, play with 550</p>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
-          <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">+50 ETB daily</span>
-          <span style="font-size: 12px; color: #a9b7c9">200 / 500 ETB today</span>
+        <div class="foot">
+          <div class="footrow">
+            <span class="footlbl">Deposited today</span>
+            <span class="footnum">200 <em>/ 500 ETB</em></span>
+          </div>
+          <div class="track"><div class="fill" style="width: 40%; background: linear-gradient(90deg, #b45309, #f59e0b)"></div></div>
         </div>
       </div>
 
-      <!-- Weekly deposit -->
-      <div style="flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <div style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(168,85,247,0.15); color: #c084fc">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 17px; height: 17px"><path d="M3.5 17.5 9 11l4 3.5 7.5-8.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h5.5v5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <!-- generated, with the seal -->
+      <div class="tile">
+        <div class="head" style="--glow: rgba(245,158,11,0.30)">
+          <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+          <div class="mark">+50</div>
+          <div class="seal">
+            <span class="lbl" style="font-size: 17px; font-weight: 700; color: #fcd34d; line-height: 1">1</span>
+            <span class="lbl" style="font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(252,211,77,0.75); line-height: 1">st dep</span>
+          </div>
+          <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Welcome Offer</span>
+          <p class="fig metal">50 <span class="unit">ETB</span></p>
+          <p class="sub">Yours the moment your first deposit is approved</p>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
-          <span class="lbl" style="font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9">+300 ETB weekly</span>
-          <span style="font-size: 12px; color: #a9b7c9">Deposit 3,000 this week</span>
+        <div class="foot">
+          <div class="cta" style="align-self: flex-start">
+            Deposit now
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ Mobile behaviour note rendered as a real fragment: the strip scrolls ══ -->
-  <div style="display: flex; flex-direction: column; gap: 11px; padding-top: 4px">
-    <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a9b7c9">Same strip at phone width</span>
-    <div style="width: 390px; border-radius: 12px; border: 1px dashed #1e2d4a; padding: 12px; display: flex; gap: 9px; overflow: hidden">
-      <div style="flex-shrink: 0; display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 12px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.32)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.9" style="width: 16px; height: 16px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9; white-space: nowrap">50 ETB &middot; 3h left</span>
-      </div>
-      <div style="flex-shrink: 0; display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.9" style="width: 16px; height: 16px"><rect x="3" y="8" width="18" height="4" rx="1" stroke-linejoin="round"/><path d="M5 12v8h14v-8M12 8V4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9; white-space: nowrap">50 ETB welcome</span>
-      </div>
-      <div style="flex-shrink: 0; display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 12px; background: #111827; border: 1px solid #1e2d4a">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="1.9" style="width: 16px; height: 16px"><path d="M21 12a9 9 0 1 1-3.5-7.1" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="lbl" style="font-size: 13px; font-weight: 700; letter-spacing: 0.3px; color: #f1f5f9; white-space: nowrap">10% cashback</span>
       </div>
     </div>
   </div>
@@ -148,7 +238,7 @@
 </div>
 </x-dc>
 
-<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1240,"height":700}}'>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1240,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
     return { accent: this.props.accent ?? '#f59e0b' };
