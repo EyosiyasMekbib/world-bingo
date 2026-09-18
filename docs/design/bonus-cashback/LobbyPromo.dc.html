@@ -9,128 +9,53 @@
 <helmet>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
   <style>
-    body {
-      margin: 0;
-      font-family: 'Inter', system-ui, sans-serif;
-      background: #0a0f1e;
-      color: #f1f5f9;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #0a0f1e; color: #f1f5f9; -webkit-font-smoothing: antialiased; }
     a { color: #f59e0b; text-decoration: none; }
     a:hover { color: #d97706; }
     .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
     .dsp { font-family: 'Oswald', system-ui, sans-serif; }
 
-    .tile {
-      width: 384px; flex-shrink: 0; border-radius: 18px; overflow: hidden;
-      background: #0e1729; border: 1px solid rgba(255,255,255,0.09);
-      box-shadow: 0 16px 38px rgba(0,0,0,0.5);
-      display: flex; flex-direction: column;
-    }
-    .head {
-      position: relative; height: 240px; isolation: isolate;
-      display: flex; flex-direction: column; justify-content: flex-end;
-      padding: 22px; box-sizing: border-box;
-    }
-    .ground { position: absolute; inset: 0; z-index: -3;
-      background:
-        radial-gradient(118% 132% at 14% -12%, var(--glow), transparent 58%),
-        linear-gradient(162deg, #182442 0%, #111c33 55%, #0a1020 100%);
-    }
-    .lattice { position: absolute; inset: 0; z-index: -2;
-      background-image:
-        repeating-linear-gradient(45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px);
-    }
-    .vignette { position: absolute; inset: 0; z-index: -1;
-      background: radial-gradient(132% 108% at 50% 116%, rgba(0,0,0,0.44), transparent 58%);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.11);
-    }
-    .mark {
-      position: absolute; right: -14px; bottom: -28px; z-index: -1;
-      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
-      font-size: 148px; line-height: 0.78; letter-spacing: -4px;
-      color: rgba(255,255,255,0.042); pointer-events: none; user-select: none;
-    }
-    .metal {
-      background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 27%, #f0a51b 58%, #a8570a 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26));
-    }
-    .fig {
-      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
-      font-size: 68px; line-height: 0.92; letter-spacing: -0.5px; margin: 0;
-    }
-    .fig .unit { font-size: 30px; letter-spacing: 0.5px; }
-    .kick {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      align-self: flex-start; font-size: 11px; font-weight: 700;
-      letter-spacing: 1.9px; text-transform: uppercase;
-      padding: 5px 11px; border-radius: 999px; margin-bottom: 16px;
-    }
-    .sub { margin: 9px 0 0; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,0.68); max-width: 250px; }
-    .seal {
-      position: absolute; top: 20px; right: 20px; width: 72px; height: 72px;
-      border-radius: 999px; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 1px;
-      background: radial-gradient(circle at 50% 18%, rgba(252,211,77,0.16), transparent 62%), rgba(8,13,26,0.58);
-      border: 1px solid rgba(252,211,77,0.42);
-      box-shadow: inset 0 0 0 4px rgba(252,211,77,0.09), 0 6px 18px rgba(0,0,0,0.45);
-    }
-    .foot {
-      border-top: 1px solid rgba(255,255,255,0.08);
-      background: rgba(6,10,20,0.55);
-      padding: 13px 20px; box-sizing: border-box; min-height: 54px;
-      display: flex; flex-direction: column; justify-content: center; gap: 7px;
-    }
-    .footrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .footlbl { font-size: 12.5px; color: rgba(255,255,255,0.62); }
-    .footnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
-    .footnum em { font-style: normal; color: rgba(255,255,255,0.5); }
-    .track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
-    .fill { height: 100%; border-radius: 999px; }
-    .cta {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-      min-height: 44px; padding: 0 20px; border-radius: 10px;
-      background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #1a1205;
-      font-size: 14px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
-      box-shadow: 0 6px 16px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
-    }
+    .tile { width: 225px; flex-shrink: 0; border-radius: 16px; overflow: hidden; background: #0e1729; border: 1px solid rgba(255,255,255,0.09); box-shadow: 0 18px 40px rgba(0,0,0,0.55); display: flex; flex-direction: column; }
+    .head { position: relative; height: 600px; isolation: isolate; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; text-align: center; }
+    .ground { position: absolute; inset: 0; z-index: -3; background: radial-gradient(96% 52% at 50% -6%, var(--glow), transparent 62%), linear-gradient(178deg, #1a2748 0%, #121e36 48%, #090f1e 100%); }
+    .lattice { position: absolute; inset: 0; z-index: -2; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.032) 0 1px, transparent 1px 17px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.032) 0 1px, transparent 1px 17px); }
+    .vignette { position: absolute; inset: 0; z-index: -1; background: radial-gradient(84% 44% at 50% 106%, rgba(0,0,0,0.5), transparent 62%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.11); }
+    .mark { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: -1; font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 132px; line-height: 0.78; letter-spacing: -4px; color: rgba(255,255,255,0.04); white-space: nowrap; }
+    .metal { background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 26%, #f0a51b 58%, #a8570a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26)); }
+    .fig { font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 92px; line-height: 0.86; letter-spacing: -2px; margin: 0; }
+    .unit { font-family: 'Oswald', system-ui, sans-serif; font-weight: 600; font-size: 25px; letter-spacing: 5px; margin: 4px 0 0; }
+    .kick { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: 1.9px; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; margin-bottom: 18px; }
+    .sub { margin: 16px 0 0; font-size: 12.5px; line-height: 1.45; color: rgba(255,255,255,0.66); max-width: 178px; }
+    .seal { width: 72px; height: 72px; margin-bottom: 22px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; flex-shrink: 0; background: radial-gradient(circle at 50% 18%, rgba(252,211,77,0.16), transparent 62%), rgba(8,13,26,0.58); border: 1px solid rgba(252,211,77,0.42); box-shadow: inset 0 0 0 4px rgba(252,211,77,0.09), 0 6px 18px rgba(0,0,0,0.45); }
+    .foot { height: 75px; box-sizing: border-box; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(6,10,20,0.6); padding: 0 15px; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+    .frow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .flbl { font-size: 11.5px; color: rgba(255,255,255,0.6); white-space: nowrap; }
+    .fnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 13.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .fnum em { font-style: normal; color: rgba(255,255,255,0.5); }
+    .track { height: 5px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
+    .cta { font-family: 'Barlow Condensed', system-ui, sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 9px; background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #1a1205; font-size: 13.5px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; box-shadow: 0 6px 16px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.4); }
     .art { position: absolute; inset: 0; overflow: hidden; }
-    .art .rays {
-      position: absolute; inset: -40%;
-      background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.055) 0deg 4deg, transparent 4deg 12deg);
-    }
-    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-    .ribbon {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      font-size: 12px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase;
-      padding: 5px 16px; color: #1a1205;
-      background: linear-gradient(180deg, #fde68a, #f0a51b);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-      clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%);
-    }
+    .rays { position: absolute; inset: -55%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.05) 0deg 3.5deg, transparent 3.5deg 11deg); }
+    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; box-sizing: border-box; }
+    .ribbon { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: 2.1px; text-transform: uppercase; padding: 5px 14px; color: #1a1205; background: linear-gradient(180deg, #fde68a, #f0a51b); box-shadow: 0 4px 12px rgba(0,0,0,0.45); clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
+    .navbtn { width: 36px; height: 36px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.16); }
   </style>
 </helmet>
 
-<div style="--accent: {{accent}}; min-height: 900px; background: #0a0f1e; padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 22px">
+<div style="--accent: {{accent}}; min-height: 1300px; background: #0a0f1e; padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 22px">
 
-  <!-- ══ HERO — generated from the live first-deposit setting ══ -->
+  <!-- ══ HERO ══ -->
   <div style="position: relative; border-radius: 18px; overflow: hidden; min-height: 200px; padding: 28px 60px; display: flex; align-items: center; color: #fff; isolation: isolate; background: linear-gradient(162deg, #2b1d06 0%, #57380c 46%, #1a1104 100%)">
     <div style="position: absolute; inset: 0; z-index: -2; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 18px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 18px)"></div>
     <div style="position: absolute; inset: 0; z-index: -1; background: radial-gradient(90% 130% at 78% 40%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%)"></div>
-    <div class="dsp" style="position: absolute; right: 44px; bottom: -34px; z-index: -1; font-weight: 700; font-size: 190px; color: rgba(255,255,255,0.045); line-height: 0.78; letter-spacing: -6px; pointer-events: none">+50</div>
+    <div class="dsp" style="position: absolute; right: 44px; bottom: -34px; z-index: -1; font-weight: 700; font-size: 190px; color: rgba(255,255,255,0.045); line-height: 0.78; letter-spacing: -6px"> +50</div>
 
     <div style="position: relative; z-index: 2; max-width: 620px; display: flex; flex-direction: column; align-items: flex-start">
       <div class="lbl" style="background: rgba(0,0,0,0.34); border: 1px solid rgba(252,211,77,0.3); color: #fcd34d; font-weight: 700; font-size: 12px; letter-spacing: 1.9px; text-transform: uppercase; padding: 6px 14px; border-radius: 999px; margin-bottom: 18px">Welcome Offer</div>
-
       <h1 class="dsp" style="font-weight: 700; font-size: 52px; line-height: 1.02; letter-spacing: -0.5px; text-transform: uppercase; margin: 0; color: #fff">
         First deposit &mdash;<br><span class="metal">50 ETB bonus</span>
       </h1>
-
       <p style="font-size: 15px; line-height: 1.55; color: rgba(255,255,255,0.8); max-width: 440px; margin: 16px 0 24px">Deposit once and we add 50 ETB of bonus play on top. Yours to spend in any room.</p>
-
       <div class="cta" style="min-height: 48px; padding: 0 30px; font-size: 16px">Deposit now</div>
     </div>
 
@@ -147,7 +72,7 @@
     </div>
   </div>
 
-  <!-- ══ PLAYER STATE — above the offers, never artwork ══ -->
+  <!-- ══ PLAYER STATE ══ -->
   <div style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 14px; background: linear-gradient(100deg, rgba(127,29,29,0.34), rgba(14,23,41,0.5) 62%); border: 1px solid rgba(248,113,113,0.34); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07)">
     <div style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(248,113,113,0.16); color: #fca5a5">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" style="width: 19px; height: 19px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -160,85 +85,120 @@
     <div class="lbl" style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase">Spend bonus first</div>
   </div>
 
-  <!-- ══ LIVE OFFERS ══ -->
+  <!-- ══ OFFER CAROUSEL ══ -->
   <div style="display: flex; flex-direction: column; gap: 13px">
+
     <div style="display: flex; align-items: center; justify-content: space-between">
       <span class="lbl" style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #a9b7c9">Live Offers</span>
-      <span class="lbl" style="display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">
-        All promotions
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </span>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span class="lbl" style="display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent)">
+          All promotions
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div style="display: flex; gap: 7px">
+          <div class="navbtn" style="opacity: 0.45"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" style="width: 15px; height: 15px"><path d="m15 6-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="navbtn"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" style="width: 15px; height: 15px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+      </div>
     </div>
 
     <div style="display: flex; gap: 16px">
 
-      <!-- admin artwork -->
-      <div class="tile">
-        <div class="head" style="padding: 0">
-          <div class="art" style="background: linear-gradient(158deg, #0b3b34 0%, #0d5148 48%, #07271f 100%)">
-            <div class="rays"></div>
-            <div style="position: absolute; inset: 0; background: radial-gradient(120% 110% at 50% 118%, rgba(0,0,0,0.5), transparent 58%)"></div>
-            <div class="artwrap">
-              <span class="ribbon">Weekend Special</span>
-              <div class="dsp metal" style="font-size: 54px; font-weight: 700; line-height: 0.94; letter-spacing: -1px">10% BACK</div>
-              <div class="lbl" style="font-size: 14px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: rgba(255,255,255,0.72)">Every Monday</div>
-            </div>
-          </div>
-        </div>
-        <div class="foot">
-          <div class="footrow">
-            <span class="footlbl">Your loss this week</span>
-            <span class="footnum">320 <em>/ 500 ETB</em></span>
-          </div>
-          <div class="track"><div class="fill" style="width: 64%; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
-        </div>
-      </div>
-
-      <!-- generated -->
-      <div class="tile">
-        <div class="head" style="--glow: rgba(245,158,11,0.22)">
-          <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
-          <div class="mark">24H</div>
-          <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Daily Bonus</span>
-          <p class="fig metal">+50 <span class="unit">ETB</span></p>
-          <p class="sub">Deposit 500 ETB in a day, play with 550</p>
-        </div>
-        <div class="foot">
-          <div class="footrow">
-            <span class="footlbl">Deposited today</span>
-            <span class="footnum">200 <em>/ 500 ETB</em></span>
-          </div>
-          <div class="track"><div class="fill" style="width: 40%; background: linear-gradient(90deg, #b45309, #f59e0b)"></div></div>
-        </div>
-      </div>
-
-      <!-- generated, with the seal -->
       <div class="tile">
         <div class="head" style="--glow: rgba(245,158,11,0.30)">
           <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
           <div class="mark">+50</div>
           <div class="seal">
-            <span class="lbl" style="font-size: 17px; font-weight: 700; color: #fcd34d; line-height: 1">1</span>
-            <span class="lbl" style="font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(252,211,77,0.75); line-height: 1">st dep</span>
+            <span class="lbl" style="font-size: 18px; font-weight: 700; color: #fcd34d; line-height: 1">1</span>
+            <span class="lbl" style="font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(252,211,77,0.78); line-height: 1">st dep</span>
           </div>
           <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Welcome Offer</span>
-          <p class="fig metal">50 <span class="unit">ETB</span></p>
+          <p class="fig metal">50</p>
+          <p class="unit metal">ETB</p>
           <p class="sub">Yours the moment your first deposit is approved</p>
         </div>
-        <div class="foot">
-          <div class="cta" style="align-self: flex-start">
-            Deposit now
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="foot"><div class="cta">Deposit now</div></div>
+      </div>
+
+      <div class="tile">
+        <div class="head" style="padding: 0">
+          <div class="art" style="background: linear-gradient(176deg, #0c443b 0%, #0d5148 44%, #05201a 100%)">
+            <div class="rays"></div>
+            <div style="position: absolute; inset: 0; background: radial-gradient(86% 46% at 50% 108%, rgba(0,0,0,0.55), transparent 62%)"></div>
+            <div class="artwrap">
+              <span class="ribbon">Weekend Special</span>
+              <div class="dsp metal" style="font-size: 96px; font-weight: 700; line-height: 0.84; letter-spacing: -3px; margin-top: 20px">10%</div>
+              <div class="dsp metal" style="font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: 3px; margin-top: 2px">BACK</div>
+              <div class="lbl" style="margin-top: 18px; font-size: 12px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: rgba(255,255,255,0.7)">On every loss</div>
+              <div class="lbl" style="margin-top: 22px; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(252,211,77,0.4); font-size: 10.5px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: #fcd34d">Paid every Monday</div>
+            </div>
           </div>
         </div>
+        <div class="foot">
+          <div class="frow"><span class="flbl">Lost this week</span><span class="fnum">320 <em>/ 500</em></span></div>
+          <div class="track"><div style="width: 64%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
+        </div>
       </div>
+
+      <div class="tile">
+        <div class="head" style="--glow: rgba(245,158,11,0.22)">
+          <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+          <div class="mark">24H</div>
+          <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Daily Bonus</span>
+          <p class="fig metal">+50</p>
+          <p class="unit metal">ETB</p>
+          <p class="sub">Deposit 500 ETB in a day and play with 550</p>
+        </div>
+        <div class="foot">
+          <div class="frow"><span class="flbl">Today</span><span class="fnum">200 <em>/ 500 ETB</em></span></div>
+          <div class="track"><div style="width: 40%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #b45309, #f59e0b)"></div></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="head" style="padding: 0">
+          <div class="art" style="background: linear-gradient(176deg, #4a0d16 0%, #6d1528 44%, #25060d 100%)">
+            <div class="rays"></div>
+            <div style="position: absolute; inset: 0; background: radial-gradient(86% 46% at 50% 108%, rgba(0,0,0,0.55), transparent 62%)"></div>
+            <div class="artwrap">
+              <span class="ribbon">Saturday 20:00</span>
+              <div class="lbl" style="margin-top: 24px; font-size: 13px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.68)">Prize pool</div>
+              <div class="dsp metal" style="font-size: 82px; font-weight: 700; line-height: 0.86; letter-spacing: -3px; margin-top: 4px">500K</div>
+              <div class="dsp metal" style="font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: 5px; margin-top: 2px">ETB</div>
+              <div class="dsp" style="margin-top: 20px; font-size: 26px; font-weight: 700; line-height: 1.02; letter-spacing: 0.5px; text-transform: uppercase; color: #fff">Grand<br>Tournament</div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="frow"><span class="flbl">Seats left</span><span class="fnum">48 <em>/ 512</em></span></div>
+          <div class="track"><div style="width: 91%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #9f1239, #fb7185)"></div></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="head" style="--glow: rgba(52,211,153,0.2)">
+          <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+          <div class="mark">&plus;</div>
+          <span class="kick" style="color: #6ee7b7; background: rgba(52,211,153,0.13); border: 1px solid rgba(52,211,153,0.3)">Refer a Friend</span>
+          <p class="fig metal">50</p>
+          <p class="unit metal">ETB</p>
+          <p class="sub">Each time a friend you invite makes their first deposit</p>
+        </div>
+        <div class="foot"><div class="cta" style="background: linear-gradient(180deg, #ffffff, #dbe3ee); color: #0b1120; box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.8)">Get your link</div></div>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: center; gap: 7px; padding-top: 3px">
+      <div style="width: 20px; height: 5px; border-radius: 999px; background: var(--accent)"></div>
+      <div style="width: 5px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.32)"></div>
+      <div style="width: 5px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.32)"></div>
     </div>
   </div>
 
 </div>
 </x-dc>
 
-<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1240,"height":900}}'>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":1240,"height":1300}}'>
 class Component extends DCLogic {
   renderVals() {
     return { accent: this.props.accent ?? '#f59e0b' };

@@ -1,19 +1,96 @@
 {
   "pages": [
-    { "id": "player", "name": "Player app" },
-    { "id": "admin", "name": "Admin app" }
+    {
+      "id": "player",
+      "name": "Player app"
+    },
+    {
+      "id": "admin",
+      "name": "Admin app"
+    }
   ],
   "artboards": [
-    { "file": "PromoCards.dc.html", "page": "player", "title": "Promo tile — the card system", "x": 0, "y": 0, "w": 1240, "h": 1230 },
-    { "file": "LobbyPromo.dc.html", "page": "player", "title": "Lobby — hero, expiry bar, offer strip", "x": 1320, "y": 0, "w": 1240, "h": 900 },
-    { "file": "Main.dc.html", "page": "player", "title": "Wallet — My Bonuses hub", "x": 0, "y": 1350, "w": 390, "h": 1340 },
-    { "file": "Promotions.dc.html", "page": "player", "title": "Promotions — tiles with live progress", "x": 470, "y": 1350, "w": 390, "h": 1220 },
-    { "file": "BonusMoments.dc.html", "page": "player", "title": "Arrival moments — toast, welcome, inbox", "x": 940, "y": 1350, "w": 1220, "h": 740 },
-
-    { "file": "AdminPromotions.dc.html", "page": "admin", "title": "Promotions — one list for every offer", "x": 0, "y": 0, "w": 1340, "h": 830 },
-    { "file": "AdminPromoArtwork.dc.html", "page": "admin", "title": "Card artwork — upload and live preview", "x": 0, "y": 950, "w": 1130, "h": 1090 },
-    { "file": "AdminPromoDetail.dc.html", "page": "admin", "title": "Promotion detail — stats, budget, live preview", "x": 1210, "y": 950, "w": 1130, "h": 1480 },
-    { "file": "AdminPlayerBonuses.dc.html", "page": "admin", "title": "Player detail — Bonuses tab", "x": 2420, "y": 950, "w": 1130, "h": 1060 }
+    {
+      "file": "PromoCards.dc.html",
+      "page": "player",
+      "title": "Promo tile \u2014 five across, 225 x 675",
+      "x": 0,
+      "y": 0,
+      "w": 1240,
+      "h": 1530
+    },
+    {
+      "file": "LobbyPromo.dc.html",
+      "page": "player",
+      "title": "Lobby \u2014 hero, expiry bar, offer carousel",
+      "x": 1320,
+      "y": 0,
+      "w": 1240,
+      "h": 1300
+    },
+    {
+      "file": "Main.dc.html",
+      "page": "player",
+      "title": "Wallet \u2014 My Bonuses hub",
+      "x": 0,
+      "y": 1650,
+      "w": 390,
+      "h": 1340
+    },
+    {
+      "file": "Promotions.dc.html",
+      "page": "player",
+      "title": "Promotions \u2014 tiles with live progress",
+      "x": 470,
+      "y": 1650,
+      "w": 390,
+      "h": 1310
+    },
+    {
+      "file": "BonusMoments.dc.html",
+      "page": "player",
+      "title": "Arrival moments \u2014 toast, welcome, inbox",
+      "x": 940,
+      "y": 1650,
+      "w": 1220,
+      "h": 740
+    },
+    {
+      "file": "AdminPromotions.dc.html",
+      "page": "admin",
+      "title": "Promotions \u2014 one list for every offer",
+      "x": 0,
+      "y": 0,
+      "w": 1340,
+      "h": 830
+    },
+    {
+      "file": "AdminPromoArtwork.dc.html",
+      "page": "admin",
+      "title": "Card artwork \u2014 upload and live preview",
+      "x": 0,
+      "y": 950,
+      "w": 1130,
+      "h": 1470
+    },
+    {
+      "file": "AdminPromoDetail.dc.html",
+      "page": "admin",
+      "title": "Promotion detail \u2014 stats, budget, live preview",
+      "x": 1210,
+      "y": 950,
+      "w": 1130,
+      "h": 1480
+    },
+    {
+      "file": "AdminPlayerBonuses.dc.html",
+      "page": "admin",
+      "title": "Player detail \u2014 Bonuses tab",
+      "x": 2420,
+      "y": 950,
+      "w": 1130,
+      "h": 1060
+    }
   ],
   "annotations": [
     {
@@ -22,15 +99,15 @@
       "x": 2640,
       "y": 0,
       "w": 420,
-      "text": "THE TILE\n\nOne shape whether or not artwork exists, which is what makes the two modes interchangeable in a row.\n\nHEAD, 16:10. Either an uploaded image, or a generated composition: a tone-on-tone diamond lattice over a corner glow, the amount set in Oswald with a single gold gradient clipped to the text, and a bevel and glow from two drop shadows. One kicker, one figure, one line. Content sits bottom-left so the top air can carry the seal.\n\nFOOT. The player's own progress, or the one action worth a button. Always system-drawn, so uploading artwork never costs you personalisation.\n\nOne metal for the whole family, like a tournament set. Variety comes from the artwork, not from four different accent colours."
+      "text": "THE TILE\n\n225 x 675 \u2014 the width is exactly a third of the height. Five fit a 1192px row with 16px gaps and three pixels to spare.\n\nHEAD, 3:8 (600px). Either an uploaded portrait image, or a generated composition centred like a poster: a tone-on-tone diamond lattice over a top glow, a seal, a kicker, then the amount in Oswald under one gold gradient clipped to the text, its bevel and glow from two drop shadows.\n\nFOOT, 75px. The player's own progress, or the single action worth a button. Always system-drawn, so uploading artwork never costs you personalisation.\n\nOne metal for the whole family, like a tournament set. Variety comes from the artwork, not from five competing accent colours."
     },
     {
       "id": "player-notes",
       "page": "player",
       "x": 2640,
-      "y": 520,
+      "y": 620,
       "w": 420,
-      "text": "Layout is unchanged — hero, then offers under it. Only the card changed.\n\nThe expiry bar moved above the strip and out of the card set. It is player state, not an offer, so it is never artwork and never sits in the row.\n\nThe VIP-scoped weekly rule stays off every player surface: a targeted rule must not be advertised to someone who cannot receive it.\n\nThe artwork on these tiles is a drawn placeholder standing in for an uploaded asset, not a real banner. Figures are sample values and the copy is English only."
+      "text": "Five per row, and the row is a carousel: arrows beside the section link, dots underneath, more offers on the next page. On phones the same tile drops to 168 wide and shows two and a peek.\n\nThe expiry bar sits above the carousel and out of the card set. It is player state, not an offer, so it is never artwork.\n\nThe promotions page uses the same tile in a two-up grid rather than one tile per screen.\n\nThe artwork here is drawn placeholder standing in for an uploaded asset. Figures are sample values and the copy is English only."
     },
     {
       "id": "admin-artwork",
@@ -38,7 +115,7 @@
       "x": 1420,
       "y": 0,
       "w": 420,
-      "text": "ARTWORK UPLOAD\n\nOne 16:10 image per promotion, 1280 x 800 or larger. No separate mobile crop — the same asset works at both sizes because the tile keeps its ratio.\n\nA wrong aspect is refused rather than cropped. Silently cropping cuts the headline off somebody's finished design, which is exactly what the existing hero banner code already avoids.\n\nThe preview renders the real tile at real size, beside the generated fallback, so the admin can see what removing the image would do before they do it.\n\nThis needs an artwork field per promotion plus the existing upload storage. The welcome bonus is a site setting today, so it needs somewhere to hang its own image."
+      "text": "ARTWORK UPLOAD\n\nOne portrait image per promotion at 3:8, 750 x 2000 or larger. The same file is used at every width \u2014 scaled, never re-cropped \u2014 so no separate mobile asset.\n\nAnything that is not 3:8 is refused rather than cropped. A crop on a portrait card eats the headline and the admin never sees it happen.\n\nThe preview renders the real tile at real size beside the generated fallback, so removing an image has a visible consequence before it is removed. Carousel position is set here too.\n\nThis needs an artwork field and alt text per promotion plus the existing upload storage. The welcome bonus is a site setting today, so it has nothing to hang an image on."
     },
     {
       "id": "admin-notes",
@@ -49,5 +126,8 @@
       "text": "The list's old hero flag is now a real artwork column: a thumbnail when one is uploaded, a Generated tag when not.\n\nCashback pays at period close on these screens, not at the first hourly run that sees the threshold crossed. The numbers assume it.\n\nThe three lower screens show the content area only. The sidebar is the one drawn on the list screen above.\n\nBalance adjustment on the player Bonuses tab sits in the admin scope. It is reachable by clerks today, with no cap and no record of who did it."
     }
   ],
-  "launch": { "view": "canvas", "page": "player" }
+  "launch": {
+    "view": "canvas",
+    "page": "player"
+  }
 }

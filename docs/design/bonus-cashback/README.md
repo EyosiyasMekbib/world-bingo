@@ -14,10 +14,10 @@ carries the review notes.
 
 | File | Screen |
 |------|--------|
-| `PromoCards.dc.html` | The promo tile itself: generated, admin artwork, phone, expiry bar |
-| `LobbyPromo.dc.html` | Lobby hero, expiry bar and the offer strip |
+| `PromoCards.dc.html` | The promo tile: five across, generated vs artwork, phone, expiry bar |
+| `LobbyPromo.dc.html` | Lobby hero, expiry bar and the five-across offer carousel |
 | `Main.dc.html` | Wallet — the My Bonuses hub |
-| `Promotions.dc.html` | Promotions page with per-offer progress |
+| `Promotions.dc.html` | Promotions page — two-up grid of tiles with progress |
 | `BonusMoments.dc.html` | Bonus arrival toast, first-deposit modal, notification inbox |
 | `AdminPromotions.dc.html` | Admin — one Promotions list for every offer type |
 | `AdminPromoArtwork.dc.html` | Admin — artwork upload, requirements and live preview |
@@ -26,30 +26,35 @@ carries the review notes.
 
 ## The promo tile
 
-Every offer renders as one tile with the same shape whether or not artwork
-exists, which is what lets the two modes sit side by side in a row.
+**225 x 675** — the width is exactly a third of the height. Five fit a 1192px
+row with 16px gaps and three pixels to spare. One tile, the same shape whether
+or not artwork exists, which is what lets the two modes mix freely in a row.
 
-- **Head, 16:10.** Either an uploaded image filling it edge to edge, or a
-  generated composition: a tone-on-tone diamond lattice over a corner glow,
-  the amount set in Oswald with one gold gradient clipped to the text, and its
-  bevel and glow from two drop shadows. One kicker, one figure, one line, set
-  bottom-left so the top air can carry the seal.
-- **Foot.** The player's own progress, or the single action worth a button.
-  Always system-drawn, so uploading artwork never costs you personalisation.
+- **Head, 3:8 (600px).** Either an uploaded portrait image, or a generated
+  composition centred like a poster: a tone-on-tone diamond lattice over a top
+  glow, a seal, a kicker, then the amount in Oswald under one gold gradient
+  clipped to the text, its bevel and glow from two drop shadows.
+- **Foot, 75px.** The player's own progress, or the single action worth a
+  button. Always system-drawn, so uploading artwork never costs personalisation.
 
 One metal for the whole family rather than a different accent per offer.
-Variety is meant to come from the artwork, not from four competing colours.
+Variety is meant to come from the artwork, not from five competing colours.
+
+The row is a carousel: arrows beside the section link, dots underneath, more
+offers on the next page. On phones the same tile drops to 168 wide and shows
+two and a peek; the promotions page uses it in a two-up grid at 165.
 
 The expiry warning is not a tile. It is player state, so it sits above the
-strip as a full-width bar and is never artwork.
+carousel as a full-width bar and is never artwork.
 
 ## Artwork upload
 
-One 16:10 image per promotion, 1280x800 or larger, JPG, PNG or WebP under
-2 MB. No separate mobile crop, because the tile keeps its ratio at every size.
-A wrong aspect is refused rather than cropped: silently cropping cuts the
-headline off a finished design, which is the reason the existing hero banner
-code already refuses to draw anything over admin artwork.
+One portrait image per promotion at **3:8, 750 x 2000 or larger**, JPG, PNG or
+WebP under 2 MB. The same file is used at every width, scaled and never
+re-cropped, so there is no separate mobile asset. Anything that is not 3:8 is
+refused rather than cropped: a crop on a portrait card eats the headline and
+the admin never sees it happen. That mirrors the existing hero banner code,
+which already refuses to draw anything over admin artwork.
 
 ## Design values
 

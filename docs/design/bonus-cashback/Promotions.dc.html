@@ -9,180 +9,123 @@
 <helmet>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
   <style>
-    body {
-      margin: 0;
-      font-family: 'Inter', system-ui, sans-serif;
-      background: #0a0f1e;
-      color: #f1f5f9;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #0a0f1e; color: #f1f5f9; -webkit-font-smoothing: antialiased; }
     a { color: #f59e0b; text-decoration: none; }
     a:hover { color: #d97706; }
     .lbl { font-family: 'Barlow Condensed', system-ui, sans-serif; }
     .dsp { font-family: 'Oswald', system-ui, sans-serif; }
 
-    .tile {
-      border-radius: 18px; overflow: hidden;
-      background: #0e1729; border: 1px solid rgba(255,255,255,0.09);
-      box-shadow: 0 16px 38px rgba(0,0,0,0.5);
-      display: flex; flex-direction: column;
-    }
-    .head {
-      position: relative; height: 214px; isolation: isolate;
-      display: flex; flex-direction: column; justify-content: flex-end;
-      padding: 20px; box-sizing: border-box;
-    }
-    .ground { position: absolute; inset: 0; z-index: -3;
-      background:
-        radial-gradient(118% 132% at 14% -12%, var(--glow), transparent 58%),
-        linear-gradient(162deg, #182442 0%, #111c33 55%, #0a1020 100%);
-    }
-    .lattice { position: absolute; inset: 0; z-index: -2;
-      background-image:
-        repeating-linear-gradient(45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,0.034) 0 1px, transparent 1px 17px);
-    }
-    .vignette { position: absolute; inset: 0; z-index: -1;
-      background: radial-gradient(132% 108% at 50% 116%, rgba(0,0,0,0.44), transparent 58%);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.11);
-    }
-    .mark {
-      position: absolute; right: -12px; bottom: -24px; z-index: -1;
-      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
-      font-size: 132px; line-height: 0.78; letter-spacing: -4px;
-      color: rgba(255,255,255,0.042); pointer-events: none; user-select: none;
-    }
-    .metal {
-      background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 27%, #f0a51b 58%, #a8570a 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26));
-    }
-    .fig {
-      font-family: 'Oswald', system-ui, sans-serif; font-weight: 700;
-      font-size: 60px; line-height: 0.92; letter-spacing: -0.5px; margin: 0;
-    }
-    .fig .unit { font-size: 27px; letter-spacing: 0.5px; }
-    .kick {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      align-self: flex-start; font-size: 11px; font-weight: 700;
-      letter-spacing: 1.9px; text-transform: uppercase;
-      padding: 5px 11px; border-radius: 999px; margin-bottom: 14px;
-    }
-    .sub { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: rgba(255,255,255,0.68); max-width: 230px; }
-    .seal {
-      position: absolute; top: 18px; right: 18px; width: 66px; height: 66px;
-      border-radius: 999px; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 1px;
-      background: radial-gradient(circle at 50% 18%, rgba(252,211,77,0.16), transparent 62%), rgba(8,13,26,0.58);
-      border: 1px solid rgba(252,211,77,0.42);
-      box-shadow: inset 0 0 0 4px rgba(252,211,77,0.09), 0 6px 18px rgba(0,0,0,0.45);
-    }
-    .foot {
-      border-top: 1px solid rgba(255,255,255,0.08);
-      background: rgba(6,10,20,0.55);
-      padding: 13px 18px; box-sizing: border-box;
-      display: flex; flex-direction: column; justify-content: center; gap: 7px;
-    }
-    .footrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .footlbl { font-size: 12.5px; color: rgba(255,255,255,0.62); }
-    .footnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
-    .footnum em { font-style: normal; color: rgba(255,255,255,0.5); }
-    .footnote { font-size: 12.5px; color: rgba(255,255,255,0.5); }
-    .track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
-    .fill { height: 100%; border-radius: 999px; }
-    .cta {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      display: flex; align-items: center; justify-content: center; gap: 7px;
-      min-height: 44px; padding: 0 20px; border-radius: 10px;
-      background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #1a1205;
-      font-size: 14px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
-      box-shadow: 0 6px 16px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
-    }
+    /* same tile, 165 wide — the page is a two-up grid of it */
+    .tile { border-radius: 16px; overflow: hidden; background: #0e1729; border: 1px solid rgba(255,255,255,0.09); box-shadow: 0 16px 34px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+    .head { position: relative; height: 440px; isolation: isolate; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; text-align: center; }
+    .ground { position: absolute; inset: 0; z-index: -3; background: radial-gradient(96% 52% at 50% -6%, var(--glow), transparent 62%), linear-gradient(178deg, #1a2748 0%, #121e36 48%, #090f1e 100%); }
+    .lattice { position: absolute; inset: 0; z-index: -2; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.032) 0 1px, transparent 1px 16px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.032) 0 1px, transparent 1px 16px); }
+    .vignette { position: absolute; inset: 0; z-index: -1; background: radial-gradient(84% 44% at 50% 106%, rgba(0,0,0,0.5), transparent 62%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.11); }
+    .mark { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: -1; font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 96px; line-height: 0.78; letter-spacing: -3px; color: rgba(255,255,255,0.04); white-space: nowrap; }
+    .metal { background: linear-gradient(180deg, #fff6d0 0%, #fcd34d 26%, #f0a51b 58%, #a8570a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 8px 18px rgba(245,158,11,0.26)); }
+    .fig { font-family: 'Oswald', system-ui, sans-serif; font-weight: 700; font-size: 66px; line-height: 0.86; letter-spacing: -1.5px; margin: 0; }
+    .unit { font-family: 'Oswald', system-ui, sans-serif; font-weight: 600; font-size: 18px; letter-spacing: 4px; margin: 3px 0 0; }
+    .kick { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: 1.7px; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 14px; }
+    .sub { margin: 12px 0 0; font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,0.66); max-width: 128px; }
+    .seal { width: 54px; height: 54px; margin-bottom: 16px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; flex-shrink: 0; background: radial-gradient(circle at 50% 18%, rgba(252,211,77,0.16), transparent 62%), rgba(8,13,26,0.58); border: 1px solid rgba(252,211,77,0.42); box-shadow: inset 0 0 0 3px rgba(252,211,77,0.09), 0 6px 18px rgba(0,0,0,0.45); }
+    .foot { height: 60px; box-sizing: border-box; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(6,10,20,0.6); padding: 0 12px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+    .frow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+    .flbl { font-size: 11px; color: rgba(255,255,255,0.6); white-space: nowrap; }
+    .fnum { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 12.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .fnum em { font-style: normal; color: rgba(255,255,255,0.5); }
+    .track { height: 5px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: hidden; }
+    .cta { font-family: 'Barlow Condensed', system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 9px; background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #1a1205; font-size: 12.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; box-shadow: 0 5px 14px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.4); }
     .art { position: absolute; inset: 0; overflow: hidden; }
-    .art .rays {
-      position: absolute; inset: -40%;
-      background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.055) 0deg 4deg, transparent 4deg 12deg);
-    }
-    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-    .ribbon {
-      font-family: 'Barlow Condensed', system-ui, sans-serif;
-      font-size: 11px; font-weight: 700; letter-spacing: 2.3px; text-transform: uppercase;
-      padding: 5px 15px; color: #1a1205;
-      background: linear-gradient(180deg, #fde68a, #f0a51b);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-      clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%);
-    }
+    .rays { position: absolute; inset: -55%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.05) 0deg 3.5deg, transparent 3.5deg 11deg); }
+    .artwrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 14px; box-sizing: border-box; }
+    .ribbon { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 8.5px; font-weight: 700; letter-spacing: 1.7px; text-transform: uppercase; padding: 4px 11px; color: #1a1205; background: linear-gradient(180deg, #fde68a, #f0a51b); box-shadow: 0 4px 10px rgba(0,0,0,0.45); clip-path: polygon(5px 0, calc(100% - 5px) 0, 100% 50%, calc(100% - 5px) 100%, 5px 100%, 0 50%); }
   </style>
 </helmet>
 
-<div style="--accent: {{accent}}; min-height: 1220px; background: #0a0f1e; padding: 28px 24px 48px; display: flex; flex-direction: column; gap: 20px">
+<div style="--accent: {{accent}}; min-height: 1310px; background: #0a0f1e; padding: 28px 24px 48px; display: flex; flex-direction: column; gap: 20px">
 
   <!-- ══ HEADER ══ -->
-  <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 2px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
     <h1 class="dsp" style="font-size: 30px; font-weight: 700; letter-spacing: -0.3px; text-transform: uppercase; color: #f1f5f9; margin: 0">Promotions</h1>
     <p style="font-size: 0.9rem; color: #a9b7c9; margin: 0; line-height: 1.55; text-wrap: pretty">Everything you can earn right now. Your progress updates as you play.</p>
   </div>
 
-  <!-- ══ WELCOME ══ -->
-  <div class="tile">
-    <div class="head" style="--glow: rgba(245,158,11,0.30)">
-      <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
-      <div class="mark">+50</div>
-      <div class="seal">
-        <span class="lbl" style="font-size: 16px; font-weight: 700; color: #fcd34d; line-height: 1">1</span>
-        <span class="lbl" style="font-size: 8px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(252,211,77,0.75); line-height: 1">st dep</span>
-      </div>
-      <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Welcome Offer</span>
-      <p class="fig metal">50 <span class="unit">ETB</span></p>
-      <p class="sub">Yours the moment your first deposit is approved</p>
-    </div>
-    <div class="foot">
-      <div class="cta">
-        Deposit now
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width: 13px; height: 13px"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-  </div>
+  <!-- ══ TWO-UP GRID ══ -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 12px">
 
-  <!-- ══ CASHBACK — admin artwork ══ -->
-  <div class="tile">
-    <div class="head" style="padding: 0">
-      <div class="art" style="background: linear-gradient(158deg, #0b3b34 0%, #0d5148 48%, #07271f 100%)">
-        <div class="rays"></div>
-        <div style="position: absolute; inset: 0; background: radial-gradient(120% 110% at 50% 118%, rgba(0,0,0,0.5), transparent 58%)"></div>
-        <div class="artwrap">
-          <span class="ribbon">Weekend Special</span>
-          <div class="dsp metal" style="font-size: 50px; font-weight: 700; line-height: 0.94; letter-spacing: -1px">10% BACK</div>
-          <div class="lbl" style="font-size: 13px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: rgba(255,255,255,0.72)">Every Monday</div>
+    <!-- welcome -->
+    <div class="tile">
+      <div class="head" style="--glow: rgba(245,158,11,0.30)">
+        <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+        <div class="mark">+50</div>
+        <div class="seal">
+          <span class="lbl" style="font-size: 14px; font-weight: 700; color: #fcd34d; line-height: 1">1</span>
+          <span class="lbl" style="font-size: 7px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: rgba(252,211,77,0.78); line-height: 1">st dep</span>
+        </div>
+        <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Welcome Offer</span>
+        <p class="fig metal">50</p>
+        <p class="unit metal">ETB</p>
+        <p class="sub">On your first approved deposit</p>
+      </div>
+      <div class="foot"><div class="cta">Deposit now</div></div>
+    </div>
+
+    <!-- cashback, artwork -->
+    <div class="tile">
+      <div class="head" style="padding: 0">
+        <div class="art" style="background: linear-gradient(176deg, #0c443b 0%, #0d5148 44%, #05201a 100%)">
+          <div class="rays"></div>
+          <div style="position: absolute; inset: 0; background: radial-gradient(86% 46% at 50% 108%, rgba(0,0,0,0.55), transparent 62%)"></div>
+          <div class="artwrap">
+            <span class="ribbon">Weekend Special</span>
+            <div class="dsp metal" style="font-size: 72px; font-weight: 700; line-height: 0.84; letter-spacing: -2px; margin-top: 16px">10%</div>
+            <div class="dsp metal" style="font-size: 23px; font-weight: 700; line-height: 1; letter-spacing: 2.5px">BACK</div>
+            <div class="lbl" style="margin-top: 14px; font-size: 10.5px; font-weight: 600; letter-spacing: 1.9px; text-transform: uppercase; color: rgba(255,255,255,0.7)">On every loss</div>
+            <div class="lbl" style="margin-top: 16px; padding: 5px 11px; border-radius: 999px; border: 1px solid rgba(252,211,77,0.4); font-size: 9px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: #fcd34d">Paid Mondays</div>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="foot">
-      <div class="footrow">
-        <span class="footlbl">Your loss this week</span>
-        <span class="footnum">320 <em>/ 500 ETB</em></span>
+      <div class="foot">
+        <div class="frow"><span class="flbl">This week</span><span class="fnum">320 <em>/ 500</em></span></div>
+        <div class="track"><div style="width: 64%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
       </div>
-      <div class="track"><div class="fill" style="width: 64%; background: linear-gradient(90deg, #0e7490, #22d3ee)"></div></div>
-      <span class="footnote">180 ETB to go &middot; pays out Sunday 23:59</span>
     </div>
-  </div>
 
-  <!-- ══ DAILY DEPOSIT ══ -->
-  <div class="tile">
-    <div class="head" style="--glow: rgba(245,158,11,0.22)">
-      <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
-      <div class="mark">24H</div>
-      <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Daily Bonus</span>
-      <p class="fig metal">+50 <span class="unit">ETB</span></p>
-      <p class="sub">Deposit 500 ETB in a day, play with 550</p>
-    </div>
-    <div class="foot">
-      <div class="footrow">
-        <span class="footlbl">Deposited today</span>
-        <span class="footnum">200 <em>/ 500 ETB</em></span>
+    <!-- daily -->
+    <div class="tile">
+      <div class="head" style="--glow: rgba(245,158,11,0.22)">
+        <div class="ground"></div><div class="lattice"></div><div class="vignette"></div>
+        <div class="mark">24H</div>
+        <span class="kick" style="color: #fcd34d; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.34)">Daily Bonus</span>
+        <p class="fig metal">+50</p>
+        <p class="unit metal">ETB</p>
+        <p class="sub">Deposit 500 in a day, play with 550</p>
       </div>
-      <div class="track"><div class="fill" style="width: 40%; background: linear-gradient(90deg, #b45309, #f59e0b)"></div></div>
-      <span class="footnote">300 ETB to go &middot; resets in 3h &middot; bonus valid 24h</span>
+      <div class="foot">
+        <div class="frow"><span class="flbl">Today</span><span class="fnum">200 <em>/ 500</em></span></div>
+        <div class="track"><div style="width: 40%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #b45309, #f59e0b)"></div></div>
+      </div>
+    </div>
+
+    <!-- tournament, artwork -->
+    <div class="tile">
+      <div class="head" style="padding: 0">
+        <div class="art" style="background: linear-gradient(176deg, #4a0d16 0%, #6d1528 44%, #25060d 100%)">
+          <div class="rays"></div>
+          <div style="position: absolute; inset: 0; background: radial-gradient(86% 46% at 50% 108%, rgba(0,0,0,0.55), transparent 62%)"></div>
+          <div class="artwrap">
+            <span class="ribbon">Saturday 20:00</span>
+            <div class="lbl" style="margin-top: 18px; font-size: 10.5px; font-weight: 600; letter-spacing: 2.4px; text-transform: uppercase; color: rgba(255,255,255,0.68)">Prize pool</div>
+            <div class="dsp metal" style="font-size: 62px; font-weight: 700; line-height: 0.86; letter-spacing: -2px; margin-top: 3px">500K</div>
+            <div class="dsp metal" style="font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: 4px">ETB</div>
+            <div class="dsp" style="margin-top: 16px; font-size: 20px; font-weight: 700; line-height: 1.02; letter-spacing: 0.4px; text-transform: uppercase; color: #fff">Grand<br>Tournament</div>
+          </div>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="frow"><span class="flbl">Seats left</span><span class="fnum">48 <em>/ 512</em></span></div>
+        <div class="track"><div style="width: 91%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #9f1239, #fb7185)"></div></div>
+      </div>
     </div>
   </div>
 
@@ -201,7 +144,7 @@
 </div>
 </x-dc>
 
-<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":390,"height":1220}}'>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#f59e0b","options":["#f59e0b","#00ff9d","#06b6d4","#a855f7"],"section":"Brand"},"$preview":{"width":390,"height":1310}}'>
 class Component extends DCLogic {
   renderVals() {
     return { accent: this.props.accent ?? '#f59e0b' };
