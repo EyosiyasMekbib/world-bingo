@@ -83,7 +83,7 @@ export class RefundService {
 
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
-                let realAfter = realBefore.plus(realRefund)
+                const realAfter = realBefore.plus(realRefund)
                 let bonusAfter = bonusBefore
 
                 if (realRefund.gt(0)) {

@@ -18,6 +18,13 @@ describe('WalletService — Withdrawal flow (T15)', () => {
         testUserId = user.id
     })
 
+    // requestWithdrawal refuses a new request while one is still PENDING_REVIEW,
+    // so flows that need a second withdrawal settle the first one the way the
+    // admin approval path does.
+    async function settle(txId: string) {
+        await prisma.transaction.update({ where: { id: txId }, data: { status: PaymentStatus.APPROVED } })
+    }
+
     describe('requestWithdrawal — complete flow', () => {
         it('should enforce minimum withdrawal of 100 Birr', async () => {
             await expect(
@@ -67,12 +74,32 @@ describe('WalletService — Withdrawal flow (T15)', () => {
             ).rejects.toThrow('Insufficient balance')
         })
 
-        it('should allow multiple withdrawals that do not exceed balance', async () => {
+        it('should reject a second request while the first is still pending review', async () => {
             await WalletService.requestWithdrawal(testUserId, {
                 amount: 400,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
+
+            await expect(
+                WalletService.requestWithdrawal(testUserId, {
+                    amount: 400,
+                    paymentMethod: 'Telebirr',
+                    accountNumber: '0911111111',
+                }),
+            ).rejects.toMatchObject({ statusCode: 409 })
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.realBalance)).toBe(600) // only the first one deducted
+        })
+
+        it('should allow multiple withdrawals that do not exceed balance', async () => {
+            const first = await WalletService.requestWithdrawal(testUserId, {
+                amount: 400,
+                paymentMethod: 'Telebirr',
+                accountNumber: '0911111111',
+            })
+            await settle(first.id)
 
             await WalletService.requestWithdrawal(testUserId, {
                 amount: 400,
@@ -85,12 +112,13 @@ describe('WalletService — Withdrawal flow (T15)', () => {
         })
 
         it('should reject withdrawal that would make balance negative', async () => {
-            // First withdrawal succeeds
-            await WalletService.requestWithdrawal(testUserId, {
+            // First withdrawal succeeds and is settled
+            const first = await WalletService.requestWithdrawal(testUserId, {
                 amount: 900,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
+            await settle(first.id)
 
             // Second withdrawal should fail (only 100 left, need 200)
             await expect(
@@ -106,11 +134,12 @@ describe('WalletService — Withdrawal flow (T15)', () => {
     describe('getTransactions — pagination and filtering', () => {
         beforeEach(async () => {
             // Create some transactions
-            await WalletService.requestWithdrawal(testUserId, {
+            const first = await WalletService.requestWithdrawal(testUserId, {
                 amount: 100,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
+            await settle(first.id)
             await WalletService.requestWithdrawal(testUserId, {
                 amount: 200,
                 paymentMethod: 'CBE',
