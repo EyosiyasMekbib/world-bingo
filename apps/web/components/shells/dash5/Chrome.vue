@@ -64,7 +64,7 @@ const {
       </svg>
     </button>
     <NuxtLink to="/" class="d5-nav-link" exact-active-class="d5-nav-active">Home</NuxtLink>
-    <NuxtLink to="/games/mini" class="d5-nav-link" active-class="d5-nav-active">Aviator</NuxtLink>
+    <NuxtLink to="/aviator" class="d5-nav-link" active-class="d5-nav-active">Aviator</NuxtLink>
     <NuxtLink to="/games" class="d5-nav-link" exact-active-class="d5-nav-active">Games</NuxtLink>
     <NuxtLink
       v-if="predictionsEnabled"

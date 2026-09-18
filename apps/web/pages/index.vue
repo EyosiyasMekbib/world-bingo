@@ -169,7 +169,7 @@ const BASE_SLIDES: HeroSlide[] = [
     watermark: 'X10',
     gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
     accent: '#34d399',
-    action: 'games',
+    action: 'aviator',
   },
   {
     id: 'bingo',
@@ -334,6 +334,9 @@ function heroAction(slide: HeroSlide) {
   if (action === 'predictions') {
     track('hero_predictions_click')
     navigateTo('/predictions')
+  } else if (action === 'aviator') {
+    // Into the game itself, via the same resolver as the Aviator nav tab.
+    navigateTo('/aviator')
   } else if (action === 'rooms') {
     document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
     selectCategory('BINGO')
