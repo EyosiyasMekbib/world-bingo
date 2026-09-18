@@ -32,6 +32,19 @@ type SearchResult = {
     imageLandscape: string | null
 }
 
+/** One launchable catalog row, as findGameByName() returns it. */
+type NamedGameRow = Pick<
+    SearchResult,
+    | 'providerCode'
+    | 'providerName'
+    | 'vendorCode'
+    | 'gameCode'
+    | 'gameName'
+    | 'categoryCode'
+    | 'imageSquare'
+    | 'imageLandscape'
+>
+
 function normalizeQuery(query: string) {
     return query.trim().toLowerCase()
 }
@@ -487,29 +500,11 @@ export class GameCatalogService {
      * decides, so this launches the same copy the lobby tile does.
      * null when no ACTIVE provider carries the title right now.
      */
-    static async findGameByName(nameKey: string): Promise<{
-        providerCode: string
-        providerName: string
-        vendorCode: string | null
-        gameCode: string
-        gameName: string
-        categoryCode: string
-        imageSquare: string | null
-        imageLandscape: string | null
-    } | null> {
+    static async findGameByName(nameKey: string): Promise<NamedGameRow | null> {
         const key = toNameKey(nameKey)
         if (!key) return null
 
-        const rows = await prisma.$queryRaw<Array<{
-            providerCode: string
-            providerName: string
-            vendorCode: string | null
-            gameCode: string
-            gameName: string
-            categoryCode: string
-            imageSquare: string | null
-            imageLandscape: string | null
-        }>>`
+        const rows = await prisma.$queryRaw<NamedGameRow[]>`
             SELECT p.code            AS "providerCode",
                    p.name            AS "providerName",
                    v.code            AS "vendorCode",

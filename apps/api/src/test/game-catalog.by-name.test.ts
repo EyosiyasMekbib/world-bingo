@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import Fastify from 'fastify'
-import gameProviderRoutes from '../routes/game-provider/index'
 import { GameCatalogService } from '../services/game-catalog.service'
+import { buildGameProviderApp } from './fixtures/game-provider-app'
 import { prisma } from './setup'
 
 vi.mock('../lib/redis', () => ({
@@ -12,14 +11,6 @@ vi.mock('../lib/redis', () => ({
     keys: vi.fn().mockResolvedValue([]),
   },
 }))
-
-async function buildApp() {
-  const app = Fastify({ logger: false })
-  app.decorate('authenticate', async () => {})
-  await app.register(gameProviderRoutes, { prefix: '/providers' })
-  await app.ready()
-  return app
-}
 
 const GAME_DEFAULTS = {
   imageSquare: null,
@@ -90,7 +81,7 @@ describe('GET /providers/games/by-name/:nameKey', () => {
       ],
     })
     await GameCatalogService.applyShadowing()
-    const app = await buildApp()
+    const app = await buildGameProviderApp()
 
     const res = await app.inject({ method: 'GET', url: '/providers/games/by-name/aviator' })
 
@@ -137,7 +128,7 @@ describe('GET /providers/games/by-name/:nameKey', () => {
       ],
     })
     await GameCatalogService.applyShadowing()
-    const app = await buildApp()
+    const app = await buildGameProviderApp()
 
     const res = await app.inject({ method: 'GET', url: '/providers/games/by-name/aviator' })
 
@@ -157,7 +148,7 @@ describe('GET /providers/games/by-name/:nameKey', () => {
         categoryCode: 'MINI',
       },
     })
-    const app = await buildApp()
+    const app = await buildGameProviderApp()
 
     const res = await app.inject({ method: 'GET', url: '/providers/games/by-name/aviator' })
 
