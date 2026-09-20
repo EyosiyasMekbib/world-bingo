@@ -88,6 +88,8 @@ export enum NotificationType {
     CAMPAIGN_MESSAGE = 'CAMPAIGN_MESSAGE',
     SUPPORT_REPLY = 'SUPPORT_REPLY',
     ACCOUNT_STATUS_CHANGED = 'ACCOUNT_STATUS_CHANGED',
+    BONUS_GRANTED = 'BONUS_GRANTED',
+    BONUS_EXPIRING = 'BONUS_EXPIRING',
 }
 
 export enum TournamentStatus {
@@ -108,6 +110,20 @@ export enum CashbackFrequency {
     MONTHLY = 'MONTHLY',
 }
 
+/**
+ * When a cashback promotion actually pays out.
+ *
+ * PERIOD_CLOSE waits for the day/week/month to end and pays the accrued total
+ * once, which is the cheapest to reason about and the only behaviour that
+ * existed before this enum. ON_THRESHOLD pays as soon as the accrual crosses
+ * the promotion's minimum, so a player who loses early does not wait out the
+ * rest of the period to see anything back.
+ */
+export enum CashbackPayoutTiming {
+    PERIOD_CLOSE = 'PERIOD_CLOSE',
+    ON_THRESHOLD = 'ON_THRESHOLD',
+}
+
 export enum BonusRuleType {
     DAILY_DEPOSIT = 'DAILY_DEPOSIT',
     WEEKLY_DEPOSIT = 'WEEKLY_DEPOSIT',
@@ -122,6 +138,39 @@ export enum BonusGrantStatus {
     ACTIVE = 'ACTIVE',
     CONSUMED = 'CONSUMED',
     EXPIRED = 'EXPIRED',
+}
+
+/**
+ * Why a bonus grant exists. TransactionType already records the ledger entry,
+ * but a grant outlives its credit -- it expires, gets consumed, gets reported
+ * on -- so the reason has to live on the grant itself rather than be re-derived
+ * from the transaction each time.
+ *
+ * REFUND is the reversal case: bonus money handed back when a game a player
+ * entered with bonus funds is cancelled.
+ */
+export enum BonusSource {
+    FIRST_DEPOSIT = 'FIRST_DEPOSIT',
+    DAILY_DEPOSIT = 'DAILY_DEPOSIT',
+    WEEKLY_DEPOSIT = 'WEEKLY_DEPOSIT',
+    CASHBACK = 'CASHBACK',
+    CAMPAIGN = 'CAMPAIGN',
+    ADMIN = 'ADMIN',
+    REFUND = 'REFUND',
+}
+
+/**
+ * The kind of promotion a public promo tile stands for. This is a presentation
+ * grouping, not a storage one: WELCOME and REFERRAL are site settings with no
+ * row of their own, while CASHBACK and DEPOSIT_RULE point at a
+ * CashbackPromotion or a BonusRule. PromoArtwork keys off this plus a refId so
+ * all four can carry admin-uploaded art through one table.
+ */
+export enum PromoKind {
+    WELCOME = 'WELCOME',
+    CASHBACK = 'CASHBACK',
+    DEPOSIT_RULE = 'DEPOSIT_RULE',
+    REFERRAL = 'REFERRAL',
 }
 
 export enum SpendAccount {

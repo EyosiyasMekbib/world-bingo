@@ -14,6 +14,19 @@ import { reportError } from '../lib/sentry'
 import { captureEvent } from '../lib/posthog'
 import { emitDepositApproved, hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
+/**
+ * Player-facing expiry wording. Bonus windows are lived in Addis time (see
+ * lib/bonus-period), so a UTC rendering would be off by three hours and put a
+ * late-evening expiry on the wrong day.
+ */
+function formatAddisTime(at: Date): string {
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Africa/Addis_Ababa',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(at)
+}
+
 export class WalletService {
     static async getBalance(userId: string) {
         const wallet = await prisma.wallet.findUnique({
@@ -326,12 +339,35 @@ export class WalletService {
                     rule_id: null,
                 })
             }
-            for (const grant of [...depositBonusResult.daily, ...depositBonusResult.weekly]) {
+            const depositBonusGrants = [...depositBonusResult.daily, ...depositBonusResult.weekly]
+            for (const grant of depositBonusGrants) {
                 void captureEvent(transaction.userId, 'bonus_granted', {
                     amount: Number(grant.amount),
                     source: 'DEPOSIT_RULE',
                     rule_id: grant.ruleId,
                 })
+            }
+
+            // One notification per rule that paid. The DEPOSIT_APPROVED message
+            // below speaks only for the first-deposit bonus, so without these a
+            // threshold bonus is a silent balance jump the player has no way to
+            // explain — or to spend before it expires. Fire-and-forget after
+            // commit: the grant is already durable, and a notification failure
+            // must never take the money with it.
+            for (const grant of depositBonusGrants) {
+                void NotificationService.create(
+                    transaction.userId,
+                    NotificationType.BONUS_GRANTED,
+                    'Bonus Received 🎁',
+                    `You earned a ${Number(grant.amount).toFixed(2)} ETB bonus from ${grant.name}. Use it before ${formatAddisTime(grant.expiresAt)}.`,
+                    {
+                        amount: Number(grant.amount),
+                        source: 'DEPOSIT_RULE',
+                        ruleId: grant.ruleId,
+                        ruleName: grant.name,
+                        expiresAt: grant.expiresAt.toISOString(),
+                    },
+                ).catch(() => {})
             }
 
             // Metrics: deposit approved (post-commit). The payment method is stored
@@ -359,6 +395,11 @@ export class WalletService {
             }
             if (bonusAwarded > 0) {
                 metadata.bonusAwarded = bonusAwarded
+            }
+            if (depositBonusTotal.gt(0)) {
+                // Distinct from `bonusAwarded`, which is the first-deposit bonus alone:
+                // the two are independent and a single deposit can carry both.
+                metadata.depositBonusAwarded = depositBonusTotal.toNumber()
             }
 
             await NotificationService.create(

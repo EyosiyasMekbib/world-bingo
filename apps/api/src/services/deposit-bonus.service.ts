@@ -1,11 +1,24 @@
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
+import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
 import { BonusService } from './bonus.service'
 import { dayBucketStart, weekBucketStart } from '../lib/bonus-period'
 
+/**
+ * `name` and `expiresAt` ride along so the post-commit caller can tell the
+ * player which rule paid and how long they have, without re-reading the rule
+ * or the lot it just created.
+ */
+export interface GrantedDepositBonus {
+    ruleId: string
+    amount: Decimal
+    name: string
+    expiresAt: Date
+}
+
 export interface EvaluateDepositBonusResult {
-    daily: Array<{ ruleId: string; amount: Decimal }>
-    weekly: Array<{ ruleId: string; amount: Decimal }>
+    daily: GrantedDepositBonus[]
+    weekly: GrantedDepositBonus[]
 }
 
 function computeReward(rule: { rewardType: string; rewardValue: Decimal | number; maxReward: Decimal | number | null }, bucketTotal: Decimal): Decimal {
@@ -65,6 +78,13 @@ export class DepositBonusService {
 
         const result: EvaluateDepositBonusResult = { daily: [], weekly: [] }
 
+        // The ledger rows below carry the REAL balance in balanceBefore/
+        // balanceAfter — a bonus grant never moves it, so both snapshots hold
+        // the same figure, matching the FIRST_DEPOSIT_BONUS row wallet.service
+        // writes. Read lazily and once: a deposit that clears no threshold at
+        // all should not pay for the query.
+        let realBalance: Decimal | null = null
+
         for (const rule of rules) {
             if (rule.isSegmentScoped && !memberOf.has(rule.id)) continue
 
@@ -93,8 +113,32 @@ export class DepositBonusService {
             })
             if (!grantResult.granted) continue
 
-            if (rule.type === 'DAILY_DEPOSIT') result.daily.push({ ruleId: rule.id, amount: reward })
-            else result.weekly.push({ ruleId: rule.id, amount: reward })
+            if (realBalance === null) {
+                const wallet = await tx.wallet.findUnique({ where: { userId }, select: { realBalance: true } })
+                realBalance = new Decimal(wallet?.realBalance ?? 0)
+            }
+
+            // Written inside this same transaction as the grant: a lot without
+            // its ledger row is an unexplained balance jump, and the two must
+            // roll back together.
+            await tx.transaction.create({
+                data: {
+                    userId,
+                    type: rule.type === 'DAILY_DEPOSIT' ? TransactionType.DAILY_DEPOSIT_BONUS : TransactionType.WEEKLY_DEPOSIT_BONUS,
+                    amount: reward,
+                    status: PaymentStatus.APPROVED,
+                    referenceId: rule.id,
+                    note: `Deposit bonus: ${rule.name}`,
+                    balanceBefore: realBalance,
+                    balanceAfter: realBalance,
+                    bonusBalanceBefore: grantResult.bonusBalanceBefore,
+                    bonusBalanceAfter: grantResult.bonusBalanceAfter,
+                },
+            })
+
+            const granted: GrantedDepositBonus = { ruleId: rule.id, amount: reward, name: rule.name, expiresAt }
+            if (rule.type === 'DAILY_DEPOSIT') result.daily.push(granted)
+            else result.weekly.push(granted)
         }
 
         return result

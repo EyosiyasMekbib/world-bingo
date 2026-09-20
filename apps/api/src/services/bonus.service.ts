@@ -1,10 +1,16 @@
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import prisma from '../lib/prisma'
-import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import { TransactionType, PaymentStatus, BonusSource } from '@world-bingo/shared-types'
 import { NotificationService } from './notification.service'
 
-export type BonusGrantSource = 'FIRST_DEPOSIT' | 'DAILY_DEPOSIT' | 'WEEKLY_DEPOSIT' | 'CASHBACK' | 'CAMPAIGN' | 'ADMIN'
+// Single source of truth is the shared `BonusSource` enum, which is also the
+// Postgres enum backing `bonus_grants.source`. Spelled as a template-literal
+// union rather than the enum itself so the call sites keep passing plain
+// literals ('CASHBACK', 'CAMPAIGN', ...) — a string literal is not assignable
+// to a TS enum member type, but it is to the union of the enum's values, and
+// enum members remain assignable here too.
+export type BonusGrantSource = `${BonusSource}`
 
 export interface GrantBonusParams {
     userId: string
@@ -98,9 +104,11 @@ export class BonusService {
         const expiresAtUtc = params.expiresAt ? params.expiresAt.toISOString() : null
         const ruleId = params.ruleId ?? null
 
+        // `source` is bound with an explicit cast: the driver sends it as text and
+        // Postgres will not implicitly coerce text into the "BonusSource" enum.
         const rows = await tx.$queryRaw<Array<{ id: string }>>`
-            INSERT INTO bonus_grants (id, "userId", "ruleId", amount, remaining, "periodStart", "expiresAt", status, "createdAt")
-            VALUES (gen_random_uuid(), ${params.userId}, ${ruleId}, ${amount}, ${amount}, ${periodStartUtc}::timestamp, ${expiresAtUtc}::timestamp, 'ACTIVE', NOW())
+            INSERT INTO bonus_grants (id, "userId", "ruleId", amount, remaining, "periodStart", "expiresAt", status, source, "createdAt")
+            VALUES (gen_random_uuid(), ${params.userId}, ${ruleId}, ${amount}, ${amount}, ${periodStartUtc}::timestamp, ${expiresAtUtc}::timestamp, 'ACTIVE', ${params.source}::"BonusSource", NOW())
             ON CONFLICT ("ruleId", "userId", "periodStart") DO NOTHING
             RETURNING id
         `
@@ -207,14 +215,19 @@ export class BonusService {
         return { reduced: consumed, bonusBalanceBefore, bonusBalanceAfter: bonusBalanceBefore.minus(consumed) }
     }
 
-    /** Recreates a lot for refunded bonus, carrying the ORIGINAL expiry — never a fresh window. */
+    /**
+     * Recreates a lot for refunded bonus, carrying the ORIGINAL expiry — never a
+     * fresh window. Sourced REFUND, not ADMIN: nobody granted this, it is money
+     * handed back, and a refund lot showing up as a manual admin credit would
+     * overstate what operators actually gave away.
+     */
     static async restore(
         tx: Prisma.TransactionClient,
         userId: string,
         amount: Decimal | number,
         expiresAt: Date | null,
     ): Promise<GrantBonusResult> {
-        return this.grant(tx, { userId, amount, source: 'ADMIN', ruleId: null, expiresAt })
+        return this.grant(tx, { userId, amount, source: 'REFUND', ruleId: null, expiresAt })
     }
 
     /**

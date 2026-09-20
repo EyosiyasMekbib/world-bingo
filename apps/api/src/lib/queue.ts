@@ -38,6 +38,7 @@ export const QUEUE_NAMES = {
     CRM_CAMPAIGN: 'crm-campaign',
     PREDICTION: 'prediction',
     BONUS_EXPIRY: 'bonus-expiry',
+    BONUS_REMINDER: 'bonus-reminder',
     ZARECASH_DEPOSIT: 'zarecash-deposit',
     ZARECASH_EVENT: 'zarecash-event',
     ZARECASH_WITHDRAWAL: 'zarecash-withdrawal',

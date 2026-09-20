@@ -314,6 +314,8 @@ enum NotificationType {
   PREDICTION_VOIDED
   SUPPORT_REPLY
   ACCOUNT_STATUS_CHANGED
+  BONUS_GRANTED
+  BONUS_EXPIRING
 }
 
 model ReferralReward {
@@ -375,6 +377,11 @@ enum CashbackFrequency {
   MONTHLY
 }
 
+enum CashbackPayoutTiming {
+  PERIOD_CLOSE // pay out when the evaluation window closes
+  ON_THRESHOLD // pay out as soon as the loss threshold is crossed
+}
+
 enum BonusRuleType {
   DAILY_DEPOSIT
   WEEKLY_DEPOSIT
@@ -391,9 +398,31 @@ enum BonusGrantStatus {
   EXPIRED
 }
 
+/// Where a BonusGrant came from. Only the deposit-rule sources are derivable
+/// from a grant's ruleId; everything credited outside a rule carries its own
+/// source so the player-facing history can name it.
+enum BonusSource {
+  FIRST_DEPOSIT
+  DAILY_DEPOSIT
+  WEEKLY_DEPOSIT
+  CASHBACK
+  CAMPAIGN
+  ADMIN // manual credit, and the fallback for anything unattributed
+  REFUND
+}
+
 enum SpendAccount {
   REAL
   BONUS
+}
+
+/// Which promo surface a PromoArtwork image belongs to. Pairs with
+/// PromoArtwork.refId, whose meaning depends on this kind.
+enum PromoKind {
+  WELCOME // refId = "welcome" (singleton)
+  CASHBACK // refId = CashbackPromotion.id
+  DEPOSIT_RULE // refId = BonusRule.id
+  REFERRAL // refId = "referral" (singleton)
 }
 
 model Tournament {
@@ -449,19 +478,23 @@ model TournamentGame {
 
 // ─── Cashback Promotions ──────────────────────────────────────────────────────
 model CashbackPromotion {
-  id               String                 @id @default(uuid())
-  name             String
-  lossThreshold    Decimal                @db.Decimal(12, 2) // net real-balance loss required to qualify
-  refundType       CashbackRefundType // PERCENTAGE or FIXED
-  refundValue      Decimal                @db.Decimal(10, 2) // e.g. 10.00 = 10% OR 50.00 = 50 ETB flat
-  frequency        CashbackFrequency // evaluation window: DAILY | WEEKLY | MONTHLY
-  templateIds      String[]               @default([]) // GameTemplate ids this promotion is scoped to; empty = every bingo template
-  providerGameKeys String[]               @default([]) // "<providerId>:<gameCode>" pairs; empty = every provider game
-  startsAt         DateTime
-  endsAt           DateTime
-  isActive         Boolean                @default(true)
-  createdAt        DateTime               @default(now())
-  disbursements    CashbackDisbursement[]
+  id                 String                 @id @default(uuid())
+  name               String
+  lossThreshold      Decimal                @db.Decimal(12, 2) // net real-balance loss required to qualify
+  refundType         CashbackRefundType // PERCENTAGE or FIXED
+  refundValue        Decimal                @db.Decimal(10, 2) // e.g. 10.00 = 10% OR 50.00 = 50 ETB flat
+  frequency          CashbackFrequency // evaluation window: DAILY | WEEKLY | MONTHLY
+  templateIds        String[]               @default([]) // GameTemplate ids this promotion is scoped to; empty = every bingo template
+  providerGameKeys   String[]               @default([]) // "<providerId>:<gameCode>" pairs; empty = every provider game
+  maxPayoutPerPlayer Decimal?               @db.Decimal(12, 2) // per-player cap for one period; null = uncapped
+  periodBudget       Decimal?               @db.Decimal(12, 2) // total spend allowed in one period; null = unlimited
+  payoutTiming       CashbackPayoutTiming   @default(PERIOD_CLOSE) // PERIOD_CLOSE | ON_THRESHOLD
+  bonusValidityHours Int                    @default(168) // hours the granted bonus stays spendable (168 = 7 days)
+  startsAt           DateTime
+  endsAt             DateTime
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  disbursements      CashbackDisbursement[]
 
   @@map("cashback_promotions")
 }
@@ -516,6 +549,7 @@ model BonusGrant {
   periodStart DateTime
   expiresAt   DateTime?
   status      BonusGrantStatus @default(ACTIVE)
+  source      BonusSource      @default(ADMIN) // provenance; ADMIN is the fallback for unattributed credits
   createdAt   DateTime         @default(now())
   rule        BonusRule?       @relation(fields: [ruleId], references: [id])
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -753,6 +787,26 @@ model HeroBanner {
 
   @@index([isActive, position])
   @@map("hero_banners")
+}
+
+// Admin-managed promo artwork. One image per promo surface, keyed by the kind
+// plus the id of the thing it illustrates (refId), so the unique constraint is
+// what an upsert from the admin panel targets. No relation: the singleton kinds
+// (WELCOME, REFERRAL) have no row to point at. "position" orders the promo list
+// when several are shown together; null sinks to the end.
+model PromoArtwork {
+  id        String    @id @default(uuid())
+  kind      PromoKind
+  refId     String // CashbackPromotion.id | BonusRule.id | "welcome" | "referral"
+  imageUrl  String
+  altText   String    @default("")
+  position  Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([kind, refId])
+  @@index([position])
+  @@map("promo_artworks")
 }
 
 model ProviderUserAccount {
