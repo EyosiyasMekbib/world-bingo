@@ -44,6 +44,7 @@ export const QUEUE_NAMES = {
     ZARECASH_WITHDRAWAL: 'zarecash-withdrawal',
     ZARECASH_SWEEP: 'zarecash-sweep',
     ACCOUNT_STATUS_EXPIRY: 'account-status-expiry',
+    TELEGRAM_SEND: 'telegram-send',
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

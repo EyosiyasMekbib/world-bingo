@@ -19,6 +19,7 @@ import { HouseWalletService } from '../../services/house-wallet.service'
 import { CashbackService, getPreviousPeriod } from '../../services/cashback.service'
 import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
+import { mintStaffLinkToken } from '../../services/telegram/link.service.js'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY, PROVIDER_ORDER_BY } from '../../services/featured-game.service'
 import { SupportService } from '../../services/support/support.service'
 import { AuthService, PasswordError } from '../../services/auth.service'
@@ -628,6 +629,15 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             ])
 
             return { ...user, deposits, withdrawals }
+        })
+
+        // ── Staff Telegram link ─────────────────────────────────────────────
+        // A clerk or admin linking their OWN account to the staff bot bridge
+        // (docs/telegram-support-bot.md §6.2). Same nullable-deepLink shape
+        // as the player route — never an error for a disabled bot.
+        f.post('/support/telegram/link', async (req: any) => {
+            const deepLink = await mintStaffLinkToken(req.user.id)
+            return { deepLink }
         })
     })
 

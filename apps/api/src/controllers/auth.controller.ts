@@ -2,7 +2,15 @@ import { STATUS_CODES } from 'http'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthService } from '../services'
 import { PasswordError } from '../services/auth.service'
-import type { LoginDto, RegisterDto, RefreshTokenDto, LogoutDto, ChangePasswordDto, TelegramAuthDto } from '@world-bingo/shared-types'
+import type {
+    LoginDto,
+    RegisterDto,
+    RefreshTokenDto,
+    LogoutDto,
+    ChangePasswordDto,
+    TelegramAuthDto,
+    PasswordResetConsumeDto,
+} from '@world-bingo/shared-types'
 
 export class AuthController {
     static async register(request: FastifyRequest<{ Body: RegisterDto }>, reply: FastifyReply) {
@@ -78,6 +86,38 @@ export class AuthController {
         const userId = request.user.id
         try {
             const { message, user, refreshToken } = await AuthService.changePassword(userId, request.body)
+            const accessToken = await reply.jwtSign(
+                { id: user.id, role: user.role },
+                { expiresIn: '15m' }
+            )
+            return { message, user, accessToken, refreshToken }
+        } catch (err) {
+            if (err instanceof PasswordError) {
+                return reply.status(err.statusCode).send({
+                    statusCode: err.statusCode,
+                    error: STATUS_CODES[err.statusCode],
+                    message: err.message,
+                    code: err.code,
+                })
+            }
+            throw err
+        }
+    }
+
+    /**
+     * POST /auth/password-reset/consume — the Telegram bot's "forgot
+     * password" link lands here. Same response shape as changePassword:
+     * this device signs in with the fresh session the reset produced.
+     */
+    static async consumePasswordReset(
+        request: FastifyRequest<{ Body: PasswordResetConsumeDto }>,
+        reply: FastifyReply,
+    ) {
+        try {
+            const { message, user, refreshToken } = await AuthService.consumePasswordReset(
+                request.body.token,
+                request.body.newPassword,
+            )
             const accessToken = await reply.jwtSign(
                 { id: user.id, role: user.role },
                 { expiresIn: '15m' }

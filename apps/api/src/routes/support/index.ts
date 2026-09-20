@@ -1,9 +1,39 @@
 import { FastifyPluginAsync } from 'fastify'
 import { basename, extname } from 'path'
 import { uploadFile } from '../../lib/storage'
+import { mintPlayerLinkToken } from '../../services/telegram/link.service.js'
+import { openAppeal, AlreadyActiveError } from '../../services/support/appeal.js'
+import { SupportMessageSource } from '@world-bingo/shared-types'
 
 const supportRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preValidation', fastify.authenticate)
+
+  // ── POST /support/telegram/link ─────────────────────────────────────────
+  // Mints a one-time deep link into the bot for the SIGNED-IN player. Never
+  // an error when the bot is disabled or the mint budget is spent — the
+  // response just carries a null deepLink and the caller hides the button,
+  // same as an unconfigured SupportContactInfo channel.
+  fastify.post<{ Body: { conversationId?: string } }>('/telegram/link', async (req) => {
+    // @ts-ignore
+    const deepLink = await mintPlayerLinkToken(req.user.id, req.body?.conversationId)
+    return { deepLink }
+  })
+
+  // ── POST /support/appeal ────────────────────────────────────────────────
+  // The one-tap alternative to "contact support" on a restricted/suspended
+  // account. See services/support/appeal.ts.
+  fastify.post('/appeal', async (req, reply) => {
+    try {
+      // @ts-ignore
+      await openAppeal(req.user.id, SupportMessageSource.WEB)
+      return { ok: true }
+    } catch (err) {
+      if (err instanceof AlreadyActiveError) {
+        return reply.status(409).send({ error: err.message, code: 'account_active' })
+      }
+      throw err
+    }
+  })
 
   // ── POST /support/attachments ───────────────────────────────────────────
   // Deposit receipt screenshots are the highest-value attachment on this

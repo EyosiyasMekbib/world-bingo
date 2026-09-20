@@ -6,6 +6,7 @@ import { ReferralService } from './referral.service'
 import { captureEvent } from '../lib/posthog'
 import { personPropsFor } from '../lib/posthog-events'
 import { wbAuthRefreshTotal } from '../lib/metrics'
+import { consumePasswordResetToken } from './telegram/link.service.js'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
 
@@ -50,7 +51,8 @@ export class PasswordError extends Error {
             | 'no_password_login'
             | 'password_not_set'
             | 'current_password_incorrect'
-            | 'password_unchanged',
+            | 'password_unchanged'
+            | 'invalid_token',
         message: string,
     ) {
         super(message)
@@ -324,8 +326,11 @@ export class AuthService {
     static async me(userId: string) {
         const user = await prisma.user.findUnique({ where: { id: userId } })
         if (!user) throw new Error('User not found')
-        const { passwordHash: _, ...result } = user
-        return result
+        // telegramChatId is the bot's send address, not a value the client
+        // has any use for — telegramLinked is the wire-safe yes/no every
+        // caller actually wants. telegramBlockedAt is purely operational.
+        const { passwordHash: _, telegramChatId, telegramBlockedAt, ...rest } = user
+        return { ...rest, telegramLinked: telegramChatId !== null }
     }
 
     static async changePassword(userId: string, data: ChangePasswordDto) {
@@ -377,6 +382,62 @@ export class AuthService {
 
         const { passwordHash: _, ...result } = updated
         return { message: 'Password changed successfully', user: result, refreshToken }
+    }
+
+    /**
+     * Self-serve recovery via the Telegram bot: the player proved who they
+     * are by sharing a phone Telegram itself verified, or by already being
+     * linked (see services/telegram/link.service.ts), and the bot handed
+     * them this one-time link. No current password is asked for — there is
+     * none to check against, which is the whole point of a "forgot
+     * password" flow — and the token itself, single-use and short-lived, is
+     * what stands in for it.
+     *
+     * Same shape as changePassword: every session is revoked, this device
+     * gets a fresh one, and passwordResetAt is stamped so
+     * WalletService.requestWithdrawal's post-reset hold applies exactly as
+     * it does after a support-assisted reset. Players only, same as
+     * adminResetPassword below — a bot or staff account has no "forgot my
+     * password" story this flow is meant to solve.
+     */
+    static async consumePasswordReset(token: string, newPassword: string) {
+        const userId = await consumePasswordResetToken(token)
+        if (!userId) {
+            throw new PasswordError(400, 'invalid_token', 'This link has expired or was already used')
+        }
+
+        const target = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true, username: true, passwordHash: true },
+        })
+        if (!target || target.role !== 'PLAYER' || isBotAccount(target)) {
+            throw new PasswordError(403, 'reset_not_allowed', 'This account cannot be reset this way')
+        }
+
+        const newPasswordHash = await bcrypt.hash(newPassword, 10)
+        const refreshToken = generateRefreshToken()
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+        const [updated] = await prisma.$transaction([
+            prisma.user.update({
+                where: { id: userId },
+                data: {
+                    passwordHash: newPasswordHash,
+                    mustChangePassword: false,
+                    passwordResetAt: new Date(),
+                },
+            }),
+            prisma.refreshToken.deleteMany({ where: { userId } }),
+            prisma.refreshToken.create({
+                data: { userId, tokenHash: hashToken(refreshToken), expiresAt, familyId: crypto.randomUUID() },
+            }),
+        ])
+
+        void captureEvent(userId, 'password_reset_via_telegram', {})
+
+        const { passwordHash: _, ...result } = updated
+        return { message: 'Password reset — you are signed in', user: result, refreshToken }
     }
 
     /**

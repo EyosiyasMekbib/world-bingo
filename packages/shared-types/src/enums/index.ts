@@ -105,6 +105,13 @@ export enum NotificationType {
     TOURNAMENT_ELIMINATED = 'TOURNAMENT_ELIMINATED',
     CASHBACK_AWARDED = 'CASHBACK_AWARDED',
     CAMPAIGN_MESSAGE = 'CAMPAIGN_MESSAGE',
+    // PREDICTION_SETTLED/VOIDED existed in apps/api/prisma/schema.prisma's
+    // NotificationType from the start of the prediction feature, but were
+    // never added here — settlement.service.ts worked around the gap with
+    // raw string literals ('PREDICTION_SETTLED' as const). Added now to
+    // close the drift; mirrors the Prisma enum — change both together.
+    PREDICTION_SETTLED = 'PREDICTION_SETTLED',
+    PREDICTION_VOIDED = 'PREDICTION_VOIDED',
     SUPPORT_REPLY = 'SUPPORT_REPLY',
     ACCOUNT_STATUS_CHANGED = 'ACCOUNT_STATUS_CHANGED',
     BONUS_GRANTED = 'BONUS_GRANTED',

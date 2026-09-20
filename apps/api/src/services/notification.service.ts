@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { Prisma } from '@prisma/client'
 import { NotificationType } from '@world-bingo/shared-types'
 import { getIo } from '../lib/socket'
+import { enqueueNotificationPush } from './telegram/notify.js'
 
 export class NotificationService {
     /**
@@ -41,6 +42,16 @@ export class NotificationService {
         } catch {
             // Socket might not be initialized in tests — ignore
         }
+
+        // Telegram push. Fire-and-forget past this point, same reasoning as
+        // the socket emit above: a queue hiccup must never turn a written
+        // notification into a failed call for whatever triggered it. The
+        // function itself is the enabled/type/landing-page gate — see
+        // services/telegram/notify.ts — so this is safe to call
+        // unconditionally for every notification.
+        enqueueNotificationPush(userId, type, title, body).catch((err) => {
+            console.error('[NotificationService] telegram push enqueue failed:', (err as Error)?.message)
+        })
 
         return notification
     }
