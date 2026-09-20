@@ -15,11 +15,6 @@
             <span class="spin">⏳</span> Loading payment methods…
           </div>
 
-          <!-- No methods available -->
-          <div v-else-if="depositMethods.length === 0" class="wb-empty">
-            No deposit methods are currently available. Please try again later.
-          </div>
-
           <template v-else>
             <div class="method-stack">
               <section
@@ -183,6 +178,10 @@
                         </div>
                       </div>
 
+                      <ul v-if="showMissing && missing.length" class="wb-hint wb-hint--error deposit-missing" role="alert">
+                        <li v-for="field in missing" :key="field">{{ MISSING_HINTS[field] }}</li>
+                      </ul>
+
                       <div v-if="error" class="wb-notice wb-notice--error">
                         <div class="wb-notice__icon">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -208,9 +207,11 @@
                         </div>
                       </div>
 
+                      <!-- Never disabled for an incomplete form: a tap explains
+                           what is missing instead of doing nothing. -->
                       <button
                         class="wb-btn wb-btn--primary method-card__cta"
-                        :disabled="loading || !canSubmit"
+                        :disabled="loading"
                         @click="submit"
                       >
                         <span v-if="loading">Uploading… {{ uploadProgress }}%</span>
@@ -220,7 +221,19 @@
                   </template>
                 </div>
               </section>
+
+              <!-- Cash at an agent shop. It needs no gateway of its own, so it
+                   stands even when the gateway list comes back empty. -->
+              <AgentDepositCard
+                :open="openMethod === AGENT_METHOD"
+                @expand="openAgent"
+                @active="onAgentCodeLive"
+              />
             </div>
+
+            <p v-if="depositMethods.length === 0" class="method-card__hint methods-empty">
+              {{ t('wallet.agent.noOtherMethods') }}
+            </p>
 
             <!-- Outside the v-for on purpose: a `ref` inside v-for is populated
                  as an ARRAY in Vue 3, so fileInputRef?.click() was undefined and
@@ -245,7 +258,13 @@
 </template>
 
 <script setup lang="ts">
-import { amountBucket } from '~/utils/deposit'
+import {
+  amountBucket,
+  missingDepositFields,
+  recallSenderName,
+  rememberSenderName,
+  type DepositFormField,
+} from '~/utils/deposit'
 import { describeFailure } from '~/utils/http-failure'
 import { useAuthStore } from '~/store/auth'
 import { usePromotionsStore } from '~/store/promotions'
@@ -280,6 +299,13 @@ const MIN_DEPOSIT = 200
 const loadingMethods = ref(false)
 const depositMethods = ref<DepositMethod[]>([])
 
+/**
+ * The agent card is not a payment method row from the API — it has no gateway
+ * and no merchant account — but it shares the accordion, so it needs a code of
+ * its own that can never collide with one.
+ */
+const AGENT_METHOD = 'agent_cash'
+
 // Accordion: exactly one card open at a time.
 const openMethod = ref<string | null>(null)
 const selectedMethod = computed(
@@ -289,6 +315,18 @@ const selectedMethod = computed(
 function toggleMethod(m: DepositMethod) {
   openMethod.value = openMethod.value === m.code ? null : m.code
   if (openMethod.value) track('deposit_method_selected', { paymentMethod: m.code })
+}
+
+function openAgent() {
+  openMethod.value = AGENT_METHOD
+}
+
+// A live agent code outranks the default "open the first gateway": the two
+// fetches race, and the player holding a code needs to see it, not a form.
+const agentHasLiveCode = ref(false)
+function onAgentCodeLive() {
+  agentHasLiveCode.value = true
+  openMethod.value = AGENT_METHOD
 }
 
 // Fires when the amount is actually entered — on the input's `change`
@@ -399,22 +437,41 @@ const errorHint = computed(() => {
   return ''
 })
 
-const canSubmit = computed(() =>
-  !!selectedMethod.value &&
-  form.amount >= MIN_DEPOSIT &&
-  form.transactionId.trim().length >= 5 &&
-  form.senderName.trim().length >= 1 &&
-  form.senderAccount.trim().length >= 10 &&
-  selectedFile.value !== null,
+const missing = computed<DepositFormField[]>(() =>
+  missingDepositFields(form, selectedFile.value !== null, MIN_DEPOSIT),
 )
+const canSubmit = computed(() => !!selectedMethod.value && missing.value.length === 0)
+// Shown only after the player taps Submit, never while they are still typing.
+const showMissing = ref(false)
+const MISSING_HINTS: Record<DepositFormField, string> = {
+  amount: `Enter at least ${MIN_DEPOSIT} ETB.`,
+  transactionId: 'Enter the transaction ID from your payment SMS.',
+  senderName: 'Enter the name on the account you paid from.',
+  senderAccount: 'Enter the phone or account number you paid from.',
+  receipt: 'Attach a screenshot of the receipt.',
+}
+
+// Most players pay from the number they registered with and type the same
+// name every time. Prefill both on a manual card; the fields stay editable.
+// The phone lives only in the input (replay masks inputs) and never in an event.
+function prefillPayer(code: string | null) {
+  const method = depositMethods.value.find((m) => m.code === code)
+  if (!method || method.hostedCheckout) return
+  if (!form.senderAccount && auth.user?.phone) form.senderAccount = auth.user.phone
+  if (!form.senderName) form.senderName = recallSenderName()
+}
+watch(openMethod, prefillPayer)
 
 const fetchMethods = async () => {
   loadingMethods.value = true
   try {
     const data = await auth.apiFetch<DepositMethod[]>('/payment-methods?type=DEPOSIT')
     depositMethods.value = Array.isArray(data) ? data : []
-    if (depositMethods.value.length > 0) {
+    if (depositMethods.value.length > 0 && !agentHasLiveCode.value) {
       openMethod.value = depositMethods.value[0].code
+      // The openMethod watcher does not fire when the modal reopens onto the
+      // same first card, so prefill here too. Idempotent: never overwrites.
+      prefillPayer(openMethod.value)
     }
   } catch {
     depositMethods.value = []
@@ -425,6 +482,8 @@ const fetchMethods = async () => {
 
 watch(() => props.modelValue, (open) => {
   if (open) {
+    // The agent card remounts with the modal and re-reports a live code.
+    agentHasLiveCode.value = false
     fetchMethods()
     promotions.fetch()
     track('deposit_modal_opened')
@@ -468,7 +527,15 @@ function setFile(file: File) {
 }
 
 async function submit() {
-  if (!canSubmit.value || !selectedFile.value) return
+  if (!canSubmit.value || !selectedFile.value) {
+    showMissing.value = true
+    // Field names only — never what the player typed.
+    track('deposit_submit_blocked', {
+      paymentMethod: selectedMethod.value?.code ?? null,
+      missing: [...missing.value],
+    })
+    return
+  }
   loading.value = true
   error.value = ''
   success.value = false
@@ -491,6 +558,7 @@ async function submit() {
     })
 
     success.value = true
+    rememberSenderName(form.senderName)
     uploadProgress.value = 100
     emit('deposited')
     setTimeout(() => {
@@ -498,6 +566,12 @@ async function submit() {
       resetForm()
     }, 2000)
   } catch (e: any) {
+    const failure = describeFailure(e)
+    track('deposit_submit_failed', {
+      paymentMethod: selectedMethod.value?.code ?? null,
+      code: failure.code,
+      status: failure.status,
+    })
     const status = e?.status ?? e?.statusCode ?? e?.response?.status
     const serverMsg = e?.data?.error ?? e?.data?.message ?? e?.message
     if (status === 409) {
@@ -526,6 +600,7 @@ function resetForm() {
   success.value = false
   error.value = ''
   fieldError.value = ''
+  showMissing.value = false
   openMethod.value = depositMethods.value[0]?.code ?? null
 }
 </script>
@@ -565,7 +640,9 @@ function resetForm() {
   color: var(--text-primary);
 }
 .method-card__cta { width: 100%; justify-content: center; }
+.deposit-missing { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
 .method-card__hint { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.methods-empty { margin-top: 14px; text-align: center; }
 
 .chips {
   display: flex;

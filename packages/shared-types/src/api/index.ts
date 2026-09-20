@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { PatternType, PaymentStatus, TournamentStatus } from '../enums'
+import { DepositRejectionReason, PatternType, PaymentStatus, TournamentStatus } from '../enums'
+import type { User } from '../entities'
 
 export const LoginSchema = z.object({
     identifier: z.string().min(2).max(32).describe('Username or phone number'),
@@ -65,6 +66,31 @@ export const ReviewDepositSchema = z.object({
     note: z.string().optional(),
 })
 
+/** Reviewer- and player-facing wording for each rejection reason. */
+export const DEPOSIT_REJECTION_REASON_LABELS: Record<DepositRejectionReason, string> = {
+    [DepositRejectionReason.DUPLICATE_RECEIPT]: 'Receipt already used',
+    [DepositRejectionReason.AMOUNT_MISMATCH]: 'Amount does not match the receipt',
+    [DepositRejectionReason.PAYER_MISMATCH]: 'Sender name or number does not match',
+    [DepositRejectionReason.UNREADABLE_RECEIPT]: 'Receipt unreadable or not a receipt',
+    [DepositRejectionReason.NOT_FOUND]: 'Transaction ID not found or does not match',
+    [DepositRejectionReason.OTHER]: 'Other',
+}
+
+/**
+ * Body of POST /admin/transactions/:id/decline. `reason` is optional here
+ * because the same route rejects withdrawals; AdminService.reviewTransaction
+ * requires it for deposits. OTHER must explain itself in `note`.
+ */
+export const DeclineTransactionSchema = z
+    .object({
+        reason: z.nativeEnum(DepositRejectionReason).optional(),
+        note: z.string().trim().max(500).optional(),
+    })
+    .refine((v) => v.reason !== DepositRejectionReason.OTHER || (v.note ?? '').length > 0, {
+        message: 'Add a note explaining the rejection when the reason is Other',
+        path: ['note'],
+    })
+
 export const JoinGameSchema = z.object({
     gameId: z.string().uuid().optional(),
     cartelaSerials: z.array(z.string()).min(1).max(10),
@@ -80,10 +106,27 @@ export type RegisterDto = z.infer<typeof RegisterSchema>
 export type RefreshTokenDto = z.infer<typeof RefreshTokenSchema>
 export type LogoutDto = z.infer<typeof LogoutSchema>
 export type ChangePasswordDto = z.infer<typeof ChangePasswordSchema>
+
+/**
+ * POST /auth/change-password. Every other session is revoked; the tokens here
+ * are this device's fresh session, and `user.mustChangePassword` is false.
+ */
+export interface ChangePasswordResponse {
+    message: string
+    user: User
+    accessToken: string
+    refreshToken: string
+}
+
+/** POST /admin/users/:id/reset-password. Shown to the admin once, never stored. */
+export interface AdminResetPasswordResponse {
+    temporaryPassword: string
+}
 export type CreateGameDto = z.infer<typeof CreateGameSchema>
 export type DepositDto = z.infer<typeof DepositSchema>
 export type WithdrawalDto = z.infer<typeof WithdrawalSchema>
 export type ReviewDepositDto = z.infer<typeof ReviewDepositSchema>
+export type DeclineTransactionDto = z.infer<typeof DeclineTransactionSchema>
 export type JoinGameDto = z.infer<typeof JoinGameSchema>
 export type ClaimBingoDto = z.infer<typeof ClaimBingoSchema>
 

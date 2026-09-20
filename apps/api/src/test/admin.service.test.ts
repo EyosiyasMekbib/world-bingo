@@ -3,7 +3,8 @@ import { AdminService } from '../services/admin.service'
 import { WalletService } from '../services/wallet.service'
 import { HouseWalletService } from '../services/house-wallet.service'
 import { prisma } from './setup'
-import { TransactionType, PaymentStatus } from '@world-bingo/shared-types'
+import appPrisma from '../lib/prisma'
+import { TransactionType, PaymentStatus, DepositRejectionReason } from '@world-bingo/shared-types'
 
 vi.mock('../services/notification.service', () => ({
     NotificationService: {
@@ -361,26 +362,58 @@ describe('AdminService.reviewTransaction', () => {
         it('should NOT change wallet balance when rejecting a deposit', async () => {
             const beforeWallet = await WalletService.getBalance(userId)
 
-            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED, 'Fake receipt')
+            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED, 'Fake receipt', undefined, undefined, DepositRejectionReason.OTHER)
 
             const afterWallet = await WalletService.getBalance(userId)
             expect(Number(afterWallet.realBalance)).toBe(Number(beforeWallet.realBalance))
         })
 
         it('should mark deposit as REJECTED', async () => {
-            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED, 'Fake receipt')
+            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED, 'Fake receipt', undefined, undefined, DepositRejectionReason.OTHER)
 
             const tx = await prisma.transaction.findUnique({ where: { id: depositTxId } })
             expect(tx!.status).toBe(PaymentStatus.REJECTED)
         })
 
         it('should NOT create a REFUND transaction for a rejected deposit', async () => {
-            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED)
+            await AdminService.reviewTransaction(depositTxId, PaymentStatus.REJECTED, undefined, undefined, undefined, DepositRejectionReason.NOT_FOUND)
 
             const refundTx = await prisma.transaction.findFirst({
                 where: { userId, type: TransactionType.REFUND },
             })
             expect(refundTx).toBeNull()
+        })
+
+        // approveDeposit locks the row, but the reject path reads it first and
+        // writes afterwards. An approval that commits in between must win.
+        it('does not overwrite a deposit approved after the reject read it', async () => {
+            const pending = await prisma.transaction.findUniqueOrThrow({ where: { id: depositTxId } })
+            // The concurrent approval commits...
+            await prisma.transaction.update({
+                where: { id: depositTxId },
+                data: { status: PaymentStatus.APPROVED },
+            })
+            // ...after the reject path's read saw the row still pending.
+            const staleRead = vi.spyOn(appPrisma.transaction, 'findUnique').mockResolvedValueOnce(pending)
+            try {
+                await expect(
+                    AdminService.reviewTransaction(
+                        depositTxId,
+                        PaymentStatus.REJECTED,
+                        'late reject',
+                        undefined,
+                        undefined,
+                        DepositRejectionReason.NOT_FOUND,
+                    ),
+                ).rejects.toThrow('Transaction is not pending review')
+            } finally {
+                staleRead.mockRestore()
+            }
+
+            const row = await prisma.transaction.findUniqueOrThrow({ where: { id: depositTxId } })
+            expect(row.status).toBe(PaymentStatus.APPROVED)
+            expect(row.rejectionReason).toBeNull()
+            expect(row.note).toBeNull()
         })
     })
 })

@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AdminService } from '../services/admin.service'
-import { PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-types'
+import { DeclineTransactionSchema, PaymentStatus, TransactionType, UserRole } from '@world-bingo/shared-types'
 
 export class AdminController {
     static async getStats(request: FastifyRequest, reply: FastifyReply) {
@@ -87,11 +87,24 @@ export class AdminController {
         return transaction
     }
 
-    static async declineTransaction(request: FastifyRequest<{ Params: { id: string }, Body: { note?: string } }>, reply: FastifyReply) {
+    static async declineTransaction(
+        request: FastifyRequest<{ Params: { id: string }; Body: unknown }>,
+        reply: FastifyReply,
+    ) {
+        const parsed = DeclineTransactionSchema.safeParse(request.body ?? {})
+        if (!parsed.success) {
+            return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid decline request' })
+        }
         const { id } = request.params
-        const { note } = request.body
-        const transaction = await AdminService.reviewTransaction(id, PaymentStatus.REJECTED, note, undefined, request.user.id)
-        return transaction
+        const { note, reason } = parsed.data
+        return AdminService.reviewTransaction(
+            id,
+            PaymentStatus.REJECTED,
+            note || undefined,
+            undefined,
+            request.user.id,
+            reason,
+        )
     }
 
     static async getUsers(

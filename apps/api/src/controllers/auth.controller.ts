@@ -1,5 +1,7 @@
+import { STATUS_CODES } from 'http'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthService } from '../services'
+import { PasswordError } from '../services/auth.service'
 import type { LoginDto, RegisterDto, RefreshTokenDto, LogoutDto, ChangePasswordDto, TelegramAuthDto } from '@world-bingo/shared-types'
 
 export class AuthController {
@@ -34,6 +36,24 @@ export class AuthController {
         return { user, accessToken, refreshToken }
     }
 
+    /**
+     * Sign-in for the cash agent app. Deliberately its own gate rather than a
+     * widened adminLogin: an agent holds float and fulfils deposit codes, and
+     * must never reach the admin back office.
+     */
+    static async agentLogin(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {
+        const { user, refreshToken } = await AuthService.login(request.body)
+        if (user.role !== 'AGENT') {
+            reply.status(403).send({ error: 'Access denied' })
+            return
+        }
+        const accessToken = await reply.jwtSign(
+            { id: user.id, role: user.role },
+            { expiresIn: '15m' }
+        )
+        return { user, accessToken, refreshToken }
+    }
+
     static async refresh(request: FastifyRequest<{ Body: RefreshTokenDto }>, reply: FastifyReply) {
         const { user, refreshToken } = await AuthService.refreshToken(request.body.refreshToken)
         const accessToken = await reply.jwtSign(
@@ -49,14 +69,31 @@ export class AuthController {
     }
 
     static async me(request: FastifyRequest, reply: FastifyReply) {
-        return request.user
+        // @ts-ignore
+        return AuthService.me(request.user.id)
     }
 
     static async changePassword(request: FastifyRequest<{ Body: ChangePasswordDto }>, reply: FastifyReply) {
         // @ts-ignore
         const userId = request.user.id
-        const result = await AuthService.changePassword(userId, request.body)
-        return result
+        try {
+            const { message, user, refreshToken } = await AuthService.changePassword(userId, request.body)
+            const accessToken = await reply.jwtSign(
+                { id: user.id, role: user.role },
+                { expiresIn: '15m' }
+            )
+            return { message, user, accessToken, refreshToken }
+        } catch (err) {
+            if (err instanceof PasswordError) {
+                return reply.status(err.statusCode).send({
+                    statusCode: err.statusCode,
+                    error: STATUS_CODES[err.statusCode],
+                    message: err.message,
+                    code: err.code,
+                })
+            }
+            throw err
+        }
     }
 
     static async telegramLogin(request: FastifyRequest<{ Body: TelegramAuthDto }>, reply: FastifyReply) {

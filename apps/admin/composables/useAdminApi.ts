@@ -10,6 +10,22 @@ import type {
     PromoKind,
 } from '@world-bingo/shared-types'
 
+// Shape of GET /settings/game. featured_template_id is '' when unset and the
+// form sends null to clear it. The deposit_auto_verify_* keys are accepted by
+// PUT but not returned by GET, hence optional.
+export type GameSettings = {
+    ball_interval_secs: number
+    bot_max_spend_etb: number
+    first_deposit_bonus_amount: number
+    featured_template_id: string | null
+    min_deposit_amount: number
+    min_withdrawal_amount: number
+    max_deposit_amount: number
+    max_withdrawal_amount: number
+    deposit_auto_verify_enabled?: boolean
+    deposit_auto_verify_max_amount?: number
+}
+
 // One pin in the lobby priority list. `matches` is how many catalog rows the
 // pin resolves to right now — 0 means the game is not in the catalog.
 export type FeaturedGameItem = {
@@ -263,6 +279,37 @@ export const useAdminApi = () => {
             }>(`/admin/analytics/conversion-kpis${query ? `?${query}` : ''}`)
         },
 
+        getProviderBrowseFunnel: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<{
+                stages: Array<{ name: string; count: number; dropOffPct: number }>
+                hasEnoughData: boolean
+            }>(`/admin/analytics/provider-browse-funnel${query ? `?${query}` : ''}`)
+        },
+
+        getAnalyticsGamePnl: (params?: { from?: string; to?: string }) => {
+            const qs = new URLSearchParams()
+            if (params?.from) qs.set('from', params.from)
+            if (params?.to) qs.set('to', params.to)
+            const query = qs.toString()
+            return apiFetch<Array<{
+                gameId: string
+                title: string
+                ticketPrice: number
+                houseEdgePct: number
+                endedAt: string | null
+                playerCount: number
+                grossRevenue: number
+                totalPrizes: number
+                netPnl: number
+                expectedHouse: number
+                shortfall: number
+            }>>(`/admin/analytics/game-pnl${query ? `?${query}` : ''}`)
+        },
+
         getPendingDeposits: (params?: {
             status?: string
             search?: string
@@ -327,8 +374,8 @@ export const useAdminApi = () => {
         // the API credits the player-stated amount.
         approveTransaction: (id: string, amount?: number) =>
             apiFetch(`/admin/transactions/${id}/approve`, { method: 'POST', body: { amount } }),
-        declineTransaction: (id: string, note?: string) =>
-            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body: { note } }),
+        declineTransaction: (id: string, body: { reason?: string; note?: string } = {}) =>
+            apiFetch(`/admin/transactions/${id}/decline`, { method: 'POST', body }),
         // The clerk's browser fetches the telebirr receipt the API server can't
         // reach and POSTs the raw HTML here for the parse→match→credit pipeline.
         verifyReceipt: (id: string, html: string) =>
@@ -519,8 +566,8 @@ export const useAdminApi = () => {
         updateFeatureFlags: (flags: Record<string, boolean>) =>
             apiFetch('/settings/features', { method: 'PUT', body: flags }),
 
-        getGameSettings: () => apiFetch<{ ball_interval_secs: number; bot_max_spend_etb: number; first_deposit_bonus_amount: number; featured_template_id: string; min_deposit_amount: number; min_withdrawal_amount: number }>('/settings/game'),
-        updateGameSettings: (data: { ball_interval_secs?: number; bot_max_spend_etb?: number; first_deposit_bonus_amount?: number; featured_template_id?: string; min_deposit_amount?: number; min_withdrawal_amount?: number }) =>
+        getGameSettings: () => apiFetch<GameSettings>('/settings/game'),
+        updateGameSettings: (data: Partial<GameSettings>) =>
             apiFetch('/settings/game', { method: 'PUT', body: data }),
 
         // ── House Wallet ──────────────────────────────────────────────────────
@@ -588,6 +635,10 @@ export const useAdminApi = () => {
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
         getPlayerBonusGrants: (id: string) =>
             apiFetch<PlayerBonusGrantsPayload>(`/admin/players/${id}/bonus-grants`),
+        // Support-assisted reset. ADMIN-only: a clerk gets 403. The temporary
+        // password comes back exactly once — show it, never keep it.
+        resetPlayerPassword: (id: string) =>
+            apiFetch<{ temporaryPassword: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' }),
 
         // ── Account status ────────────────────────────────────────────────
         // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and
@@ -604,6 +655,8 @@ export const useAdminApi = () => {
 
         // ── Game Providers ────────────────────────────────────────────────
         getProviders: () => apiFetch<any[]>('/admin/providers'),
+        updateProviderPriority: (id: string, priority: number) =>
+            apiFetch<any>(`/admin/providers/${id}/priority`, { method: 'PATCH', body: { priority } }),
         updateProviderStatus: (id: string, status: string) =>
             apiFetch(`/admin/providers/${id}/status`, { method: 'PATCH', body: { status } }),
         syncProvider: (code: string) =>
@@ -612,11 +665,14 @@ export const useAdminApi = () => {
             apiFetch<any[]>(`/admin/providers/${code}/vendors`),
         updateVendorStatus: (providerCode: string, vendorCode: string, isActive: boolean) =>
             apiFetch(`/admin/providers/${providerCode}/vendors/${vendorCode}/status`, { method: 'PATCH', body: { isActive } }),
-        getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string }) => {
+        updateVendorAlias: (providerCode: string, vendorCode: string, alias: string | null) =>
+            apiFetch<{ dedupAlias: string | null }>(`/admin/providers/${providerCode}/vendors/${vendorCode}/alias`, { method: 'PATCH', body: { alias } }),
+        getProviderGames: (code: string, params?: { page?: number; limit?: number; search?: string; vendor?: string }) => {
             const qs = new URLSearchParams()
             if (params?.page) qs.set('page', String(params.page))
             if (params?.limit) qs.set('limit', String(params.limit))
             if (params?.search) qs.set('search', params.search)
+            if (params?.vendor) qs.set('vendor', params.vendor)
             const query = qs.toString()
             return apiFetch<any>(`/admin/providers/${code}/games${query ? `?${query}` : ''}`)
         },

@@ -22,6 +22,15 @@ export const ALLOWED_EVENTS = [
     'deposit_checkout_failed',
     'provider_launch_failed',
     'provider_game_loaded',
+    'provider_game_load_timeout',
+    'provider_game_retry',
+    'provider_game_load_dismissed',
+    // Deposit form and password recovery (2026-09-15).
+    'deposit_submit_blocked',
+    'deposit_submit_failed',
+    'forgot_password_opened',
+    'password_changed',
+    'password_change_failed',
     // Which lobby surface sends players into the fight markets — the hero slide
     // or the lobby card. Worth separating: it is the only way to tell whether
     // the banner is doing the work or the tab is.

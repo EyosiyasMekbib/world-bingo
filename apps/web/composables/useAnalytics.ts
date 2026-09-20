@@ -30,6 +30,15 @@ const ALLOWED = new Set([
     'deposit_checkout_failed',
     'provider_launch_failed',
     'provider_game_loaded',
+    'provider_game_load_timeout',
+    'provider_game_retry',
+    'provider_game_load_dismissed',
+    // Deposit form and password recovery (2026-09-15).
+    'deposit_submit_blocked',
+    'deposit_submit_failed',
+    'forgot_password_opened',
+    'password_changed',
+    'password_change_failed',
     // Kept in step with ALLOWED_EVENTS in apps/api/src/services/event.service.ts.
     // A name missing from either list is dropped by the /events sink (PostHog
     // still gets it).

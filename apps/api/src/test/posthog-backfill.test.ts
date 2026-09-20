@@ -59,6 +59,9 @@ describe('depositEvents', () => {
         const evs = depositEvents({ ...row, status: 'REJECTED', note: 'blurry receipt' }, known)
         expect(evs.map((e) => e.event)).toEqual(['deposit_submitted', 'deposit_rejected'])
         expect(evs[0].properties.method).toBeNull()
+        // Historical rows have no coded reason; the key is present so every
+        // deposit_rejected carries the same properties.
+        expect(evs[1].properties).toHaveProperty('reason', null)
     })
     it('emits only submitted for a pending row', () => {
         expect(depositEvents({ ...row, status: 'PENDING_REVIEW' }, known).map((e) => e.event)).toEqual(['deposit_submitted'])

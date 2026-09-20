@@ -60,8 +60,27 @@ export enum PaymentStatus {
 export enum UserRole {
     PLAYER = 'PLAYER',
     CLERK = 'CLERK',
+    AGENT = 'AGENT',
     ADMIN = 'ADMIN',
     SUPER_ADMIN = 'SUPER_ADMIN',
+}
+
+/** Movements in and out of a cash agent's prepaid float. Mirrors
+ *  AgentLedgerType in apps/api/prisma/schema.prisma - change both together. */
+export enum AgentLedgerType {
+    TOP_UP = 'TOP_UP',
+    COMMISSION = 'COMMISSION',
+    FULFILLMENT = 'FULFILLMENT',
+    ADJUSTMENT = 'ADJUSTMENT',
+}
+
+/** Lifecycle of a player's request to pay cash at an agent. Mirrors
+ *  AgentDepositRequestStatus in apps/api/prisma/schema.prisma - change both together. */
+export enum AgentDepositRequestStatus {
+    PENDING = 'PENDING',
+    FULFILLED = 'FULFILLED',
+    EXPIRED = 'EXPIRED',
+    CANCELLED = 'CANCELLED',
 }
 
 export enum PatternType {
@@ -190,4 +209,19 @@ export enum AccountStatus {
     ACTIVE = 'ACTIVE',
     RESTRICTED = 'RESTRICTED',
     SUSPENDED = 'SUSPENDED',
+}
+
+/**
+ * Why a reviewer rejected a manual deposit. Stored on
+ * Transaction.rejectionReason and sent as `reason` on `deposit_rejected`.
+ * OTHER must carry a note. Mirrors `enum DepositRejectionReason` in
+ * apps/api/prisma/schema.prisma — change both together.
+ */
+export enum DepositRejectionReason {
+    DUPLICATE_RECEIPT = 'DUPLICATE_RECEIPT',
+    AMOUNT_MISMATCH = 'AMOUNT_MISMATCH',
+    PAYER_MISMATCH = 'PAYER_MISMATCH',
+    UNREADABLE_RECEIPT = 'UNREADABLE_RECEIPT',
+    NOT_FOUND = 'NOT_FOUND',
+    OTHER = 'OTHER',
 }

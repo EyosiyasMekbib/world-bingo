@@ -17,6 +17,7 @@ pnpm infra:down           # Stop infrastructure
 pnpm --filter @world-bingo/api dev      # API on :8080
 pnpm --filter @world-bingo/web dev      # Player app on :3002
 pnpm --filter @world-bingo/admin dev    # Admin on :3001
+pnpm --filter @world-bingo/agent dev    # Agent cashier on :3003
 ```
 
 ### Database (run from apps/api/)
@@ -51,6 +52,7 @@ pnpm --filter @world-bingo/game-logic test
 | `apps/api` | `@world-bingo/api` | 8080 | Fastify v5 REST + Socket.io backend |
 | `apps/web` | `@world-bingo/web` | 3002 | Nuxt 3 player-facing PWA |
 | `apps/admin` | `@world-bingo/admin` | 3001 | Nuxt 3 admin dashboard |
+| `apps/agent` | `@world-bingo/agent` | 3003 | Nuxt 3 cash-agent cashier app (English only, no PWA) |
 
 ### Packages
 | Package | Purpose |
@@ -86,6 +88,16 @@ pnpm --filter @world-bingo/game-logic test
 - **Transaction**: Full audit trail with `balanceBefore`/`balanceAfter` on every wallet change
 - **Game statuses**: `WAITING → STARTING → LOCKING → IN_PROGRESS → PAYOUT → COMPLETED` (or `REFUNDING → CANCELLED`)
 - **GameTemplate**: Blueprints for auto-spawned games
+- **Agent**: A shop holding PREPAID float. The operator takes cash from the agent up
+  front and credits float plus a commission bonus (the agent's margin, which they sell
+  on). Agents then credit players who hand over cash at a counter. `agents.float`
+  carries a raw `CHECK (>= 0)` like `wallets`.
+- **AgentDepositRequest**: A player-generated 6-digit code, valid 15 minutes. Any agent
+  may fulfil it and the first to confirm wins. Two PARTIAL unique indexes (one PENDING
+  row per `code`, one per `userId`) enforce that under concurrency; they live in the
+  migration SQL because Prisma's DSL cannot express a `WHERE` on an index.
+- **AgentLedger**: Append-only float movements (`TOP_UP`, `COMMISSION`, `FULFILLMENT`,
+  `ADJUSTMENT`) with `balanceBefore`/`balanceAfter`, the same audit shape as `Transaction`.
 
 ### Critical Business Rules
 1. Wallet balance never goes below zero — enforced at DB level with `SELECT FOR UPDATE`
@@ -93,6 +105,17 @@ pnpm --filter @world-bingo/game-logic test
 3. Game engine is server-authoritative; clients cannot manipulate ball calls or win validation
 4. Refunds are automatic when a game is cancelled (BullMQ job)
 5. House edge is configurable per game; accumulated in `AdminWallet`
+6. An agent's float is prepaid and never goes below zero, enforced the same way as
+   wallets (`SELECT FOR UPDATE` plus a DB `CHECK`)
+7. An agent fulfilment debits the float and credits the player in ONE commit:
+   `WalletService.approveDeposit` is split into `creditApprovedDepositInTx` plus
+   `runPostApprovalEffects` so both callers share one transaction and one set of
+   post-commit effects. Agent deposits are therefore fully bonus-eligible
+8. Agent-created deposits leave `senderName`/`senderAccount` NULL. `PayerIdentityService`
+   keys shared-payer detection on `senderAccount`, so stamping the agent there would
+   strip first-deposit incentives from every player after the first at that shop
+9. There is no automatic reversal of an agent deposit. Corrections are an admin float
+   debit plus a wallet adjustment, done deliberately
 
 ### Local Service URLs
 - API docs (Swagger): http://localhost:8080/docs

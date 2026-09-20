@@ -124,8 +124,6 @@ services:
         - POSTHOG_CLI_API_KEY
     image: world-bingo-web
     restart: unless-stopped
-    ports:
-      - "3000"
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-/api}
       NUXT_PUBLIC_WS_URL: /
@@ -153,8 +151,6 @@ services:
       dockerfile: apps/admin/Dockerfile
     image: world-bingo-admin
     restart: unless-stopped
-    ports:
-      - "3001"
     environment:
       NUXT_PUBLIC_API_BASE: /api
       # Same-origin: the admin's own /socket.io/** routeRule proxies to the API.
@@ -162,6 +158,25 @@ services:
       NUXT_API_BASE_SERVER: ${NUXT_API_BASE_SERVER:-http://api:8080}
       NUXT_JWT_SECRET: ${NUXT_JWT_SECRET:-}
       # Browser error tracking (build-time; inert when empty)
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+
+  # Cash agent app. Renders client-side and keeps its token in localStorage, so
+  # unlike admin it needs no NUXT_API_BASE_SERVER and no JWT secret of its own.
+  # Nitro still runs, because it serves the /api and /socket.io proxies.
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    image: world-bingo-agent
+    restart: unless-stopped
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
       NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
       NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
     depends_on:

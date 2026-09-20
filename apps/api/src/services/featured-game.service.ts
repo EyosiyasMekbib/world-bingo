@@ -35,6 +35,19 @@ export const PROVIDER_GAME_ORDER_BY: Prisma.ProviderGameOrderByWithRelationInput
     { gameName: 'asc' },
 ]
 
+/**
+ * The order providers are listed in (lobby bootstrap, GET /providers and the
+ * admin dashboard): the admin's lobby priority first, then the primary flag,
+ * then the oldest. Deterministic on purpose — with no order Postgres returns
+ * physical row order, which changes when a row is updated, so the lobby's
+ * first provider could silently flip.
+ */
+export const PROVIDER_ORDER_BY: Prisma.GameProviderOrderByWithRelationInput[] = [
+    { priority: 'asc' },
+    { isPrimary: 'desc' },
+    { createdAt: 'asc' },
+]
+
 export class FeaturedGameService {
     /**
      * The curated list in admin order, each pin annotated with how many catalog

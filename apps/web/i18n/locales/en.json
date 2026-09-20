@@ -25,7 +25,42 @@
     "registerBtn": "Register",
     "registering": "Creating account…",
     "loginFailed": "Invalid credentials. Please try again.",
-    "registerFailed": "Registration failed. Please try again."
+    "registerFailed": "Registration failed. Please try again.",
+    "forgotPassword": {
+      "link": "Forgot password?",
+      "title": "Forgot your password?",
+      "body": "Our support team can reset it for you. Contact them from the phone number registered on your account, or have the transaction ID of a recent deposit ready so they can confirm it's you.",
+      "afterReset": "Support will give you a temporary password. Sign in with it and you'll be asked to choose a new one straight away.",
+      "callSupport": "Call support",
+      "telegramSupport": "Message support on Telegram",
+      "hours": "Support hours: {hours}",
+      "noContact": "Contact our support team and ask for a password reset.",
+      "doNotRegister": "Please don't create a new account — your balance and history stay on this one."
+    },
+    "setPassword": {
+      "title": "Set a new password",
+      "subtitle": "Support reset your password. Choose a new one to keep playing.",
+      "subtitleVoluntary": "Change the password you use to sign in.",
+      "current": "Temporary password",
+      "currentVoluntary": "Current password",
+      "currentPlaceholder": "The password you signed in with",
+      "new": "New password",
+      "newPlaceholder": "Min. 6 characters",
+      "confirm": "Confirm new password",
+      "confirmPlaceholder": "Type it again",
+      "showPasswords": "Show passwords",
+      "submit": "Save password",
+      "saving": "Saving…",
+      "signOut": "Sign out",
+      "errors": {
+        "currentRequired": "Enter the password you signed in with.",
+        "newShort": "Your new password must be at least 6 characters.",
+        "mismatch": "The new passwords don't match.",
+        "sameAsCurrent": "Choose a password different from the one you signed in with.",
+        "currentIncorrect": "That password is not correct.",
+        "failed": "Could not save your password. Please try again."
+      }
+    }
   },
   "lobby": {
     "title": "Game Lobby",
@@ -96,7 +131,42 @@
       "REFUND": "Refund"
     },
     "bonusGeneric": "Bonus",
-    "bonusExpiryNudgeWithinDay": "{amount} expires within the day. Switch to Spend Bonus to use it first."
+    "bonusExpiryNudgeWithinDay": "{amount} expires within the day. Switch to Spend Bonus to use it first.",
+    "withdrawalHoldAfterReset": "Withdrawals are on hold for 24 hours after a password reset, to keep your account safe. Please try again later or contact support.",
+    "withdrawalFailed": "Withdrawal request failed. Please try again.",
+    "agent": {
+      "name": "Pay cash at an agent",
+      "tagline": "Hand cash to any agent shop and play right away.",
+      "noOtherMethods": "No other deposit methods are available right now.",
+      "step1": "Choose how much cash you are handing over.",
+      "step2": "We give you a 6 digit code. It is good for 15 minutes.",
+      "step3": "Read the code to any agent, hand over the cash, and your balance updates.",
+      "range": "Between {min} and {max} ETB.",
+      "limitsUnavailable": "Could not load the deposit limits. You can still ask for a code.",
+      "bonusParity": "An agent deposit earns the same bonuses and rewards as any other deposit.",
+      "amountRequired": "Enter the amount of cash you are handing over.",
+      "amountOutOfRange": "Enter an amount between {min} and {max} ETB.",
+      "getCode": "Get my code",
+      "requesting": "Getting your code…",
+      "requestFailed": "Could not create your code. Please try again.",
+      "loadFailed": "Could not check for an active code.",
+      "codeLead": "Read this code to the agent",
+      "codeSpoken": "Your agent code is {code}",
+      "handOver": "Hand over",
+      "expiresIn": "Expires in {time}",
+      "warnOnce": "Pay once only. The first agent to confirm this code takes it.",
+      "warnShare": "Do not share the code with anyone who is not taking your cash.",
+      "warnOneActive": "You can hold one code at a time. Getting a new code cancels this one.",
+      "waiting": "Your balance updates the moment the agent confirms.",
+      "cancelCode": "Cancel this code",
+      "cancelling": "Cancelling…",
+      "cancelFailed": "Could not cancel the code. Please try again.",
+      "expiredTitle": "This code has expired",
+      "expiredHint": "No cash was taken. Get a new code when you are ready to pay.",
+      "newCode": "Get a new code",
+      "fundedTitle": "{amount} ETB received",
+      "fundedText": "Your balance is updated. You are ready to play."
+    }
   },
   "refer": {
     "title": "🎁 Refer & Earn",
@@ -341,6 +411,7 @@
     "launching": "Launching…",
     "play": "Play",
     "backToLobby": "Back to Lobby",
-    "loadMore": "Load More"
+    "loadMore": "Load More",
+    "showGameAnyway": "Show game anyway"
   }
 }

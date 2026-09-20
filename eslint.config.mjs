@@ -126,7 +126,7 @@ export default [
     // the TS parser, which cannot read a <template>, and reported as parse
     // errors — a config gap that looked like seven broken components.
     {
-        files: ['apps/web/**/*.vue', 'apps/admin/**/*.vue', 'packages/ui/**/*.vue'],
+        files: ['apps/web/**/*.vue', 'apps/admin/**/*.vue', 'apps/agent/**/*.vue', 'packages/ui/**/*.vue'],
         languageOptions: {
             parser: vueParser,
             parserOptions: {
@@ -153,7 +153,7 @@ export default [
 
     // ── Nuxt apps: TS outside SFCs (stores, composables, plugins, config) ─────
     {
-        files: ['apps/web/**/*.{ts,mts}', 'apps/admin/**/*.{ts,mts}'],
+        files: ['apps/web/**/*.{ts,mts}', 'apps/admin/**/*.{ts,mts}', 'apps/agent/**/*.{ts,mts}'],
         languageOptions: {
             globals: { ...globals.browser, ...globals.node },
         },

@@ -14,7 +14,11 @@ const {
   suspendPlayer,
   reinstatePlayer,
   getPlayerStatusHistory,
+  resetPlayerPassword,
 } = useAdminApi()
+// `user` names the actor in the bonus-grant audit line. Password reset and the
+// bonus grant are both ADMIN-only on the server; hiding them for everyone else
+// just saves them a 403.
 const { user, isAdmin } = useAdminAuth()
 const toast = useToast()
 
@@ -337,7 +341,7 @@ const statusTarget = ref<'RESTRICTED' | 'SUSPENDED' | 'ACTIVE'>('RESTRICTED')
 
 const statusForm = reactive({ reason: '', category: '', expiresAt: '' })
 
-const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+const STATUS_STYLE: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'neutral' }> = {
   ACTIVE: { label: 'Active', color: 'success' },
   RESTRICTED: { label: 'Restricted', color: 'warning' },
   SUSPENDED: { label: 'Suspended', color: 'error' },
@@ -392,6 +396,57 @@ async function submitStatus() {
     })
   } finally {
     savingStatus.value = false
+  }
+}
+
+// ── Password reset ────────────────────────────────────────────────────
+// Support-assisted recovery for a player who forgot their password. The API
+// returns the temporary password exactly once; it lives in this ref only while
+// the dialog is open and is dropped the moment it closes.
+const showReset = ref(false)
+const resetting = ref(false)
+const identityVerified = ref(false)
+const temporaryPassword = ref<string | null>(null)
+const copied = ref(false)
+
+function openReset() {
+  identityVerified.value = false
+  temporaryPassword.value = null
+  copied.value = false
+  showReset.value = true
+}
+
+watch(showReset, (open) => {
+  if (!open) {
+    temporaryPassword.value = null
+    identityVerified.value = false
+    copied.value = false
+  }
+})
+
+async function submitReset() {
+  resetting.value = true
+  try {
+    const result = await resetPlayerPassword(route.params.id as string)
+    temporaryPassword.value = result.temporaryPassword
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not reset password',
+      description: err?.data?.error ?? err?.data?.message ?? 'Request failed',
+      color: 'error',
+    })
+  } finally {
+    resetting.value = false
+  }
+}
+
+async function copyTemporaryPassword() {
+  if (!temporaryPassword.value) return
+  try {
+    await navigator.clipboard.writeText(temporaryPassword.value)
+    copied.value = true
+  } catch {
+    toast.add({ title: 'Copy failed', description: 'Select the password and copy it by hand.', color: 'warning' })
   }
 }
 
@@ -560,7 +615,11 @@ onUnmounted(() => {
 
       <!-- Actions -->
       <div v-if="activeTab === 'overview'" class="flex gap-2">
+        <!-- openAdjust, not a bare `showAdjust = true`: the modal is shared with
+             the Bonuses tab's deduct action, and opening it without resetting
+             that mode would silently arm a deduction. -->
         <UButton icon="i-heroicons:adjustments-horizontal" label="Adjust Balance" color="primary" variant="soft" @click="openAdjust" />
+        <UButton v-if="isAdmin && player.role === 'PLAYER'" icon="i-heroicons:key" label="Reset password" color="warning" variant="soft" @click="openReset" />
       </div>
 
       <!-- Transaction History -->
@@ -991,6 +1050,68 @@ onUnmounted(() => {
         <div class="flex justify-end gap-2">
           <UButton color="neutral" variant="ghost" class="min-h-11" label="Cancel" @click="showExtend = false" />
           <UButton color="primary" class="min-h-11" :loading="extending" label="Extend" @click="submitExtend" />
+    <!-- Not dismissible while the password is on screen: a stray click on the
+         overlay would lose it for good and force a second reset. -->
+    <UModal v-model:open="showReset" :dismissible="!temporaryPassword">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <template v-if="!temporaryPassword">
+            <h3 class="text-lg font-bold text-white">Reset password for {{ player?.username ?? 'this player' }}</h3>
+
+            <UAlert color="warning" variant="subtle" icon="i-heroicons:shield-exclamation" title="Verify the player's identity first">
+              <template #description>
+                <ul class="list-disc pl-4 space-y-1 mt-1">
+                  <li>
+                    They are contacting support from the registered phone number<span v-if="player?.phone"> ({{ player.phone }})</span>, or
+                  </li>
+                  <li>they quote the transaction ID of one of their recent deposits.</li>
+                </ul>
+                <p class="mt-2">Whoever receives this password controls the account and its balance.</p>
+              </template>
+            </UAlert>
+
+            <p class="text-sm text-white/60 leading-relaxed">
+              The player is signed out on every device and given a temporary password. They must choose a new
+              password the next time they sign in.
+            </p>
+
+            <UCheckbox v-model="identityVerified" label="I have verified this player's identity" />
+
+            <div class="flex justify-end gap-2 pt-2">
+              <UButton color="neutral" variant="ghost" label="Cancel" @click="showReset = false" />
+              <UButton color="warning" :loading="resetting" :disabled="!identityVerified" label="Reset password" @click="submitReset" />
+            </div>
+          </template>
+
+          <template v-else>
+            <h3 class="text-lg font-bold text-white">Temporary password</h3>
+
+            <div class="flex items-center gap-2">
+              <code
+                class="flex-1 text-center text-2xl font-mono font-bold tracking-[0.3em] text-yellow-400 py-3 rounded-xl border border-(--surface-border) select-all"
+                style="background:var(--surface-overlay);"
+              >{{ temporaryPassword }}</code>
+              <UButton
+                :icon="copied ? 'i-heroicons:check' : 'i-heroicons:clipboard-document'"
+                :label="copied ? 'Copied' : 'Copy'"
+                color="primary"
+                variant="soft"
+                @click="copyTemporaryPassword"
+              />
+            </div>
+
+            <UAlert
+              color="error"
+              variant="subtle"
+              icon="i-heroicons:exclamation-triangle"
+              title="This password will not be shown again"
+              description="Give it only to the verified player, now. They must change it the next time they sign in."
+            />
+
+            <div class="flex justify-end pt-2">
+              <UButton color="primary" label="Done" @click="showReset = false" />
+            </div>
+          </template>
         </div>
       </template>
     </UModal>

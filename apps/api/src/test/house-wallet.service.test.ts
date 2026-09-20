@@ -56,14 +56,19 @@ describe('HouseWalletService', () => {
             await HouseWalletService.credit(100, 'COMMISSION', 'first')
             await HouseWalletService.credit(50, 'BOT_PRIZE_WIN', 'second')
 
-            const txs = await prisma.houseTransaction.findMany({
-                orderBy: { createdAt: 'asc' },
+            // Look the rows up by description: back-to-back inserts can share a
+            // createdAt millisecond, so ordering by it is not deterministic.
+            const first = await prisma.houseTransaction.findFirstOrThrow({
+                where: { description: 'first' },
+            })
+            const second = await prisma.houseTransaction.findFirstOrThrow({
+                where: { description: 'second' },
             })
 
-            expect(Number(txs[0].balanceBefore)).toBe(0)
-            expect(Number(txs[0].balanceAfter)).toBe(100)
-            expect(Number(txs[1].balanceBefore)).toBe(100)
-            expect(Number(txs[1].balanceAfter)).toBe(150)
+            expect(Number(first.balanceBefore)).toBe(0)
+            expect(Number(first.balanceAfter)).toBe(100)
+            expect(Number(second.balanceBefore)).toBe(100)
+            expect(Number(second.balanceAfter)).toBe(150)
         })
 
         it('should handle concurrent credits without losing funds', async () => {
@@ -132,11 +137,22 @@ describe('HouseWalletService', () => {
 
     describe('getTransactions', () => {
         beforeEach(async () => {
-            await HouseWalletService.credit(100, 'COMMISSION', 'c1')
-            await HouseWalletService.credit(50, 'BOT_PRIZE_WIN', 'b1')
+            const c1 = await HouseWalletService.credit(100, 'COMMISSION', 'c1')
+            const b1 = await HouseWalletService.credit(50, 'BOT_PRIZE_WIN', 'b1')
             // Give enough balance to debit
             await prisma.houseWallet.update({ where: { id: 'house' }, data: { balance: 1000 } })
-            await HouseWalletService.debit(30, 'REFUND_ISSUED', 'r1')
+            const r1 = await HouseWalletService.debit(30, 'REFUND_ISSUED', 'r1')
+            // Rows written back-to-back often share a createdAt millisecond (about 40%
+            // of gaps measured 0 ms), and Postgres returns tied rows in plan-dependent
+            // order. Space them a second apart in creation order so "newest first" has
+            // one right answer.
+            const base = Date.now() - 10_000
+            for (const [i, tx] of [c1, b1, r1].entries()) {
+                await prisma.houseTransaction.update({
+                    where: { id: tx.id },
+                    data: { createdAt: new Date(base + i * 1000) },
+                })
+            }
         })
 
         it('should return all transactions paginated', async () => {

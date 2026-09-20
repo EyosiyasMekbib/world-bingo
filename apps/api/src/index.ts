@@ -28,6 +28,7 @@ import authRoutes from './routes/auth'
 import gameRoutes from './routes/game'
 import walletRoutes from './routes/wallet'
 import adminRoutes from './routes/admin'
+import agentRoutes from './routes/agent'
 import notificationRoutes from './routes/user/index.js'
 import referralRoutes from './routes/referral'
 import tournamentRoutes from './routes/tournament'
@@ -342,6 +343,9 @@ await server.register(authRoutes, { prefix: '/auth' })
 await server.register(gameRoutes, { prefix: '/games' })
 await server.register(walletRoutes, { prefix: '/wallet' })
 await server.register(adminRoutes, { prefix: '/admin' })
+// Cash agent app. Its own prefix, not a branch of /admin: an agent holds float
+// and fulfils deposit codes, and must never reach the back office.
+await server.register(agentRoutes, { prefix: '/agent' })
 await server.register(notificationRoutes, { prefix: '/user' })
 await server.register(referralRoutes, { prefix: '/referral' })
 await server.register(tournamentRoutes, { prefix: '/tournaments' })
@@ -464,6 +468,23 @@ try {
             console.error('[ZareCash] boot setup failed (continuing without it):', (err as Error)?.message)
             reportError(err, { phase: 'zarecash-boot' })
         }
+    }
+
+    // The catalog cache must not outlive a deploy: entrypoint.sh has just run
+    // the migrations, and one of those can re-project provider_games (which
+    // copy of a duplicated title the lobby shows) while Redis still holds the
+    // feed built before it. Lazy import, same as the admin routes: the catalog
+    // service pulls in the provider gateways.
+    // Re-projecting the duplicates first means the rule lives in code, not in
+    // whichever migration last ran it: a deploy that changes how duplicates
+    // are recognised takes effect on boot, with nothing to type in the admin.
+    try {
+        const { GameCatalogService } = await import('./services/game-catalog.service.js')
+        await GameCatalogService.applyShadowing()
+        await GameCatalogService.bustCatalogCache()
+        console.log('[Startup] Re-projected lobby duplicates and cleared the game catalog cache')
+    } catch (err) {
+        console.error('[Startup] Failed to re-project duplicates / clear the game catalog cache (continuing):', (err as Error)?.message)
     }
 
     await server.listen({ port, host })

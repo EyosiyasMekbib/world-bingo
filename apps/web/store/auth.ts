@@ -1,5 +1,13 @@
 import { defineStore } from 'pinia'
-import type { LoginDto, RegisterDto, User, Wallet, TelegramAuthDto } from '@world-bingo/shared-types'
+import type {
+  LoginDto,
+  RegisterDto,
+  User,
+  Wallet,
+  TelegramAuthDto,
+  ChangePasswordDto,
+  ChangePasswordResponse,
+} from '@world-bingo/shared-types'
 import { isExpiringWithin, TOKEN_REFRESH_MARGIN_MS } from '~/utils/token'
 
 /**
@@ -186,6 +194,24 @@ export const useAuthStore = defineStore('auth', {
         // Transient: keep the current token and let the request try it.
         return this.accessToken
       }
+    },
+
+    /**
+     * The server revokes every session on a password change and hands this
+     * device a fresh one. Adopting it is what keeps the player signed in once
+     * the current access token lapses. Clears the forced-change flag either way.
+     */
+    async changePassword(body: ChangePasswordDto) {
+      const res = await this.apiFetch<Partial<ChangePasswordResponse>>('/auth/change-password', {
+        method: 'POST',
+        body,
+      })
+      if (res?.accessToken && res?.refreshToken) {
+        this.accessToken = res.accessToken
+        this.refreshToken = res.refreshToken
+      }
+      if (res?.user) this.user = res.user
+      else if (this.user) this.user = { ...this.user, mustChangePassword: false }
     },
 
     clearStoredUser() {

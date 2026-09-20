@@ -171,7 +171,7 @@ const BASE_SLIDES: HeroSlide[] = [
     watermark: 'X10',
     gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
     accent: '#34d399',
-    action: 'games',
+    action: 'aviator',
   },
   {
     id: 'bingo',
@@ -336,6 +336,9 @@ function heroAction(slide: HeroSlide) {
   if (action === 'predictions') {
     track('hero_predictions_click')
     navigateTo('/predictions')
+  } else if (action === 'aviator') {
+    // Into the game itself, via the same resolver as the Aviator nav tab.
+    navigateTo('/aviator')
   } else if (action === 'rooms') {
     document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
     selectCategory('BINGO')
@@ -623,10 +626,13 @@ const vendorsAreReal = computed(() =>
   providerStore.games.some((g) => g.vendorCode || g.providerName),
 )
 
+// One chip per vendor (studio), labelled with the vendor's own name. Falling
+// back to the provider name for the label made every Palace vendor read
+// "Palace Casino", so the row showed the same chip nine times.
 const vendorChips = computed<{ code: string; name: string }[]>(() => {
   const map = new Map<string, string>()
   for (const g of providerStore.games) {
-    const name = g.providerName ?? g.vendorCode
+    const name = g.vendorName ?? g.providerName ?? g.vendorCode
     const code = g.vendorCode ?? g.providerName
     if (name && code) map.set(code, name)
   }
@@ -703,6 +709,7 @@ function bingoToCard(g: Game): LobbyCard {
 // Which games lead the grid is curated in the admin panel (Featured Games) and
 // applied by the API, so the order here is whatever the API returned.
 
+const onPlayTap = useTapToPlay()
 function providerToCard(g: ProviderGame): LobbyCard {
   return {
     key: (g.providerCode ?? providerStore.activeProviderCode) + '-' + g.gameCode,
@@ -1294,7 +1301,8 @@ onUnmounted(() => {
       <div v-else class="game-grid">
         <template v-for="card in gridGames" :key="card.key">
           <!-- Provider game → link -->
-          <NuxtLink v-if="card.to" :to="card.to" class="game-card">
+          <!-- The favourite star stops propagation, so a star tap is never recorded. -->
+          <NuxtLink v-if="card.to" :to="card.to" class="game-card" @click="onPlayTap(card.to)">
             <div class="gc-thumb">
               <div class="gc-letter">{{ card.letter }}</div>
               <img

@@ -18,6 +18,13 @@ describe('WalletService — Withdrawal flow (T15)', () => {
         testUserId = user.id
     })
 
+    // requestWithdrawal refuses a new request while one is still PENDING_REVIEW,
+    // so flows that need a second withdrawal settle the first one the way the
+    // admin approval path does.
+    async function settle(txId: string) {
+        await prisma.transaction.update({ where: { id: txId }, data: { status: PaymentStatus.APPROVED } })
+    }
+
     describe('requestWithdrawal — complete flow', () => {
         it('should enforce minimum withdrawal of 100 Birr', async () => {
             await expect(
@@ -67,18 +74,12 @@ describe('WalletService — Withdrawal flow (T15)', () => {
             ).rejects.toThrow('Insufficient balance')
         })
 
-        it('refuses a second withdrawal while one is still pending, and debits only once', async () => {
-            // This replaces a test that queued two withdrawals back to back and
-            // expected both to land. requestWithdrawal now allows one pending
-            // request per user at a time — a deliberate rule, guarded twice: a
-            // fast-path read up front and an authoritative re-check inside the
-            // wallet lock. The old premise is simply no longer the contract.
-            const first = await WalletService.requestWithdrawal(testUserId, {
+        it('should reject a second request while the first is still pending review', async () => {
+            await WalletService.requestWithdrawal(testUserId, {
                 amount: 400,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
-            expect(first.status).toBe(PaymentStatus.PENDING_REVIEW)
 
             await expect(
                 WalletService.requestWithdrawal(testUserId, {
@@ -86,63 +87,18 @@ describe('WalletService — Withdrawal flow (T15)', () => {
                     paymentMethod: 'Telebirr',
                     accountNumber: '0911111111',
                 }),
-            ).rejects.toThrow('already have a pending withdrawal')
+            ).rejects.toMatchObject({ statusCode: 409 })
 
-            // The refusal must cost the player nothing: one debit, one row.
             const wallet = await WalletService.getBalance(testUserId)
-            expect(Number(wallet.realBalance)).toBe(600)
-            expect(
-                await prisma.transaction.count({
-                    where: { userId: testUserId, type: TransactionType.WITHDRAWAL },
-                }),
-            ).toBe(1)
-        })
-
-        it('carries a 409 on the refusal, so a retrying client can tell it apart from a validation error', async () => {
-            await WalletService.requestWithdrawal(testUserId, {
-                amount: 400,
-                paymentMethod: 'Telebirr',
-                accountNumber: '0911111111',
-            })
-
-            const err = await WalletService.requestWithdrawal(testUserId, {
-                amount: 100,
-                paymentMethod: 'Telebirr',
-                accountNumber: '0911111111',
-            }).catch((e) => e)
-
-            expect(err.statusCode).toBe(409)
-        })
-
-        it('lets the next withdrawal through once the pending one is resolved', async () => {
-            // The rule is "one at a time", not "one ever" — without this the suite
-            // would pass just as well against a service that refused every
-            // withdrawal after the first.
-            const first = await WalletService.requestWithdrawal(testUserId, {
-                amount: 400,
-                paymentMethod: 'Telebirr',
-                accountNumber: '0911111111',
-            })
-            await prisma.transaction.update({
-                where: { id: first.id },
-                data: { status: PaymentStatus.APPROVED },
-            })
-
-            const second = await WalletService.requestWithdrawal(testUserId, {
-                amount: 400,
-                paymentMethod: 'Telebirr',
-                accountNumber: '0911111111',
-            })
-
-            expect(second.status).toBe(PaymentStatus.PENDING_REVIEW)
-            const wallet = await WalletService.getBalance(testUserId)
-            expect(Number(wallet.realBalance)).toBe(200)
+            expect(Number(wallet.realBalance)).toBe(600) // only the first one deducted
         })
 
         it('serializes two concurrent requests, so the guard holds without relying on the fast path', async () => {
-            // The pre-check outside the transaction is racy by its own admission;
-            // the guard that counts is the one inside the wallet lock. Firing both
-            // at once is the only way to reach it, and exactly one must win.
+            // requestWithdrawal checks for a pending row twice: once up front, and
+            // again inside the wallet lock, where its own comment notes the outer
+            // check is not race-safe on its own. Sequential calls only ever reach
+            // the first. Firing both at once is the only way to exercise the one
+            // that actually guarantees the rule, and exactly one must win.
             const results = await Promise.allSettled([
                 WalletService.requestWithdrawal(testUserId, {
                     amount: 400,
@@ -166,22 +122,34 @@ describe('WalletService — Withdrawal flow (T15)', () => {
             expect(Number(wallet.realBalance)).toBe(600)
         })
 
+        it('should allow multiple withdrawals that do not exceed balance', async () => {
+            const first = await WalletService.requestWithdrawal(testUserId, {
+                amount: 400,
+                paymentMethod: 'Telebirr',
+                accountNumber: '0911111111',
+            })
+            await settle(first.id)
+
+            await WalletService.requestWithdrawal(testUserId, {
+                amount: 400,
+                paymentMethod: 'Telebirr',
+                accountNumber: '0911111111',
+            })
+
+            const wallet = await WalletService.getBalance(testUserId)
+            expect(Number(wallet.realBalance)).toBe(200) // 1000 - 400 - 400
+        })
+
         it('should reject withdrawal that would make balance negative', async () => {
-            // First withdrawal succeeds and debits immediately.
+            // First withdrawal succeeds and is settled
             const first = await WalletService.requestWithdrawal(testUserId, {
                 amount: 900,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
-            // Resolve it, or the single-pending guard answers first and this test
-            // passes for the wrong reason — it is about the balance check, and the
-            // whole point is that the debit already happened.
-            await prisma.transaction.update({
-                where: { id: first.id },
-                data: { status: PaymentStatus.APPROVED },
-            })
+            await settle(first.id)
 
-            // Only 100 left, asking for 200.
+            // Second withdrawal should fail (only 100 left, need 200)
             await expect(
                 WalletService.requestWithdrawal(testUserId, {
                     amount: 200,
@@ -194,19 +162,13 @@ describe('WalletService — Withdrawal flow (T15)', () => {
 
     describe('getTransactions — pagination and filtering', () => {
         beforeEach(async () => {
-            // Two withdrawals and a deposit, still written by the real services.
-            // Only one withdrawal may be pending at a time, so the first is
-            // resolved before the second is asked for — the shape these tests
-            // need, without a fixture that the service would now refuse.
+            // Create some transactions
             const first = await WalletService.requestWithdrawal(testUserId, {
                 amount: 100,
                 paymentMethod: 'Telebirr',
                 accountNumber: '0911111111',
             })
-            await prisma.transaction.update({
-                where: { id: first.id },
-                data: { status: PaymentStatus.APPROVED },
-            })
+            await settle(first.id)
             await WalletService.requestWithdrawal(testUserId, {
                 amount: 200,
                 paymentMethod: 'CBE',

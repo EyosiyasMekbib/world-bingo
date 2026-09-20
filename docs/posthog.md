@@ -61,7 +61,7 @@ dropped before send.
 | `user_logged_in` | login, returning Telegram auth | `signup_method` |
 | `deposit_submitted` | manual receipt or ZareCash checkout row created | `amount`, `method`, `gateway`, `tx_id` |
 | `deposit_approved` | credited (manual review or webhook) | `amount`, `method`, `gateway`, `hours_to_approve`, `is_first_deposit` |
-| `deposit_rejected` | admin rejected | `amount`, `method`, `hours_to_decision`, `has_note` |
+| `deposit_rejected` | admin rejected | `amount`, `method`, `reason` (`DUPLICATE_RECEIPT`/`AMOUNT_MISMATCH`/`PAYER_MISMATCH`/`UNREADABLE_RECEIPT`/`NOT_FOUND`/`OTHER`; `null` on backfilled rows), `hours_to_decision`, `has_note` |
 | `withdrawal_requested` / `withdrawal_approved` / `withdrawal_rejected` | payout lifecycle | `amount`, `method`, `gateway`, `hours_to_decision` |
 | `game_joined` / `game_left` | cartelas bought / refunded before start | `game_id`, `template_id`, `ticket_price`, `cartelas`, `stake`, `spend_account` |
 | `game_finished` | one per player when a game ends | `outcome` (`won`/`lost`/`no_winner`), `stake`, `prize`, `net`, `duration_secs` |
@@ -72,12 +72,15 @@ dropped before send.
 | `provider_game_launched` | third-party game launch returned a usable URL | `provider_code`, `game_code` |
 | `provider_launch_failed` | launch could not produce a playable URL | `provider_code`, `game_code`, `reason` (`vendor_error`, `bad_url`, `provider_inactive`, `game_inactive`) |
 | `provider_bet` / `provider_win` | Palace wallet callback committed a bet or a payout | `provider_code`, `game_code`, `round_id`, `bet_id`, `amount`; win adds `round_stake` and `net`; bet adds `spend_account` |
+| `password_reset_by_admin` | an admin issued a player a temporary password (support-assisted recovery); distinct id is the player, never the admin | `revoked_sessions` |
 
 **Browser (`apps/web`)** — `$pageview`, `$pageleave`, plus everything `useAnalytics().track()`
 already sent: `lobby_view`, `games_lobby_view`, `game_view`, `join_click`,
 `deposit_modal_opened`, `deposit_method_selected`, `deposit_amount_entered`,
 `provider_game_view`, `provider_session_ended`, `hero_predictions_click`,
 `lobby_predictions_click`. Super properties on all of them: `brand`, `locale`, `is_pwa`.
+
+`provider_game_view` also carries `msFromTap`: milliseconds from the lobby tap to the play page, `null` for deep links, reloads and back navigation.
 
 Failure and timing events (added with the retention program, 2026-09-08):
 
@@ -87,11 +90,25 @@ Failure and timing events (added with the retention program, 2026-09-08):
 | `register_failed` | a registration did not complete | `reason` (`validation_*`, `exists` for "User already exists", or the server code), `status` |
 | `deposit_checkout_redirect` | ZareCash checkout created, browser about to leave | `paymentMethod`, `amountBucket`, `ms` (checkout call round trip) |
 | `deposit_checkout_failed` | checkout call failed or timed out (15 s) | `paymentMethod`, `amountBucket`, `ms`, `code`, `status`, `timeout` |
+| `deposit_submit_blocked` | manual-receipt Submit tapped with fields missing | `paymentMethod`, `missing` (array of `amount`/`transactionId`/`senderName`/`senderAccount`/`receipt`) |
+| `deposit_submit_failed` | manual-receipt submit rejected by the api or failed in transit | `paymentMethod`, `code`, `status` |
 | `provider_launch_failed` | browser side of a failed launch | `providerCode`, `gameCode`, `code`, `status` |
-| `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `msToLoad` since the launch call |
+| `provider_game_loaded` | the game iframe fired `load` | `providerCode`, `gameCode`, `attempt`, `msToLoad` and `msToUrl`, both measured from the start of this attempt's launch call |
+| `provider_game_load_timeout` | a load attempt passed 20 s without the frame loading; once per attempt | `providerCode`, `gameCode`, `attempt`, `stage` (`launch` = no launch URL yet, `frame` = URL arrived, frame not loaded), `msToUrl` |
+| `provider_game_retry` | the player tapped "Try again" on the play page | `providerCode`, `gameCode`, `attempt` (the new attempt number), `from` (the phase when tapped) |
+| `provider_game_load_dismissed` | the player tapped "Show game anyway" on a slow or timed-out load that had a launch URL; the overlay goes and a late frame `load` still sends `provider_game_loaded` | `providerCode`, `gameCode`, `attempt`, `from` (`slow` or `timeout`), `msSinceStart` (from the start of this attempt's launch call) |
 
 `describeFailure()` in `apps/web/utils/http-failure.ts` produces `code` / `status` / `timeout`
 for all of them, so a failure reason means the same thing on every event.
+
+Password recovery (admin-assisted reset, 2026-09-15). Read with the server's
+`password_reset_by_admin`: reset → `user_logged_in` → `password_changed` is the recovery funnel.
+
+| event | when | properties |
+|---|---|---|
+| `forgot_password_opened` | the login page's "Forgot password?" panel opened | none |
+| `password_changed` | the set-password page saved a new password | `forced` (true when support had reset it) |
+| `password_change_failed` | the set-password page could not save | `forced`, `reason` (`current_password_incorrect`, `password_unchanged`, or a `describeFailure` code), `status` |
 
 Two session-health events come from the auth store:
 

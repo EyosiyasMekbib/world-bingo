@@ -1,70 +1,176 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
 import { describeFailure } from '~/utils/http-failure'
+import { takeTap } from '~/utils/launch-handoff'
+import {
+  canDismiss,
+  crossedReady,
+  crossedTimeout,
+  elapsedSeconds,
+  initialLoadState,
+  reduceLoad,
+  showsOverlay,
+  type LoadEvent,
+} from '~/utils/provider-load'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { track } = useAnalytics()
+const { t } = useI18n()
 
 const providerCode = route.params.providerCode as string
 const gameCode = route.params.gameCode as string
 
 const gameUrl = ref<string | null>(null)
-// Iframe load time, measured from the launch call. 185 of 210 Keno sessions
-// ended inside a minute; without this nobody can tell a slow-loading game
-// from a short one.
-const launchStartedAt = ref<number | null>(null)
-let frameLoadTracked = false
-
-function onFrameLoad() {
-  if (frameLoadTracked || launchStartedAt.value === null) return
-  frameLoadTracked = true
-  track('provider_game_loaded', {
-    providerCode,
-    gameCode,
-    msToLoad: Math.round(performance.now() - launchStartedAt.value),
-  })
-}
-const loading = ref(true)
-const error = ref<string | null>(null)
-
+const load = ref(initialLoadState(0))
+const now = ref(0)
 const sessionStartedAt = ref<number | null>(null)
+let ticker: ReturnType<typeof setInterval> | null = null
 
-function fireSessionEnd() {
-  if (!sessionStartedAt.value) return
-  const durationSecs = Math.round((Date.now() - sessionStartedAt.value) / 1000)
-  track('provider_session_ended', { providerCode, gameCode, sessionDurationSecs: durationSecs, balanceDelta: null })
-  sessionStartedAt.value = null
+const elapsed = computed(() => elapsedSeconds(load.value, now.value))
+const showOverlay = computed(() => showsOverlay(load.value))
+const canRetry = computed(() => load.value.phase === 'slow' || load.value.phase === 'timeout')
+const dismissible = computed(() => canDismiss(load.value))
+
+function dispatch(event: LoadEvent) {
+  const prev = load.value
+  const next = reduceLoad(prev, event)
+  if (next === prev) return
+  load.value = next
+  if (crossedTimeout(prev, next)) {
+    track('provider_game_load_timeout', {
+      providerCode,
+      gameCode,
+      attempt: next.attempt,
+      stage: next.urlAt === null ? 'launch' : 'frame',
+      msToUrl: next.urlAt === null ? null : Math.round(next.urlAt - next.startedAt),
+    })
+  }
+  if (crossedReady(prev, next)) {
+    // 185 of 210 Keno sessions ended inside a minute; without this nobody can
+    // tell a slow-loading game from a short one. msToUrl separates our api
+    // (and the provider's launch call) from the game's own asset load.
+    track('provider_game_loaded', {
+      providerCode,
+      gameCode,
+      attempt: next.attempt,
+      msToLoad: Math.round(next.loadedAt! - next.startedAt),
+      msToUrl: Math.round(next.urlAt! - next.startedAt),
+    })
+  }
+  if (next.phase === 'ready' || next.phase === 'error' || next.phase === 'dismissed') stopTicker()
 }
 
-onMounted(async () => {
-  if (!auth.isAuthenticated) {
-    router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
-    return
+function stopTicker() {
+  if (ticker) {
+    clearInterval(ticker)
+    ticker = null
   }
+}
 
-  track('provider_game_view', { providerCode, gameCode })
+function startTicker() {
+  stopTicker()
+  ticker = setInterval(() => {
+    now.value = performance.now()
+    dispatch({ type: 'tick', now: now.value })
+  }, 500)
+}
 
-  launchStartedAt.value = performance.now()
+async function launch() {
+  const attempt = load.value.attempt
   try {
-    const lobbyUrl = `${window.location.origin}/`
     const result = await auth.apiFetch<{ gameUrl: string; token: string }>(
       `/providers/${providerCode}/games/${gameCode}/launch`,
       {
         method: 'POST',
-        body: { lobbyUrl, language: 'en', currency: 'ETB' },
+        body: { lobbyUrl: `${window.location.origin}/`, language: 'en', currency: 'ETB' },
       },
     )
+    // A retry started while this call was in flight: this answer is stale.
+    if (attempt !== load.value.attempt) return
     gameUrl.value = result.gameUrl
-    sessionStartedAt.value = Date.now()
+    sessionStartedAt.value ??= Date.now()
+    dispatch({ type: 'url', now: performance.now() })
   } catch (e: any) {
+    if (attempt !== load.value.attempt) return
     const failure = describeFailure(e)
-    track('provider_launch_failed', { providerCode, gameCode, code: failure.code, status: failure.status })
-    error.value = e?.data?.message ?? e?.message ?? 'Failed to launch game'
-  } finally {
-    loading.value = false
+    track('provider_launch_failed', {
+      providerCode,
+      gameCode,
+      code: failure.code,
+      status: failure.status,
+    })
+    dispatch({
+      type: 'launch_failed',
+      message: e?.data?.message ?? e?.message ?? 'Failed to launch game',
+    })
   }
+}
+
+function onFrameLoad() {
+  dispatch({ type: 'frame_loaded', now: performance.now() })
+}
+
+/** A fresh launch URL and a fresh frame; the old frame is unmounted, not reused. */
+function retry() {
+  const from = load.value.phase
+  gameUrl.value = null
+  now.value = performance.now()
+  dispatch({ type: 'retry', now: now.value })
+  track('provider_game_retry', { providerCode, gameCode, attempt: load.value.attempt, from })
+  startTicker()
+  void launch()
+}
+
+/**
+ * "Show game anyway". Some providers' frames never fire `load` although the
+ * game is playable, and the overlay used to cover it for good. Unmounts the
+ * overlay and leaves the frame alone; a late `load` still reports
+ * provider_game_loaded.
+ */
+function dismissOverlay() {
+  const prev = load.value
+  dispatch({ type: 'dismiss' })
+  if (load.value === prev) return
+  track('provider_game_load_dismissed', {
+    providerCode,
+    gameCode,
+    attempt: prev.attempt,
+    from: prev.phase,
+    msSinceStart: Math.round(performance.now() - prev.startedAt),
+  })
+}
+
+function fireSessionEnd() {
+  if (!sessionStartedAt.value) return
+  const durationSecs = Math.round((Date.now() - sessionStartedAt.value) / 1000)
+  track('provider_session_ended', {
+    providerCode,
+    gameCode,
+    sessionDurationSecs: durationSecs,
+    balanceDelta: null,
+  })
+  sessionStartedAt.value = null
+}
+
+onMounted(() => {
+  if (!auth.isAuthenticated) {
+    router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
+    return
+  }
+  // null for deep links, reloads and back navigation: only a fresh lobby tap
+  // for this same game counts.
+  const tappedAt = takeTap({ providerCode, gameCode }, performance.now())
+  track('provider_game_view', {
+    providerCode,
+    gameCode,
+    msFromTap: tappedAt === null ? null : Math.round(performance.now() - tappedAt),
+  })
+  now.value = performance.now()
+  load.value = initialLoadState(now.value)
+  startTicker()
+  void launch()
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') fireSessionEnd()
@@ -73,6 +179,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopTicker()
   fireSessionEnd()
 })
 
@@ -83,42 +190,66 @@ useHead({
 
 <template>
   <div class="play-page">
-    <!-- Loading state -->
-    <div v-if="loading" class="play-state">
+    <!-- Mounts as soon as a URL exists and loads under the overlay. Keyed by
+         attempt so a retry replaces the frame instead of reusing it. -->
+    <iframe
+      v-if="gameUrl"
+      :key="load.attempt"
+      :src="gameUrl"
+      class="game-frame"
+      allow="fullscreen; autoplay"
+      allowfullscreen
+      frameborder="0"
+      scrolling="no"
+      @load="onFrameLoad"
+    />
+
+    <div v-if="showOverlay" class="play-state play-state--overlay" role="status" aria-live="polite">
       <div class="play-spinner"></div>
-      <p class="play-state-text">Launching game…</p>
+      <p class="play-state-text">{{ load.urlAt === null ? 'Launching game…' : 'Loading game…' }}</p>
+      <!-- A per-second counter inside a live region would be read out every tick. -->
+      <p class="play-state-elapsed" aria-hidden="true">{{ elapsed }}s</p>
+      <p v-if="load.phase === 'slow'" class="play-state-hint">
+        This is taking longer than usual. Slow connections can need up to 30 seconds.
+      </p>
+      <p v-else-if="load.phase === 'timeout'" class="play-state-hint">
+        The game still hasn't loaded. Try again, or go back and pick another game.
+      </p>
+      <div v-if="canRetry" class="play-actions">
+        <button class="back-btn" @click="retry">Try again</button>
+        <button v-if="dismissible" class="ghost-btn" @click="dismissOverlay">
+          {{ t('providers.showGameAnyway') }}
+        </button>
+        <button class="ghost-btn" @click="router.push('/')">Back to Lobby</button>
+      </div>
     </div>
 
-    <!-- Error state -->
-    <div v-else-if="error" class="play-state play-state--error">
+    <div v-else-if="load.phase === 'error'" class="play-state play-state--error">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
-      <p class="play-state-text play-state-text--error">{{ error }}</p>
-      <button class="back-btn" @click="router.push('/')">Back to Lobby</button>
+      <p class="play-state-text play-state-text--error">{{ load.error }}</p>
+      <div class="play-actions">
+        <button class="back-btn" @click="retry">Try again</button>
+        <button class="ghost-btn" @click="router.push('/')">Back to Lobby</button>
+      </div>
     </div>
 
-    <!-- Game iframe -->
-    <template v-else-if="gameUrl">
-      <iframe
-        :src="gameUrl"
-        @load="onFrameLoad"
-        class="game-frame"
-        allow="fullscreen; autoplay"
-        allowfullscreen
-        frameborder="0"
-        scrolling="no"
-      />
-      <button class="float-back" title="Back to Lobby" @click="router.push('/')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        Lobby
-      </button>
-    </template>
-</div>
+    <!-- Always reachable while waiting or playing, not only once a URL exists. -->
+    <button
+      v-if="load.phase !== 'error'"
+      class="float-back"
+      title="Back to Lobby"
+      @click="router.push('/')"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      Lobby
+    </button>
+  </div>
 </template>
 
 <style scoped>
@@ -233,6 +364,50 @@ useHead({
 
 .back-btn:hover { background: #fbbf24; }
 .back-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
+
+/* Covers the blank frame until it fires `load` or the player dismisses it
+   (the element is unmounted then, not hidden); the float-back (z 10) stays above it. */
+.play-state--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+}
+
+.play-state-elapsed {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(200, 215, 240, 0.5);
+}
+
+.play-state-hint {
+  margin: 0;
+  max-width: 300px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(200, 215, 240, 0.75);
+}
+
+.play-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
+.ghost-btn {
+  margin-top: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+
+.ghost-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
