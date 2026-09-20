@@ -95,6 +95,29 @@ function isBotAccount(user: { username: string | null; passwordHash: string | nu
     return user.username?.startsWith('bot_t') === true || user.passwordHash === 'BOT_ACCOUNT'
 }
 
+/**
+ * Strip what a User row must never carry across the wire, whichever method
+ * hands the row back: passwordHash (obviously), and the Telegram support
+ * bot's own bookkeeping — telegramChatId (the bot's send address, of no use
+ * to the client) and telegramBlockedAt (purely operational). telegramLinked
+ * is the wire-safe yes/no every caller actually wants in their place.
+ *
+ * Every method below that returns `user` to a route goes through this —
+ * register, login, refreshToken, me, changePassword,
+ * consumePasswordReset, adminResetPassword's target is untouched (it never
+ * returns the row), telegramAuth. One helper, so linking a Telegram chat
+ * cannot leak into any of them just because they share the same row shape
+ * as /me — which is exactly what happened here: /me was sanitised first,
+ * and the other six were only caught by testing this end to end against a
+ * live server afterwards.
+ */
+function sanitizeUser<
+    T extends { passwordHash: string | null; telegramChatId: string | null; telegramBlockedAt: Date | null },
+>(user: T): Omit<T, 'passwordHash' | 'telegramChatId' | 'telegramBlockedAt'> & { telegramLinked: boolean } {
+    const { passwordHash: _passwordHash, telegramChatId, telegramBlockedAt: _telegramBlockedAt, ...rest } = user
+    return { ...rest, telegramLinked: telegramChatId !== null }
+}
+
 export class AuthService {
     static async register(data: RegisterDto) {
         const existingUser = await prisma.user.findFirst({
@@ -152,8 +175,7 @@ export class AuthService {
             { set: personPropsFor(user, 'phone') },
         )
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 
     static async login(data: LoginDto) {
@@ -201,8 +223,7 @@ export class AuthService {
             signup_method: user.telegramId ? 'telegram' : 'phone',
         })
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 
     /**
@@ -295,8 +316,7 @@ export class AuthService {
             })
             .catch(() => {})
 
-        const { passwordHash: _, ...user } = storedToken.user
-        return { user, refreshToken: newRefreshToken }
+        return { user: sanitizeUser(storedToken.user), refreshToken: newRefreshToken }
     }
 
     static async logout(token: string) {
@@ -337,11 +357,7 @@ export class AuthService {
     static async me(userId: string) {
         const user = await prisma.user.findUnique({ where: { id: userId } })
         if (!user) throw new Error('User not found')
-        // telegramChatId is the bot's send address, not a value the client
-        // has any use for — telegramLinked is the wire-safe yes/no every
-        // caller actually wants. telegramBlockedAt is purely operational.
-        const { passwordHash: _, telegramChatId, telegramBlockedAt, ...rest } = user
-        return { ...rest, telegramLinked: telegramChatId !== null }
+        return sanitizeUser(user)
     }
 
     static async changePassword(userId: string, data: ChangePasswordDto) {
@@ -391,8 +407,7 @@ export class AuthService {
             }),
         ])
 
-        const { passwordHash: _, ...result } = updated
-        return { message: 'Password changed successfully', user: result, refreshToken }
+        return { message: 'Password changed successfully', user: sanitizeUser(updated), refreshToken }
     }
 
     /**
@@ -447,8 +462,7 @@ export class AuthService {
 
         void captureEvent(userId, 'password_reset_via_telegram', {})
 
-        const { passwordHash: _, ...result } = updated
-        return { message: 'Password reset — you are signed in', user: result, refreshToken }
+        return { message: 'Password reset — you are signed in', user: sanitizeUser(updated), refreshToken }
     }
 
     /**
@@ -608,8 +622,7 @@ export class AuthService {
             )
         }
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 }
 
