@@ -3,7 +3,12 @@
  *
  * Runs a repeating job every hour to check all active cashback promotions
  * and automatically disburse cashback to players who have hit the loss threshold
- * within the current frequency window (DAILY/WEEKLY/MONTHLY).
+ * within one frequency window (DAILY/WEEKLY/MONTHLY).
+ *
+ * The hourly cadence is unchanged by payoutTiming: a PERIOD_CLOSE promotion
+ * settles the window that closed most recently, so the runs after the first one
+ * find every qualifier already paid and do nothing. The service, not the worker,
+ * decides which window is due.
  */
 
 import { Worker, Job, Queue } from 'bullmq'
@@ -37,6 +42,18 @@ const worker = new Worker<CashbackCheckerJobData>(
             `[CashbackCheckerWorker] Done — ${result.promotionsChecked} promotions checked, ` +
             `${result.totalDisbursed} players paid, total: ${result.totalAmount.toFixed(2)} ETB`,
         )
+        // Which window each promotion actually settled: a PERIOD_CLOSE promotion
+        // pays for a window that has already ended, so "0 players paid" at 14:00
+        // is only readable if the log says whether it was settling today or
+        // yesterday. Promotions whose window was not due are absent entirely.
+        for (const s of result.settlements) {
+            console.log(
+                `[CashbackCheckerWorker] "${s.name}" (${s.payoutTiming}) settled ` +
+                `${s.periodStart.toISOString()} → ${s.periodEnd.toISOString()}: ` +
+                `${s.disbursed} paid, ${s.skipped} already paid, ${s.budgetSkipped} over budget, ` +
+                `${s.total.toFixed(2)} ETB`,
+            )
+        }
         return result
     },
     {

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/library'
 import { CashbackFrequency } from '@world-bingo/shared-types'
 import { prisma, expectInvariantClean } from './setup'
-import { CashbackService, getCurrentPeriod } from '../services/cashback.service'
+import { CashbackService, getCurrentPeriod, getPreviousPeriod } from '../services/cashback.service'
 
 async function makeUser(username: string, phone: string) {
     return prisma.user.create({
@@ -56,7 +56,10 @@ describe('CashbackService.checkAndDisburse', () => {
 
         const lot = await prisma.bonusGrant.findFirstOrThrow({ where: { userId: player.id } })
         expect(lot.ruleId).toBeNull()
-        expect(lot.expiresAt).toBeNull()
+        // Cashback lots used to never expire. They now carry the promotion's
+        // bonusValidityHours (168 by default), so a player cannot bank refunded
+        // losses indefinitely — see the dedicated expiry case further down.
+        expect(lot.expiresAt).not.toBeNull()
         expect(new Decimal(lot.remaining).toNumber()).toBe(20)
 
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: player.id } })
@@ -377,5 +380,396 @@ describe('CashbackService.checkAndDisburse — game scoping', () => {
         const found = list.find((p) => p.id === promotion.id)
 
         expect(found?.scopedGameNames).toEqual([template.title, game.gameName])
+    })
+})
+
+describe('CashbackService.runChecks — payout timing', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    async function makeDailyPromotion(overrides: Record<string, unknown>) {
+        return prisma.cashbackPromotion.create({
+            data: {
+                name: 'Timing Cashback',
+                lossThreshold: 50,
+                refundType: 'FIXED',
+                refundValue: 20,
+                frequency: 'DAILY',
+                isActive: true,
+                // Live since well before the previous window opened — runChecks
+                // refuses to settle a closed window a promotion was not live for.
+                startsAt: new Date(Date.now() - 5 * 86400000),
+                endsAt: new Date(Date.now() + 86400000),
+                ...overrides,
+            },
+        })
+    }
+
+    it('PERIOD_CLOSE pays only once the window has ended, and pays it exactly once', async () => {
+        const player = await makeUser('timingclose1', '+251900000040')
+        const promotion = await makeDailyPromotion({ payoutTiming: 'PERIOD_CLOSE' })
+
+        // A qualifying loss inside the OPEN window. The player may still win it
+        // back before the day is out, so nothing may be paid yet.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED' },
+        })
+
+        const openRun = await CashbackService.runChecks()
+        expect(openRun.totalDisbursed).toBe(0)
+        expect(await prisma.cashbackDisbursement.count({ where: { promotionId: promotion.id } })).toBe(0)
+
+        // The same loss, but in the window that has already closed.
+        const previous = getPreviousPeriod(CashbackFrequency.DAILY)
+        await prisma.transaction.create({
+            data: {
+                userId: player.id,
+                type: 'GAME_ENTRY',
+                amount: 100,
+                status: 'APPROVED',
+                createdAt: new Date(previous.periodStart.getTime() + 3600000),
+            },
+        })
+
+        const closedRun = await CashbackService.runChecks()
+        expect(closedRun.totalDisbursed).toBe(1)
+        expect(closedRun.totalAmount.toNumber()).toBe(20)
+        expect(closedRun.settlements).toHaveLength(1)
+        expect(closedRun.settlements[0].periodStart.toISOString()).toBe(previous.periodStart.toISOString())
+
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { promotionId: promotion.id } })
+        expect(disbursement.periodStart.toISOString()).toBe(previous.periodStart.toISOString())
+
+        // Every later hourly run of the day re-settles the same closed window.
+        // The unique (promotionId, userId, periodStart) index is what keeps that
+        // from paying twice.
+        const repeatRun = await CashbackService.runChecks()
+        expect(repeatRun.totalDisbursed).toBe(0)
+        expect(repeatRun.settlements[0].skipped).toBe(1)
+        expect(await prisma.cashbackDisbursement.count({ where: { promotionId: promotion.id } })).toBe(1)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: player.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(20)
+    })
+
+    it('ON_THRESHOLD pays into the window that is still open', async () => {
+        const player = await makeUser('timingthreshold1', '+251900000041')
+        const promotion = await makeDailyPromotion({ payoutTiming: 'ON_THRESHOLD' })
+
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED' },
+        })
+
+        const run = await CashbackService.runChecks()
+        expect(run.totalDisbursed).toBe(1)
+
+        const current = getCurrentPeriod(CashbackFrequency.DAILY)
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { promotionId: promotion.id } })
+        expect(disbursement.periodStart.toISOString()).toBe(current.periodStart.toISOString())
+    })
+})
+
+describe('CashbackService.checkAndDisburse — caps, budgets and expiry', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    it('clamps a payout to maxPayoutPerPlayer', async () => {
+        const player = await makeUser('cashbackcapped1', '+251900000042')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Capped Cashback', lossThreshold: 50, refundType: 'PERCENTAGE', refundValue: 50,
+                frequency: 'DAILY', isActive: true, maxPayoutPerPlayer: 75,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // 400 lost at 50% = 200 uncapped, which the 75 cap must cut down.
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 400, status: 'APPROVED' },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(75)
+
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { userId: player.id } })
+        expect(new Decimal(disbursement.amount).toNumber()).toBe(75)
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: player.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(75)
+    })
+
+    it('stops at periodBudget, paying the biggest losses first and reporting the unpaid tail', async () => {
+        const bigLoser = await makeUser('cashbackbudgetbig', '+251900000043')
+        const smallLoser = await makeUser('cashbackbudgetsmall', '+251900000044')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Budgeted Cashback', lossThreshold: 50, refundType: 'PERCENTAGE', refundValue: 50,
+                frequency: 'DAILY', isActive: true, periodBudget: 150,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        // Payouts would be 150 and 50 — together 200, over the 150 budget.
+        await prisma.transaction.create({
+            data: { userId: bigLoser.id, type: 'GAME_ENTRY', amount: 300, status: 'APPROVED' },
+        })
+        await prisma.transaction.create({
+            data: { userId: smallLoser.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED' },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(150)
+        // Surfaced, not swallowed: a caller that only reads `disbursed` would
+        // otherwise read a truncated run as "everyone was paid".
+        expect(result.budgetSkipped).toBe(1)
+
+        const paid = await prisma.cashbackDisbursement.findMany({ where: { promotionId: promotion.id } })
+        expect(paid).toHaveLength(1)
+        expect(paid[0].userId).toBe(bigLoser.id)
+
+        const smallWallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: smallLoser.id } })
+        expect(new Decimal(smallWallet.bonusBalance).toNumber()).toBe(0)
+
+        // A later run must not quietly top the budget back up either.
+        const rerun = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(rerun.disbursed).toBe(0)
+        expect(rerun.budgetSkipped).toBe(1)
+    })
+
+    it('grants the lot with an expiry bonusValidityHours after the payout', async () => {
+        const player = await makeUser('cashbackexpiry1', '+251900000045')
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Expiring Cashback', lossThreshold: 50, refundType: 'FIXED', refundValue: 20,
+                frequency: 'DAILY', isActive: true, bonusValidityHours: 24,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        await prisma.transaction.create({
+            data: { userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED' },
+        })
+
+        const before = Date.now()
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+
+        const lot = await prisma.bonusGrant.findFirstOrThrow({ where: { userId: player.id } })
+        expect(lot.expiresAt).not.toBeNull()
+        const expiresIn = (lot.expiresAt as Date).getTime() - before
+        expect(expiresIn).toBeGreaterThan(23.9 * 3600000)
+        expect(expiresIn).toBeLessThan(24.1 * 3600000)
+    })
+})
+
+describe('CashbackService.getNetLossByUser — what counts as a real loss', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    async function makeUnscopedPromotion(name: string, overrides: Record<string, unknown> = {}) {
+        return prisma.cashbackPromotion.create({
+            data: {
+                name, lossThreshold: 50, refundType: 'FIXED', refundValue: 20,
+                frequency: 'DAILY', isActive: true,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+                ...overrides,
+            },
+        })
+    }
+
+    async function makeGame(suffix: string) {
+        return prisma.game.create({
+            data: {
+                title: `Loss Game ${suffix}`, ticketPrice: 10, maxPlayers: 70, minPlayers: 2,
+                houseEdgePct: 10, pattern: 'ANY_LINE', status: 'CANCELLED', calledBalls: [],
+            },
+        })
+    }
+
+    it('does not count an entry the player was refunded for when the game was cancelled', async () => {
+        const refunded = await makeUser('lossrefunded1', '+251900000050')
+        const control = await makeUser('losscontrol1', '+251900000051')
+        const cancelledGame = await makeGame('cancelled')
+        const playedGame = await makeGame('played')
+
+        const promotion = await makeUnscopedPromotion('Refund Aware')
+
+        // A cancelled game leaves the GAME_ENTRY row APPROVED and books the money
+        // back as a separate REFUND row against the same gameId.
+        await prisma.transaction.create({
+            data: { userId: refunded.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED', referenceId: cancelledGame.id, balanceBefore: 100, balanceAfter: 0 },
+        })
+        await prisma.transaction.create({
+            data: { userId: refunded.id, type: 'REFUND', amount: 100, status: 'APPROVED', referenceId: cancelledGame.id, balanceBefore: 0, balanceAfter: 100 },
+        })
+
+        // The control player really did lose 100 — and has a withdrawal reversal
+        // in the same window, which is also a REFUND row but references a
+        // transaction, not a game, so it must not wipe out their loss.
+        await prisma.transaction.create({
+            data: { userId: control.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED', referenceId: playedGame.id, balanceBefore: 100, balanceAfter: 0 },
+        })
+        const withdrawal = await prisma.transaction.create({
+            data: { userId: control.id, type: 'WITHDRAWAL', amount: 500, status: 'REJECTED' },
+        })
+        await prisma.transaction.create({
+            data: { userId: control.id, type: 'REFUND', amount: 500, status: 'APPROVED', referenceId: withdrawal.id, balanceBefore: 0, balanceAfter: 500 },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(refunded.id) ?? 0).toNumber()).toBe(0)
+        expect(new Decimal(netLoss.get(control.id) ?? 0).toNumber()).toBe(100)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(1)
+
+        const paid = await prisma.cashbackDisbursement.findMany({ where: { promotionId: promotion.id } })
+        expect(paid.map((p) => p.userId)).toEqual([control.id])
+    })
+
+    it('counts only the real-balance part of a bonus-funded entry, so bonus cannot recycle into bonus', async () => {
+        const bonusOnly = await makeUser('lossbonusonly1', '+251900000052')
+        const mixed = await makeUser('lossmixed1', '+251900000053')
+
+        const promotion = await makeUnscopedPromotion('Bonus Aware', { refundType: 'PERCENTAGE', refundValue: 50 })
+
+        // joinGame with spendAccount = 'BONUS': the whole 100 came out of the
+        // bonus wallet, which the snapshot columns record.
+        await prisma.transaction.create({
+            data: {
+                userId: bonusOnly.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED',
+                balanceBefore: 0, balanceAfter: 0, bonusBalanceBefore: 100, bonusBalanceAfter: 0,
+            },
+        })
+
+        // 20 of this 100 stake came from bonus, so only 80 is a real loss —
+        // a 50% refund on it is 40, not 50.
+        await prisma.transaction.create({
+            data: {
+                userId: mixed.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED',
+                balanceBefore: 80, balanceAfter: 0, bonusBalanceBefore: 20, bonusBalanceAfter: 0,
+            },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(bonusOnly.id) ?? 0).toNumber()).toBe(0)
+        expect(new Decimal(netLoss.get(mixed.id) ?? 0).toNumber()).toBe(80)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(40)
+
+        const bonusOnlyWallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: bonusOnly.id } })
+        expect(new Decimal(bonusOnlyWallet.bonusBalance).toNumber()).toBe(0)
+    })
+
+    it('counts provider-game losses for an unscoped promotion, which is what site-wide means', async () => {
+        const player = await makeUser('lossprovider1', '+251900000054')
+        const promotion = await makeUnscopedPromotion('Site Wide')
+
+        // No bingo play at all: this loss exists only in the provider ledger.
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: player.id, providerId: 'provider-unscoped-netloss',
+                transactionId: `bet-unscoped-${Date.now()}`, gameCode: 'SLOT-1',
+                type: 'BET', status: 'COMPLETED', amount: -100, balanceBefore: 100, balanceAfter: 0,
+            },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(player.id) ?? 0).toNumber()).toBe(100)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(20)
+    })
+})
+
+describe('CashbackService.previewQualifiers', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    it('projects the open period with the per-player cap applied but the budget ignored', async () => {
+        const first = await makeUser('previewbig1', '+251900000060')
+        const second = await makeUser('previewmid1', '+251900000061')
+        const third = await makeUser('previewsmall1', '+251900000062')
+        const belowThreshold = await makeUser('previewbelow1', '+251900000063')
+        const bot = await prisma.user.create({
+            data: {
+                username: 'bot_tpreview', phone: '+251900000064', passwordHash: 'hashed:pass',
+                role: 'PLAYER', wallet: { create: { realBalance: 0, bonusBalance: 0 } },
+            },
+        })
+
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Preview Cashback', lossThreshold: 50, refundType: 'PERCENTAGE', refundValue: 50,
+                frequency: 'DAILY', isActive: true, maxPayoutPerPlayer: 80, periodBudget: 10,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        for (const [user, amount] of [[first, 300], [second, 200], [third, 60], [belowThreshold, 40], [bot, 900]] as const) {
+            await prisma.transaction.create({
+                data: { userId: user.id, type: 'GAME_ENTRY', amount, status: 'APPROVED' },
+            })
+        }
+
+        const preview = await CashbackService.previewQualifiers(promotion.id)
+        const current = getCurrentPeriod(CashbackFrequency.DAILY)
+
+        expect(preview.periodStart.toISOString()).toBe(current.periodStart.toISOString())
+        // The 40-loss player is under the threshold and the bot never qualifies.
+        expect(preview.players).toBe(3)
+        // 150 and 100 both clamp to the 80 cap; 30 is under it. The 10 budget is
+        // deliberately NOT applied — the admin screen shows the over-budget delta.
+        expect(preview.projectedTotal.toNumber()).toBe(190)
+        expect(preview.largest.toNumber()).toBe(80)
+        expect(preview.top.map((t) => t.username)).toEqual([first.username, second.username, third.username])
+        expect(preview.top[0].netLoss.toNumber()).toBe(300)
+        expect(preview.top[2].payout.toNumber()).toBe(30)
+
+        // A preview pays nobody.
+        expect(await prisma.cashbackDisbursement.count({ where: { promotionId: promotion.id } })).toBe(0)
+    })
+
+    it('caps the top list at 5 players', async () => {
+        const promotion = await prisma.cashbackPromotion.create({
+            data: {
+                name: 'Preview Top', lossThreshold: 50, refundType: 'FIXED', refundValue: 20,
+                frequency: 'DAILY', isActive: true,
+                startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 86400000),
+            },
+        })
+
+        for (let i = 0; i < 7; i++) {
+            const player = await makeUser(`previewmany${i}`, `+2519000007${i}0`)
+            await prisma.transaction.create({
+                data: { userId: player.id, type: 'GAME_ENTRY', amount: 100 + i, status: 'APPROVED' },
+            })
+        }
+
+        const preview = await CashbackService.previewQualifiers(promotion.id)
+        expect(preview.players).toBe(7)
+        expect(preview.top).toHaveLength(5)
+        // Biggest loss first.
+        expect(preview.top[0].netLoss.toNumber()).toBe(106)
+        expect(preview.projectedTotal.toNumber()).toBe(140)
     })
 })

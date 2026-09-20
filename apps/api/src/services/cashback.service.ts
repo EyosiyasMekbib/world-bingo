@@ -1,10 +1,59 @@
 import prisma from '../lib/prisma'
 import { Prisma } from '@prisma/client'
-import { TransactionType, PaymentStatus, NotificationType, CashbackRefundType, CashbackFrequency } from '@world-bingo/shared-types'
+import {
+    TransactionType,
+    PaymentStatus,
+    NotificationType,
+    CashbackRefundType,
+    CashbackFrequency,
+    CashbackPayoutTiming,
+} from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
 import { BonusService } from './bonus.service'
 import { captureEvent } from '../lib/posthog'
+
+/** The payout-shaping columns every amount calculation in here reads. */
+type PayoutConfig = {
+    refundType: CashbackRefundType | string
+    refundValue: Decimal | number
+    maxPayoutPerPlayer: Decimal | null
+}
+
+export interface CashbackSettlement {
+    promotionId: string
+    name: string
+    payoutTiming: CashbackPayoutTiming
+    periodStart: Date
+    periodEnd: Date
+    disbursed: number
+    skipped: number
+    budgetSkipped: number
+    total: Decimal
+}
+
+export interface CashbackRunResult {
+    promotionsChecked: number
+    totalDisbursed: number
+    totalAmount: Decimal
+    settlements: CashbackSettlement[]
+}
+
+export interface CashbackDisburseResult {
+    disbursed: number
+    skipped: number
+    budgetSkipped: number
+    total: Decimal
+}
+
+export interface CashbackPreview {
+    periodStart: Date
+    periodEnd: Date
+    players: number
+    projectedTotal: Decimal
+    largest: Decimal
+    top: Array<{ username: string; netLoss: Decimal; payout: Decimal }>
+}
 
 /**
  * Compute the start and end of the current frequency window (UTC).
@@ -38,6 +87,17 @@ export function getCurrentPeriod(frequency: CashbackFrequency, now = new Date())
     return { periodStart, periodEnd }
 }
 
+/**
+ * The window that closed most recently — what a PERIOD_CLOSE promotion settles.
+ * Derived by asking getCurrentPeriod about the instant one millisecond before
+ * the open window began, so ISO-week and month-length arithmetic stays in one
+ * place instead of being re-derived (and re-broken) here.
+ */
+export function getPreviousPeriod(frequency: CashbackFrequency, now = new Date()): { periodStart: Date; periodEnd: Date } {
+    const { periodStart } = getCurrentPeriod(frequency, now)
+    return getCurrentPeriod(frequency, new Date(periodStart.getTime() - 1))
+}
+
 export class CashbackService {
     /**
      * Create a new cashback promotion.
@@ -52,6 +112,10 @@ export class CashbackService {
         endsAt: string
         templateIds?: string[]
         providerGameKeys?: string[]
+        maxPayoutPerPlayer?: number | null
+        periodBudget?: number | null
+        payoutTiming?: CashbackPayoutTiming
+        bonusValidityHours?: number
     }) {
         return prisma.cashbackPromotion.create({
             data: {
@@ -64,6 +128,14 @@ export class CashbackService {
                 endsAt: new Date(data.endsAt),
                 templateIds: data.templateIds ?? [],
                 providerGameKeys: data.providerGameKeys ?? [],
+                // null on the two cap columns IS the meaning "uncapped", so an
+                // omitted field maps straight to it. payoutTiming and
+                // bonusValidityHours instead have schema defaults worth
+                // deferring to, hence the spreads rather than a `?? null`.
+                maxPayoutPerPlayer: data.maxPayoutPerPlayer ?? null,
+                periodBudget: data.periodBudget ?? null,
+                ...(data.payoutTiming ? { payoutTiming: data.payoutTiming } : {}),
+                ...(data.bonusValidityHours != null ? { bonusValidityHours: data.bonusValidityHours } : {}),
             },
         })
     }
@@ -125,35 +197,95 @@ export class CashbackService {
      * Check all active promotions and disburse cashback to qualifying players.
      * Called hourly by the cashback-checker worker.
      */
-    static async runChecks(): Promise<{ promotionsChecked: number; totalDisbursed: number; totalAmount: Decimal }> {
+    static async runChecks(): Promise<CashbackRunResult> {
         const now = new Date()
+
+        // A PERIOD_CLOSE promotion settles a window only once that window has
+        // ENDED, so its final settlement falls due after its own endsAt — an
+        // `endsAt >= now` filter here would silently swallow the last period a
+        // promotion ever ran. Widen the fetch to anything still live inside the
+        // longest closed window (a month) and let the per-promotion check below
+        // decide; ON_THRESHOLD keeps paying only while the promotion is live.
+        const earliestClosedPeriodStart = getPreviousPeriod(CashbackFrequency.MONTHLY, now).periodStart
 
         const activePromotions = await prisma.cashbackPromotion.findMany({
             where: {
                 isActive: true,
                 startsAt: { lte: now },
-                endsAt: { gte: now },
+                endsAt: { gte: earliestClosedPeriodStart },
             },
         })
 
         let totalDisbursed = 0
         let totalAmount = new Decimal(0)
+        const settlements: CashbackSettlement[] = []
 
         for (const promotion of activePromotions) {
-            const { periodStart, periodEnd } = getCurrentPeriod(promotion.frequency as CashbackFrequency, now)
+            const frequency = promotion.frequency as CashbackFrequency
+            const payoutTiming = promotion.payoutTiming as CashbackPayoutTiming
+
+            const onThreshold = payoutTiming === CashbackPayoutTiming.ON_THRESHOLD
+
+            // PERIOD_CLOSE settles the window that has already ENDED: paying into
+            // the open one hands a player cashback on a loss they might still win
+            // back before the period is out. ON_THRESHOLD is the older behaviour
+            // and deliberately pays into the live window.
+            const { periodStart, periodEnd } = onThreshold
+                ? getCurrentPeriod(frequency, now)
+                : getPreviousPeriod(frequency, now)
+
+            if (onThreshold) {
+                // Nothing left to top up once the promotion itself is over.
+                if (promotion.endsAt < now) continue
+            } else if (promotion.startsAt > periodStart || promotion.endsAt < periodStart) {
+                // Only settle a window this promotion was already live at the
+                // start of. Without this, a promotion created today would on its
+                // very first hourly run pay out on yesterday's losses — play it
+                // never advertised cashback for — and every promotion alive at
+                // deploy time would do exactly that at once.
+                continue
+            }
+
             const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
             totalDisbursed += result.disbursed
             totalAmount = totalAmount.plus(result.total)
+            settlements.push({
+                promotionId: promotion.id,
+                name: promotion.name,
+                payoutTiming,
+                periodStart,
+                periodEnd,
+                disbursed: result.disbursed,
+                skipped: result.skipped,
+                budgetSkipped: result.budgetSkipped,
+                total: result.total,
+            })
         }
 
-        return { promotionsChecked: activePromotions.length, totalDisbursed, totalAmount }
+        return { promotionsChecked: activePromotions.length, totalDisbursed, totalAmount, settlements }
     }
 
     /**
-     * Net loss (wagered − won) per user within [periodStart, periodEnd],
-     * restricted to the promotion's game scope. Empty templateIds AND empty
-     * providerGameKeys means unscoped — every bingo and provider game counts,
-     * matching site-wide behavior.
+     * Net loss per user within [periodStart, periodEnd], restricted to the
+     * promotion's game scope. Empty templateIds AND empty providerGameKeys
+     * means unscoped — every bingo and provider game counts, matching
+     * site-wide behavior.
+     *
+     * "Loss" here is strictly REAL-balance loss, which is what
+     * `cashback_promotions.lossThreshold` documents itself as holding:
+     *
+     *  - a GAME_ENTRY contributes only the part that came out of realBalance.
+     *    joinGame spends the bonus wallet first when spendAccount = 'BONUS' and
+     *    snapshots it in bonusBalanceBefore/After, so counting the whole stake
+     *    would recycle bonus into more bonus, forever.
+     *  - a provider bet is the same story, one table further away: its
+     *    third_party_transactions row only knows the combined balance, so the
+     *    bonus-funded part is read off the paired TP_* transactions row instead.
+     *  - a cancelled game leaves its GAME_ENTRY row APPROVED and books a
+     *    separate REFUND row against the same gameId, so the refunded real
+     *    portion comes back off the loss. REFUND is also used for withdrawal
+     *    reversals and tournament exits, hence the `g.id IS NOT NULL` guard:
+     *    only refunds that resolve to a game are game refunds.
      */
     static async getNetLossByUser(
         promotion: { templateIds: string[]; providerGameKeys: string[] },
@@ -162,37 +294,7 @@ export class CashbackService {
     ): Promise<Map<string, Decimal>> {
         const templateIds = promotion.templateIds ?? []
         const providerGameKeys = promotion.providerGameKeys ?? []
-
-        if (templateIds.length === 0 && providerGameKeys.length === 0) {
-            const entries = await prisma.transaction.groupBy({
-                by: ['userId'],
-                where: {
-                    type: TransactionType.GAME_ENTRY,
-                    status: PaymentStatus.APPROVED,
-                    createdAt: { gte: periodStart, lte: periodEnd },
-                },
-                _sum: { amount: true },
-            })
-
-            const wins = await prisma.transaction.groupBy({
-                by: ['userId'],
-                where: {
-                    type: TransactionType.PRIZE_WIN,
-                    status: PaymentStatus.APPROVED,
-                    createdAt: { gte: periodStart, lte: periodEnd },
-                },
-                _sum: { amount: true },
-            })
-
-            const winMap = new Map(wins.map((w) => [w.userId, new Decimal(w._sum.amount ?? 0)]))
-            const result = new Map<string, Decimal>()
-            for (const entry of entries) {
-                const wagered = new Decimal(entry._sum.amount ?? 0)
-                const won = winMap.get(entry.userId) ?? new Decimal(0)
-                result.set(entry.userId, wagered.minus(won))
-            }
-            return result
-        }
+        const unscoped = templateIds.length === 0 && providerGameKeys.length === 0
 
         const providerPairs = providerGameKeys
             .map((key) => {
@@ -202,34 +304,84 @@ export class CashbackService {
             })
             .filter((pair): pair is { providerId: string; gameCode: string } => pair !== null)
 
-        const bingoFilter = templateIds.length > 0
-            ? Prisma.sql`AND g."templateId" = ANY(${templateIds}::text[])`
-            : Prisma.sql`AND false`
+        // Unscoped means "no restriction", NOT "bingo only" — the provider CTE
+        // has to stay open too, or a promotion with no game scope would ignore
+        // provider play entirely while claiming to be site-wide.
+        const bingoFilter = unscoped
+            ? Prisma.empty
+            : templateIds.length > 0
+              ? Prisma.sql`AND g."templateId" = ANY(${templateIds}::text[])`
+              : Prisma.sql`AND false`
 
-        const providerFilter = providerPairs.length > 0
-            ? Prisma.sql`AND (tpt."providerId", tpt."gameCode") IN (${Prisma.join(
-                  providerPairs.map((p) => Prisma.sql`(${p.providerId}, ${p.gameCode})`),
-              )})`
-            : Prisma.sql`AND false`
+        const providerFilter = unscoped
+            ? Prisma.empty
+            : providerPairs.length > 0
+              ? Prisma.sql`AND (tpt."providerId", tpt."gameCode") IN (${Prisma.join(
+                    providerPairs.map((p) => Prisma.sql`(${p.providerId}, ${p.gameCode})`),
+                )})`
+              : Prisma.sql`AND false`
+
+        // "createdAt" is `timestamp` WITHOUT time zone holding UTC. Binding a JS
+        // Date sends it as timestamptz, which Postgres reconciles through the
+        // SESSION timezone — silently shifting the window on any session not
+        // pinned to UTC. Bind the ISO string and cast, as bonus.service.ts does.
+        const startUtc = periodStart.toISOString()
+        const endUtc = periodEnd.toISOString()
 
         const rows = await prisma.$queryRaw<Array<{ userId: string; netLoss: Decimal }>>(Prisma.sql`
             WITH bingo_loss AS (
                 SELECT t."userId",
-                       SUM(CASE WHEN t.type = 'GAME_ENTRY' THEN t.amount ELSE 0 END) -
-                       SUM(CASE WHEN t.type = 'PRIZE_WIN' THEN t.amount ELSE 0 END) AS "netLoss"
+                       SUM(CASE t.type
+                               WHEN 'GAME_ENTRY' THEN GREATEST(
+                                   t.amount - GREATEST(COALESCE(t."bonusBalanceBefore", 0) - COALESCE(t."bonusBalanceAfter", 0), 0),
+                                   0
+                               )
+                               WHEN 'PRIZE_WIN' THEN -t.amount
+                               WHEN 'REFUND' THEN -GREATEST(COALESCE(t."balanceAfter" - t."balanceBefore", t.amount), 0)
+                               ELSE 0
+                           END) AS "netLoss"
                 FROM transactions t
-                JOIN games g ON g.id = t."referenceId"
+                LEFT JOIN games g ON g.id = t."referenceId"
                 WHERE t.status = 'APPROVED'
-                  AND t.type IN ('GAME_ENTRY', 'PRIZE_WIN')
-                  AND t."createdAt" BETWEEN ${periodStart} AND ${periodEnd}
+                  AND t."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
+                  AND (t.type IN ('GAME_ENTRY', 'PRIZE_WIN') OR (t.type = 'REFUND' AND g.id IS NOT NULL))
                   ${bingoFilter}
                 GROUP BY t."userId"
             ),
             provider_loss AS (
-                SELECT tpt."userId", -SUM(tpt.amount) AS "netLoss"
+                -- third_party_transactions.balanceBefore/After hold the COMBINED
+                -- real+bonus total, so a bonus-funded spin is indistinguishable from a
+                -- real-funded one in this table — and all three provider integrations
+                -- debit the bonus wallet when spendAccount = 'BONUS'. The paired wallet
+                -- audit row each provider write site commits in the same transaction
+                -- (transactions."referenceId" = the provider transactionId, type TP_*)
+                -- is the only place that split survives, so its bonus delta comes off
+                -- the loss exactly as the bingo CTE above takes it off a GAME_ENTRY.
+                -- Correlated rather than joined so a stray duplicate audit row can
+                -- never multiply the provider row it belongs to. No paired row at all
+                -- (data predating this pairing) leaves the row wholly real, which is
+                -- what this CTE previously assumed for every row.
+                SELECT tpt."userId",
+                       SUM(
+                           -tpt.amount - COALESCE((
+                               SELECT SUM(COALESCE(pair."bonusBalanceBefore", 0) - COALESCE(pair."bonusBalanceAfter", 0))
+                               FROM transactions pair
+                               WHERE pair."referenceId" = tpt."transactionId"
+                                 AND pair."userId" = tpt."userId"
+                                 AND pair.status = 'APPROVED'
+                                 AND pair.type IN ('TP_BET', 'TP_WIN', 'TP_ROLLBACK', 'TP_ADJUSTMENT')
+                           ), 0)
+                       ) AS "netLoss"
                 FROM third_party_transactions tpt
-                WHERE tpt.status = 'COMPLETED'
-                  AND tpt."createdAt" BETWEEN ${periodStart} AND ${periodEnd}
+                -- A rollback flips the original BET to ROLLED_BACK and books a
+                -- compensating ROLLBACK row for the same money. Keeping only COMPLETED
+                -- drops the debit and keeps the credit, so a cancelled bet reads as a
+                -- win; both halves in, and the pair nets to zero — the same pairing
+                -- provider-round-ledger.ts reconciles on. FAILED rows are inert either
+                -- way: their write site persists amount 0 and no paired audit row,
+                -- since nothing left the wallet.
+                WHERE tpt.status IN ('COMPLETED', 'ROLLED_BACK')
+                  AND tpt."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
                   ${providerFilter}
                 GROUP BY tpt."userId"
             )
@@ -246,55 +398,131 @@ export class CashbackService {
     }
 
     /**
+     * Bots play with house money and would otherwise soak up a real budget.
+     */
+    private static async withoutBots(netLossByUser: Map<string, Decimal>): Promise<Map<string, Decimal>> {
+        const userIds = [...netLossByUser.keys()]
+        if (userIds.length === 0) return netLossByUser
+
+        const botUsers = await prisma.user.findMany({
+            where: { id: { in: userIds }, username: { startsWith: 'bot_t' } },
+            select: { id: true },
+        })
+        if (botUsers.length === 0) return netLossByUser
+
+        const filtered = new Map(netLossByUser)
+        for (const bot of botUsers) filtered.delete(bot.id)
+        return filtered
+    }
+
+    /**
+     * One player's payout for a given net loss, capped by maxPayoutPerPlayer.
+     *
+     * Rounded down to 2dp: a PERCENTAGE payout can otherwise carry more
+     * precision than bonus_grants' Decimal(12,2) can hold, silently truncating
+     * there while wallets.bonusBalance (Decimal(20,8)) keeps the extra digits —
+     * permanent drift on every percentage disbursement. BonusService.grant()
+     * also rounds defensively, so this is belt-and-suspenders for this call site.
+     */
+    private static payoutFor(promotion: PayoutConfig, netLoss: Decimal): Decimal {
+        const refundValue = new Decimal(promotion.refundValue)
+        const raw =
+            promotion.refundType === CashbackRefundType.PERCENTAGE
+                ? netLoss.times(refundValue.div(100)).toDecimalPlaces(2, Decimal.ROUND_DOWN)
+                : refundValue
+
+        if (promotion.maxPayoutPerPlayer == null) return raw
+        const cap = new Decimal(promotion.maxPayoutPerPlayer).toDecimalPlaces(2, Decimal.ROUND_DOWN)
+        return raw.gt(cap) ? cap : raw
+    }
+
+    /**
      * Check and disburse cashback for one promotion within one period window.
-     * Idempotent: safe to call multiple times for the same (promotionId, periodStart).
+     * Idempotent: safe to call multiple times for the same (promotionId,
+     * periodStart) — which is exactly what a PERIOD_CLOSE promotion relies on,
+     * since every hourly run for the rest of the day re-settles the same closed
+     * window. The unique index on (promotionId, userId, periodStart) is the
+     * guarantee; the pre-read below is only the cheap pass that also tells the
+     * budget how much of itself an earlier run already spent.
      */
     static async checkAndDisburse(
         promotionId: string,
         periodStart: Date,
         periodEnd: Date,
-    ): Promise<{ disbursed: number; skipped: number; total: Decimal }> {
+    ): Promise<CashbackDisburseResult> {
         const promotion = await prisma.cashbackPromotion.findUnique({ where: { id: promotionId } })
-        if (!promotion || !promotion.isActive) return { disbursed: 0, skipped: 0, total: new Decimal(0) }
+        if (!promotion || !promotion.isActive) return { disbursed: 0, skipped: 0, budgetSkipped: 0, total: new Decimal(0) }
 
-        const netLossByUser = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        // The loss window is the period intersected with the promotion's own life:
+        // play before it started, or after it ended, never earned cashback. A
+        // PERIOD_CLOSE promotion is settled after its own endsAt by design, so
+        // without the end clamp its final settlement pays for the rest of the
+        // window it was already dead for.
+        //
+        // The periodStart ARGUMENT is deliberately left unclamped: it is the
+        // (promotionId, userId, periodStart) idempotency key, and a promotion
+        // starting mid-window must keep settling under the canonical window start
+        // or every later run would pay again under a second key.
+        const lossStart = promotion.startsAt > periodStart ? promotion.startsAt : periodStart
+        const lossEnd = promotion.endsAt < periodEnd ? promotion.endsAt : periodEnd
+
+        const netLossByUser = await CashbackService.withoutBots(
+            await CashbackService.getNetLossByUser(promotion, lossStart, lossEnd),
+        )
 
         const lossThreshold = new Decimal(promotion.lossThreshold)
-        const refundValue = new Decimal(promotion.refundValue)
 
-        // Filter out bots
-        const userIds = [...netLossByUser.keys()]
-        const botUserIds = new Set<string>()
-        if (userIds.length > 0) {
-            const botUsers = await prisma.user.findMany({
-                where: { id: { in: userIds }, username: { startsWith: 'bot_t' } },
-                select: { id: true },
-            })
-            for (const b of botUsers) botUserIds.add(b.id)
-        }
+        // Descending net loss, so a budget too small for everyone buys the
+        // biggest losses rather than whichever userId Postgres returned first.
+        const candidates = [...netLossByUser]
+            .filter(([, netLoss]) => netLoss.gte(lossThreshold)) // inclusive boundary
+            .sort((a, b) => b[1].comparedTo(a[1]))
+
+        const priorDisbursements = await prisma.cashbackDisbursement.findMany({
+            where: { promotionId, periodStart },
+            select: { userId: true, amount: true },
+        })
+        const alreadyPaid = new Set(priorDisbursements.map((d) => d.userId))
+
+        const budget = promotion.periodBudget == null ? null : new Decimal(promotion.periodBudget)
+        let spent = priorDisbursements.reduce((sum, d) => sum.plus(new Decimal(d.amount)), new Decimal(0))
+
+        // One instant for the whole settlement, so every lot it grants dies
+        // together rather than drifting apart by however long the loop took.
+        const payoutAt = new Date()
+        const expiresAt =
+            promotion.bonusValidityHours > 0
+                ? new Date(payoutAt.getTime() + promotion.bonusValidityHours * 60 * 60 * 1000)
+                : null
 
         let disbursed = 0
         let skipped = 0
+        let budgetSkipped = 0
         let total = new Decimal(0)
 
-        for (const [userId, netLoss] of netLossByUser) {
-            if (botUserIds.has(userId)) continue
+        for (let i = 0; i < candidates.length; i++) {
+            const [userId, netLoss] = candidates[i]
+            if (alreadyPaid.has(userId)) {
+                skipped++
+                continue
+            }
 
-            // Qualifies when netLoss >= lossThreshold (inclusive boundary)
-            if (netLoss.lt(lossThreshold)) continue
-
-            // Calculate cashback amount. Rounded down to 2dp: a PERCENTAGE payout
-            // can otherwise carry more precision than bonus_grants' Decimal(12,2)
-            // can hold, silently truncating there while wallets.bonusBalance
-            // (Decimal(20,8)) keeps the extra digits — permanent drift on every
-            // percentage disbursement. BonusService.grant() also rounds
-            // defensively, so this is belt-and-suspenders for this call site.
-            const cashbackAmount =
-                promotion.refundType === CashbackRefundType.PERCENTAGE
-                    ? netLoss.times(refundValue.div(100)).toDecimalPlaces(2, Decimal.ROUND_DOWN)
-                    : refundValue
-
+            const cashbackAmount = CashbackService.payoutFor(promotion, netLoss)
             if (cashbackAmount.lte(0)) continue
+
+            if (budget && spent.plus(cashbackAmount).gt(budget)) {
+                // Stop rather than skip-and-continue: paying a smaller qualifier
+                // further down the list because it happens to fit under the
+                // remainder would hand the budget to the wrong players.
+                budgetSkipped = candidates.slice(i).filter(([id]) => !alreadyPaid.has(id)).length
+                // A truncated payout run otherwise reads as "everyone was paid".
+                console.warn(
+                    `[Cashback] "${promotion.name}" reached its ${budget.toFixed(2)} budget for the period ` +
+                    `starting ${periodStart.toISOString()} — ${budgetSkipped} qualifying player(s) unpaid ` +
+                    `(${spent.toFixed(2)} disbursed)`,
+                )
+                break
+            }
 
             const result = await prisma.$transaction(async (tx) => {
                 // Idempotency: unique constraint on (promotionId, userId, periodStart)
@@ -321,6 +549,7 @@ export class CashbackService {
                     userId: userId,
                     amount: cashbackAmount,
                     source: 'CASHBACK',
+                    expiresAt,
                 })
                 if (!grantResult.granted) return 'skipped'
 
@@ -358,6 +587,7 @@ export class CashbackService {
             } else {
                 disbursed++
                 total = total.plus(result as Decimal)
+                spent = spent.plus(result as Decimal)
                 void captureEvent(userId, 'bonus_granted', {
                     amount: Number(result as Decimal),
                     source: 'CASHBACK',
@@ -375,6 +605,55 @@ export class CashbackService {
             }
         }
 
-        return { disbursed, skipped, total }
+        return { disbursed, skipped, budgetSkipped, total }
+    }
+
+    /**
+     * What the OPEN period would pay if it closed right now — the admin detail
+     * screen's "Qualifies right now" panel.
+     *
+     * The per-player cap is applied because it changes what each player is owed.
+     * The period budget deliberately is NOT: the screen shows the over-budget
+     * delta itself, which needs the untruncated total to subtract from.
+     */
+    static async previewQualifiers(promotionId: string, now = new Date()): Promise<CashbackPreview> {
+        const promotion = await prisma.cashbackPromotion.findUniqueOrThrow({ where: { id: promotionId } })
+        const { periodStart, periodEnd } = getCurrentPeriod(promotion.frequency as CashbackFrequency, now)
+
+        const netLossByUser = await CashbackService.withoutBots(
+            await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd),
+        )
+        const lossThreshold = new Decimal(promotion.lossThreshold)
+
+        const qualifiers = [...netLossByUser]
+            .filter(([, netLoss]) => netLoss.gte(lossThreshold))
+            .map(([userId, netLoss]) => ({ userId, netLoss, payout: CashbackService.payoutFor(promotion, netLoss) }))
+            .filter((q) => q.payout.gt(0))
+            .sort((a, b) => b.netLoss.comparedTo(a.netLoss))
+
+        const projectedTotal = qualifiers.reduce((sum, q) => sum.plus(q.payout), new Decimal(0))
+        const largest = qualifiers.reduce((max, q) => (q.payout.gt(max) ? q.payout : max), new Decimal(0))
+
+        const topQualifiers = qualifiers.slice(0, 5)
+        const users = topQualifiers.length > 0
+            ? await prisma.user.findMany({
+                  where: { id: { in: topQualifiers.map((q) => q.userId) } },
+                  select: { id: true, username: true },
+              })
+            : []
+        const usernameById = new Map(users.map((u) => [u.id, u.username]))
+
+        return {
+            periodStart,
+            periodEnd,
+            players: qualifiers.length,
+            projectedTotal,
+            largest,
+            top: topQualifiers.map((q) => ({
+                username: usernameById.get(q.userId) ?? 'Unknown player',
+                netLoss: q.netLoss,
+                payout: q.payout,
+            })),
+        }
     }
 }
