@@ -17,8 +17,8 @@ export type DepositRequest = {
   amount: string
   expiresAt: string
   player: {
-    maskedName: string
-    maskedPhone: string
+    name: string
+    phoneTail: string
     since: string
     depositCount: number
   }
@@ -30,7 +30,7 @@ export type FulfillResult = {
   code: string
   fulfilledAt: string
   floatAfter: string
-  player: { maskedName: string }
+  player: { name: string }
 }
 
 export type LedgerType = 'TOP_UP' | 'COMMISSION' | 'FULFILLMENT' | 'ADJUSTMENT'

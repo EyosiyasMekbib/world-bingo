@@ -142,21 +142,33 @@ describe('AgentDepositService.lookupByCode', () => {
         await expectInvariantClean()
     })
 
-    it('masks the players name and phone and never returns them raw', async () => {
+    it('shows the full name and only the last four digits of the phone', async () => {
         const p = await player({ firstName: 'Kebede', lastName: 'Mekonnen', phone: '+251912345284' })
         const request = await AgentDepositService.createRequest(p.id, '200')
 
         const view = await AgentDepositService.lookupByCode(request.code)
 
         expect(view.amount).toBe('200.00')
-        expect(view.player.maskedName).toBe('K••••• M.')
-        expect(view.player.maskedPhone).toBe('+251 9•• ••• 284')
+        // The name is deliberately unmasked: the agent has to match the person
+        // in front of them to the account before taking cash.
+        expect(view.player.name).toBe('Kebede Mekonnen')
+        expect(view.player.phoneTail).toBe('•••• 5284')
         expect(view.player.depositCount).toBe(0)
 
+        // The phone is still never returned in a form the agent could dial.
         const serialised = JSON.stringify(view)
-        expect(serialised).not.toContain('Kebede')
-        expect(serialised).not.toContain('Mekonnen')
         expect(serialised).not.toContain('912345284')
+        expect(serialised).not.toContain('+251912345284')
+    })
+
+    it('falls back to the username when the account has no real name', async () => {
+        const p = await player({ phone: '+251912345284' })
+        const request = await AgentDepositService.createRequest(p.id, '200')
+
+        const view = await AgentDepositService.lookupByCode(request.code)
+
+        expect(view.player.name).not.toBe('')
+        expect(view.player.name).not.toBe('Player')
     })
 
     it('moves no money', async () => {
@@ -211,7 +223,7 @@ describe('AgentDepositService.fulfill', () => {
         expect(result.amount).toBe('200.00')
         expect(result.floatAfter).toBe('800.00')
         expect(result.code).toBe(request.code)
-        expect(result.player.maskedName).toBe('A•••• T.')
+        expect(result.player.name).toBe('Almaz Tesfaye')
 
         expect(await floatOf(agent.id)).toBe(800)
         expect(await realBalanceOf(p.id)).toBe(200)

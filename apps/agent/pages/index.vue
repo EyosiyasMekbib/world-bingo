@@ -208,11 +208,11 @@ onMounted(async () => {
             <dl class="player-facts">
               <div class="fact">
                 <dt>Player</dt>
-                <dd>{{ request.player.maskedName }}</dd>
+                <dd>{{ request.player.name }}</dd>
               </div>
               <div class="fact">
                 <dt>Phone</dt>
-                <dd class="tnum">{{ request.player.maskedPhone }}</dd>
+                <dd class="tnum">{{ request.player.phoneTail }}</dd>
               </div>
               <div class="fact">
                 <dt>Player since</dt>
@@ -265,7 +265,7 @@ onMounted(async () => {
             <p class="amount amount--success tnum">
               {{ formatMoney(receipt.amount) }} <span class="amount__unit">ETB</span>
             </p>
-            <p class="success-sub">Paid to {{ receipt.player.maskedName }}</p>
+            <p class="success-sub">Paid to {{ receipt.player.name }}</p>
 
             <dl class="player-facts">
               <div class="fact">

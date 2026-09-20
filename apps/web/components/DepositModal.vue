@@ -5,7 +5,15 @@
         <div class="wb-modal__head">
           <h3 class="wb-modal__title">Deposit Funds</h3>
           <button class="wb-close" aria-label="Close" @click="$emit('update:modelValue', false)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
@@ -56,7 +64,10 @@
                           v-for="chip in [200, 500, 1000, 2000]"
                           :key="chip"
                           class="wb-chip"
-                          @click="checkoutAmount = chip; openMethod = m.code"
+                          @click="
+                            checkoutAmount = chip
+                            openMethod = m.code
+                          "
                         >
                           +{{ chip }}
                         </button>
@@ -75,7 +86,8 @@
                       v-if="showManualLink && checkoutUrl"
                       :href="checkoutUrl"
                       class="wb-hint method-card__manual"
-                    >{{ t('wallet.openCheckoutManually') }}</a>
+                      >{{ t('wallet.openCheckoutManually') }}</a
+                    >
                   </template>
 
                   <!-- Manual: collapsed to a Continue button, expands to the
@@ -95,10 +107,13 @@
                           <template v-if="m.merchantAccount">
                             <div class="banner-detail">Send to:</div>
                             <div class="merchant-number">
-                              <span v-if="m.merchantName">{{ m.merchantName }} — </span>{{ m.merchantAccount }}
+                              <span v-if="m.merchantName">{{ m.merchantName }} — </span
+                              >{{ m.merchantAccount }}
                             </div>
                           </template>
-                          <div v-if="m.instructions" class="banner-instructions">{{ m.instructions }}</div>
+                          <div v-if="m.instructions" class="banner-instructions">
+                            {{ m.instructions }}
+                          </div>
                         </div>
                       </div>
 
@@ -109,10 +124,16 @@
                           type="number"
                           :min="MIN_DEPOSIT"
                           :placeholder="`Min ${MIN_DEPOSIT} ETB`"
-                          :class="['wb-input', form.amount > 0 && form.amount < MIN_DEPOSIT ? 'wb-input--error' : '']"
+                          :class="[
+                            'wb-input',
+                            form.amount > 0 && form.amount < MIN_DEPOSIT ? 'wb-input--error' : '',
+                          ]"
                           @change="trackAmountEntered(m.code)"
                         />
-                        <p v-if="form.amount > 0 && form.amount < MIN_DEPOSIT" class="wb-hint wb-hint--error">
+                        <p
+                          v-if="form.amount > 0 && form.amount < MIN_DEPOSIT"
+                          class="wb-hint wb-hint--error"
+                        >
                           Minimum deposit is {{ MIN_DEPOSIT }} ETB
                         </p>
                         <div class="chips">
@@ -120,7 +141,10 @@
                             v-for="chip in [200, 500, 1000, 2000]"
                             :key="chip"
                             class="wb-chip"
-                            @click="form.amount = chip; trackAmountEntered(m.code)"
+                            @click="
+                              form.amount = chip
+                              trackAmountEntered(m.code)
+                            "
                           >
                             +{{ chip }}
                           </button>
@@ -144,7 +168,12 @@
                           placeholder="e.g. TLB202601011234"
                           class="wb-input"
                           :class="{ 'wb-input--error': fieldError === 'transactionId' }"
-                          @input="if (fieldError === 'transactionId') { fieldError = ''; error = '' }"
+                          @input="
+                            if (fieldError === 'transactionId') {
+                              fieldError = ''
+                              error = ''
+                            }
+                          "
                         />
                         <span v-if="fieldError === 'transactionId'" class="wb-hint wb-hint--error">
                           Already used — check your pending deposits below.
@@ -153,16 +182,31 @@
 
                       <div class="wb-field">
                         <label class="wb-label">Your Full Name <span class="wb-req">*</span></label>
-                        <input v-model="form.senderName" type="text" placeholder="Full name" class="wb-input" />
+                        <input
+                          v-model="form.senderName"
+                          type="text"
+                          placeholder="Full name"
+                          class="wb-input"
+                        />
                       </div>
 
                       <div class="wb-field">
-                        <label class="wb-label">Your {{ m.name }} Phone/Account Number <span class="wb-req">*</span></label>
-                        <input v-model="form.senderAccount" type="tel" placeholder="09XXXXXXXX" class="wb-input" />
+                        <label class="wb-label"
+                          >Your {{ m.name }} Phone/Account Number
+                          <span class="wb-req">*</span></label
+                        >
+                        <input
+                          v-model="form.senderAccount"
+                          type="tel"
+                          placeholder="09XXXXXXXX"
+                          class="wb-input"
+                        />
                       </div>
 
                       <div class="wb-field">
-                        <label class="wb-label">Transfer Receipt Screenshot <span class="wb-req">*</span></label>
+                        <label class="wb-label"
+                          >Transfer Receipt Screenshot <span class="wb-req">*</span></label
+                        >
                         <div
                           class="file-drop"
                           :class="{ 'has-preview': previewUrl }"
@@ -170,7 +214,12 @@
                           @dragover.prevent
                           @drop.prevent="onFileDrop"
                         >
-                          <img v-if="previewUrl" :src="previewUrl" alt="Receipt preview" class="preview-img" />
+                          <img
+                            v-if="previewUrl"
+                            :src="previewUrl"
+                            alt="Receipt preview"
+                            class="preview-img"
+                          />
                           <div v-else class="drop-hint">
                             <span class="icon">📎</span>
                             <span>Click or drag &amp; drop receipt (JPG/PNG/HEIC, max 5MB)</span>
@@ -178,13 +227,22 @@
                         </div>
                       </div>
 
-                      <ul v-if="showMissing && missing.length" class="wb-hint wb-hint--error deposit-missing" role="alert">
+                      <ul
+                        v-if="showMissing && missing.length"
+                        class="wb-hint wb-hint--error deposit-missing"
+                        role="alert"
+                      >
                         <li v-for="field in missing" :key="field">{{ MISSING_HINTS[field] }}</li>
                       </ul>
 
                       <div v-if="error" class="wb-notice wb-notice--error">
                         <div class="wb-notice__icon">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.2"
+                          >
                             <circle cx="12" cy="12" r="10" />
                             <line x1="12" y1="8" x2="12" y2="12" />
                             <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -197,13 +255,24 @@
                       </div>
                       <div v-if="success" class="wb-notice wb-notice--success">
                         <div class="wb-notice__icon">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
                           </svg>
                         </div>
                         <div class="wb-notice__body">
                           <span class="wb-notice__title">Deposit submitted</span>
-                          <span class="wb-notice__text">Pending admin verification — usually within 15 minutes.</span>
+                          <span class="wb-notice__text"
+                            >Pending admin verification — usually within 15 minutes.</span
+                          >
                         </div>
                       </div>
 
@@ -250,7 +319,9 @@
         </div>
 
         <div class="wb-modal__foot">
-          <button class="wb-btn wb-btn--subtle" @click="$emit('update:modelValue', false)">Cancel</button>
+          <button class="wb-btn wb-btn--subtle" @click="$emit('update:modelValue', false)">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -379,7 +450,11 @@ async function startCheckout(m: DepositMethod) {
     // flushed (0 of 174 redirects arrived in the first 14 hours).
     track(
       'deposit_checkout_redirect',
-      { paymentMethod: m.code, amountBucket: bucket, ms: Math.round(performance.now() - startedAt) },
+      {
+        paymentMethod: m.code,
+        amountBucket: bucket,
+        ms: Math.round(performance.now() - startedAt),
+      },
       { instant: true },
     )
     // Always the URL from THIS response: repeating the idempotency key mints a
@@ -433,7 +508,8 @@ const errorTitle = computed(() => {
 })
 
 const errorHint = computed(() => {
-  if (fieldError.value === 'transactionId') return 'If you sent money, your deposit may already be pending review. Check your transaction history or enter a different Transaction ID.'
+  if (fieldError.value === 'transactionId')
+    return 'If you sent money, your deposit may already be pending review. Check your transaction history or enter a different Transaction ID.'
   return ''
 })
 
@@ -467,12 +543,9 @@ const fetchMethods = async () => {
   try {
     const data = await auth.apiFetch<DepositMethod[]>('/payment-methods?type=DEPOSIT')
     depositMethods.value = Array.isArray(data) ? data : []
-    if (depositMethods.value.length > 0 && !agentHasLiveCode.value) {
-      openMethod.value = depositMethods.value[0].code
-      // The openMethod watcher does not fire when the modal reopens onto the
-      // same first card, so prefill here too. Idempotent: never overwrites.
-      prefillPayer(openMethod.value)
-    }
+    // Every card starts collapsed. Auto-opening the first gateway put one
+    // method in front of the player before they had chosen anything, which
+    // reads as the recommended option rather than simply the first row.
   } catch {
     depositMethods.value = []
   } finally {
@@ -480,15 +553,18 @@ const fetchMethods = async () => {
   }
 }
 
-watch(() => props.modelValue, (open) => {
-  if (open) {
-    // The agent card remounts with the modal and re-reports a live code.
-    agentHasLiveCode.value = false
-    fetchMethods()
-    promotions.fetch()
-    track('deposit_modal_opened')
-  }
-})
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) {
+      // The agent card remounts with the modal and re-reports a live code.
+      agentHasLiveCode.value = false
+      fetchMethods()
+      promotions.fetch()
+      track('deposit_modal_opened')
+    }
+  },
+)
 
 // ── Deposit-progress hints (daily/weekly deposit bonus rules) ──────
 const dailyDepositHint = computed(() => {
@@ -512,8 +588,12 @@ function onFileDrop(e: DragEvent) {
 }
 
 function setFile(file: File) {
-  if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(file.type)
-    && !file.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/)) {
+  if (
+    !['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(
+      file.type,
+    ) &&
+    !file.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/)
+  ) {
     error.value = 'Only JPG, PNG, or HEIC images are allowed.'
     return
   }
@@ -601,15 +681,21 @@ function resetForm() {
   error.value = ''
   fieldError.value = ''
   showMissing.value = false
-  openMethod.value = depositMethods.value[0]?.code ?? null
+  openMethod.value = null
 }
 </script>
 
 <style scoped>
-.spin { display: inline-block; }
+.spin {
+  display: inline-block;
+}
 
 /* ── Method cards (the deposit stack) ─────────────────────────── */
-.method-stack { display: flex; flex-direction: column; gap: 14px; }
+.method-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
 .method-card {
   border-radius: var(--radius-md, 12px);
@@ -617,7 +703,9 @@ function resetForm() {
   background: color-mix(in srgb, var(--brand-primary) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, transparent);
 }
-.method-card--open { border-color: color-mix(in srgb, var(--brand-primary) 48%, transparent); }
+.method-card--open {
+  border-color: color-mix(in srgb, var(--brand-primary) 48%, transparent);
+}
 
 .method-card__logo {
   background: #fff;
@@ -626,10 +714,24 @@ function resetForm() {
   align-items: center;
   min-height: 56px;
 }
-.method-card__logo img { max-height: 32px; width: auto; }
-.method-card__fallback { font-weight: 700; color: #111; display: flex; align-items: center; gap: 8px; }
+.method-card__logo img {
+  max-height: 32px;
+  width: auto;
+}
+.method-card__fallback {
+  font-weight: 700;
+  color: #111;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-.method-card__body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.method-card__body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .method-card__name {
   margin: 0;
   font-family: var(--font-ui);
@@ -639,10 +741,27 @@ function resetForm() {
   text-transform: uppercase;
   color: var(--text-primary);
 }
-.method-card__cta { width: 100%; justify-content: center; }
-.deposit-missing { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
-.method-card__hint { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-.methods-empty { margin-top: 14px; text-align: center; }
+.method-card__cta {
+  width: 100%;
+  justify-content: center;
+}
+.deposit-missing {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.method-card__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.methods-empty {
+  margin-top: 14px;
+  text-align: center;
+}
 
 .chips {
   display: flex;
@@ -661,8 +780,17 @@ function resetForm() {
   border-radius: var(--radius-md, 12px);
   padding: 14px 16px;
 }
-.banner-icon { font-size: 1.8rem; flex-shrink: 0; line-height: 1; }
-.banner-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.banner-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
 .banner-title {
   font-family: var(--font-ui);
   font-weight: 700;
@@ -671,7 +799,10 @@ function resetForm() {
   text-transform: uppercase;
   color: var(--brand-primary);
 }
-.banner-detail { font-size: 12.5px; color: var(--text-secondary); }
+.banner-detail {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
 .merchant-number {
   font-family: var(--font-ui);
   font-size: 22px;
@@ -679,7 +810,12 @@ function resetForm() {
   letter-spacing: 0.08em;
   color: var(--text-primary);
 }
-.banner-instructions { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.5; }
+.banner-instructions {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.5;
+}
 
 /* ── Deposit bonus hints (bespoke) ────────────────────────────── */
 .deposit-bonus-hints {
@@ -705,7 +841,9 @@ function resetForm() {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 0.18s, background 0.18s;
+  transition:
+    border-color 0.18s,
+    background 0.18s;
   overflow: hidden;
   padding: 10px;
 }
@@ -722,7 +860,16 @@ function resetForm() {
   font-size: 13px;
   text-align: center;
 }
-.drop-hint .icon { font-size: 2rem; }
-.preview-img { max-height: 200px; max-width: 100%; object-fit: contain; border-radius: 8px; }
-.hidden-input { display: none; }
+.drop-hint .icon {
+  font-size: 2rem;
+}
+.preview-img {
+  max-height: 200px;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.hidden-input {
+  display: none;
+}
 </style>
