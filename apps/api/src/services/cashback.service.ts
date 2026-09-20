@@ -9,6 +9,9 @@ import {
     CashbackPayoutTiming,
 } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
+import { dayBucketStart, weekBucketStart, monthBucketStart, monthBucketEnd } from '../lib/bonus-period'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 import { NotificationService } from './notification.service'
 import { BonusService } from './bonus.service'
 import { captureEvent } from '../lib/posthog'
@@ -56,35 +59,32 @@ export interface CashbackPreview {
 }
 
 /**
- * Compute the start and end of the current frequency window (UTC).
+ * The start and end of the current frequency window, cut on
+ * Africa/Addis_Ababa and returned as UTC instants.
+ *
+ * Addis, not UTC, because "lost this week" is a claim about the player's week.
+ * Cutting in UTC made a Monday-to-Sunday promotion settle at 02:59 on Monday
+ * local, put the last three hours of every local day in the next window, and
+ * left this the only bonus surface disagreeing with `lib/bonus-period`, which
+ * has always bucketed deposit bonuses on Addis. Two different weeks on one
+ * wallet is not a thing that can be explained to a player.
+ *
+ * Ethiopia observes no DST, so the offset is a fixed +3 and every local day is
+ * exactly 24 hours — which is what lets the ends below be derived by adding a
+ * duration rather than by re-deriving local calendar arithmetic.
  */
 export function getCurrentPeriod(frequency: CashbackFrequency, now = new Date()): { periodStart: Date; periodEnd: Date } {
-    const y = now.getUTCFullYear()
-    const m = now.getUTCMonth()
-    const d = now.getUTCDate()
-    const day = now.getUTCDay() // 0 = Sunday
-
     if (frequency === CashbackFrequency.DAILY) {
-        const periodStart = new Date(Date.UTC(y, m, d, 0, 0, 0, 0))
-        const periodEnd = new Date(Date.UTC(y, m, d, 23, 59, 59, 999))
-        return { periodStart, periodEnd }
+        const periodStart = dayBucketStart(now)
+        return { periodStart, periodEnd: new Date(periodStart.getTime() + DAY_MS - 1) }
     }
 
     if (frequency === CashbackFrequency.WEEKLY) {
-        // ISO week: Monday = start
-        const daysFromMonday = (day === 0 ? 6 : day - 1)
-        const mondayDate = d - daysFromMonday
-        const periodStart = new Date(Date.UTC(y, m, mondayDate, 0, 0, 0, 0))
-        // Add 6 days to periodStart for Sunday end — handles month boundary correctly
-        const periodEnd = new Date(periodStart.getTime() + 6 * 24 * 60 * 60 * 1000)
-        periodEnd.setUTCHours(23, 59, 59, 999)
-        return { periodStart, periodEnd }
+        const periodStart = weekBucketStart(now)
+        return { periodStart, periodEnd: new Date(periodStart.getTime() + 7 * DAY_MS - 1) }
     }
 
-    // MONTHLY
-    const periodStart = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0))
-    const periodEnd = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999)) // last day of month
-    return { periodStart, periodEnd }
+    return { periodStart: monthBucketStart(now), periodEnd: monthBucketEnd(now) }
 }
 
 /**

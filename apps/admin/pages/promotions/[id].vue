@@ -38,15 +38,14 @@ const showEdit = ref(false)
 const showEndConfirm = ref(false)
 
 // ── Formatting ─────────────────────────────────────────────────────────────
-// Two clocks, deliberately. getCurrentPeriod in
-// apps/api/src/services/cashback.service.ts cuts every period in UTC, so a
-// boundary read in Addis time names a day the disburser does not agree with: a
-// UTC Mon–Sun week renders Mon–Mon, eight days long, closing a day late. The
+// Every date here is a UTC instant and has to be read back in Addis, or a
+// Mon–Sun week renders as Sunday–Saturday for anyone west of UTC+3. Two
+// different ideas of "when" share that one clock: periods are cut for the
+// disburser by the Addis buckets of apps/api/src/lib/bonus-period.ts, while the
 // promotion's own window and the activity stamps are instants an admin picked on
-// their own clock, so those stay in Addis — and a label carrying a UTC boundary
-// says which clock it is on, because it is not the one on the wall.
+// their own wall. One constant serves both, but they are not the same thing —
+// should the disburser ever move off Addis, the period labels follow it alone.
 const ADDIS = 'Africa/Addis_Ababa'
-const PERIOD_ZONE = 'UTC'
 
 const money = (v: number, dp = 2) =>
   v.toLocaleString('en-ET', { minimumFractionDigits: dp, maximumFractionDigits: dp })
@@ -59,16 +58,12 @@ const dayLabel = (iso: string) =>
 const dayYearLabel = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { timeZone: ADDIS, month: 'short', day: 'numeric', year: 'numeric' })
 
-/** For period boundaries only — the promotion's own window is not one. */
-const periodDayLabel = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { timeZone: PERIOD_ZONE, month: 'short', day: 'numeric' })
-
 // `periodEnd` may be the exclusive next-period boundary or the last instant
 // inside the period, and the API is free to change its mind. Stepping back a
 // millisecond lands on the closing day under either convention.
 const lastInstant = (iso: string) => new Date(new Date(iso).getTime() - 1).toISOString()
 
-const periodLabel = (start: string, end: string) => `${periodDayLabel(start)} – ${periodDayLabel(lastInstant(end))}`
+const periodLabel = (start: string, end: string) => `${dayLabel(start)} – ${dayLabel(lastInstant(end))}`
 
 // ── Load ───────────────────────────────────────────────────────────────────
 async function load() {
@@ -151,13 +146,13 @@ const closesAtLabel = computed(() => {
   if (!qualifiers.value) return 'Open period unknown'
   const at = new Date(lastInstant(qualifiers.value.periodEnd))
   const stamp = at.toLocaleString('en-GB', {
-    timeZone: PERIOD_ZONE,
+    timeZone: ADDIS,
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   })
-  return `Period closes ${stamp} UTC`
+  return `Period closes ${stamp}`
 })
 
 const periodBudget = computed(() => {
@@ -243,11 +238,11 @@ const refundLabel = computed(() => {
 const frequencyLabel = computed(() => {
   switch (promotion.value?.frequency) {
     case 'DAILY':
-      return 'Daily · UTC midnight to midnight'
+      return 'Daily · midnight to midnight'
     case 'MONTHLY':
-      return 'Monthly · 1st to last, UTC'
+      return 'Monthly · 1st to last'
     default:
-      return 'Weekly · Mon–Sun, UTC'
+      return 'Weekly · Mon–Sun'
   }
 })
 
@@ -649,7 +644,7 @@ function exportCsv() {
           <p class="mt-1 text-[13.5px] text-white/60">
             {{ promotion.rewardSummary }} ·
             {{ paysAtClose ? 'pays at period close' : 'pays on threshold' }} ·
-            periods cut in UTC
+            Africa/Addis_Ababa
           </p>
         </div>
 
@@ -756,10 +751,7 @@ function exportCsv() {
             <span class="cv">{{ paysAtClose ? 'At period close' : 'On threshold' }}</span>
           </div>
           <div class="cfg"><span class="ck">Frequency</span><span class="cv">{{ frequencyLabel }}</span></div>
-          <div class="cfg">
-            <span class="ck">Clocks</span>
-            <span class="cv">Periods cut in UTC · window and activity in Addis (UTC+3)</span>
-          </div>
+          <div class="cfg"><span class="ck">Time zone</span><span class="cv">Africa/Addis_Ababa (UTC+3)</span></div>
           <div class="cfg"><span class="ck">Game scope</span><span class="cv">{{ scopeLabel }}</span></div>
           <div class="cfg"><span class="ck">Audience</span><span class="cv">All players</span></div>
           <div class="cfg"><span class="ck">Bonus validity</span><span class="cv">{{ validityLabel }}</span></div>
@@ -823,7 +815,7 @@ function exportCsv() {
 
           <template v-if="qualifiers">
             <p class="text-[12.5px] text-white/60">
-              Open period {{ periodLabel(qualifiers.periodStart, qualifiers.periodEnd) }} (UTC)
+              Open period {{ periodLabel(qualifiers.periodStart, qualifiers.periodEnd) }}
             </p>
 
             <div class="grid grid-cols-3 gap-2.5">
@@ -904,7 +896,7 @@ function exportCsv() {
           <table v-if="periodRows.length" class="admin-table">
             <thead>
               <tr>
-                <th>Period (UTC)</th>
+                <th>Period</th>
                 <th class="num">Payouts</th>
                 <th class="num">Total</th>
                 <th class="num">Average</th>

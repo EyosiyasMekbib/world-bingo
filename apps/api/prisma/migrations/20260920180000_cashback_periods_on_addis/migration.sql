@@ -1,0 +1,37 @@
+-- Cashback periods move from UTC to Africa/Addis_Ababa.
+--
+-- `getCurrentPeriod` used to cut DAILY/WEEKLY/MONTHLY windows on UTC midnight.
+-- It now cuts them on Addis midnight, matching `lib/bonus-period`, which has
+-- always bucketed deposit bonuses that way. Ethiopia observes no DST, so the
+-- offset is a fixed UTC+3 and the two representations of any one window differ
+-- by exactly three hours:
+--
+--   UTC     Mon 14 Sep 00:00:00Z
+--   Addis   Mon 14 Sep 00:00 local  =  Sun 13 Sep 21:00:00Z
+--
+-- `cashback_disbursements` is the only table holding a cashback period. Its
+-- unique key is (promotionId, userId, periodStart), and that key is the ONLY
+-- thing stopping a closed window being settled twice: every hourly run for the
+-- rest of the day re-settles the same window and relies on the insert
+-- conflicting. Leaving these rows on their old UTC boundary would mean the next
+-- run computes an Addis periodStart, finds no matching row, and pays every
+-- qualifying player a second time for a period they have already been paid for.
+--
+-- So the stored boundaries move with the code. This is a representation change,
+-- not a re-pricing: each row still describes the same real-world window, the
+-- same player and the same amount, and the row count does not change.
+--
+-- Unconditional rather than filtered to rows that look like UTC midnight: a
+-- filter that skipped a row would reintroduce exactly the double payment this
+-- exists to prevent, and the shift is the correct transformation for any row
+-- written by the old code — which is every row, since nothing else has ever
+-- written this column.
+--
+-- DEPLOY THIS WITH THE CODE, NOT AHEAD OF IT. The data and the code have to
+-- agree about where a boundary falls, and either half alone re-pays a settled
+-- window: old code against migrated rows computes a UTC periodStart and misses
+-- them, new code against un-migrated rows computes an Addis one and misses them.
+-- The hourly cashback worker is what would notice, so a rolling deploy that
+-- leaves an old instance able to run that job is the case to avoid.
+UPDATE "cashback_disbursements"
+SET "periodStart" = "periodStart" - INTERVAL '3 hours';

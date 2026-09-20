@@ -17,6 +17,7 @@ import type {
 } from '@world-bingo/shared-types'
 import { BonusRuleService } from './bonus-rule.service'
 import { CashbackService, getCurrentPeriod } from './cashback.service'
+import { ADDIS_OFFSET } from '../lib/bonus-period'
 import { dayBucketStart, weekBucketStart } from '../lib/bonus-period'
 
 /** Kept as the old local names so existing importers still compile. */
@@ -82,22 +83,27 @@ function pad2(value: number): string {
 }
 
 /**
- * When a cashback window closes. Read in UTC because getCurrentPeriod cuts its
- * windows there — rendering the same instant in Addis local time would name a
- * weekday the disburser does not agree with, and the whole point of this line
- * is to promise the payout the job will actually make.
+ * When a cashback window closes, on the clock the player reads it on.
+ *
+ * Read in Addis, because that is where getCurrentPeriod now cuts its windows —
+ * the same instant read in UTC named 20:59 for a window that closes at local
+ * midnight, so the line promised a payout three hours before the one the job
+ * actually makes. Shifting by the fixed offset and then reading UTC fields is
+ * the whole conversion: Ethiopia observes no DST, so there is no zone in which
+ * this is ambiguous.
  *
  * Relative wording only holds for the window the player is standing in: 'today'
  * or a bare 'Sunday' for a window one further out names a close days or weeks
  * off the one meant, so anything past the open window is dated outright.
  */
 function payoutLabel(frequency: CashbackFrequency, periodEnd: Date, now: Date): string {
-  const time = `${pad2(periodEnd.getUTCHours())}:${pad2(periodEnd.getUTCMinutes())}`
-  const dated = `${periodEnd.getUTCDate()} ${MONTHS[periodEnd.getUTCMonth()]} ${time}`
+  const local = new Date(periodEnd.getTime() + ADDIS_OFFSET)
+  const time = `${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}`
+  const dated = `${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]} ${time}`
   if (frequency === CashbackFrequency.MONTHLY) return dated
   if (periodEnd > getCurrentPeriod(frequency, now).periodEnd) return dated
   if (frequency === CashbackFrequency.DAILY) return `today ${time}`
-  return `${WEEKDAYS[periodEnd.getUTCDay()]} ${time}`
+  return `${WEEKDAYS[local.getUTCDay()]} ${time}`
 }
 
 /**

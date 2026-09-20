@@ -276,37 +276,38 @@ const reconciliationMessage = computed(() => {
   return 'Reconciliation check failed — try again'
 })
 
-// Mirrors getCurrentPeriod in apps/api/src/services/cashback.service.ts, which
-// cuts every cashback window in UTC — so the boundary is walked on the UTC
-// calendar. The Addis buckets of apps/api/src/lib/bonus-period.ts govern
-// DEPOSIT-BONUS periods, not these: reading a cashback close on that clock lands
-// three hours early and, on a Sunday night, names the wrong day.
+// Mirrors apps/api/src/lib/bonus-period.ts, which cuts every bonus window in the
+// system: the deposit-rule buckets, and — since getCurrentPeriod in
+// apps/api/src/services/cashback.service.ts delegates to those same helpers —
+// the cashback periods this close belongs to. Africa/Addis_Ababa is a fixed UTC+3
+// with no DST, so the local calendar day is found by shifting the instant rather
+// than by asking for the zone's transition rules.
+const ADDIS_OFFSET_MS = 3 * 60 * 60 * 1000
+
 function nextPeriodStart(frequency: string, now: Date) {
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
-  if (frequency === 'MONTHLY') return new Date(Date.UTC(y, m + 1, 1))
+  const local = new Date(now.getTime() + ADDIS_OFFSET_MS)
+  const y = local.getUTCFullYear()
+  const m = local.getUTCMonth()
+  const d = local.getUTCDate()
+  if (frequency === 'MONTHLY') return new Date(Date.UTC(y, m + 1, 1) - ADDIS_OFFSET_MS)
   if (frequency === 'WEEKLY') {
-    const daysToMonday = 7 - ((now.getUTCDay() + 6) % 7)
-    return new Date(Date.UTC(y, m, d + daysToMonday))
+    const daysToMonday = 7 - ((local.getUTCDay() + 6) % 7)
+    return new Date(Date.UTC(y, m, d + daysToMonday) - ADDIS_OFFSET_MS)
   }
-  return new Date(Date.UTC(y, m, d + 1))
+  return new Date(Date.UTC(y, m, d + 1) - ADDIS_OFFSET_MS)
 }
 
 function formatClose(at: Date, frequency: string) {
   const shape: Intl.DateTimeFormatOptions = frequency === 'MONTHLY'
     ? { month: 'short', day: 'numeric' }
     : { weekday: 'short' }
-  const stamp = new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-GB', {
     ...shape,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: 'UTC',
+    timeZone: 'Africa/Addis_Ababa',
   }).format(at)
-  // Named outright because it is not the clock on the admin's wall: this close
-  // reads 02:59 the next morning in Addis.
-  return `${stamp} UTC`
 }
 
 const nextCashbackClose = computed(() => {
@@ -719,7 +720,7 @@ onMounted(() => {
         <div class="strip-rule" />
         <div class="strip-fact">
           <UIcon name="i-heroicons:globe-alt" class="w-[17px] h-[17px] text-white/55" />
-          <span>Cashback periods run on <strong>UTC</strong>, deposit buckets on <strong>Africa/Addis_Ababa</strong></span>
+          <span>Windows run on <strong>Africa/Addis_Ababa</strong></span>
         </div>
       </div>
       <UButton

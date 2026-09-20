@@ -129,7 +129,12 @@ describe('bonus ledger — invariants hold across random operation sequences', (
                     // ledger must still be sound after a rolled-back attempt.
                     if (!(err instanceof InsufficientBonusBalanceError)) {
                         await expectLedgerSound(userId, `${where} after unexpected error`)
-                        throw new Error(`${where}: unexpected ${(err as Error).name}: ${(err as Error).message}`)
+                        // `cause` keeps the original stack: the step label says WHERE
+                        // the sequence broke, the cause says what actually threw.
+                        throw new Error(
+                            `${where}: unexpected ${(err as Error).name}: ${(err as Error).message}`,
+                            { cause: err },
+                        )
                     }
                 }
 
