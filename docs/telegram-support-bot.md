@@ -1,5 +1,15 @@
 # Telegram Support Bot and Self-Serve Account Actions - Design Spec
 
+> **Status:** Phases 1-3 are implemented (`gateways/telegram/`, `services/telegram/`,
+> `routes/telegram/webhook.ts`, the profile/login pages, the admin staff-link
+> button). One code-level deviation from this doc, made during implementation
+> and worth knowing before you touch the code: **no `callback_query` handling
+> anywhere** — every action is a text command or a URL button (§4's original
+> intent, made explicit in `gateways/telegram/client.ts`'s `SendMessageInput`).
+> That also means `/logout` confirms via `/logout confirm` as literal text,
+> not an inline "yes" button. Everything else here matches the code. Phase 4
+> (AI first line) remains unbuilt, per §10 below.
+>
 > **Scope:** a per-brand Telegram bot that (1) carries support conversations for
 > players and staff and (2) delivers the notifications the platform already
 > generates, plus the self-serve account actions that ride on it.

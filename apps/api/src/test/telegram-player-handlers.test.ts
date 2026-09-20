@@ -82,7 +82,8 @@ function privateMsg(overrides: Record<string, unknown> = {}) {
   }
 }
 
-const LINKED_USER = { id: 'user-1', firstName: 'Abebe', username: 'abebe' }
+const LINKED_USER = { id: 'user-1', firstName: 'Abebe', username: 'abebe', role: 'PLAYER' }
+const LINKED_CLERK = { id: 'clerk-1', firstName: 'Sara', username: 'sara', role: 'CLERK' }
 
 describe('handlePlayerMessage — shared contact ownership guard', () => {
   beforeEach(() => {
@@ -182,6 +183,15 @@ describe('handlePlayerMessage — linked player commands', () => {
     expect(linkServiceMock.setNotifyEnabled).toHaveBeenCalledWith('user-1', false)
   })
 
+  it('/password mints and sends a reset link for a linked PLAYER', async () => {
+    linkServiceMock.mintPasswordResetToken.mockResolvedValue('tok456')
+    await handlePlayerMessage(privateMsg({ text: '/password' }))
+    expect(linkServiceMock.mintPasswordResetToken).toHaveBeenCalledWith('user-1')
+    expect(clientMock.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: '555', buttons: [{ text: 'Set new password', url: 'https://example.com/reset' }] }),
+    )
+  })
+
   it('/appeal on an ACTIVE account replies that there is nothing to appeal, and writes nothing', async () => {
     appealMock.openAppeal.mockRejectedValue(new appealMock.AlreadyActiveError())
     await handlePlayerMessage(privateMsg({ text: '/appeal' }))
@@ -221,5 +231,24 @@ describe('handlePlayerMessage — linked player commands', () => {
     await handlePlayerMessage(privateMsg({ text: 'spam' }))
     expect(supportServiceMock.SupportService.addMessage).not.toHaveBeenCalled()
     expect(clientMock.sendMessagePlain).toHaveBeenCalledWith('555', expect.stringContaining('Too many messages'))
+  })
+})
+
+describe('handlePlayerMessage — a linked STAFF chat', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prismaMock.user.findUnique.mockResolvedValue(LINKED_CLERK)
+    redisMock.incr.mockResolvedValue(1)
+  })
+
+  it('/password refuses for a non-PLAYER role and mints nothing', async () => {
+    await handlePlayerMessage(privateMsg({ text: '/password' }))
+    expect(linkServiceMock.mintPasswordResetToken).not.toHaveBeenCalled()
+    expect(clientMock.sendMessagePlain).toHaveBeenCalledWith('555', expect.stringContaining('Staff accounts'))
+  })
+
+  it('/logout still works for staff — there is no equivalent risk to gate it on', async () => {
+    await handlePlayerMessage(privateMsg({ text: '/logout confirm' }))
+    expect(authServiceMock.AuthService.revokeAllSessions).toHaveBeenCalledWith('clerk-1')
   })
 })

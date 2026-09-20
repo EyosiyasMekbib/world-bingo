@@ -82,7 +82,7 @@ export async function handlePlayerMessage(message: PlayerMessage): Promise<void>
 
   const user = await prisma.user.findUnique({
     where: { telegramChatId: chatId },
-    select: { id: true, firstName: true, username: true },
+    select: { id: true, firstName: true, username: true, role: true },
   })
 
   if (text === '/help') {
@@ -104,7 +104,13 @@ export async function handlePlayerMessage(message: PlayerMessage): Promise<void>
     return
   }
 
-  // From here on, every branch is for a LINKED player.
+  // From here on, every branch is for a LINKED chat — a player using every
+  // command below, or a clerk/admin who linked from the admin app (see
+  // handleStart), for whom only /help and free-text (bridged into the
+  // support topic like any staff reply) make sense. /password explicitly
+  // refuses a non-PLAYER role below; matchPhoneToPlayer's own role filter
+  // means handleSharedContact can never resolve a staff account in the
+  // first place, so no comparable guard is needed there.
   if (message.contact) {
     // Re-sharing while already linked re-verifies the same account; a
     // mismatch (someone else's forwarded contact) is still rejected inside
@@ -118,6 +124,13 @@ export async function handlePlayerMessage(message: PlayerMessage): Promise<void>
       await sendStatus(chatId, user.id)
       return
     case '/password':
+      if (user.role !== 'PLAYER') {
+        // Same reasoning AuthService.adminResetPassword documents: handing
+        // a staff account a password-reset link with no current-password
+        // check hands it to whoever holds this Telegram chat.
+        await client().sendMessagePlain(chatId, 'Staff accounts are reset by another admin, not through this bot.')
+        return
+      }
       await sendPasswordLink(chatId, user.id)
       return
     case '/logout':

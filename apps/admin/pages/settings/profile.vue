@@ -42,6 +42,37 @@ const handleSavePassword = async () => {
     loading.value = false
   }
 }
+
+// ── Telegram staff bridge ─────────────────────────────────────────────
+// Links THIS clerk/admin's own account to the staff Telegram group bridge
+// (docs/telegram-support-bot.md §6.2) — same column, same conflict rules
+// as a player linking from the app, just minted by an admin-only route.
+const telegramLinking = ref(false)
+
+async function linkTelegram() {
+  telegramLinking.value = true
+  try {
+    const res: any = await apiFetch('/admin/support/telegram/link', { method: 'POST' })
+    if (!res?.deepLink) {
+      toast.add({
+        title: 'Telegram not configured',
+        description: 'This deployment has no Telegram bot set up yet.',
+        color: 'warning',
+      })
+      return
+    }
+    window.open(res.deepLink, '_blank', 'noopener')
+    toast.add({
+      title: 'Link opened',
+      description: 'Finish linking in the Telegram tab that just opened, then come back here.',
+      color: 'success',
+    })
+  } catch (err: any) {
+    toast.add({ title: 'Error', description: err.data?.message || 'Could not start linking', color: 'error' })
+  } finally {
+    telegramLinking.value = false
+  }
+}
 </script>
 
 <template>
@@ -68,6 +99,30 @@ const handleSavePassword = async () => {
         <div>
           <span class="text-[10px] font-bold text-white/30 uppercase tracking-widest">Registered Phone</span>
           <p class="font-bold text-white font-mono text-base mt-0.5 tracking-tight">{{ user?.phone ?? '—' }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telegram staff bridge card -->
+    <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl" style="background:var(--surface-raised);">
+      <div class="px-5 py-4 border-b border-(--surface-border)" style="background:var(--surface-overlay);">
+        <h3 class="text-[10px] font-bold text-white/40 uppercase tracking-widest">Telegram Support Bridge</h3>
+      </div>
+      <div class="p-5">
+        <div class="flex items-center justify-between p-4 rounded-xl border border-(--surface-border)" style="background:var(--surface-overlay);">
+          <div>
+            <p class="font-bold text-white tracking-tight">{{ user?.telegramLinked ? 'Linked' : 'Not linked' }}</p>
+            <p class="text-sm text-white/40 font-medium">
+              Link your Telegram to answer support from the staff group, without the admin inbox open.
+            </p>
+          </div>
+          <UButton
+            color="primary"
+            :loading="telegramLinking"
+            :label="user?.telegramLinked ? 'Re-link Telegram' : 'Link Telegram'"
+            class="font-bold"
+            @click="linkTelegram"
+          />
         </div>
       </div>
     </div>

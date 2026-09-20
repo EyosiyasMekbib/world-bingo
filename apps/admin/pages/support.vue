@@ -268,7 +268,12 @@ const threadStatusVariant = (status: string) => {
               { pending: message.pending, failed: message.failed },
             ]"
           >
-            <span class="who">{{ message.senderRole }}</span>
+            <span class="who">
+              {{ message.senderRole }}
+              <!-- Only Telegram gets a badge — WEB is the common case, and a
+                   label on every single message would be noise, not signal. -->
+              <span v-if="message.source === 'TELEGRAM'" class="src-badge" title="Sent via Telegram">TG</span>
+            </span>
             <!-- Interpolated as text, never v-html: a message body is typed by
                  the player and is fully attacker-controlled, and a clerk's
                  browser is authenticated to the admin app. -->
@@ -546,6 +551,18 @@ const threadStatusVariant = (status: string) => {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
+}
+.src-badge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.3rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--brand-primary, #0ea5e9);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  vertical-align: middle;
 }
 .msg p {
   margin: 0.15rem 0 0;

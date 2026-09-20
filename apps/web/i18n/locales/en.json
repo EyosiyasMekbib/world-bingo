@@ -35,7 +35,27 @@
       "telegramSupport": "Message support on Telegram",
       "hours": "Support hours: {hours}",
       "noContact": "Contact our support team and ask for a password reset.",
-      "doNotRegister": "Please don't create a new account — your balance and history stay on this one."
+      "doNotRegister": "Please don't create a new account — your balance and history stay on this one.",
+      "telegramBotLink": "Reset it yourself on Telegram",
+      "telegramBotBody": "Message our Telegram bot and share your phone number — we'll send you a one-time link to set a new password, right away."
+    },
+    "resetPassword": {
+      "title": "Set a new password",
+      "subtitle": "This link works once. Choose a password to sign back in with.",
+      "new": "New password",
+      "newPlaceholder": "Min. 6 characters",
+      "confirm": "Confirm new password",
+      "confirmPlaceholder": "Type it again",
+      "showPasswords": "Show passwords",
+      "submit": "Set password and sign in",
+      "saving": "Saving…",
+      "backToLogin": "Back to sign in",
+      "errors": {
+        "newShort": "Your new password must be at least 6 characters.",
+        "mismatch": "The new passwords don't match.",
+        "invalidToken": "This link has expired or was already used. Open the Telegram bot and ask for a new one.",
+        "failed": "Could not save your password. Please try again."
+      }
     },
     "setPassword": {
       "title": "Set a new password",

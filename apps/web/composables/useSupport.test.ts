@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { SupportMessageSource } from '@world-bingo/shared-types'
 import {
   contactRevealPlan,
   CONTACT_REVEAL_MS,
@@ -285,6 +286,7 @@ function message(over: Partial<SupportMessageView> & { id: string }): SupportMes
     attachmentUrl: null,
     attachmentMime: null,
     createdAt: new Date(NOW).toISOString(),
+    source: SupportMessageSource.WEB,
     ...over,
   }
 }

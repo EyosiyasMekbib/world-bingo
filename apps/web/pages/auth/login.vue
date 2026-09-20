@@ -95,6 +95,16 @@
 
         <div v-if="showForgot" id="forgot-panel" class="forgot-panel">
           <p class="forgot-title">{{ t('auth.forgotPassword.title') }}</p>
+          <a
+            v-if="telegramBotHref"
+            :href="telegramBotHref"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="forgot-contact forgot-bot"
+          >
+            {{ t('auth.forgotPassword.telegramBotLink') }}
+          </a>
+          <p v-if="telegramBotHref" class="forgot-hours">{{ t('auth.forgotPassword.telegramBotBody') }}</p>
           <p>{{ t('auth.forgotPassword.body') }}</p>
           <p>{{ t('auth.forgotPassword.afterReset') }}</p>
           <div v-if="hasSupportChannel" class="forgot-contacts">
@@ -234,6 +244,14 @@ const supportTelegramHref = computed(() =>
   supportContact.value?.telegram ? telegramHref(supportContact.value.telegram) : null,
 )
 const hasSupportChannel = computed(() => hasUsableContactChannel(supportContact.value))
+// The SUPPORT BOT's own reset flow — distinct from supportTelegramHref above,
+// which is the admin-configured @handle for manually messaging a human.
+// `start=forgot` is a fixed, public payload (see
+// services/telegram/player-handlers.ts's handleStart) — the bot asks the
+// player to share their phone number from there, not a per-visit token.
+const telegramBotHref = computed(() =>
+  config.public.telegramBotName ? `https://t.me/${config.public.telegramBotName}?start=forgot` : null,
+)
 
 async function toggleForgot() {
   showForgot.value = !showForgot.value

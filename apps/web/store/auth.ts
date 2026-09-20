@@ -7,6 +7,8 @@ import type {
   TelegramAuthDto,
   ChangePasswordDto,
   ChangePasswordResponse,
+  PasswordResetConsumeDto,
+  TelegramLinkResponse,
 } from '@world-bingo/shared-types'
 import { isExpiringWithin, TOKEN_REFRESH_MARGIN_MS } from '~/utils/token'
 
@@ -212,6 +214,56 @@ export const useAuthStore = defineStore('auth', {
       }
       if (res?.user) this.user = res.user
       else if (this.user) this.user = { ...this.user, mustChangePassword: false }
+    },
+
+    /**
+     * The Telegram bot's forgot-password link. No session exists yet — the
+     * token itself is the credential — so this is a plain $fetch, same as
+     * login(), not the authenticated apiFetch() the two methods above use.
+     * A successful call signs the player in on this device with the fresh
+     * session the reset produced.
+     */
+    async consumePasswordReset(payload: PasswordResetConsumeDto) {
+      const config = useRuntimeConfig()
+      const { user, accessToken, refreshToken } = await $fetch<{
+        user: User
+        accessToken: string
+        refreshToken: string
+      }>(`${config.public.apiBase}/auth/password-reset/consume`, {
+        method: 'POST',
+        body: payload,
+      })
+      this.user = user
+      this.accessToken = accessToken
+      this.refreshToken = refreshToken
+      useAnalytics().identify(user)
+      await this.fetchWallet()
+    },
+
+    /**
+     * Mint a one-time deep link into the Telegram support bot for the
+     * signed-in player — the profile page's "Connect Telegram" button, and
+     * the support panel's offline fallback. `deepLink` is null whenever the
+     * bot cannot offer one right now (disabled, or the mint budget spent);
+     * callers treat that the same as an empty SupportContactInfo channel —
+     * hide the button, never surface an error for something this low-stakes.
+     */
+    async linkTelegram(conversationId?: string): Promise<string | null> {
+      const res = await this.apiFetch<TelegramLinkResponse>('/support/telegram/link', {
+        method: 'POST',
+        body: conversationId ? { conversationId } : undefined,
+      })
+      return res.deepLink
+    },
+
+    async unlinkTelegram() {
+      await this.apiFetch('/user/telegram', { method: 'DELETE' })
+      if (this.user) this.user = { ...this.user, telegramLinked: false }
+    },
+
+    async setTelegramNotify(notifyEnabled: boolean) {
+      await this.apiFetch('/user/telegram', { method: 'PATCH', body: { notifyEnabled } })
+      if (this.user) this.user = { ...this.user, telegramNotifyEnabled: notifyEnabled }
     },
 
     clearStoredUser() {

@@ -70,6 +70,66 @@
       </div>
     </div>
 
+    <!-- ── Account status, only when there is something to explain ──── -->
+    <div v-if="accountStatus && accountStatus.status !== 'ACTIVE'" class="card status-card">
+      <h3 class="card-heading">
+        <Icon name="heroicons:shield-exclamation" class="card-icon" />
+        {{ accountStatus.status === 'SUSPENDED' ? 'Account suspended' : 'Account under review' }}
+      </h3>
+      <p class="status-body">
+        This is about {{ categoryLabel }}.
+        <template v-if="accountStatus.expiresAt">
+          It lifts automatically on {{ formatDate(accountStatus.expiresAt) }}.
+        </template>
+      </p>
+      <button class="refresh-btn" :disabled="appealSending || appealSent" @click="sendAppeal">
+        {{ appealSent ? 'Appeal sent' : appealSending ? 'Sending…' : 'Appeal this' }}
+      </button>
+      <p v-if="appealError" class="telegram-error">{{ appealError }}</p>
+    </div>
+
+    <!-- ── Telegram support bot ──────────────────────────────────────── -->
+    <div class="card">
+      <h3 class="card-heading">
+        <Icon name="heroicons:paper-airplane" class="card-icon" />
+        Support &amp; Notifications
+      </h3>
+      <div class="telegram-row">
+        <div class="telegram-info">
+          <span class="telegram-status" :class="{ linked: auth.user?.telegramLinked }">
+            {{ auth.user?.telegramLinked ? 'Telegram connected' : 'Telegram not connected' }}
+          </span>
+          <p class="telegram-desc">
+            {{
+              auth.user?.telegramLinked
+                ? 'Deposit, withdrawal, win and support updates arrive here.'
+                : 'Connect Telegram to get notified instantly and reach support without leaving the app.'
+            }}
+          </p>
+        </div>
+        <button
+          v-if="!auth.user?.telegramLinked"
+          class="refresh-btn"
+          :disabled="telegramBusy"
+          @click="connectTelegram"
+        >
+          {{ telegramBusy ? 'Opening…' : 'Connect' }}
+        </button>
+        <button v-else class="refresh-btn" :disabled="telegramBusy" @click="disconnectTelegram">
+          Disconnect
+        </button>
+      </div>
+      <label v-if="auth.user?.telegramLinked" class="notify-toggle">
+        <input
+          type="checkbox"
+          :checked="auth.user?.telegramNotifyEnabled !== false"
+          @change="toggleNotify(($event.target as HTMLInputElement).checked)"
+        />
+        <span>Notify me on Telegram</span>
+      </label>
+      <p v-if="telegramError" class="telegram-error">{{ telegramError }}</p>
+    </div>
+
     <!-- ── Transaction History ─────────────────────────────────────── -->
     <div class="card">
       <div class="section-header">
@@ -108,7 +168,8 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
-import type { UserStatsDto } from '@world-bingo/shared-types'
+import type { UserStatsDto, AccountStatusInfo } from '@world-bingo/shared-types'
+import { STATUS_CATEGORY_LABELS } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
 
@@ -198,8 +259,81 @@ function txAmountClass(type: string): string {
   return ['DEPOSIT', 'PRIZE_WIN', 'REFUND'].includes(type) ? 'positive' : 'negative'
 }
 
+// ── Telegram support bot ─────────────────────────────────────────────────
+const telegramBusy = ref(false)
+const telegramError = ref('')
+
+async function connectTelegram() {
+  telegramBusy.value = true
+  telegramError.value = ''
+  try {
+    const deepLink = await auth.linkTelegram()
+    if (!deepLink) {
+      telegramError.value = 'Telegram is not available right now. Please try again later.'
+      return
+    }
+    window.open(deepLink, '_blank', 'noopener')
+  } catch {
+    telegramError.value = 'Could not start linking. Please try again.'
+  } finally {
+    telegramBusy.value = false
+  }
+}
+
+async function disconnectTelegram() {
+  telegramBusy.value = true
+  telegramError.value = ''
+  try {
+    await auth.unlinkTelegram()
+  } catch {
+    telegramError.value = 'Could not disconnect. Please try again.'
+  } finally {
+    telegramBusy.value = false
+  }
+}
+
+async function toggleNotify(enabled: boolean) {
+  try {
+    await auth.setTelegramNotify(enabled)
+  } catch {
+    telegramError.value = 'Could not save that. Please try again.'
+  }
+}
+
+// ── Account status & appeal ───────────────────────────────────────────────
+const accountStatus = ref<AccountStatusInfo | null>(null)
+const appealSending = ref(false)
+const appealSent = ref(false)
+const appealError = ref('')
+const categoryLabel = computed(() => {
+  const category = accountStatus.value?.category
+  return category ? (STATUS_CATEGORY_LABELS[category] ?? 'an account review') : 'an account review'
+})
+
+async function fetchAccountStatus() {
+  try {
+    accountStatus.value = await auth.apiFetch<AccountStatusInfo>('/user/account-status')
+  } catch {
+    // Nice-to-have panel, not core profile data — the page still works
+    // without it, same as a failed stats/transactions fetch above.
+  }
+}
+
+async function sendAppeal() {
+  appealSending.value = true
+  appealError.value = ''
+  try {
+    await auth.apiFetch('/support/appeal', { method: 'POST' })
+    appealSent.value = true
+  } catch {
+    appealError.value = 'Could not send that. Please try again, or use the support chat.'
+  } finally {
+    appealSending.value = false
+  }
+}
+
 // ── Date formatting ────────────────────────────────────────────────────
-function formatDate(date: Date | string | undefined): string {
+function formatDate(date: Date | string | undefined | null): string {
   if (!date) return '—'
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -213,6 +347,7 @@ onMounted(() => {
   if (!auth.wallet) auth.fetchWallet()
   fetchTransactions()
   fetchStats()
+  fetchAccountStatus()
 })
 </script>
 
@@ -623,5 +758,56 @@ onMounted(() => {
 .status-failed {
   background: color-mix(in srgb, var(--status-error) 16%, transparent);
   color: var(--status-error);
+}
+
+/* ── Account status / appeal ───────────────────────────────────────── */
+.status-card {
+  border-color: color-mix(in srgb, var(--status-warning) 40%, var(--surface-border));
+}
+.status-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0.5rem 0 1rem;
+}
+
+/* ── Telegram support bot ──────────────────────────────────────────── */
+.telegram-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.telegram-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.telegram-status {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.telegram-status.linked {
+  color: var(--status-success);
+}
+.telegram-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.notify-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-top: 0.85rem;
+}
+.telegram-error {
+  font-size: 12px;
+  color: var(--status-error);
+  margin: 0.6rem 0 0;
 }
 </style>
