@@ -3,6 +3,7 @@ import type { PromotionProgressDto, PublicPromotionDto } from '@world-bingo/shar
 import { useAuthStore } from '~/store/auth'
 import { usePromotionsStore } from '~/store/promotions'
 import { expiresTonight } from '~/utils/bonus-expiry'
+import { promoProgressView, remainingToTarget } from '~/utils/promo-progress'
 
 const auth = useAuthStore()
 const promos = usePromotionsStore()
@@ -256,21 +257,20 @@ function formatFigure(value: number): string {
   return Number(value).toLocaleString('en-ET', { maximumFractionDigits: 2 })
 }
 
-/**
- * Clamped at BOTH ends. `current` is signed — the cashback net-loss query
- * credits wins as negatives — so a player up on the period gives a negative
- * percentage, and the browser drops a negative `width` outright; with none
- * declared in the CSS the fill then spanned its whole parent, drawing the
- * emptiest bar as the fullest. PromoTile clamps the same figure the same way.
- */
-function progressPct(progress: PromotionProgressDto): number {
-  if (!(progress.target > 0)) return 0
-  return Math.max(0, Math.min(100, Math.round((progress.current / progress.target) * 100)))
+/** The printed figure gets the same floor as the bar beside it. */
+function formatProgressFigure(value: number): string {
+  return formatFigure(Math.max(0, value))
 }
 
+/** Shared with PromoTile, so the clamp cannot hold on one surface and not the other. */
+function progressPct(progress: PromotionProgressDto): number {
+  return Math.round(promoProgressView(progress.current, progress.target).pct)
+}
+
+
 function remainingToGo(progress: PromotionProgressDto): string {
-  const remaining = Math.max(0, progress.target - progress.current)
-  return t('wallet.bonusToGo', { amount: `${formatFigure(remaining)} ETB` })
+  const remaining = remainingToTarget(progress.current, progress.target)
+  return t('wallet.bonusToGo', { amount: `${formatFigure(remaining)} ${t('common.etb')}` })
 }
 
 const formattedRealBalance = computed(() => formatMoney(auth.wallet?.realBalance ?? 0))
@@ -625,7 +625,7 @@ function formatRelativeTime(dateStr: string): string {
               <div class="earn-figures">
                 <span class="earn-label">{{ row.progress.label }}</span>
                 <span class="earn-value">
-                  {{ formatFigure(row.progress.current) }}
+                  {{ formatProgressFigure(row.progress.current) }}
                   <span class="earn-target">/ {{ formatFigure(row.progress.target) }} ETB</span>
                 </span>
               </div>

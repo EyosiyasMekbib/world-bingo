@@ -131,7 +131,8 @@
     "noNotifications": "No notifications yet",
     "markAllRead": "Mark all as read",
     "markAllReadShort": "Mark all read",
-    "seeAll": "See all notifications"
+    "seeAll": "See all notifications",
+    "noUnread": "No unread notifications"
   },
   "common": {
     "loading": "Loading…",

@@ -5,6 +5,7 @@ import { useAuthStore } from '~/store/auth'
 
 const auth = useAuthStore()
 const { connect } = useSocket()
+const { t } = useI18n()
 
 // ── State ──────────────────────────────────────────────────────────────────
 const notifications = ref<Notification[]>([])
@@ -46,13 +47,20 @@ async function markRead(notif: Notification) {
 }
 
 // ── Mark all as read ───────────────────────────────────────────────────────
+// The rows and the badge both derive from `notifications`, and the endpoint
+// behind it answers with unread only — so flipping `isRead` locally left every
+// row on screen under a footer that counted none of them. Re-reading is the
+// only way the two cannot disagree, and it has to run on the failure path too:
+// a POST that never landed must leave the rows the server still holds unread
+// where they are, not hide them behind a flag only this tab believes.
 async function markAllRead() {
   try {
     await auth.apiFetch('/user/notifications/read-all', { method: 'POST' })
-    notifications.value = notifications.value.map((n) => ({ ...n, isRead: true }))
   } catch {
-    // fail silently
+    // Falls through to the refetch instead of reporting: whether the server
+    // marked none, some or all of them, the next read is what the panel shows.
   }
+  await fetchNotifications()
 }
 
 // ── Open / close ───────────────────────────────────────────────────────────
@@ -267,7 +275,7 @@ onUnmounted(() => {
       type="button"
       class="nb-trigger"
       :data-testid="onScreen ? 'notification-bell' : undefined"
-      aria-label="Notifications"
+      :aria-label="t('notification.title')"
       aria-haspopup="true"
       :aria-expanded="isOpen"
       @click.stop="toggleOpen"
@@ -291,9 +299,9 @@ onUnmounted(() => {
     <Transition name="nb-pop">
       <div v-if="isOpen" class="nb-panel" @click.stop>
         <div class="nb-head">
-          <span class="nb-title">Notifications</span>
+          <span class="nb-title">{{ t('notification.title') }}</span>
           <button v-if="unreadCount > 0" type="button" class="nb-markall" @click="markAllRead">
-            Mark all read
+            {{ t('notification.markAllReadShort') }}
           </button>
         </div>
 
@@ -314,7 +322,7 @@ onUnmounted(() => {
             >
               <path v-for="d in BELL" :key="d" :d="d" />
             </svg>
-            <span>No unread notifications</span>
+            <span>{{ t('notification.noUnread') }}</span>
           </div>
 
           <button

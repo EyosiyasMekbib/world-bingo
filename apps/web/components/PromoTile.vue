@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PromotionProgressDto, PublicPromotionDto } from '@world-bingo/shared-types'
+import { promoProgressView } from '~/utils/promo-progress'
 
 const props = withDefaults(
   defineProps<{
@@ -91,9 +92,7 @@ const chipLabel = computed(() => {
 const bar = computed(() => {
   const p = props.progress
   if (!p || !(p.target > 0)) return null
-  // Clamped: a player who has already passed the target must not push the fill
-  // past the tile edge while the payout waits for the period to close.
-  return { ...p, pct: Math.min(100, Math.max(0, (p.current / p.target) * 100)) }
+  return { ...p, ...promoProgressView(p.current, p.target) }
 })
 
 /** Intrinsic size for the <img>, so a landing banner cannot reflow the row. */
@@ -156,7 +155,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
       class="rail"
       role="progressbar"
       :aria-label="bar.label"
-      :aria-valuenow="bar.current"
+      :aria-valuenow="bar.announced"
       aria-valuemin="0"
       :aria-valuemax="bar.target"
       :aria-valuetext="bar.hint"

@@ -131,7 +131,8 @@
     "noNotifications": "ምንም ማሳወቂያ የለም",
     "markAllRead": "ሁሉንም እንደተነበቡ ምልክት አድርግ",
     "markAllReadShort": "ሁሉንም ተነብቧል",
-    "seeAll": "ሁሉንም ማሳወቂያዎች ይመልከቱ"
+    "seeAll": "ሁሉንም ማሳወቂያዎች ይመልከቱ",
+    "noUnread": "ያልተነበበ ማሳወቂያ የለም"
   },
   "common": {
     "loading": "እየጫነ ነው…",
