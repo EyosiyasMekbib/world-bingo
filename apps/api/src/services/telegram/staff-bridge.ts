@@ -114,6 +114,22 @@ export async function mirrorToStaffTopic(conversationId: string, message: Suppor
   await client.sendMessage({ chatId: groupId, text: messageLine(message), messageThreadId: topicId })
 }
 
+/** The /player command in a topic — re-posts the same header a topic gets
+ *  on creation, for when staff want a reminder mid-conversation. */
+export async function postPlayerHeader(conversationId: string): Promise<void> {
+  if (!isStaffBridgeEnabled()) return
+  const conversation = await prisma.supportConversation.findUnique({
+    where: { id: conversationId },
+    select: { userId: true, telegramTopicId: true },
+  })
+  if (!conversation?.telegramTopicId) return
+  await telegramClient().sendMessagePlain(
+    supportGroupId()!,
+    await buildTopicHeader(conversation.userId),
+    conversation.telegramTopicId,
+  )
+}
+
 export async function closeStaffTopic(conversationId: string): Promise<void> {
   if (!isStaffBridgeEnabled()) return
   const conversation = await prisma.supportConversation.findUnique({

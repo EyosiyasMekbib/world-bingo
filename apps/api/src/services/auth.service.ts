@@ -319,6 +319,17 @@ export class AuthService {
     }
 
     /**
+     * Revoke every refresh token for a user — "log out everywhere", offered
+     * from the Telegram bot's /logout command for a player on a shared
+     * device. Unlike changePassword and consumePasswordReset this issues no
+     * replacement token: the caller (the bot) is not itself a session, so
+     * there is nothing to keep signed in.
+     */
+    static async revokeAllSessions(userId: string): Promise<void> {
+        await prisma.refreshToken.deleteMany({ where: { userId } })
+    }
+
+    /**
      * The signed-in user's current row, minus the hash. Not the token's own
      * claims: those are frozen when the token is issued and cannot carry a flag
      * such as `mustChangePassword` that changed afterwards.

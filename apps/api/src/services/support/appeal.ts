@@ -24,19 +24,20 @@ export class AlreadyActiveError extends Error {
 /**
  * Opens the appeal thread. Rate-limited per user, independent of the
  * ordinary support message limit — a restricted player mashing one button
- * must not be able to flood the queue with identical lines. Silently a
- * no-op (not an error) on a repeat within the cooldown, same philosophy as
- * SupportService.escalate's own idempotency: the button stays pressable,
- * pressing it again just does nothing visible.
+ * must not be able to flood the queue with identical lines. A repeat within
+ * the cooldown is a no-op, same philosophy as SupportService.escalate's own
+ * idempotency, reported back via the return value (false) so a caller like
+ * the bot's /appeal command can say "already in progress" rather than
+ * implying a fresh one was just filed.
  */
-export async function openAppeal(userId: string, source: SupportMessageSource): Promise<void> {
+export async function openAppeal(userId: string, source: SupportMessageSource): Promise<boolean> {
   const info = await AccountStatusService.playerView(userId)
   if (info.status === 'ACTIVE') throw new AlreadyActiveError()
 
   const key = `${COOLDOWN_KEY_PREFIX}${userId}`
   const isFirst = (await redis.incr(key)) === 1
   if (isFirst) await redis.expire(key, COOLDOWN_SECS)
-  else return
+  else return false
 
   const label = info.category ? (STATUS_CATEGORY_LABELS[info.category] ?? info.category) : 'an account review'
   const conversation = await SupportService.ensureConversationFor(userId)
@@ -49,4 +50,5 @@ export async function openAppeal(userId: string, source: SupportMessageSource): 
   })
 
   await afterSupportMessage({ conversationId: conversation.id, message: result.message, ownerId: result.ownerId })
+  return true
 }

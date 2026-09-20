@@ -18,7 +18,7 @@ import { writeSupportAudit } from '../services/support/support-audit.js'
 import { ALLOWED_MIME_TYPES } from '../lib/storage.js'
 import { afterSupportMessage, afterConversationResolved, afterConversationReopened } from '../services/support/fanout.js'
 import { mintPlayerLinkToken } from '../services/telegram/link.service.js'
-import { anyOnShift } from '../services/telegram/shift.service.js'
+import { AGENTS_ROOM, anyAgentOnline as sharedAnyAgentOnline } from '../services/support/presence.js'
 
 type SupportSocket = Socket<
   ClientToServerEvents,
@@ -27,7 +27,6 @@ type SupportSocket = Socket<
   SocketData
 >
 
-const AGENTS_ROOM = 'support:agents'
 const STAFF_ROLES = new Set(['CLERK', 'ADMIN', 'SUPER_ADMIN'])
 const ADMIN_ROLES = new Set(['ADMIN', 'SUPER_ADMIN'])
 
@@ -92,33 +91,18 @@ export function registerSupportHandlers(io: any) {
   }
 
   /**
-   * Whether any clerk is actually on shift, anywhere in the cluster.
-   *
-   * Derived from live room membership rather than a Redis set of agent ids.
-   * The set was written on connect and cleared in a `disconnect` handler, so
-   * it only stayed truthful when every socket closed cleanly — and it did not.
-   * `shutdown()` calls `process.exit(0)` as soon as `server.close()` resolves,
-   * which does not wait for each disconnect handler's async Redis write, so a
-   * routine deploy left every clerk marked online forever. `anyOnline()` then
-   * answered true with nobody there, and the escalation fallback — the one
-   * thing that hands a stranded player a phone number — silently never fired
-   * again. A crashed or OOM-killed instance left the same residue permanently.
-   *
-   * `fetchSockets()` goes through the Redis adapter (lib/socket.ts), so it
-   * sees agents on every instance, and it cannot go stale: it reports the
-   * connections that exist right now. Call it through
-   * `anyAgentOnlineWithin` — never directly — so a slow adapter cannot hold
-   * up the caller.
+   * Whether any clerk is actually on shift, anywhere in the cluster: a live
+   * socket in AGENTS_ROOM (see services/support/presence.ts for why that,
+   * not a Redis presence set written on connect, is the source of truth —
+   * `shutdown()` calls `process.exit(0)` before a disconnect handler's async
+   * cleanup would run, which left a Redis-set version permanently stuck
+   * "online" after any deploy) OR a clerk on shift in the staff Telegram
+   * group. Shared with the bot's own unanswered-thread notice
+   * (services/telegram/player-handlers.ts) so both surfaces agree. Call it
+   * through `anyAgentOnlineWithin` — never directly — so a slow Redis
+   * adapter cannot hold up the caller.
    */
-  async function anyAgentOnline(): Promise<boolean> {
-    const agents = await io.in(AGENTS_ROOM).fetchSockets()
-    if (agents.length > 0) return true
-    // A clerk answering from the staff Telegram group never holds a socket
-    // in AGENTS_ROOM — see services/telegram/shift.service.ts. Without this
-    // OR, the widget would tell a player nobody is available while a clerk
-    // is actively on shift in the group.
-    return anyOnShift()
-  }
+  const anyAgentOnline = () => sharedAnyAgentOnline(io)
 
   /**
    * anyAgentOnline() with a deadline, and the deadline answers `false`.

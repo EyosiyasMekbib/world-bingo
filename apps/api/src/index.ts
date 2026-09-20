@@ -42,6 +42,8 @@ import { registerBullBoard } from './routes/bull-board.js'
 import aggregatorWalletRoutes from './routes/aggregator/wallet.js'
 import { palaceCallbackRoute } from './routes/palace/callback.js'
 import zarecashWebhookRoute from './routes/zarecash/webhook.js'
+import telegramWebhookRoute from './routes/telegram/webhook.js'
+import { startTelegramBot } from './gateways/telegram/bot.js'
 import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { atlasVCallbackRoutes } from './routes/atlasv/callback.js'
@@ -79,6 +81,7 @@ import './workers/zarecash-event.worker.js'
 import './workers/zarecash-withdrawal.worker.js'
 import './workers/zarecash-sweep.worker.js'
 import { scheduleZareCashSweep } from './workers/zarecash-sweep.worker.js'
+import './workers/telegram-send.worker.js'
 import { ZareCashService, ZareCashModeMismatchError } from './services/zarecash.service.js'
 import { AccountStatusService } from './services/account-status.service.js'
 import { AccountStatus } from '@world-bingo/shared-types'
@@ -359,6 +362,7 @@ await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' 
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
 await server.register(atlasVCallbackRoutes, { prefix: '/v1/atlasv/callback' })
 await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
+await server.register(telegramWebhookRoute, { prefix: '/v1/telegram/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
     await server.register(atlasVSpokeCallbackRoute, { prefix: '/v1/hub/atlasv-spoke-callback' })
@@ -449,6 +453,12 @@ try {
     // trade and status broadcast would be emitted into an empty room.
     registerPredictionHandlers(io)
     registerSupportHandlers(io)
+
+    // Fire-and-forget — see the function's own doc comment. Registers the
+    // webhook with Telegram (retrying until it succeeds) or logs one line
+    // and does nothing when TELEGRAM_BOT_TOKEN/TELEGRAM_WEBHOOK_SECRET are
+    // unset. Never blocks server.listen() below.
+    startTelegramBot()
 
     // Refuse to bind the port if we're talking to the wrong ZareCash keyspace —
     // a genuine mode mismatch must abort startup, not degrade into a warning.
