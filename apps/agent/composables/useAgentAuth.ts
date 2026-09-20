@@ -80,9 +80,15 @@ export const useAgentAuth = () => {
     // other than AGENT here with a 403, so a player, clerk or admin
     // credential cannot obtain a session in this app at all. The message the
     // API returns is what the login card shows.
+    // The API's LoginSchema takes `identifier` (username OR phone), not
+    // `username`. Sending the wrong key is a 400 before the handler runs, so
+    // the mapping happens here rather than in the page.
     const data = await $fetch<{ accessToken: string; refreshToken: string; user: AgentUser }>(
       `${apiBase}/auth/agent/login`,
-      { method: 'POST', body: credentials },
+      {
+        method: 'POST',
+        body: { identifier: credentials.username, password: credentials.password },
+      },
     )
 
     // Defence in depth behind that gate. If a non agent role ever reaches
