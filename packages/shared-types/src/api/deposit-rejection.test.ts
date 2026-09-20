@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { DeclineTransactionSchema, DEPOSIT_REJECTION_REASON_LABELS } from './index'
+import {
+    DeclineTransactionSchema,
+    DEPOSIT_REJECTION_REASON_LABELS,
+    DEPOSIT_REJECTION_NEXT_STEP,
+    STATUS_CATEGORY_LABELS,
+} from './index'
 import { DepositRejectionReason } from '../enums'
 
 describe('DeclineTransactionSchema', () => {
@@ -41,6 +46,25 @@ describe('DEPOSIT_REJECTION_REASON_LABELS', () => {
     it('has a non-empty label for every reason', () => {
         for (const reason of Object.values(DepositRejectionReason)) {
             expect(DEPOSIT_REJECTION_REASON_LABELS[reason]).toMatch(/\S/)
+        }
+    })
+})
+
+describe('DEPOSIT_REJECTION_NEXT_STEP', () => {
+    it('has a non-empty next step for every reason', () => {
+        for (const reason of Object.values(DepositRejectionReason)) {
+            expect(DEPOSIT_REJECTION_NEXT_STEP[reason]).toMatch(/\S/)
+        }
+    })
+})
+
+describe('STATUS_CATEGORY_LABELS', () => {
+    it('covers every category AccountStatusService can write', () => {
+        // Mirrors AccountStatusService.STATUS_CATEGORIES — kept as a literal
+        // list rather than an import so this package never depends on the API.
+        const categories = ['RECEIPT_FRAUD', 'CHARGEBACK', 'BONUS_ABUSE', 'MULTI_ACCOUNT', 'OTHER']
+        for (const category of categories) {
+            expect(STATUS_CATEGORY_LABELS[category]).toMatch(/\S/)
         }
     })
 })

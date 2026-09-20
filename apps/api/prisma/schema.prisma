@@ -24,6 +24,18 @@ model User {
   passwordResetAt          DateTime?
   telegramId               String?                   @unique
   telegramUsername         String?
+  /// Telegram support bot link. Distinct from telegramId (the login widget):
+  /// linking here NEVER enables Telegram sign-in, it only attaches a
+  /// notification + support channel to an existing phone/password account.
+  /// Equal to the private-chat id, so it doubles as the send address.
+  telegramChatId           String?                   @unique
+  telegramLinkedAt         DateTime?
+  /// Player opt-out for notification pushes. Support replies are never
+  /// gated by this — see services/telegram/notify.ts.
+  telegramNotifyEnabled    Boolean                   @default(true)
+  /// Set when Telegram last answered 403 "bot was blocked by the user".
+  /// Cleared on the next /start. Stops the send worker retrying forever.
+  telegramBlockedAt        DateTime?
   firstName                String?
   lastName                 String?
   photoUrl                 String?
@@ -1385,6 +1397,10 @@ model SupportConversation {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  /// Forum topic id in the staff Telegram group. Null until the first
+  /// message is mirrored there. See services/telegram/staff-bridge.ts.
+  telegramTopicId Int?
+
   messages SupportMessage[]
 
   @@index([status, lastMessageAt])
@@ -1393,19 +1409,28 @@ model SupportConversation {
   @@map("support_conversations")
 }
 
+/// WEB or TELEGRAM — where the SENDER typed the message, not who they are.
+/// Shown as a badge in the admin inbox and the staff Telegram topic so a
+/// clerk can tell which surface a reply will land back on.
+enum SupportMessageSource {
+  WEB
+  TELEGRAM
+}
+
 model SupportMessage {
-  id             String              @id @default(uuid())
+  id             String               @id @default(uuid())
   conversationId String
-  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderRole     SupportSenderRole
   /// User id for PLAYER and AGENT. Null for AI and SYSTEM.
   senderId       String?
-  body           String              @db.Text
+  body           String               @db.Text
   attachmentUrl  String?
   attachmentMime String?
   readByPlayerAt DateTime?
   readByAgentAt  DateTime?
-  createdAt      DateTime            @default(now())
+  createdAt      DateTime             @default(now())
+  source         SupportMessageSource @default(WEB)
 
   @@index([conversationId, createdAt])
   @@map("support_messages")

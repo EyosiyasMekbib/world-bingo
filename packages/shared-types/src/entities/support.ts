@@ -1,3 +1,5 @@
+import type { SupportMessageSource } from '../enums'
+
 export type SupportConversationStatus = 'BOT' | 'OPEN' | 'ASSIGNED' | 'RESOLVED'
 
 export type SupportSenderRole = 'PLAYER' | 'AI' | 'AGENT' | 'SYSTEM'
@@ -12,6 +14,9 @@ export interface SupportMessage {
     attachmentUrl: string | null
     attachmentMime: string | null
     createdAt: string
+    /** Where the sender typed this — the web widget or the Telegram bot.
+     *  Defaults to WEB on rows written before this column existed. */
+    source: SupportMessageSource
     /** Echoed back on the broadcast so the sender can replace its own
      *  optimistic bubble instead of appending a duplicate. Wire-only — it is
      *  not persisted, so it is null on every message read back from the DB. */

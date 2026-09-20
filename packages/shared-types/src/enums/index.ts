@@ -225,3 +225,13 @@ export enum DepositRejectionReason {
     NOT_FOUND = 'NOT_FOUND',
     OTHER = 'OTHER',
 }
+
+/**
+ * Where the SENDER typed a support message, not who they are. Mirrors `enum
+ * SupportMessageSource` in apps/api/prisma/schema.prisma — change both
+ * together.
+ */
+export enum SupportMessageSource {
+    WEB = 'WEB',
+    TELEGRAM = 'TELEGRAM',
+}

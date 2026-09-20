@@ -77,6 +77,51 @@ export const DEPOSIT_REJECTION_REASON_LABELS: Record<DepositRejectionReason, str
 }
 
 /**
+ * Plain "what to do next" appended to the label above, in the deposit
+ * rejection notification (web + Telegram) and the wallet page. Kept apart
+ * from the label itself so the label can stay a short reviewer-facing
+ * category while this stays an instruction.
+ */
+export const DEPOSIT_REJECTION_NEXT_STEP: Record<DepositRejectionReason, string> = {
+    [DepositRejectionReason.DUPLICATE_RECEIPT]:
+        'That transaction ID was already credited. If you sent money again, submit the new receipt.',
+    [DepositRejectionReason.AMOUNT_MISMATCH]:
+        'Resubmit with the exact amount shown on your receipt.',
+    [DepositRejectionReason.PAYER_MISMATCH]:
+        'Deposit from an account in your own name, or contact support if it already is.',
+    [DepositRejectionReason.UNREADABLE_RECEIPT]:
+        'Resubmit a clear photo or screenshot of the receipt.',
+    [DepositRejectionReason.NOT_FOUND]:
+        'Double-check the transaction ID and resubmit — it did not match any transfer we could find.',
+    [DepositRejectionReason.OTHER]: 'See the note above, or contact support.',
+}
+
+/**
+ * Player-facing wording for AccountStatusChange.category (RESTRICTED /
+ * SUSPENDED reason bucket). Deliberately coarser than the free-text `reason`
+ * column, which is staff-internal and never shown to the player. Mirrors the
+ * comment on AccountStatusChange.category in schema.prisma and
+ * AccountStatusService.STATUS_CATEGORIES — change all three together.
+ */
+export const STATUS_CATEGORY_LABELS: Record<string, string> = {
+    RECEIPT_FRAUD: 'a deposit receipt under review',
+    CHARGEBACK: 'a payment dispute',
+    BONUS_ABUSE: 'bonus terms',
+    MULTI_ACCOUNT: 'multiple accounts',
+    OTHER: 'an account review',
+}
+
+/** GET /user/account-status. */
+export interface AccountStatusInfo {
+    status: 'ACTIVE' | 'RESTRICTED' | 'SUSPENDED'
+    /** One of STATUS_CATEGORY_LABELS' keys, or null when not ACTIVE but no
+     *  category was recorded (a transition made before categories existed). */
+    category: string | null
+    /** When set, the account restores itself automatically at this time. */
+    expiresAt: string | null
+}
+
+/**
  * Body of POST /admin/transactions/:id/decline. `reason` is optional here
  * because the same route rejects withdrawals; AdminService.reviewTransaction
  * requires it for deposits. OTHER must explain itself in `note`.
@@ -141,6 +186,40 @@ export const TelegramAuthSchema = z.object({
     phone_number: z.string().optional(),
 })
 export type TelegramAuthDto = z.infer<typeof TelegramAuthSchema>
+
+// ─── Telegram support bot ───────────────────────────────────────────────────
+// This is the SUPPORT BOT link (User.telegramChatId), not the login widget
+// above (User.telegramId). Linking here never enables Telegram sign-in.
+
+/** POST /support/telegram/link response. Null when the bot is not
+ *  configured for this deployment. */
+export interface TelegramLinkResponse {
+    deepLink: string | null
+}
+
+export const TelegramNotifyPatchSchema = z.object({
+    notifyEnabled: z.boolean(),
+})
+export type TelegramNotifyPatchDto = z.infer<typeof TelegramNotifyPatchSchema>
+
+/**
+ * POST /auth/password-reset/consume. `token` is the one-time value from the
+ * bot's reset link (services/telegram/link.service.ts), never a password.
+ */
+export const PasswordResetConsumeSchema = z.object({
+    token: z.string().min(16).max(128),
+    newPassword: z.string().min(6),
+})
+export type PasswordResetConsumeDto = z.infer<typeof PasswordResetConsumeSchema>
+
+/** Same shape as ChangePasswordResponse — this device is signed in with a
+ *  fresh session once the reset is consumed. */
+export interface PasswordResetConsumeResponse {
+    message: string
+    user: User
+    accessToken: string
+    refreshToken: string
+}
 
 // ─── Referral ─────────────────────────────────────────────────────────────────
 /** Bonus awarded to referrer when their referee completes their first deposit */

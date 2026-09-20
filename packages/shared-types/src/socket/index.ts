@@ -70,8 +70,13 @@ export interface ServerToClientEvents {
         unassignedCount: number
         item?: SupportQueueItem
     }) => void
-    /** Real phone/Telegram contact, pushed when no agent is online */
-    'support:contact-fallback': (payload: { conversationId: string } & SupportContactInfo) => void
+    /** Real phone/Telegram contact, pushed when no agent is online.
+     *  `telegramLink` is a one-time deep link that continues this exact
+     *  thread in the bot — minted server-side, null when the bot is not
+     *  configured. */
+    'support:contact-fallback': (
+        payload: { conversationId: string; telegramLink: string | null } & SupportContactInfo,
+    ) => void
     'support:error': (payload: { conversationId?: string; code: string; message: string }) => void
 
     error: (payload: { message: string; code: string }) => void
