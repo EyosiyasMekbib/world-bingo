@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { PromotionProgressDto, PublicPromotionDto } from '@world-bingo/shared-types'
 import { useAuthStore } from '~/store/auth'
+import { usePromotionsStore } from '~/store/promotions'
 
 const auth = useAuthStore()
+const promos = usePromotionsStore()
 const router = useRouter()
 const { t } = useI18n()
 
@@ -11,7 +14,13 @@ onMounted(async () => {
     router.replace('/auth/login')
     return
   }
-  await Promise.all([refreshBalance(), fetchRecentTx(), fetchBonusGrants()])
+  await Promise.all([
+    refreshBalance(),
+    fetchRecentTx(),
+    fetchBonusGrants(),
+    promos.fetch(),
+    promos.fetchProgress(),
+  ])
   await claimReturnedDeposit()
 })
 
@@ -69,13 +78,41 @@ async function setSpendAccount(account: 'REAL' | 'BONUS') {
 }
 
 // ── Active bonus grants ─────────────────────────────────────────────
-const bonusGrants = ref<any[]>([])
+/** One lot as `/wallet/bonus-grants` answers it. `source` is newer than the route. */
+interface BonusGrantRow {
+  id: string
+  amount: number
+  remaining: number
+  expiresAt: string | null
+  ruleName: string | null
+  source?: string | null
+  createdAt: string
+}
+
+const bonusGrants = ref<BonusGrantRow[]>([])
 const grantsLoading = ref(false)
+
+/** Below this much left, a lot is drawn as urgent. */
+const URGENT_MS = 6 * 3_600_000
+/** Below this much left, the spend-account nudge appears. */
+const NUDGE_MS = 24 * 3_600_000
+
+// Countdowns must move without a refresh: both the urgency treatment and the
+// switch nudge flip on this clock, and someone watching the last hour of a lot
+// should see it run down rather than a figure frozen when the page loaded.
+const now = ref(Date.now())
+let countdownClock: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  countdownClock = setInterval(() => {
+    now.value = Date.now()
+  }, 30_000)
+})
+onUnmounted(() => clearInterval(countdownClock))
 
 async function fetchBonusGrants() {
   grantsLoading.value = true
   try {
-    bonusGrants.value = await auth.apiFetch<any[]>('/wallet/bonus-grants')
+    bonusGrants.value = await auth.apiFetch<BonusGrantRow[]>('/wallet/bonus-grants')
   } catch {
     // non-critical — the balance card still works without the grants list
   } finally {
@@ -83,17 +120,116 @@ async function fetchBonusGrants() {
   }
 }
 
-function formatTimeRemaining(expiresAt: string | null): string {
-  if (!expiresAt) return t('wallet.bonusNoExpiry')
-  const ms = new Date(expiresAt).getTime() - Date.now()
-  if (ms <= 0) return t('wallet.bonusExpiring')
+const BONUS_SOURCE_CHIPS: Record<string, { label: string; tone: string }> = {
+  CASHBACK: { label: 'Cashback', tone: 'cyan' },
+  FIRST_DEPOSIT: { label: 'Welcome', tone: 'emerald' },
+  DAILY_DEPOSIT: { label: 'Deposit Bonus', tone: 'amber' },
+  WEEKLY_DEPOSIT: { label: 'Deposit Bonus', tone: 'amber' },
+  CAMPAIGN: { label: 'Campaign', tone: 'violet' },
+  ADMIN: { label: 'Goodwill', tone: 'slate' },
+  REFUND: { label: 'Refund', tone: 'slate' },
+}
+
+/**
+ * Where a lot came from, as the player should read it. An API that predates
+ * `source` sends none, so the fallback has to be a chip that is still true.
+ */
+function sourceChip(source: string | null | undefined): { label: string; tone: string } {
+  return BONUS_SOURCE_CHIPS[source ?? ''] ?? { label: 'Bonus', tone: 'slate' }
+}
+
+function formatDuration(ms: number): string {
   const hours = Math.floor(ms / 3_600_000)
   const days = Math.floor(hours / 24)
-  let time: string
-  if (days > 0) time = `${days}${t('prediction.unitDay')} ${hours % 24}${t('prediction.unitHour')}`
-  else if (hours > 0) time = `${hours}${t('prediction.unitHour')}`
-  else time = `${Math.floor(ms / 60_000)}${t('prediction.unitMinute')}`
-  return t('wallet.bonusExpiresIn', { time })
+  if (days > 0) return `${days}${t('prediction.unitDay')} ${hours % 24}${t('prediction.unitHour')}`
+  if (hours > 0) return `${hours}${t('prediction.unitHour')}`
+  return `${Math.floor(ms / 60_000)}${t('prediction.unitMinute')}`
+}
+
+function formatTimeRemaining(expiresAt: string | null): string {
+  if (!expiresAt) return t('wallet.bonusNoExpiry')
+  const ms = new Date(expiresAt).getTime() - now.value
+  if (ms <= 0) return t('wallet.bonusExpiring')
+  return t('wallet.bonusExpiresIn', { time: formatDuration(ms) })
+}
+
+const bonusLots = computed(() =>
+  bonusGrants.value.map((grant) => {
+    const expiresAt = grant.expiresAt ? new Date(grant.expiresAt).getTime() : null
+    const msLeft = expiresAt === null ? null : Math.max(0, expiresAt - now.value)
+    // The bar reads as "how much of this lot's life is left", so it is scaled to
+    // the lot's own validity rather than a fixed span: a 24h deposit bonus and a
+    // 7-day cashback lot both start full and each empties at its own pace.
+    const validityMs =
+      expiresAt === null ? null : Math.max(1, expiresAt - new Date(grant.createdAt).getTime())
+    return {
+      ...grant,
+      chip: sourceChip(grant.source),
+      countdown: formatTimeRemaining(grant.expiresAt),
+      msLeft,
+      urgent: msLeft !== null && msLeft <= URGENT_MS,
+      lifeLeftPct:
+        msLeft === null || validityMs === null
+          ? 100
+          : Math.round(Math.min(1, msLeft / validityMs) * 100),
+    }
+  }),
+)
+
+// The route orders lots by expiry, so the first one here is the soonest to die.
+const expiringLots = computed(() =>
+  bonusLots.value.filter((lot) => lot.msLeft !== null && lot.msLeft <= NUDGE_MS),
+)
+// Only worth nudging while REAL is selected — on BONUS the player is already
+// spending the lot that is about to expire.
+const showSwitchNudge = computed(
+  () => spendAccount.value === 'REAL' && expiringLots.value.length > 0,
+)
+const expiringTotal = computed(() =>
+  expiringLots.value.reduce((sum, lot) => sum + Number(lot.remaining), 0),
+)
+const expiringIn = computed(() => {
+  const soonest = expiringLots.value[0]
+  return soonest?.msLeft != null ? formatDuration(soonest.msLeft) : ''
+})
+
+// ── Earn more — progress toward the live promotions ──────────────────
+const PROMO_KIND_LABELS: Record<string, string> = {
+  CASHBACK: 'Cashback',
+  DEPOSIT_RULE: 'Deposit',
+  WELCOME: 'Welcome',
+  REFERRAL: 'Referral',
+}
+
+/**
+ * Only offers this player is part-way through. An empty bar says less than the
+ * promo tile already does, and the tiles carry every offer anyway.
+ */
+const earnMore = computed(() =>
+  promos.promotions
+    .map((promo) => ({ promo, progress: promos.progressFor(promo.refId) }))
+    .filter(
+      (row): row is { promo: PublicPromotionDto; progress: PromotionProgressDto } =>
+        row.progress !== null,
+    ),
+)
+
+function promoKindLabel(kind: string): string {
+  return PROMO_KIND_LABELS[kind] ?? kind
+}
+
+/** Progress figures are read at a glance, so they drop the cents. */
+function formatFigure(value: number): string {
+  return Number(value).toLocaleString('en-ET', { maximumFractionDigits: 0 })
+}
+
+function progressPct(progress: PromotionProgressDto): number {
+  if (!(progress.target > 0)) return 0
+  return Math.min(100, Math.round((progress.current / progress.target) * 100))
+}
+
+function remainingToGo(progress: PromotionProgressDto): string {
+  return `${formatFigure(Math.max(0, progress.target - progress.current))} ETB to go`
 }
 
 const formattedRealBalance = computed(() => {
@@ -141,18 +277,86 @@ function txLabel(type: string): string {
     REFUND: 'Refund',
     FIRST_DEPOSIT_BONUS: 'Welcome Bonus',
     CASHBACK_BONUS: 'Cashback',
+    DAILY_DEPOSIT_BONUS: 'Daily Deposit Bonus',
+    WEEKLY_DEPOSIT_BONUS: 'Weekly Deposit Bonus',
+    CAMPAIGN_BONUS: 'Campaign Bonus',
+    BONUS_EXPIRED: 'Bonus Expired',
     ADMIN_REAL_ADJUSTMENT: 'Adjustment',
     ADMIN_BONUS_ADJUSTMENT: 'Bonus Adjustment',
+    PREDICTION_ORDER_HOLD: 'Prediction Stake',
+    PREDICTION_ORDER_RELEASE: 'Stake Returned',
+    PREDICTION_WIN: 'Prediction Win',
+    PREDICTION_REFUND: 'Prediction Refund',
+    TP_BET: 'Game Bet',
+    TP_WIN: 'Game Win',
+    TP_ROLLBACK: 'Bet Reversed',
+    TP_ADJUSTMENT: 'Game Adjustment',
   }
   return map[type] ?? type
 }
 
-function txSign(type: string): string {
-  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND', 'FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_REAL_ADJUSTMENT', 'ADMIN_BONUS_ADJUSTMENT'].includes(type) ? '+' : '-'
+const TX_CREDIT_TYPES = [
+  'DEPOSIT',
+  'PRIZE_WIN',
+  'REFUND',
+  'FIRST_DEPOSIT_BONUS',
+  'CASHBACK_BONUS',
+  'DAILY_DEPOSIT_BONUS',
+  'WEEKLY_DEPOSIT_BONUS',
+  'CAMPAIGN_BONUS',
+  'PREDICTION_ORDER_RELEASE',
+  'PREDICTION_WIN',
+  'PREDICTION_REFUND',
+  'TP_WIN',
+  'TP_ROLLBACK',
+]
+
+const TX_DEBIT_TYPES = [
+  'WITHDRAWAL',
+  'GAME_ENTRY',
+  'BONUS_EXPIRED',
+  'PREDICTION_ORDER_HOLD',
+  'TP_BET',
+]
+
+/** The fields of a transaction this page reads. Decimals arrive as strings. */
+interface TxRow {
+  type: string
+  amount: number | string
+  balanceBefore?: number | string | null
+  balanceAfter?: number | string | null
+  bonusBalanceBefore?: number | string | null
+  bonusBalanceAfter?: number | string | null
 }
 
-function txAmountClass(type: string): string {
-  return ['DEPOSIT', 'PRIZE_WIN', 'REFUND', 'FIRST_DEPOSIT_BONUS', 'CASHBACK_BONUS', 'ADMIN_REAL_ADJUSTMENT', 'ADMIN_BONUS_ADJUSTMENT'].includes(type) ? 'amount-positive' : 'amount-negative'
+/**
+ * Whether a row put money in. The three adjustment types cannot be read from
+ * the type alone: the admin pair writes a signed `amount` and TP_ADJUSTMENT
+ * writes an absolute one, so for those the balance columns are the only truth.
+ */
+function txIsCredit(tx: TxRow): boolean {
+  if (TX_CREDIT_TYPES.includes(tx.type)) return true
+  if (TX_DEBIT_TYPES.includes(tx.type)) return false
+  const delta =
+    Number(tx.balanceAfter ?? 0) -
+    Number(tx.balanceBefore ?? 0) +
+    (Number(tx.bonusBalanceAfter ?? 0) - Number(tx.bonusBalanceBefore ?? 0))
+  if (delta !== 0) return delta > 0
+  return Number(tx.amount) >= 0
+}
+
+function txSign(tx: TxRow): string {
+  return txIsCredit(tx) ? '+' : '-'
+}
+
+function txAmountClass(tx: TxRow): string {
+  return txIsCredit(tx) ? 'amount-positive' : 'amount-negative'
+}
+
+// The sign is already carried by txSign, so a signed adjustment must not print
+// its own minus as well.
+function txAmount(tx: TxRow): string {
+  return `${txSign(tx)}${Math.abs(Number(tx.amount)).toFixed(2)} ETB`
 }
 
 function txStatusClass(status: string): string {
@@ -248,6 +452,19 @@ function formatRelativeTime(dateStr: string): string {
         </div>
         <p v-if="spendAccountError" class="spend-account-error">{{ spendAccountError }}</p>
 
+        <!-- The question support answers most often, answered where it is asked. -->
+        <div class="bonus-explainer">
+          <svg class="bonus-explainer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <circle cx="12" cy="12" r="9" stroke-linecap="round" />
+            <path stroke-linecap="round" d="M12 11v5" />
+            <path stroke-linecap="round" d="M12 8h.01" />
+          </svg>
+          <p class="bonus-explainer-text">
+            Bonus money plays like cash but can't be withdrawn. Anything you win with it lands in
+            your withdrawable balance.
+          </p>
+        </div>
+
         <p v-if="confirmingDeposit" class="deposit-confirming">
           <span aria-hidden="true">⏳</span>{{ t('wallet.confirmingDeposit') }}
         </p>
@@ -266,6 +483,146 @@ function formatRelativeTime(dateStr: string): string {
             </svg>
             Withdraw
           </button>
+        </div>
+      </div>
+
+      <!-- ── My Bonuses ───────────────────────────────────────────── -->
+      <div v-if="bonusLots.length" class="section">
+        <div class="section-header">
+          <span class="section-title">My Bonuses</span>
+          <NuxtLink to="/transactions" class="section-link bonus-history-link">History →</NuxtLink>
+        </div>
+
+        <div class="tx-card">
+          <div v-for="lot in bonusLots" :key="lot.id" class="lot" :class="`tone--${lot.chip.tone}`">
+            <div class="lot-main">
+              <div class="lot-icon">
+                <!-- Cashback comes back to you; every other source is a gift. -->
+                <svg v-if="lot.source === 'CASHBACK'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+                  <path stroke-linecap="round" d="M21 12a9 9 0 1 1-3.5-7.1" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 4v5h-5" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+                  <rect x="3" y="8" width="18" height="4" rx="1" stroke-linejoin="round" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" />
+                </svg>
+              </div>
+
+              <div class="lot-info">
+                <span class="lot-name">{{ lot.ruleName ?? lot.chip.label }}</span>
+                <div class="lot-meta">
+                  <span class="chip">{{ lot.chip.label }}</span>
+                  <span class="lot-expiry" :class="{ 'lot-expiry--urgent': lot.urgent }">
+                    {{ lot.countdown }}
+                  </span>
+                </div>
+              </div>
+
+              <span class="lot-amount">{{ Number(lot.remaining).toFixed(2) }} ETB</span>
+            </div>
+
+            <div
+              class="lot-bar"
+              role="progressbar"
+              :aria-label="`Time left on ${lot.ruleName ?? lot.chip.label}`"
+              :aria-valuenow="lot.lifeLeftPct"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div
+                class="lot-bar-fill"
+                :class="{ 'lot-bar-fill--urgent': lot.urgent }"
+                :style="{ width: `${lot.lifeLeftPct}%` }"
+              />
+            </div>
+          </div>
+
+          <!-- Expiring bonus is only losable while real money is being spent first. -->
+          <div v-if="showSwitchNudge" class="nudge">
+            <svg class="nudge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.3 4.3 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8A1.8 1.8 0 0 0 21.5 18L13.7 4.3a1.9 1.9 0 0 0-3.4 0Z" />
+              <path stroke-linecap="round" d="M12 9.5v4" />
+              <path stroke-linecap="round" d="M12 17h.01" />
+            </svg>
+            <p class="nudge-text">
+              {{ expiringTotal.toFixed(2) }} ETB expires in {{ expiringIn }}. Switch to
+              <strong>{{ t('wallet.spendAccountBonus') }}</strong> to use it first.
+            </p>
+            <button
+              type="button"
+              class="nudge-btn"
+              :disabled="togglingAccount"
+              @click="setSpendAccount('BONUS')"
+            >
+              Switch
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Earn More ────────────────────────────────────────────── -->
+      <div v-if="earnMore.length" class="section">
+        <div class="section-header">
+          <span class="section-title">Earn More</span>
+          <NuxtLink to="/promotions" class="section-link bonus-history-link">All offers →</NuxtLink>
+        </div>
+
+        <div class="earn-list">
+          <div
+            v-for="row in earnMore"
+            :key="`${row.promo.kind}:${row.promo.refId}`"
+            class="earn-card"
+            :class="`tone--${row.promo.accent}`"
+          >
+            <div class="earn-head">
+              <div class="earn-head-text">
+                <span class="earn-title">{{ row.promo.name }}</span>
+                <span class="earn-sub">{{ row.promo.sub }}</span>
+              </div>
+              <span class="chip">{{ promoKindLabel(row.promo.kind) }}</span>
+            </div>
+
+            <div class="earn-progress">
+              <div class="earn-figures">
+                <span class="earn-label">{{ row.progress.label }}</span>
+                <span class="earn-value">
+                  {{ formatFigure(row.progress.current) }}
+                  <span class="earn-target">/ {{ formatFigure(row.progress.target) }} ETB</span>
+                </span>
+              </div>
+              <div
+                class="earn-bar"
+                role="progressbar"
+                :aria-label="row.progress.label"
+                :aria-valuenow="progressPct(row.progress)"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <div class="earn-bar-fill" :style="{ width: `${progressPct(row.progress)}%` }" />
+              </div>
+            </div>
+
+            <div class="earn-foot">
+              <div class="earn-foot-text">
+                <span class="earn-togo">{{ remainingToGo(row.progress) }}</span>
+                <span v-if="row.progress.hint" class="earn-hint">
+                  <svg class="earn-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+                    <circle cx="12" cy="12" r="9" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5V12l3 2" />
+                  </svg>
+                  {{ row.progress.hint }}
+                </span>
+              </div>
+              <button
+                v-if="row.promo.action === 'deposit'"
+                type="button"
+                class="earn-btn"
+                @click="showDeposit = true"
+              >
+                Deposit
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -314,44 +671,12 @@ function formatRelativeTime(dateStr: string): string {
 
               <!-- Amount + status -->
               <div class="tx-right">
-                <span class="tx-amount" :class="txAmountClass(tx.type)">
-                  {{ txSign(tx.type) }}{{ Number(tx.amount).toFixed(2) }} ETB
+                <span class="tx-amount" :class="txAmountClass(tx)">
+                  {{ txAmount(tx) }}
                 </span>
                 <span class="tx-status" :class="txStatusClass(tx.status)">
                   {{ tx.status }}
                 </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Active Bonuses ───────────────────────────────────────── -->
-      <div v-if="bonusGrants.length" class="section">
-        <div class="section-header">
-          <span class="section-title">{{ t('wallet.activeBonuses') }}</span>
-        </div>
-
-        <div class="tx-card">
-          <div class="tx-list">
-            <div v-for="(grant, i) in bonusGrants" :key="grant.id" class="tx-row" :class="{ 'tx-row--bordered': i < bonusGrants.length - 1 }">
-              <!-- Icon -->
-              <div class="tx-icon tx-icon--bonus">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="8" width="18" height="4" rx="1" stroke-linecap="round" stroke-linejoin="round" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12v8h14v-8M12 8V4M12 8c-2 0-4-1.2-4-2.6S9.5 3 12 4M12 8c2 0 4-1.2 4-2.6S14.5 3 12 4" />
-                </svg>
-              </div>
-
-              <!-- Info -->
-              <div class="tx-info">
-                <span class="tx-type">{{ grant.ruleName ?? 'Bonus credit' }}</span>
-                <span class="tx-date">{{ formatTimeRemaining(grant.expiresAt) }}</span>
-              </div>
-
-              <!-- Amount -->
-              <div class="tx-right">
-                <span class="tx-amount amount-positive">{{ Number(grant.remaining).toFixed(2) }} ETB</span>
               </div>
             </div>
           </div>
@@ -589,6 +914,31 @@ function formatRelativeTime(dateStr: string): string {
   text-align: right;
 }
 
+/* ── Bonus explainer ─────────────────────────────────────────────── */
+.bonus-explainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--brand-primary) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);
+}
+.bonus-explainer-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--brand-primary);
+}
+.bonus-explainer-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
 /* ── Action Buttons ──────────────────────────────────────────────── */
 .action-row {
   display: grid;
@@ -717,7 +1067,6 @@ function formatRelativeTime(dateStr: string): string {
 .tx-icon--prize_win  { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
 .tx-icon--refund     { background: color-mix(in srgb, var(--accent-primary) 22%, transparent); color: #a5b4fc; }
 .tx-icon--game_entry { background: color-mix(in srgb, var(--accent-primary) 24%, transparent); color: #60a5fa; }
-.tx-icon--bonus      { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
 
 .tx-info {
   flex: 1;
@@ -766,6 +1115,295 @@ function formatRelativeTime(dateStr: string): string {
 .status-approved { background: color-mix(in srgb, var(--status-success) 16%, transparent); color: var(--status-success); }
 .status-rejected { background: color-mix(in srgb, var(--status-error) 16%, transparent); color: var(--status-error); }
 .status-pending  { background: color-mix(in srgb, var(--brand-primary) 16%, transparent); color: var(--brand-primary); }
+
+/* ── My Bonuses / Earn More ──────────────────────────────────────── */
+/* One tone per row drives its chip, icon bubble and bar together, so a source
+   never has to be spelled out in three places. */
+.tone--amber   { --tone: var(--brand-primary); }
+.tone--cyan    { --tone: #22d3ee; }
+.tone--emerald { --tone: var(--status-success); }
+.tone--rose    { --tone: #fb7185; }
+.tone--violet  { --tone: #a78bfa; }
+.tone--slate   { --tone: #94a3b8; }
+
+.bonus-history-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.chip {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.44rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
+}
+
+.lot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+}
+.lot + .lot,
+.nudge {
+  border-top: 1px solid color-mix(in srgb, var(--surface-border) 60%, transparent);
+}
+
+.lot-main {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+.lot-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md, 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--tone) 16%, transparent);
+  color: var(--tone);
+}
+.lot-icon svg { width: 17px; height: 17px; }
+
+.lot-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.lot-name {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
+}
+.lot-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+.lot-expiry {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.lot-expiry--urgent {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--status-error) 75%, #fff);
+}
+.lot-amount {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--status-success);
+  flex-shrink: 0;
+}
+
+.lot-bar {
+  height: 4px;
+  border-radius: var(--radius-full, 9999px);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.lot-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tone);
+  transition: width 0.4s ease;
+}
+.lot-bar-fill--urgent { background: var(--status-error); }
+
+/* ── Switch nudge ────────────────────────────────────────────────── */
+.nudge {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.8rem 1rem;
+  background: color-mix(in srgb, var(--status-error) 7%, transparent);
+}
+.nudge-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--status-error) 75%, #fff);
+}
+.nudge-text {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.nudge-text strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.nudge-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.nudge-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
+.nudge-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Earn More cards ─────────────────────────────────────────────── */
+.earn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.earn-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg, 16px);
+}
+
+.earn-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.earn-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.earn-title {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
+}
+.earn-sub {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.earn-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.44rem;
+}
+.earn-figures {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.earn-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.earn-value {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.earn-target { color: rgba(255, 255, 255, 0.6); }
+
+.earn-bar {
+  height: 8px;
+  border-radius: var(--radius-full, 9999px);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.earn-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tone) 70%, #000), var(--tone));
+  transition: width 0.4s ease;
+}
+
+.earn-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.earn-foot-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.earn-togo {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.earn-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.58);
+}
+.earn-hint-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.earn-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.earn-btn:hover {
+  background: color-mix(in srgb, var(--brand-primary) 90%, white);
+  transform: translateY(-1px);
+}
 
 /* ── Quick Links ─────────────────────────────────────────────────── */
 .quick-links {

@@ -78,7 +78,26 @@
     "bonusNoExpiry": "ማብቂያ የለውም",
     "bonusExpiring": "እያበቃ ነው...",
     "depositDailyHint": "ዛሬ {amount} ብር በማስገባት ጉርሻ ያግኙ።",
-    "depositWeeklyHint": "በዚህ ሳምንት {amount} ብር በማስገባት ጉርሻ ያግኙ።"
+    "depositWeeklyHint": "በዚህ ሳምንት {amount} ብር በማስገባት ጉርሻ ያግኙ።",
+    "bonusExplainer": "ጉርሻ ገንዘብ እንደ ጥሬ ገንዘብ ይጫወታል ግን ማውጣት አይቻልም። በእሱ የሚያሸንፉት ሁሉ ወደሚወጣው ቀሪ ሂሳብዎ ይገባል።",
+    "myBonuses": "ጉርሻዎቼ",
+    "history": "ታሪክ",
+    "earnMore": "ተጨማሪ ያግኙ",
+    "bonusHistory": "የጉርሻ ታሪክ",
+    "bonusHistoryHint": "የተሰጠ፣ የተጠቀሙበት እና ያበቃ ሁሉ",
+    "bonusToGo": "{amount} ይቀራል",
+    "bonusExpiresTonight": "ዛሬ ማታ ያበቃል",
+    "bonusExpiryNudge": "{amount} ዛሬ ማታ ያበቃል። አስቀድመው ለመጠቀም ወደ “ጉርሻ ተጠቀም” ይቀይሩ።",
+    "switchToBonus": "ቀይር",
+    "bonusSource": {
+      "FIRST_DEPOSIT": "እንኳን ደህና መጡ",
+      "DAILY_DEPOSIT": "የተቀማጭ ጉርሻ",
+      "WEEKLY_DEPOSIT": "የተቀማጭ ጉርሻ",
+      "CASHBACK": "ካሽባክ",
+      "CAMPAIGN": "ዘመቻ",
+      "ADMIN": "የበጎ ፈቃድ",
+      "REFUND": "ተመላሽ"
+    }
   },
   "refer": {
     "title": "🎁 ጓደኛ ጋብዝ፣ ሽልማት ወሰድ",
@@ -111,7 +130,9 @@
   "notification": {
     "title": "ማሳወቂያዎች",
     "noNotifications": "ምንም ማሳወቂያ የለም",
-    "markAllRead": "ሁሉንም እንደተነበቡ ምልክት አድርግ"
+    "markAllRead": "ሁሉንም እንደተነበቡ ምልክት አድርግ",
+    "markAllReadShort": "ሁሉንም ተነብቧል",
+    "seeAll": "ሁሉንም ማሳወቂያዎች ይመልከቱ"
   },
   "common": {
     "loading": "እየጫነ ነው…",
@@ -174,7 +195,18 @@
     "first_deposit": "በመጀመሪያ ተቀማጭዎ ላይ {amount} ብር ቦነስ ያግኙ",
     "frequency_daily": "የቀን",
     "frequency_weekly": "የሳምንት",
-    "frequency_monthly": "የወር"
+    "frequency_monthly": "የወር",
+    "live_offers": "ንቁ ቅናሾች",
+    "all_promotions": "ሁሉም ማስተዋወቂያዎች",
+    "prev_offers": "ቀዳሚ ቅናሾች",
+    "next_offers": "ቀጣይ ቅናሾች",
+    "expiry_headline": "{amount} ጉርሻ ዛሬ ማታ ያበቃል",
+    "expiry_sub": "ከእውነተኛ ቀሪ ሂሳብዎ እንዲከፍሉ ተመርጧል፣ ስለዚህ ጉርሻው ሳይጠቀሙበት ያበቃል",
+    "expiry_cta": "ጉርሻውን አስቀድመው ተጠቀሙ",
+    "lost_this_week": "በዚህ ሳምንት ያጡት",
+    "deposited_today": "ዛሬ ያስገቡት",
+    "pays_out": "{when} ይከፈላል",
+    "chip_link": "ሊንክ"
   },
   "prediction": {
     "title": "የግጥሚያ ገበያዎች",

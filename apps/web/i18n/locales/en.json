@@ -78,7 +78,26 @@
     "bonusNoExpiry": "No expiry",
     "bonusExpiring": "Expiring...",
     "depositDailyHint": "Deposit {amount} ETB today for a bonus.",
-    "depositWeeklyHint": "Deposit {amount} ETB this week for a bonus."
+    "depositWeeklyHint": "Deposit {amount} ETB this week for a bonus.",
+    "bonusExplainer": "Bonus money plays like cash but can't be withdrawn. Anything you win with it lands in your withdrawable balance.",
+    "myBonuses": "My Bonuses",
+    "history": "History",
+    "earnMore": "Earn More",
+    "bonusHistory": "Bonus history",
+    "bonusHistoryHint": "Everything granted, spent and expired",
+    "bonusToGo": "{amount} to go",
+    "bonusExpiresTonight": "Expires tonight",
+    "bonusExpiryNudge": "{amount} expires tonight. Switch to Spend Bonus to use it first.",
+    "switchToBonus": "Switch",
+    "bonusSource": {
+      "FIRST_DEPOSIT": "Welcome",
+      "DAILY_DEPOSIT": "Deposit Bonus",
+      "WEEKLY_DEPOSIT": "Deposit Bonus",
+      "CASHBACK": "Cashback",
+      "CAMPAIGN": "Campaign",
+      "ADMIN": "Goodwill",
+      "REFUND": "Refund"
+    }
   },
   "refer": {
     "title": "🎁 Refer & Earn",
@@ -111,7 +130,9 @@
   "notification": {
     "title": "Notifications",
     "noNotifications": "No notifications yet",
-    "markAllRead": "Mark all as read"
+    "markAllRead": "Mark all as read",
+    "markAllReadShort": "Mark all read",
+    "seeAll": "See all notifications"
   },
   "common": {
     "loading": "Loading…",
@@ -174,7 +195,18 @@
     "first_deposit": "Get {amount} ETB bonus on your first deposit",
     "frequency_daily": "daily",
     "frequency_weekly": "weekly",
-    "frequency_monthly": "monthly"
+    "frequency_monthly": "monthly",
+    "live_offers": "Live Offers",
+    "all_promotions": "All promotions",
+    "prev_offers": "Previous offers",
+    "next_offers": "Next offers",
+    "expiry_headline": "{amount} of bonus expires tonight",
+    "expiry_sub": "You are set to spend from your real balance, so it will go unused",
+    "expiry_cta": "Spend bonus first",
+    "lost_this_week": "Lost this week",
+    "deposited_today": "Deposited today",
+    "pays_out": "pays out {when}",
+    "chip_link": "Link"
   },
   "prediction": {
     "title": "Fight Markets",

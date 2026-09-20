@@ -1,9 +1,24 @@
 <script setup lang="ts">
+import { BonusGrantStatus, BonusSource } from '@world-bingo/shared-types'
+import type { PlayerBonusGrant } from '~/composables/useAdminApi'
+
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
-const { getPlayer, adjustPlayerBalance, restrictPlayer, suspendPlayer, reinstatePlayer, getPlayerStatusHistory } = useAdminApi()
+const {
+  fetch: adminFetch,
+  getPlayer,
+  getPlayerBonusGrants,
+  adjustPlayerBalance,
+  restrictPlayer,
+  suspendPlayer,
+  reinstatePlayer,
+  getPlayerStatusHistory,
+} = useAdminApi()
+const { user, isAdmin } = useAdminAuth()
 const toast = useToast()
+
+const activeTab = ref<'overview' | 'bonuses'>('overview')
 
 const player = ref<any>(null)
 const loading = ref(true)
@@ -34,6 +49,216 @@ const adjustForm = reactive({
   amount: 0,
   note: '',
 })
+
+/** Opens the existing adjust modal aimed at bonus, for the panel's deduct action. */
+function openBonusDeduction() {
+  adjustForm.type = 'bonus'
+  adjustForm.amount = 0
+  adjustForm.note = ''
+  showAdjust.value = true
+}
+
+// ── Bonuses tab ───────────────────────────────────────────────────────
+const HOUR_MS = 3600_000
+
+const grants = ref<PlayerBonusGrant[]>([])
+const grantsLoading = ref(false)
+const grantsLoaded = ref(false)
+
+// Relative expiry labels go stale on a page a clerk leaves open all shift, and
+// "3h left" turning red is the whole point of the column.
+const now = ref(Date.now())
+
+async function fetchGrants() {
+  grantsLoading.value = true
+  try {
+    grants.value = await getPlayerBonusGrants(route.params.id as string)
+    grantsLoaded.value = true
+  } catch {
+    // The tab's own data: an empty strip beats taking the player page down.
+    grants.value = []
+  } finally {
+    grantsLoading.value = false
+  }
+}
+
+const activeLots = computed(() => grants.value.filter((g) => g.status === BonusGrantStatus.ACTIVE))
+const closedLots = computed(() => grants.value.filter((g) => g.status !== BonusGrantStatus.ACTIVE))
+
+const walletBonus = computed(() => Number(player.value?.wallet?.bonusBalance ?? 0))
+const activeLotSum = computed(() => activeLots.value.reduce((sum, g) => sum + g.remaining, 0))
+const lifetimeGranted = computed(() => grants.value.reduce((sum, g) => sum + g.amount, 0))
+const closedTotal = computed(() => closedLots.value.reduce((sum, g) => sum + g.amount, 0))
+const expiredUnused = computed(() =>
+  closedLots.value
+    .filter((g) => g.status === BonusGrantStatus.EXPIRED)
+    .reduce((sum, g) => sum + g.remaining, 0),
+)
+
+// wallets.bonusBalance is Decimal(20,8) and the lots are Decimal(12,2), so an
+// exact comparison would flag every player. Half a cent is the real tolerance.
+const ledgerAgrees = computed(() => Math.abs(walletBonus.value - activeLotSum.value) < 0.005)
+
+const SOURCE_META: Record<BonusSource, { label: string; icon: string; tint: string }> = {
+  [BonusSource.FIRST_DEPOSIT]: { label: 'First deposit', icon: 'i-heroicons:gift', tint: 'text-amber-400 bg-amber-400/15' },
+  [BonusSource.DAILY_DEPOSIT]: { label: 'Deposit rule', icon: 'i-heroicons:calendar-days', tint: 'text-amber-400 bg-amber-400/15' },
+  [BonusSource.WEEKLY_DEPOSIT]: { label: 'Weekly deposit rule', icon: 'i-heroicons:calendar', tint: 'text-amber-400 bg-amber-400/15' },
+  [BonusSource.CASHBACK]: { label: 'Cashback', icon: 'i-heroicons:arrow-path-rounded-square', tint: 'text-cyan-400 bg-cyan-400/15' },
+  [BonusSource.CAMPAIGN]: { label: 'Campaign', icon: 'i-heroicons:megaphone', tint: 'text-fuchsia-400 bg-fuchsia-400/15' },
+  [BonusSource.ADMIN]: { label: 'Manual grant', icon: 'i-heroicons:shield-check', tint: 'text-white/70 bg-white/10' },
+  [BonusSource.REFUND]: { label: 'Refund', icon: 'i-heroicons:receipt-refund', tint: 'text-emerald-400 bg-emerald-400/15' },
+}
+
+function sourceMeta(g: PlayerBonusGrant) {
+  return SOURCE_META[g.source ?? BonusSource.ADMIN] ?? SOURCE_META[BonusSource.ADMIN]
+}
+
+/** The rule's own name where there is one — a lot from before `source` landed has only that. */
+function lotName(g: PlayerBonusGrant) {
+  return g.ruleName ?? sourceMeta(g).label
+}
+
+function hoursLeft(expiresAt: string | null) {
+  if (!expiresAt) return null
+  return (new Date(expiresAt).getTime() - now.value) / HOUR_MS
+}
+
+function expiryLabel(expiresAt: string | null) {
+  const left = hoursLeft(expiresAt)
+  if (left === null) return 'No expiry'
+  if (left <= 0) return 'Expired'
+  if (left < 24) return `${Math.max(1, Math.round(left))}h left`
+  const days = Math.floor(left / 24)
+  const hours = Math.round(left % 24)
+  return hours ? `${days}d ${hours}h left` : `${days}d left`
+}
+
+function expiryUrgent(expiresAt: string | null) {
+  const left = hoursLeft(expiresAt)
+  return left !== null && left < 6
+}
+
+/** Spent in full / expired with the unused amount / partially spent. */
+function outcome(g: PlayerBonusGrant) {
+  if (g.status === BonusGrantStatus.CONSUMED || g.remaining <= 0) {
+    return { label: 'Spent in full', color: 'success' as const }
+  }
+  if (g.remaining >= g.amount) {
+    return { label: `Expired · ${fmt(g.remaining)} unused`, color: 'error' as const }
+  }
+  return { label: `Partially spent · ${fmt(g.remaining)} unused`, color: 'warning' as const }
+}
+
+function fmt(n: number) {
+  return Number(n ?? 0).toFixed(2)
+}
+
+// ── Manual grant ──────────────────────────────────────────────────────
+const EXPIRY_PRESETS = [
+  { label: '24h', hours: 24 },
+  { label: '48h', hours: 48 },
+  { label: '7 days', hours: 24 * 7 },
+  { label: 'No expiry', hours: null },
+] as const
+
+// A select, not free text: the reason drives how finance reads the audit log
+// later, and six fixed phrasings are countable where typed ones are not.
+const GRANT_REASONS = [
+  'Goodwill — support resolution',
+  'Goodwill — failed deposit',
+  'Compensation — game or room fault',
+  'Promotion make-good',
+  'Retention gesture',
+  'Correcting an earlier adjustment',
+]
+
+const grantForm = reactive({
+  amount: 0,
+  hours: 24 as number | null,
+  reason: '',
+  note: '',
+})
+const granting = ref(false)
+
+const grantReady = computed(
+  () => grantForm.amount > 0 && !!grantForm.reason && grantForm.note.trim().length >= 3,
+)
+
+function expiresAtFrom(hours: number | null) {
+  return hours === null ? null : new Date(Date.now() + hours * HOUR_MS).toISOString()
+}
+
+async function submitGrant() {
+  if (!grantReady.value) return
+  granting.value = true
+  const preset = EXPIRY_PRESETS.find((p) => p.hours === grantForm.hours)
+  const validity = grantForm.hours === null ? 'no expiry' : `valid ${preset?.label}`
+  try {
+    // Reason and validity are folded into the note as well as sent as fields:
+    // adjust-balance copies the note verbatim into the audit row, and that row
+    // is what somebody reads a year from now.
+    await adminFetch(`/admin/players/${route.params.id}/adjust-balance`, {
+      method: 'POST',
+      body: {
+        type: 'bonus',
+        amount: grantForm.amount,
+        note: `${grantForm.reason} · ${validity} · ${grantForm.note.trim()}`,
+        expiresAt: expiresAtFrom(grantForm.hours),
+      },
+    })
+    toast.add({ title: `Granted ${fmt(grantForm.amount)} ETB bonus`, color: 'success' })
+    grantForm.amount = 0
+    grantForm.reason = ''
+    grantForm.note = ''
+    await Promise.all([fetchPlayer({ silent: true }), fetchGrants()])
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not grant bonus',
+      description: err?.data?.error ?? 'Request failed',
+      color: 'error',
+    })
+  } finally {
+    granting.value = false
+  }
+}
+
+// ── Extend a lot's expiry ─────────────────────────────────────────────
+const showExtend = ref(false)
+const extendTarget = ref<PlayerBonusGrant | null>(null)
+const extendHours = ref<number | null>(24)
+const extending = ref(false)
+
+function openExtend(g: PlayerBonusGrant) {
+  extendTarget.value = g
+  extendHours.value = 24
+  showExtend.value = true
+}
+
+async function submitExtend() {
+  const lot = extendTarget.value
+  if (!lot) return
+  extending.value = true
+  try {
+    // Counted from now rather than from the old expiry: a lot somebody is
+    // rescuing is usually already at or past its deadline, and "48h" has to
+    // mean the player really has 48 hours.
+    await adminFetch(`/admin/players/${route.params.id}/bonus-grants/${lot.id}/extend`, {
+      method: 'POST',
+      body: { expiresAt: expiresAtFrom(extendHours.value) },
+    })
+    toast.add({ title: 'Expiry extended', color: 'success' })
+    showExtend.value = false
+    await fetchGrants()
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not extend the lot',
+      description: err?.data?.error ?? 'Request failed',
+      color: 'error',
+    })
+  } finally {
+    extending.value = false
+  }
+}
 
 // ── Account status ────────────────────────────────────────────────────
 const STATUS_CATEGORIES = ['RECEIPT_FRAUD', 'CHARGEBACK', 'BONUS_ABUSE', 'MULTI_ACCOUNT', 'OTHER']
@@ -104,8 +329,8 @@ async function submitStatus() {
   }
 }
 
-async function fetchPlayer() {
-  loading.value = true
+async function fetchPlayer(opts: { silent?: boolean } = {}) {
+  if (!opts.silent) loading.value = true
   try {
     player.value = await getPlayer(route.params.id as string)
     await fetchStatusHistory()
@@ -146,7 +371,20 @@ function txColor(type: string) {
   return 'neutral'
 }
 
-onMounted(fetchPlayer)
+watch(activeTab, (tab) => {
+  if (tab === 'bonuses' && !grantsLoaded.value) fetchGrants()
+})
+
+let clock: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  fetchPlayer()
+  clock = setInterval(() => { now.value = Date.now() }, 60_000)
+})
+
+onUnmounted(() => {
+  if (clock) clearInterval(clock)
+})
 </script>
 
 <template>
@@ -191,8 +429,24 @@ onMounted(fetchPlayer)
         </div>
       </div>
 
+      <!-- Tabs -->
+      <div class="flex gap-1 border-b border-(--surface-border)">
+        <button
+          v-for="tab in (['overview', 'bonuses'] as const)"
+          :key="tab"
+          class="px-4 min-h-11 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px"
+          :class="activeTab === tab
+            ? 'text-yellow-500 border-yellow-500'
+            : 'text-white/60 border-transparent hover:text-white/80'"
+          @click="activeTab = tab"
+        >
+          {{ tab }}
+          <span v-if="tab === 'bonuses' && grantsLoaded" class="ml-1 text-xs text-white/60">({{ activeLots.length }})</span>
+        </button>
+      </div>
+
       <!-- Stats -->
-      <div v-if="player.stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div v-if="activeTab === 'overview' && player.stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           class="p-4 rounded-2xl border text-left transition-all"
           :class="activeFilter === 'games' ? 'border-yellow-500/60 ring-1 ring-yellow-500/40' : 'border-(--surface-border) hover:border-white/20'"
@@ -236,12 +490,12 @@ onMounted(fetchPlayer)
       </div>
 
       <!-- Actions -->
-      <div class="flex gap-2">
+      <div v-if="activeTab === 'overview'" class="flex gap-2">
         <UButton icon="i-heroicons:adjustments-horizontal" label="Adjust Balance" color="primary" variant="soft" @click="showAdjust = true" />
       </div>
 
       <!-- Transaction History -->
-      <div>
+      <div v-if="activeTab === 'overview'">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-bold text-white">
             {{ activeFilter ? { games: 'Game Entries', wins: 'Prize Wins', deposits: 'Deposits', withdrawals: 'Withdrawals' }[activeFilter] : 'Recent Transactions' }}
@@ -285,7 +539,7 @@ onMounted(fetchPlayer)
       </div>
 
       <!-- Account status -->
-      <div class="p-4 rounded-2xl border border-(--surface-border) shadow-lg space-y-4" style="background:var(--surface-raised);">
+      <div v-if="activeTab === 'overview'" class="p-4 rounded-2xl border border-(--surface-border) shadow-lg space-y-4" style="background:var(--surface-raised);">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p class="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Account status</p>
@@ -316,6 +570,232 @@ onMounted(fetchPlayer)
           </div>
         </div>
       </div>
+
+      <!-- Bonuses tab -->
+      <template v-if="activeTab === 'bonuses'">
+        <div v-if="grantsLoading && !grantsLoaded" class="flex items-center justify-center py-16 text-zinc-500">
+          <UIcon name="i-heroicons:arrow-path" class="w-5 h-5 animate-spin mr-2" /> Loading bonus lots...
+        </div>
+
+        <template v-else>
+          <!-- Reconciliation: the wallet number against the lots that justify it -->
+          <div
+            class="p-4 rounded-2xl border shadow-lg flex flex-wrap items-center gap-x-6 gap-y-2"
+            :class="ledgerAgrees ? 'border-(--surface-border)' : 'border-red-500/40'"
+            style="background:var(--surface-raised);"
+          >
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="ledgerAgrees ? 'i-heroicons:check-circle' : 'i-heroicons:exclamation-triangle'"
+                class="w-[18px] h-[18px] shrink-0"
+                :class="ledgerAgrees ? 'text-emerald-400' : 'text-red-400'"
+              />
+              <span class="text-[13px] text-white/80">
+                Wallet <strong class="text-white font-semibold tabular-nums">{{ fmt(walletBonus) }}</strong>
+                {{ ledgerAgrees ? 'matches active lots' : 'disagrees with active lots' }}
+                <strong
+                  class="font-semibold tabular-nums"
+                  :class="ledgerAgrees ? 'text-white' : 'text-red-400'"
+                >{{ fmt(activeLotSum) }}</strong>
+              </span>
+            </div>
+            <div class="hidden sm:block w-px h-5 bg-white/15" />
+            <span class="text-[13px] text-white/80">
+              Lifetime bonus received
+              <strong class="text-white font-semibold tabular-nums">{{ fmt(lifetimeGranted) }} ETB</strong>
+            </span>
+            <div class="hidden sm:block w-px h-5 bg-white/15" />
+            <span class="text-[13px] text-white/80">
+              Expired unused
+              <strong class="font-semibold tabular-nums" :class="expiredUnused > 0 ? 'text-red-400' : 'text-white'">
+                {{ fmt(expiredUnused) }} ETB
+              </strong>
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-4 items-start">
+            <!-- Active lots and history -->
+            <div class="space-y-3">
+              <h2 class="text-base font-bold text-white">Active bonus lots</h2>
+              <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl bg-(--surface-raised)">
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead class="border-b border-(--surface-border) bg-(--surface-overlay)">
+                      <tr>
+                        <th class="text-left px-4 py-3 text-white/60 font-semibold text-xs uppercase">Source</th>
+                        <th class="text-right px-4 py-3 text-white/60 font-semibold text-xs uppercase">Granted</th>
+                        <th class="text-right px-4 py-3 text-white/60 font-semibold text-xs uppercase">Remaining</th>
+                        <th class="text-left px-4 py-3 text-white/60 font-semibold text-xs uppercase">Expires</th>
+                        <th class="px-4 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                      <tr v-if="!activeLots.length">
+                        <td colspan="5" class="px-4 py-8 text-center text-white/60">No active bonus lots</td>
+                      </tr>
+                      <tr v-for="lot in activeLots" :key="lot.id" class="hover:bg-white/3">
+                        <td class="px-4 py-3">
+                          <div class="flex items-center gap-2.5">
+                            <div
+                              class="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center"
+                              :class="sourceMeta(lot).tint"
+                            >
+                              <UIcon :name="sourceMeta(lot).icon" class="w-[15px] h-[15px]" />
+                            </div>
+                            <div class="min-w-0">
+                              <p class="text-white truncate">{{ lotName(lot) }}</p>
+                              <p class="text-xs text-white/60">
+                                {{ sourceMeta(lot).label }} &middot; {{ formatDate(lot.createdAt) }}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono text-white/80">{{ fmt(lot.amount) }}</td>
+                        <td class="px-4 py-3 text-right font-mono font-bold text-white">{{ fmt(lot.remaining) }}</td>
+                        <td class="px-4 py-3">
+                          <UBadge
+                            :color="expiryUrgent(lot.expiresAt) ? 'error' : 'neutral'"
+                            variant="soft"
+                            size="sm"
+                            :label="expiryLabel(lot.expiresAt)"
+                          />
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                          <UButton
+                            color="neutral"
+                            variant="ghost"
+                            size="sm"
+                            class="min-h-11 px-3"
+                            label="Extend"
+                            @click="openExtend(lot)"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <h2 class="text-base font-bold text-white pt-2">Bonus history</h2>
+              <div class="rounded-2xl border border-(--surface-border) overflow-hidden shadow-xl bg-(--surface-raised)">
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead class="border-b border-(--surface-border) bg-(--surface-overlay)">
+                      <tr>
+                        <th class="text-left px-4 py-3 text-white/60 font-semibold text-xs uppercase">Source</th>
+                        <th class="text-right px-4 py-3 text-white/60 font-semibold text-xs uppercase">Amount</th>
+                        <th class="text-left px-4 py-3 text-white/60 font-semibold text-xs uppercase">Outcome</th>
+                        <th class="text-left px-4 py-3 text-white/60 font-semibold text-xs uppercase">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                      <tr v-if="!closedLots.length">
+                        <td colspan="4" class="px-4 py-8 text-center text-white/60">No closed bonus lots yet</td>
+                      </tr>
+                      <tr v-for="lot in closedLots" :key="lot.id" class="hover:bg-white/3">
+                        <td class="px-4 py-3">
+                          <p class="text-white/90">{{ lotName(lot) }}</p>
+                          <p class="text-xs text-white/60">{{ sourceMeta(lot).label }}</p>
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono text-white/90">{{ fmt(lot.amount) }}</td>
+                        <td class="px-4 py-3">
+                          <UBadge :color="outcome(lot).color" variant="soft" size="sm" :label="outcome(lot).label" />
+                        </td>
+                        <td class="px-4 py-3 text-white/60 text-xs">{{ formatDate(lot.createdAt) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p v-if="closedLots.length" class="text-xs text-white/60">
+                {{ closedLots.length === 1 ? '1 closed lot' : `${closedLots.length} closed lots` }}
+                totalling {{ fmt(closedTotal) }} ETB, plus the {{ fmt(activeLotSum) }} ETB still active above.
+              </p>
+            </div>
+
+            <!-- Manual grant -->
+            <div class="space-y-3">
+              <h2 class="text-base font-bold text-white">Grant bonus manually</h2>
+              <div class="p-4 rounded-2xl border border-(--surface-border) shadow-lg space-y-4" style="background:var(--surface-raised);">
+                <UFormField label="Amount (ETB)">
+                  <UInput v-model.number="grantForm.amount" type="number" min="0" step="0.01" class="w-full" :ui="{ base: 'min-h-11' }" />
+                </UFormField>
+
+                <UFormField label="Expires after">
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="preset in EXPIRY_PRESETS"
+                      :key="preset.label"
+                      type="button"
+                      class="min-h-11 px-4 rounded-lg text-xs font-bold uppercase tracking-wide border transition-colors"
+                      :class="grantForm.hours === preset.hours
+                        ? 'bg-yellow-500/15 border-yellow-500/50 text-yellow-500'
+                        : 'bg-white/5 border-white/12 text-white/70 hover:text-white'"
+                      @click="grantForm.hours = preset.hours"
+                    >
+                      {{ preset.label }}
+                    </button>
+                  </div>
+                </UFormField>
+
+                <UFormField label="Reason" required>
+                  <USelect
+                    v-model="grantForm.reason"
+                    :items="GRANT_REASONS"
+                    placeholder="Pick a reason"
+                    class="w-full"
+                    :ui="{ base: 'min-h-11' }"
+                  />
+                </UFormField>
+
+                <UFormField label="Note" hint="Required, written to the audit log" required>
+                  <UTextarea
+                    v-model="grantForm.note"
+                    :rows="3"
+                    placeholder="e.g. Ticket #4182 — room crashed mid-game, entry not refunded"
+                    class="w-full"
+                  />
+                </UFormField>
+
+                <div class="flex gap-2.5 items-start p-3 rounded-xl bg-amber-400/8 border border-amber-400/25">
+                  <UIcon name="i-heroicons:lock-closed" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p class="text-xs leading-relaxed text-white/80">
+                    Admin only. This grant is recorded against
+                    <strong class="text-white font-semibold">{{ user?.username ?? 'the signed-in admin' }}</strong>
+                    and appears in the player's bonus history immediately.
+                  </p>
+                </div>
+
+                <UButton
+                  color="primary"
+                  class="w-full justify-center min-h-11"
+                  :loading="granting"
+                  :disabled="!grantReady || !isAdmin"
+                  :label="`Grant ${fmt(grantForm.amount)} ETB`"
+                  @click="submitGrant"
+                />
+                <p v-if="!isAdmin" class="text-xs text-white/60">
+                  Your role cannot grant bonus — ask an administrator.
+                </p>
+
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 h-px bg-white/10" />
+                  <span class="text-xs font-bold uppercase tracking-widest text-white/60">or</span>
+                  <div class="flex-1 h-px bg-white/10" />
+                </div>
+
+                <UButton
+                  color="error"
+                  variant="soft"
+                  class="w-full justify-center min-h-11"
+                  label="Deduct bonus"
+                  @click="openBonusDeduction"
+                />
+              </div>
+            </div>
+          </div>
+        </template>
+      </template>
 
     </template>
 
@@ -371,6 +851,40 @@ onMounted(fetchPlayer)
             <UButton color="neutral" variant="ghost" label="Cancel" @click="showStatus = false" />
             <UButton color="primary" :loading="savingStatus" label="Confirm" @click="submitStatus" />
           </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Extend a bonus lot -->
+    <UModal v-model:open="showExtend" title="Extend bonus expiry" :ui="{ content: 'max-w-md' }">
+      <template #body>
+        <div class="space-y-4">
+          <p v-if="extendTarget" class="text-sm text-white/70">
+            <strong class="text-white font-semibold">{{ lotName(extendTarget) }}</strong> &middot;
+            {{ fmt(extendTarget.remaining) }} ETB remaining, {{ expiryLabel(extendTarget.expiresAt).toLowerCase() }}.
+          </p>
+          <UFormField label="New validity, counted from now">
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in EXPIRY_PRESETS"
+                :key="preset.label"
+                type="button"
+                class="min-h-11 px-4 rounded-lg text-xs font-bold uppercase tracking-wide border transition-colors"
+                :class="extendHours === preset.hours
+                  ? 'bg-yellow-500/15 border-yellow-500/50 text-yellow-500'
+                  : 'bg-white/5 border-white/12 text-white/70 hover:text-white'"
+                @click="extendHours = preset.hours"
+              >
+                {{ preset.label }}
+              </button>
+            </div>
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton color="neutral" variant="ghost" class="min-h-11" label="Cancel" @click="showExtend = false" />
+          <UButton color="primary" class="min-h-11" :loading="extending" label="Extend" @click="submitExtend" />
         </div>
       </template>
     </UModal>

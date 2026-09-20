@@ -2,11 +2,15 @@
 /**
  * Promotions page
  *
- * Surfaces the active player offers (cashback, first-deposit bonus) sourced
- * from the promotions store, plus an optional Refer & Earn entry point when
- * the referrals feature is enabled. Unlike /refer, this page never silently
- * redirects — it shows an empty state when no promotions are live.
+ * One full-width promo tile per live offer, each with its progress figures on a
+ * line beneath it rather than inside it — the tile may be an uploaded banner,
+ * and the 3px rail is the only thing this design ever draws over artwork.
+ *
+ * Unlike /refer, this page never silently redirects: it shows an empty state
+ * when no promotions are live.
  */
+import { PromoKind } from '@world-bingo/shared-types'
+import type { PublicPromotionDto } from '@world-bingo/shared-types'
 import { usePromotionsStore } from '~/store/promotions'
 
 const { t } = useI18n()
@@ -15,22 +19,50 @@ const { referralsEnabled } = useFeatureFlags()
 
 const loading = ref(true)
 
-const cashbackText = computed(() => {
-  const c = store.cashback
-  if (!c) return ''
-  const freq = t(`promo.frequency_${c.frequency.toLowerCase()}`)
-  if (c.refundType === 'PERCENTAGE') {
-    return t('promo.cashback_percentage', { value: c.refundValue, frequency: freq })
-  }
-  return t('promo.cashback_fixed', { value: c.refundValue, frequency: freq })
-})
+/**
+ * The API ships a referral tile for the lobby carousel, but here Refer & Earn is
+ * the plain row below — it is a programme, not an offer with a balance moving
+ * towards it, and drawing it twice on one page says the opposite.
+ */
+const tiles = computed<PublicPromotionDto[]>(() =>
+  store.promotions.filter((p) => p.kind !== PromoKind.REFERRAL),
+)
 
-const hasPromos = computed(
-  () => !!store.cashback || !!store.firstDepositBonus || referralsEnabled.value,
+const hasPromos = computed(() => tiles.value.length > 0 || referralsEnabled.value)
+
+const figures = (value: number) => value.toLocaleString('en-ET', { maximumFractionDigits: 2 })
+
+/**
+ * Each tile with its own progress resolved once, so the template neither calls a
+ * lookup three times per row nor asserts away a null it has already tested.
+ *
+ * `meta` is null when the player has nothing in flight against the offer — an
+ * offer with no progress gets no empty line holding space beneath it. The
+ * figures carry no unit of their own: `hint` already names the currency
+ * ('180 ETB to go'), and the progress DTO has nothing to read for an offer that
+ * counts something other than money.
+ */
+const rows = computed(() =>
+  tiles.value.map((promo) => {
+    const p = store.progressFor(promo.refId)
+    return {
+      promo,
+      progress: p,
+      meta:
+        p && p.target > 0
+          ? {
+              left: p.hint ? `${p.label} · ${p.hint}` : p.label,
+              value: `${figures(p.current)} / ${figures(p.target)}`,
+            }
+          : null,
+    }
+  }),
 )
 
 onMounted(async () => {
-  await store.fetch()
+  // Progress is authenticated and no-ops when signed out, so the two run
+  // together and neither can fail the other.
+  await Promise.all([store.fetch(), store.fetchProgress()])
   loading.value = false
 })
 
@@ -41,7 +73,7 @@ useHead({ title: 'Promotions — World Bingo' })
   <div class="promo-page">
     <!-- Header -->
     <div class="promo-header">
-      <h1 class="promo-title">🎉 {{ t('promo.title') }}</h1>
+      <h1 class="promo-title">{{ t('promo.title') }}</h1>
       <p class="promo-subtitle">{{ t('promo.subtitle') }}</p>
     </div>
 
@@ -59,35 +91,49 @@ useHead({ title: 'Promotions — World Bingo' })
     </div>
 
     <template v-else>
-      <div class="promo-grid">
-        <!-- First deposit bonus -->
-        <div v-if="store.firstDepositBonus" class="promo-card promo-card--hero">
-          <div class="promo-card-orb" />
-          <div class="promo-card-ghost">BONUS</div>
-          <div class="promo-card-body">
-            <span class="promo-kicker">{{ t('promo.welcome_offer') }}</span>
-            <h2 class="promo-card-title">
-              {{ t('promo.first_deposit', { amount: store.firstDepositBonus }) }}
-            </h2>
-            <NuxtLink to="/wallet" class="promo-card-cta">{{ t('promo.deposit_now') }}</NuxtLink>
+      <div v-if="rows.length" class="offers">
+        <div v-for="row in rows" :key="row.promo.kind + ':' + row.promo.refId" class="offer">
+          <PromoTile :promo="row.promo" :progress="row.progress" size="wide" />
+          <div v-if="row.meta" class="meta">
+            <span class="meta-k">{{ row.meta.left }}</span>
+            <span class="meta-v">{{ row.meta.value }}</span>
           </div>
         </div>
-
-        <!-- Cashback -->
-        <div v-if="store.cashback" class="promo-card">
-          <div class="promo-card-icon">💰</div>
-          <h2 class="promo-card-h">{{ store.cashback.name || t('promo.cashback_title') }}</h2>
-          <p class="promo-card-text">{{ cashbackText }}</p>
-        </div>
-
-        <!-- Refer & Earn -->
-        <div v-if="referralsEnabled" class="promo-card">
-          <div class="promo-card-icon">👥</div>
-          <h2 class="promo-card-h">{{ t('promo.refer_title') }}</h2>
-          <p class="promo-card-text">{{ t('promo.refer_text') }}</p>
-          <NuxtLink to="/refer" class="promo-card-link">{{ t('promo.refer_cta') }} →</NuxtLink>
-        </div>
       </div>
+
+      <!-- Refer & Earn — a programme, not a promotion, so it stays a plain row -->
+      <NuxtLink v-if="referralsEnabled" to="/refer" class="refer-row">
+        <span class="refer-icon">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.9"
+            aria-hidden="true"
+          >
+            <circle cx="9" cy="8" r="3.4" />
+            <path d="M2.8 20a6.4 6.4 0 0 1 12.4 0" stroke-linecap="round" />
+            <path
+              d="M16.5 5.2a3.4 3.4 0 0 1 0 5.6M18.6 20a6.5 6.5 0 0 0-2.1-4.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <span class="refer-text">
+          <span class="refer-title">{{ t('promo.refer_title') }}</span>
+          <span class="refer-sub">{{ t('promo.refer_text') }}</span>
+        </span>
+        <svg
+          class="refer-chev"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </NuxtLink>
     </template>
   </div>
 </template>
@@ -99,16 +145,16 @@ useHead({ title: 'Promotions — World Bingo' })
   padding: 1.75rem 1.5rem 3rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 /* ── Header ── */
 .promo-header { display: flex; flex-direction: column; gap: 0.4rem; }
 .promo-title {
-  font-family: var(--font-ui);
-  font-size: 1.7rem;
+  font-family: var(--font-heading, var(--font-ui));
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: -0.3px;
   text-transform: uppercase;
   color: var(--text-primary);
   margin: 0;
@@ -118,6 +164,7 @@ useHead({ title: 'Promotions — World Bingo' })
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.55;
+  text-wrap: pretty;
 }
 
 /* ── Loading ── */
@@ -149,6 +196,9 @@ useHead({ title: 'Promotions — World Bingo' })
 .empty-icon { font-size: 2rem; }
 .empty-cta {
   margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   background: var(--brand-primary);
   color: var(--text-on-brand);
   font-family: var(--font-ui);
@@ -156,116 +206,81 @@ useHead({ title: 'Promotions — World Bingo' })
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 0.6rem 1.4rem;
+  padding: 0 1.4rem;
   border-radius: 8px;
   text-decoration: none;
 }
 
-/* ── Grid ── */
-.promo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
+/* ── Offers — one wide tile each, figures on the line beneath ── */
+.offers { display: flex; flex-direction: column; gap: 14px; }
+.offer { display: flex; flex-direction: column; gap: 6px; }
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 3px;
+}
+/* 12px rather than the artboard's 11.5/12.5: both halves are body text and have
+   to clear the floor, and a matched size keeps the baseline honest. */
+.meta-k {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.4;
+  min-width: 0;
+}
+.meta-v {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.promo-card {
+/* ── Refer & Earn row ── */
+.refer-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 44px;
+  padding: 18px;
   background: var(--surface-raised);
   border: 1px solid var(--surface-border);
-  border-radius: var(--radius-md, 12px);
-  padding: 1.25rem;
-  display: flex; flex-direction: column; gap: 0.5rem;
-  transition: border-color 0.2s, transform 0.2s;
-}
-.promo-card:hover {
-  border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
-  transform: translateY(-2px);
-}
-.promo-card-icon { font-size: 1.5rem; line-height: 1; }
-.promo-card-h {
-  font-family: var(--font-ui);
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-}
-.promo-card-text {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin: 0;
-}
-.promo-card-link {
-  margin-top: auto;
-  color: var(--brand-primary);
-  font-weight: 700;
-  font-size: 0.85rem;
-  text-decoration: none;
-}
-.promo-card-link:hover { text-decoration: underline; }
-
-/* ── Hero card (first-deposit) — echoes the lobby hero slide ── */
-.promo-card--hero {
-  position: relative;
-  grid-column: 1 / -1;
-  background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-lg, 16px);
-  overflow: hidden;
-  min-height: 150px;
-  box-shadow: var(--shadow-card, 0 4px 24px rgba(0, 0, 0, 0.4));
-}
-.promo-card-orb {
-  position: absolute;
-  right: -50px; top: -70px;
-  width: 280px; height: 280px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--brand-primary) 24%, transparent), transparent 70%);
-}
-.promo-card-ghost {
-  position: absolute;
-  right: 28px; bottom: 4px;
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 90px;
-  color: rgba(255, 255, 255, 0.05);
-  line-height: 0.8;
-  pointer-events: none;
-}
-.promo-card-body { position: relative; padding: 0.25rem; max-width: 460px; }
-.promo-kicker {
-  display: inline-block;
-  background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
-  color: var(--brand-primary);
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  padding: 4px 10px;
   border-radius: 16px;
-  margin-bottom: 10px;
-}
-.promo-card-title {
-  font-family: var(--font-heading, var(--font-ui));
-  font-weight: 700;
-  font-size: clamp(20px, 3vw, 28px);
-  line-height: 1.1;
-  color: #fff;
-  margin: 0 0 14px;
-  text-wrap: balance;
-}
-.promo-card-cta {
-  display: inline-block;
-  background: var(--brand-primary);
-  color: var(--text-on-brand);
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 0.9rem;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  padding: 9px 22px;
-  border-radius: 8px;
+  color: inherit;
   text-decoration: none;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-primary) 38%, transparent);
+  transition: border-color 0.2s;
+}
+.refer-row:hover {
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+}
+.refer-icon {
+  width: 40px; height: 40px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+.refer-icon svg { width: 19px; height: 19px; }
+.refer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.refer-title {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
+}
+.refer-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.refer-chev {
+  width: 17px; height: 17px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.55);
 }
 </style>

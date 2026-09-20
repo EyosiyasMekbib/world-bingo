@@ -1,4 +1,14 @@
-import type { HeroBannerDto, HeroBannerUpdateDto } from '@world-bingo/shared-types'
+import type {
+    BonusGrantStatus,
+    BonusRuleType,
+    BonusSource,
+    CashbackPayoutTiming,
+    HeroBannerDto,
+    HeroBannerUpdateDto,
+    PromoArtworkDto,
+    PromoArtworkFields,
+    PromoKind,
+} from '@world-bingo/shared-types'
 
 // One pin in the lobby priority list. `matches` is how many catalog rows the
 // pin resolves to right now — 0 means the game is not in the catalog.
@@ -7,6 +17,127 @@ export type FeaturedGameItem = {
     label: string
     position: number
     matches: number
+}
+
+export type PromotionStatus = 'live' | 'scheduled' | 'ended' | 'paused'
+
+/**
+ * One row in the unified promotions list. Three storage shapes are projected
+ * into it — a site setting, a CashbackPromotion, a BonusRule — so `id` is a
+ * refId: a promotion id, a rule id, or the literal 'welcome'. Pair it with
+ * `kind` whenever addressing artwork or a detail route.
+ */
+export type PromotionRow = {
+    kind: PromoKind
+    id: string
+    name: string
+    status: PromotionStatus
+    rewardSummary: string
+    audience: string
+    /** Null for the welcome offer, which is a setting and has no window. */
+    startsAt: string | null
+    endsAt: string | null
+    paidThisWeek: number
+    totalPaid: number
+    payoutCount: number
+    hasArtwork: boolean
+}
+
+export type PromotionsSummary = {
+    paidThisWeek: number
+    paidAllTime: number
+    playersReached: number
+    outstandingLiability: number
+}
+
+/**
+ * A cashback promotion as the detail screen receives it. The money columns are
+ * Prisma Decimals and therefore arrive as strings — put them through Number()
+ * before any arithmetic rather than trusting the type to be numeric.
+ */
+export type CashbackPromotionDetail = {
+    id: string
+    name: string
+    lossThreshold: string
+    refundType: 'PERCENTAGE' | 'FIXED'
+    refundValue: string
+    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
+    templateIds: string[]
+    providerGameKeys: string[]
+    /** Null means uncapped. */
+    maxPayoutPerPlayer: string | null
+    /** Null means unlimited. */
+    periodBudget: string | null
+    payoutTiming: CashbackPayoutTiming
+    bonusValidityHours: number
+    startsAt: string
+    endsAt: string
+    isActive: boolean
+    createdAt: string
+    status: PromotionStatus
+    rewardSummary: string
+    hasArtwork: boolean
+}
+
+/** One settled period. `average` is averaged over that period's own payouts. */
+export type CashbackPeriodHistory = {
+    periodStart: string
+    periodEnd: string
+    players: number
+    total: number
+    average: number
+    largest: number
+}
+
+export type PromotionActivityRow = {
+    id: string
+    action: string
+    actorName: string | null
+    detail: Record<string, unknown> | null
+    createdAt: string
+}
+
+/**
+ * What the OPEN period would pay if it closed right now. The per-player cap is
+ * already applied; the period budget deliberately is not, so the screen can
+ * subtract it and show the over-budget delta itself.
+ */
+export type CashbackQualifiers = {
+    periodStart: string
+    periodEnd: string
+    players: number
+    projectedTotal: number
+    largest: number
+    top: Array<{ username: string; netLoss: number; payout: number }>
+}
+
+/** Every field is optional; omitting one leaves it untouched. */
+export type CashbackPromotionPatch = {
+    name?: string
+    lossThreshold?: number
+    refundValue?: number
+    /** null clears the cap — undefined leaves it as it is. */
+    maxPayoutPerPlayer?: number | null
+    periodBudget?: number | null
+    bonusValidityHours?: number
+    endsAt?: string
+}
+
+/**
+ * One bonus lot on the player detail Bonuses tab. `source` is optional because
+ * the column arrived after this endpoint did: where it is missing the panel has
+ * to fall back to `ruleName`.
+ */
+export type PlayerBonusGrant = {
+    id: string
+    amount: number
+    remaining: number
+    expiresAt: string | null
+    status: BonusGrantStatus
+    source?: BonusSource
+    ruleName: string | null
+    ruleType: BonusRuleType | null
+    createdAt: string
 }
 
 export const useAdminApi = () => {
@@ -445,6 +576,8 @@ export const useAdminApi = () => {
         getPlayer: (id: string) => apiFetch<any>(`/admin/players/${id}`),
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
+        getPlayerBonusGrants: (id: string) =>
+            apiFetch<PlayerBonusGrant[]>(`/admin/players/${id}/bonus-grants`),
 
         // ── Account status ────────────────────────────────────────────────
         // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and
@@ -511,6 +644,12 @@ export const useAdminApi = () => {
         }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
+        updateCashbackPromotion: (id: string, patch: CashbackPromotionPatch) =>
+            apiFetch<CashbackPromotionDetail>(`/admin/cashback/${id}`, { method: 'PATCH', body: patch }),
+        // Ending is not pausing: it closes the window *and* clears isActive, so
+        // no period that opens later can ever settle. There is no undo.
+        endCashbackPromotion: (id: string) =>
+            apiFetch<CashbackPromotionDetail>(`/admin/cashback/${id}/end`, { method: 'POST' }),
 
         // ── Deposit Bonus Rules ─────────────────────────────────────────────
         getBonusRules: () => apiFetch<any[]>('/admin/bonus-rules'),
@@ -529,6 +668,20 @@ export const useAdminApi = () => {
         toggleBonusRule: (id: string, isActive: boolean) =>
             apiFetch(`/admin/bonus-rules/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
         getBonusReconciliation: () => apiFetch<Array<{ userId: string; cachedBalance: number; lotSum: number }>>('/admin/bonus-reconciliation'),
+
+        // ── Promotions (every offer type in one list) ──────────────────────
+        getPromotions: () => apiFetch<{ items: PromotionRow[] }>('/admin/promotions'),
+        getPromotionsSummary: () => apiFetch<PromotionsSummary>('/admin/promotions/summary'),
+        getCashbackDetail: (id: string) =>
+            apiFetch<{
+                promotion: CashbackPromotionDetail
+                history: CashbackPeriodHistory[]
+                activity: PromotionActivityRow[]
+            }>(`/admin/promotions/cashback/${id}`),
+        // A live projection, recomputed per call — never cache it alongside the
+        // detail payload.
+        getCashbackQualifiers: (id: string) =>
+            apiFetch<CashbackQualifiers>(`/admin/promotions/cashback/${id}/qualifiers`),
 
         // ── Support ───────────────────────────────────────────────────────
         // `unassignedCount` rides along with the rows because the badge is
@@ -598,6 +751,35 @@ export const useAdminApi = () => {
             apiFetch<{ items: HeroBannerDto[] }>('/admin/hero-banners/order', { method: 'PUT', body: { ids } }),
         deleteHeroBanner: (id: string) =>
             apiFetch<{ ok: true }>(`/admin/hero-banners/${id}`, { method: 'DELETE' }),
+
+        // ── Promo Artwork ─────────────────────────────────────────────────
+        // Addressed by (kind, refId) rather than by an id of its own: the
+        // promotion is the thing being decorated, so a second upload for the
+        // same promotion replaces the first.
+        getPromoArtwork: () => apiFetch<{ items: PromoArtworkDto[] }>('/admin/promo-artwork'),
+        uploadPromoArtwork: (
+            kind: PromoKind,
+            refId: string,
+            data: { image: File; altText: string; position?: number },
+        ) => {
+            const form = new FormData()
+            form.append('image', data.image)
+            form.append('altText', data.altText)
+            // Multipart has no undefined, and the server reads an empty string
+            // as "you pick the position" — so an omitted one is still sent.
+            form.append('position', data.position == null ? '' : String(data.position))
+            return apiFetch<{ item: PromoArtworkDto }>(`/admin/promo-artwork/${kind}/${refId}`, {
+                method: 'PUT',
+                body: form,
+            })
+        },
+        updatePromoArtwork: (kind: PromoKind, refId: string, patch: Partial<PromoArtworkFields>) =>
+            apiFetch<{ item: PromoArtworkDto }>(`/admin/promo-artwork/${kind}/${refId}`, {
+                method: 'PATCH',
+                body: patch,
+            }),
+        deletePromoArtwork: (kind: PromoKind, refId: string) =>
+            apiFetch<{ ok: true }>(`/admin/promo-artwork/${kind}/${refId}`, { method: 'DELETE' }),
     }
 }
 

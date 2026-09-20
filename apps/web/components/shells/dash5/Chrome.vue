@@ -44,6 +44,7 @@ const {
           <strong>{{ formattedBalance }} <span>ETB</span></strong>
           <small>ID: {{ playerId }}</small>
         </div>
+        <NotificationBell />
         <button class="d5-btn d5-btn--primary" @click="showDeposit = true">Deposit</button>
         <button class="d5-btn d5-btn--ghost" @click="showWithdrawal = true">Withdraw</button>
         <button class="d5-btn d5-btn--ghost" @click="handleLogout">Logout</button>

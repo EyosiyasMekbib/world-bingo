@@ -49,6 +49,7 @@ const {
         </div>
 
         <template v-if="auth.isAuthenticated">
+          <NotificationBell />
           <button class="ab-btn-primary" @click="showDeposit = true">Deposit</button>
           <NuxtLink to="/transactions" class="ab-icon-btn" title="Messages">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" /><path stroke-linecap="round" stroke-linejoin="round" d="m3 7 9 6 9-6" /></svg>
@@ -111,6 +112,7 @@ const {
           <div class="ab-balance-amt">{{ formattedBalance }} <span>ETB</span></div>
           <div class="ab-balance-id">ID: {{ playerId }}</div>
         </div>
+        <NotificationBell v-if="auth.isAuthenticated" />
         <button
           v-if="auth.isAuthenticated"
           class="ab-btn-primary ab-btn-sm"

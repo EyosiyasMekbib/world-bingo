@@ -347,6 +347,189 @@ function heroAction(slide: HeroSlide) {
   }
 }
 
+/* ── Bonus expiry bar ───────────────────────────────────────────────────── */
+/** Mirrors GET /wallet/bonus-grants (see BonusGrantQueryService). */
+interface ActiveBonusGrant {
+  id: string
+  amount: number
+  remaining: number
+  expiresAt: string | null
+  ruleName: string | null
+  createdAt: string
+}
+
+/** A lot inside its last day is the only one worth interrupting the lobby for. */
+const BONUS_EXPIRY_WINDOW_MS = 24 * 60 * 60 * 1000
+
+const bonusGrants = ref<ActiveBonusGrant[]>([])
+// Drives the countdown, and with it the 24h window itself — a lot that crosses
+// into its final day while the lobby sits open surfaces without a reload.
+const nowMs = ref(Date.now())
+let bonusTicker: ReturnType<typeof setInterval> | null = null
+
+async function loadBonusGrants() {
+  if (!auth.isAuthenticated) return
+  try {
+    bonusGrants.value = await auth.apiFetch<ActiveBonusGrant[]>('/wallet/bonus-grants')
+  } catch {
+    // The bar is a nudge, not the wallet — a failed request just leaves it hidden.
+  }
+}
+
+/** The soonest lot that still holds value and dies inside the window. */
+const expiringGrant = computed(() => {
+  let soonest: ActiveBonusGrant | null = null
+  let soonestAt = Infinity
+  for (const g of bonusGrants.value) {
+    if (!g.expiresAt || Number(g.remaining) <= 0) continue
+    const at = new Date(g.expiresAt).getTime()
+    const left = at - nowMs.value
+    if (left <= 0 || left > BONUS_EXPIRY_WINDOW_MS) continue
+    if (at < soonestAt) {
+      soonest = g
+      soonestAt = at
+    }
+  }
+  return soonest
+})
+
+const spendAccount = computed(() => auth.wallet?.spendAccount ?? 'REAL')
+
+// Spending bonus already is the outcome the bar asks for, so once the wallet is
+// set that way the warning has lost its premise and would only nag.
+const showBonusExpiry = computed(() => !!expiringGrant.value && spendAccount.value === 'REAL')
+
+const expiringAmount = computed(() =>
+  Number(expiringGrant.value?.remaining ?? 0).toLocaleString('en-ET', { maximumFractionDigits: 2 }),
+)
+
+// A 24h window straddles midnight, and a sentence saying "tonight" over a clock
+// reading 21:40:00 reads as a bug rather than as urgency.
+const expiringWhen = computed(() => {
+  const at = expiringGrant.value?.expiresAt
+  if (!at) return ''
+  return new Date(at).toDateString() === new Date(nowMs.value).toDateString()
+    ? 'tonight'
+    : 'within the day'
+})
+
+const expiringCountdown = computed(() => {
+  const at = expiringGrant.value?.expiresAt
+  if (!at) return '00:00:00'
+  const secs = Math.max(0, Math.floor((new Date(at).getTime() - nowMs.value) / 1000))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(Math.floor(secs / 3600))}:${pad(Math.floor(secs / 60) % 60)}:${pad(secs % 60)}`
+})
+
+const switchingSpendAccount = ref(false)
+
+async function spendBonusFirst() {
+  if (switchingSpendAccount.value) return
+  switchingSpendAccount.value = true
+  try {
+    await auth.apiFetch('/wallet/spend-account', { method: 'PATCH', body: { account: 'BONUS' } })
+    await auth.fetchWallet()
+  } catch {
+    // Leaving the bar up is the honest failure: the bonus is still at risk.
+  } finally {
+    switchingSpendAccount.value = false
+  }
+}
+
+// The ticker only exists while there is something to count down — a signed-out
+// visitor should not have the lobby waking once a second for nothing.
+watch(
+  () => bonusGrants.value.some((g) => g.expiresAt),
+  (hasDeadline) => {
+    if (hasDeadline && !bonusTicker) {
+      bonusTicker = setInterval(() => {
+        nowMs.value = Date.now()
+      }, 1000)
+    } else if (!hasDeadline && bonusTicker) {
+      clearInterval(bonusTicker)
+      bonusTicker = null
+    }
+  },
+)
+
+/* ── Offer carousel ─────────────────────────────────────────────────────── */
+/**
+ * The promo tile is a fixed 225x75 (300x100 on a phone), not a fraction of the
+ * row, so a page is however many whole tiles fit rather than the row's own
+ * width — stepping by the latter would strand the scroll mid-tile and fight the
+ * snap points. Everything here is measured from the rendered row so the phone
+ * and desktop sizes need no second source of truth.
+ */
+const offerRow = ref<HTMLElement | null>(null)
+const offerPage = ref(0)
+const offerStep = ref(0)
+const offersPerPage = ref(5)
+
+const offerPhoneViewport = import.meta.client ? window.matchMedia('(max-width: 720px)') : null
+const offerTileSize = ref<'carousel' | 'phone'>(offerPhoneViewport?.matches ? 'phone' : 'carousel')
+
+const offerPageCount = computed(() =>
+  Math.max(1, Math.ceil(promotionsStore.promotions.length / offersPerPage.value)),
+)
+
+const offerPageWidth = computed(() => offerStep.value * offersPerPage.value)
+
+function measureOfferRow() {
+  const row = offerRow.value
+  const tile = row?.firstElementChild as HTMLElement | null
+  if (!row || !tile) return
+  const cs = getComputedStyle(row)
+  const gap = parseFloat(cs.columnGap) || 0
+  const inner =
+    row.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+  offerStep.value = tile.offsetWidth + gap
+  // n tiles occupy n*step - gap, so the gap comes back before the division.
+  if (offerStep.value > 0) {
+    offersPerPage.value = Math.max(1, Math.floor((inner + gap) / offerStep.value))
+  }
+  syncOfferPage()
+}
+
+function scrollOffers(dir: 1 | -1) {
+  const row = offerRow.value
+  if (!row || offerPageWidth.value <= 0) return
+  row.scrollBy({ left: dir * offerPageWidth.value, behavior: 'smooth' })
+}
+
+// Keeps the dots honest when the row is swiped or trackpad-scrolled rather than
+// stepped with the buttons.
+function syncOfferPage() {
+  const row = offerRow.value
+  if (!row || offerPageWidth.value <= 0) return
+  const page = Math.round(row.scrollLeft / offerPageWidth.value)
+  offerPage.value = Math.max(0, Math.min(offerPageCount.value - 1, page))
+}
+
+function onOfferResize() {
+  offerTileSize.value = offerPhoneViewport?.matches ? 'phone' : 'carousel'
+  // The size prop re-renders the tiles at a new width; measure once that lands.
+  nextTick(measureOfferRow)
+}
+
+watch(
+  () => promotionsStore.promotions.length,
+  () => nextTick(measureOfferRow),
+)
+
+// Both surfaces are per-player, and the lobby is where signing in happens (the
+// balance chip's modal), so neither exists until it does.
+watch(
+  () => auth.isAuthenticated,
+  (signedIn) => {
+    if (!signedIn) {
+      bonusGrants.value = []
+      return
+    }
+    loadBonusGrants()
+    promotionsStore.fetchProgress()
+  },
+)
+
 /* ── Vendor / provider chips ────────────────────────────────────────────── */
 const STATIC_VENDORS = [
   '1x2 Network', '3 Oaks Gaming', '7Mojos', '7Mojos Live', 'AGT Software',
@@ -615,6 +798,12 @@ onMounted(async () => {
   } catch { /* ignore */ }
 
   promotionsStore.fetch()
+  promotionsStore.fetchProgress()
+  loadBonusGrants()
+  window.addEventListener('resize', onOfferResize)
+  // The store survives a round trip to a game and back, so the offers can be on
+  // screen from the first frame — the length watch never fires for them.
+  nextTick(measureOfferRow)
 
   // Single bootstrap call: providers + categories + first games page + bingo
   // rooms in one round-trip (was three serial + one parallel request). Falls
@@ -697,6 +886,8 @@ watch(
 onUnmounted(() => {
   feedObserver?.disconnect()
   if (slideTimer) clearInterval(slideTimer)
+  if (bonusTicker) clearInterval(bonusTicker)
+  window.removeEventListener('resize', onOfferResize)
   heroBannerViewport?.removeEventListener('change', syncHeroBannerViewport)
   // Read the existing socket, never connect() here: connect() creates a new
   // connection when the reuse check doesn't match (e.g. auth identity has
@@ -816,6 +1007,81 @@ onUnmounted(() => {
             />
           </div>
         </template>
+      </div>
+    </section>
+
+    <!-- ═══════════════ BONUS EXPIRY ═══════════════
+         Player state rather than an offer, so it is a full-width bar above the
+         carousel and never carries artwork. -->
+    <section v-if="showBonusExpiry" class="max-wrap">
+      <div class="bexp">
+        <div class="bexp-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" /></svg>
+        </div>
+        <div class="bexp-copy">
+          <span class="bexp-title">{{ expiringAmount }} ETB of bonus expires {{ expiringWhen }}</span>
+          <span class="bexp-sub">You are set to spend from your real balance, so it will go unused</span>
+        </div>
+        <!-- Hidden from assistive tech: it changes every second, and the line
+             above already carries the deadline in words. -->
+        <span class="bexp-clock" aria-hidden="true">{{ expiringCountdown }}</span>
+        <button class="bexp-cta" :disabled="switchingSpendAccount" @click="spendBonusFirst">
+          Spend bonus first
+        </button>
+      </div>
+    </section>
+
+    <!-- ═══════════════ LIVE OFFERS ═══════════════
+         Absent, not empty: with no promotions the whole section leaves the page
+         rather than holding a heading over a blank row. -->
+    <section v-if="promotionsStore.promotions.length" class="max-wrap offers">
+      <div class="offers-head">
+        <h2 class="offers-title">Live Offers</h2>
+        <div class="offers-tools">
+          <NuxtLink to="/promotions" class="offers-all">
+            All promotions
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
+          </NuxtLink>
+          <div v-if="offerPageCount > 1" class="offers-nav">
+            <button
+              class="offer-nav"
+              :disabled="offerPage === 0"
+              aria-label="Previous offers"
+              @click="scrollOffers(-1)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <button
+              class="offer-nav"
+              :disabled="offerPage >= offerPageCount - 1"
+              aria-label="More offers"
+              @click="scrollOffers(1)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div ref="offerRow" class="offer-row noscroll" @scroll.passive="syncOfferPage">
+        <PromoTile
+          v-for="p in promotionsStore.promotions"
+          :key="p.kind + ':' + p.refId"
+          :promo="p"
+          :progress="promotionsStore.progressFor(p.refId)"
+          :size="offerTileSize"
+        />
+      </div>
+
+      <!-- Indicator, not a control: at the drawn size a dot cannot carry a 44px
+           tap target, and the arrows plus the row's own scrolling already move it. -->
+      <div v-if="offerPageCount > 1" class="offer-dots" aria-hidden="true">
+        <span
+          v-for="i in offerPageCount"
+          :key="i"
+          class="offer-dot"
+          :class="{ 'offer-dot--active': offerPage === i - 1 }"
+        />
       </div>
     </section>
 
@@ -1231,6 +1497,201 @@ onUnmounted(() => {
   .hero-badge { margin-bottom: 8px; padding: 4px 10px; font-size: 10px; }
   .hero-title { font-size: clamp(18px, 5.5vw, 26px); }
   .hero-cta { padding: 10px 22px; font-size: 13px; margin-top: 12px; }
+}
+
+/* ── BONUS EXPIRY BAR ──────────────────────────────────────────────────── */
+.bexp {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: linear-gradient(100deg, rgba(127, 29, 29, 0.34), rgba(14, 23, 41, 0.5) 62%);
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+.bexp-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+.bexp-icon svg { width: 19px; height: 19px; }
+
+.bexp-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bexp-title {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #fff;
+}
+.bexp-sub { font-size: 12.5px; line-height: 1.35; color: rgba(255, 255, 255, 0.62); }
+
+.bexp-clock {
+  margin-left: auto;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #fca5a5;
+  /* Tabular figures, or the whole bar twitches sideways once a second. */
+  font-variant-numeric: tabular-nums;
+}
+
+.bexp-cta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.bexp-cta:hover { background: rgba(255, 255, 255, 0.16); }
+.bexp-cta:disabled { opacity: 0.6; cursor: default; }
+.bexp-cta:focus-visible,
+.offers-all:focus-visible,
+.offer-nav:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .bexp { flex-wrap: wrap; gap: 10px 12px; padding: 13px 14px; }
+  .bexp-copy { flex: 1 1 0; }
+  .bexp-clock { font-size: 22px; }
+  .bexp-cta { flex: 1 0 100%; }
+}
+
+/* ── LIVE OFFERS ───────────────────────────────────────────────────────── */
+.offers {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.offers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.offers-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #a9b7c9;
+}
+.offers-tools { display: flex; align-items: center; gap: 12px; }
+
+.offers-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--brand-primary);
+}
+.offers-all svg { width: 13px; height: 13px; }
+
+.offers-nav { display: flex; gap: 7px; }
+/* The disc is the 34px the design draws; the button around it is 44px so the
+   tap target clears the floor without growing the artwork. */
+.offer-nav {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.offer-nav::before {
+  content: '';
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: background 0.15s;
+}
+.offer-nav:hover::before { background: rgba(255, 255, 255, 0.14); }
+.offer-nav:disabled { opacity: 0.45; cursor: default; }
+.offer-nav:disabled:hover::before { background: rgba(255, 255, 255, 0.07); }
+.offer-nav svg { position: relative; width: 14px; height: 14px; }
+
+/* Snap scrolling rather than an animated transform: a trackpad or a thumb then
+   drives the row on its own and the buttons are only a shortcut. A scroll box
+   clips in both axes, so the padding is what keeps the tiles' drop shadow from
+   being sliced off; the negative margin pays most of it back so the row still
+   starts flush with the rest of the page. */
+.offer-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 12px;
+  padding: 4px 12px 20px;
+  margin: -4px -12px -14px;
+}
+.offer-row > * { scroll-snap-align: start; }
+
+.offer-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  padding-top: 3px;
+}
+.offer-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  /* .55 is the floor for faint greys on this surface; the mock's .32 is under it. */
+  background: rgba(255, 255, 255, 0.55);
+  transition: width 0.2s, background 0.2s;
+}
+.offer-dot--active { width: 20px; background: var(--brand-primary); }
+
+@media (max-width: 720px) {
+  /* The row scrolls freely at the phone tile size, so the arrows are dead
+     weight next to a thumb. */
+  .offers-nav { display: none; }
+  .offer-row {
+    gap: 12px;
+    scroll-padding-left: 16px;
+    padding: 4px 16px 20px;
+    margin: -4px -16px -14px;
+  }
 }
 
 /* ── WINNERS ───────────────────────────────────────────────────────────── */
