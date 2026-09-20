@@ -6,6 +6,7 @@ import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
 import { heroArtworkFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
 import { launchProviderFor } from '~/utils/provider-launch'
+import { expiresTonight } from '~/utils/bonus-expiry'
 import {
   HERO_BANNER_FETCH_TIMEOUT_MS,
   HERO_BANNER_MOBILE_MEDIA,
@@ -28,6 +29,7 @@ const { patternLabel } = usePatternLabel()
 const { track } = useAnalytics()
 const { flags } = useFeatureFlags()
 const brand = useBrand()
+const { t } = useI18n()
 
 /** Gates the fight-markets hero slide and the lobby entry point. */
 const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
@@ -361,11 +363,19 @@ interface ActiveBonusGrant {
 /** A lot inside its last day is the only one worth interrupting the lobby for. */
 const BONUS_EXPIRY_WINDOW_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Wording for a deadline inside the day but outside tonight. The wallet nudge
+ * makes the same call off the same shared `expiresTonight`, so the two surfaces
+ * cannot describe one lot two ways.
+ */
+const EXPIRY_WITHIN_DAY_KEY = 'promo.expiry_headline_within_day'
+
 const bonusGrants = ref<ActiveBonusGrant[]>([])
 // Drives the countdown, and with it the 24h window itself — a lot that crosses
 // into its final day while the lobby sits open surfaces without a reload.
 const nowMs = ref(Date.now())
 let bonusTicker: ReturnType<typeof setInterval> | null = null
+let bonusWindowTimer: ReturnType<typeof setTimeout> | null = null
 
 async function loadBonusGrants() {
   if (!auth.isAuthenticated) return
@@ -376,19 +386,42 @@ async function loadBonusGrants() {
   }
 }
 
-/** The soonest lot that still holds value and dies inside the window. */
-const expiringGrant = computed(() => {
-  let soonest: ActiveBonusGrant | null = null
-  let soonestAt = Infinity
+/**
+ * Every lot that still holds value and dies inside the window, not only the
+ * first one: the wallet nudge sums the same set, and a player told 300 here and
+ * 800 there learns nothing except that one of the two is lying. What is at risk
+ * is the total.
+ */
+const expiringLots = computed(() => {
+  const lots: { at: number; remaining: number }[] = []
   for (const g of bonusGrants.value) {
-    if (!g.expiresAt || Number(g.remaining) <= 0) continue
+    const remaining = Number(g.remaining)
+    if (!g.expiresAt || remaining <= 0) continue
     const at = new Date(g.expiresAt).getTime()
     const left = at - nowMs.value
     if (left <= 0 || left > BONUS_EXPIRY_WINDOW_MS) continue
-    if (at < soonestAt) {
-      soonest = g
-      soonestAt = at
-    }
+    lots.push({ at, remaining })
+  }
+  return lots
+})
+
+/** The soonest of them: one clock cannot run two deadlines. */
+const expiringDeadline = computed(() => {
+  let soonest: number | null = null
+  for (const lot of expiringLots.value) {
+    if (soonest === null || lot.at < soonest) soonest = lot.at
+  }
+  return soonest
+})
+
+/** The soonest lot still beyond the window — what the wake below waits on. */
+const nextBonusWindowEntry = computed(() => {
+  let soonest: number | null = null
+  for (const g of bonusGrants.value) {
+    if (!g.expiresAt || Number(g.remaining) <= 0) continue
+    const at = new Date(g.expiresAt).getTime()
+    if (at - nowMs.value <= BONUS_EXPIRY_WINDOW_MS) continue
+    if (soonest === null || at < soonest) soonest = at
   }
   return soonest
 })
@@ -397,26 +430,26 @@ const spendAccount = computed(() => auth.wallet?.spendAccount ?? 'REAL')
 
 // Spending bonus already is the outcome the bar asks for, so once the wallet is
 // set that way the warning has lost its premise and would only nag.
-const showBonusExpiry = computed(() => !!expiringGrant.value && spendAccount.value === 'REAL')
-
-const expiringAmount = computed(() =>
-  Number(expiringGrant.value?.remaining ?? 0).toLocaleString('en-ET', { maximumFractionDigits: 2 }),
+const showBonusExpiry = computed(
+  () => expiringLots.value.length > 0 && spendAccount.value === 'REAL',
 )
 
-// A 24h window straddles midnight, and a sentence saying "tonight" over a clock
-// reading 21:40:00 reads as a bug rather than as urgency.
-const expiringWhen = computed(() => {
-  const at = expiringGrant.value?.expiresAt
-  if (!at) return ''
-  return new Date(at).toDateString() === new Date(nowMs.value).toDateString()
-    ? 'tonight'
-    : 'within the day'
+// The headline carries no currency of its own, so the amount arrives with one.
+const expiringAmount = computed(() => {
+  const total = expiringLots.value.reduce((sum, lot) => sum + lot.remaining, 0)
+  return `${total.toLocaleString('en-ET', { maximumFractionDigits: 2 })} ${t('common.etb')}`
+})
+
+const expiringHeadlineKey = computed(() => {
+  const at = expiringDeadline.value
+  if (at === null || expiresTonight(at, nowMs.value)) return 'promo.expiry_headline'
+  return EXPIRY_WITHIN_DAY_KEY
 })
 
 const expiringCountdown = computed(() => {
-  const at = expiringGrant.value?.expiresAt
-  if (!at) return '00:00:00'
-  const secs = Math.max(0, Math.floor((new Date(at).getTime() - nowMs.value) / 1000))
+  const at = expiringDeadline.value
+  if (at === null) return '00:00:00'
+  const secs = Math.max(0, Math.floor((at - nowMs.value) / 1000))
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(Math.floor(secs / 3600))}:${pad(Math.floor(secs / 60) % 60)}:${pad(secs % 60)}`
 })
@@ -436,19 +469,39 @@ async function spendBonusFirst() {
   }
 }
 
-// The ticker only exists while there is something to count down — a signed-out
-// visitor should not have the lobby waking once a second for nothing.
+// The ticker only exists while a bar is on screen counting down — a signed-out
+// visitor, or a player holding a 30-day lot, should not have a phone waking once
+// a second for a clock nobody is looking at.
 watch(
-  () => bonusGrants.value.some((g) => g.expiresAt),
-  (hasDeadline) => {
-    if (hasDeadline && !bonusTicker) {
+  () => expiringLots.value.length > 0,
+  (counting) => {
+    if (counting && !bonusTicker) {
       bonusTicker = setInterval(() => {
         nowMs.value = Date.now()
       }, 1000)
-    } else if (!hasDeadline && bonusTicker) {
+    } else if (!counting && bonusTicker) {
       clearInterval(bonusTicker)
       bonusTicker = null
     }
+  },
+)
+
+// Which leaves nothing watching the clock before the bar is due, so a lot still
+// outside the window books one wake of its own for the moment it crosses in —
+// otherwise a lobby left open would hold the bar back until a reload.
+watch(
+  () => nextBonusWindowEntry.value,
+  (at) => {
+    if (bonusWindowTimer) clearTimeout(bonusWindowTimer)
+    bonusWindowTimer = null
+    if (at === null) return
+    const delay = Math.max(0, at - BONUS_EXPIRY_WINDOW_MS - Date.now())
+    // A crossing further out than a day is left to the next page load: no lobby
+    // stays open that long, and setTimeout cannot hold an arbitrary wait anyway.
+    if (delay > BONUS_EXPIRY_WINDOW_MS) return
+    bonusWindowTimer = setTimeout(() => {
+      nowMs.value = Date.now()
+    }, delay)
   },
 )
 
@@ -464,15 +517,31 @@ const offerRow = ref<HTMLElement | null>(null)
 const offerPage = ref(0)
 const offerStep = ref(0)
 const offersPerPage = ref(5)
+/**
+ * The row's real travel, read off the element. A page is a page wide only up to
+ * the last one, whose travel is whatever remainder is left — a sixth tile in a
+ * five-tile row scrolls 6px, not 1205 — so the dots and the arrows come from
+ * this and never from a count of tiles over a page width the row never reaches.
+ */
+const offerScrollLeft = ref(0)
+const offerScrollMax = ref(0)
+/** Fractional tile widths leave a pixel of overflow, which is not a page. */
+const OFFER_SCROLL_EPS = 1
 
 const offerPhoneViewport = import.meta.client ? window.matchMedia('(max-width: 720px)') : null
 const offerTileSize = ref<'carousel' | 'phone'>(offerPhoneViewport?.matches ? 'phone' : 'carousel')
 
-const offerPageCount = computed(() =>
-  Math.max(1, Math.ceil(promotionsStore.promotions.length / offersPerPage.value)),
-)
-
 const offerPageWidth = computed(() => offerStep.value * offersPerPage.value)
+
+const offerPageCount = computed(() => {
+  if (offerPageWidth.value <= 0 || offerScrollMax.value <= OFFER_SCROLL_EPS) return 1
+  return 1 + Math.ceil(offerScrollMax.value / offerPageWidth.value)
+})
+
+// Disabled on the position rather than on the page, so each arrow is dead exactly
+// when the row has nothing left that way.
+const offerAtStart = computed(() => offerScrollLeft.value <= OFFER_SCROLL_EPS)
+const offerAtEnd = computed(() => offerScrollLeft.value >= offerScrollMax.value - OFFER_SCROLL_EPS)
 
 function measureOfferRow() {
   const row = offerRow.value
@@ -497,12 +566,25 @@ function scrollOffers(dir: 1 | -1) {
 }
 
 // Keeps the dots honest when the row is swiped or trackpad-scrolled rather than
-// stepped with the buttons.
+// stepped with the buttons. The stops sit a page apart except for the last, which
+// lands wherever the travel ran out, so the position is matched against that stop
+// instead of divided by a page width the row can never scroll to.
 function syncOfferPage() {
   const row = offerRow.value
-  if (!row || offerPageWidth.value <= 0) return
-  const page = Math.round(row.scrollLeft / offerPageWidth.value)
-  offerPage.value = Math.max(0, Math.min(offerPageCount.value - 1, page))
+  if (!row) return
+  offerScrollLeft.value = row.scrollLeft
+  offerScrollMax.value = Math.max(0, row.scrollWidth - row.clientWidth)
+  const last = offerPageCount.value - 1
+  if (last <= 0) {
+    offerPage.value = 0
+    return
+  }
+  const beforeLast = (last - 1) * offerPageWidth.value
+  const lastStopMid = beforeLast + (offerScrollMax.value - beforeLast) / 2
+  offerPage.value =
+    offerScrollLeft.value >= lastStopMid
+      ? last
+      : Math.max(0, Math.min(last - 1, Math.round(offerScrollLeft.value / offerPageWidth.value)))
 }
 
 function onOfferResize() {
@@ -887,6 +969,7 @@ onUnmounted(() => {
   feedObserver?.disconnect()
   if (slideTimer) clearInterval(slideTimer)
   if (bonusTicker) clearInterval(bonusTicker)
+  if (bonusWindowTimer) clearTimeout(bonusWindowTimer)
   window.removeEventListener('resize', onOfferResize)
   heroBannerViewport?.removeEventListener('change', syncHeroBannerViewport)
   // Read the existing socket, never connect() here: connect() creates a new
@@ -1019,14 +1102,14 @@ onUnmounted(() => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" /></svg>
         </div>
         <div class="bexp-copy">
-          <span class="bexp-title">{{ expiringAmount }} ETB of bonus expires {{ expiringWhen }}</span>
-          <span class="bexp-sub">You are set to spend from your real balance, so it will go unused</span>
+          <span class="bexp-title">{{ t(expiringHeadlineKey, { amount: expiringAmount }) }}</span>
+          <span class="bexp-sub">{{ t('promo.expiry_sub') }}</span>
         </div>
         <!-- Hidden from assistive tech: it changes every second, and the line
              above already carries the deadline in words. -->
         <span class="bexp-clock" aria-hidden="true">{{ expiringCountdown }}</span>
         <button class="bexp-cta" :disabled="switchingSpendAccount" @click="spendBonusFirst">
-          Spend bonus first
+          {{ t('promo.expiry_cta') }}
         </button>
       </div>
     </section>
@@ -1036,25 +1119,25 @@ onUnmounted(() => {
          rather than holding a heading over a blank row. -->
     <section v-if="promotionsStore.promotions.length" class="max-wrap offers">
       <div class="offers-head">
-        <h2 class="offers-title">Live Offers</h2>
+        <h2 class="offers-title">{{ t('promo.live_offers') }}</h2>
         <div class="offers-tools">
           <NuxtLink to="/promotions" class="offers-all">
-            All promotions
+            {{ t('promo.all_promotions') }}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </NuxtLink>
           <div v-if="offerPageCount > 1" class="offers-nav">
             <button
               class="offer-nav"
-              :disabled="offerPage === 0"
-              aria-label="Previous offers"
+              :disabled="offerAtStart"
+              :aria-label="t('promo.prev_offers')"
               @click="scrollOffers(-1)"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
             <button
               class="offer-nav"
-              :disabled="offerPage >= offerPageCount - 1"
-              aria-label="More offers"
+              :disabled="offerAtEnd"
+              :aria-label="t('promo.next_offers')"
               @click="scrollOffers(1)"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -1112,15 +1195,15 @@ onUnmounted(() => {
     <section class="max-wrap winners">
       <div class="win-tabs" role="tablist">
         <button
-          v-for="t in winnerTabs"
-          :key="t.key"
+          v-for="tab in winnerTabs"
+          :key="tab.key"
           class="win-tab"
-          :class="{ 'win-tab--active': activeWinnerTab === t.key }"
+          :class="{ 'win-tab--active': activeWinnerTab === tab.key }"
           role="tab"
-          :aria-selected="activeWinnerTab === t.key"
-          @click="activeWinnerTab = t.key"
+          :aria-selected="activeWinnerTab === tab.key"
+          @click="activeWinnerTab = tab.key"
         >
-          {{ t.label }}
+          {{ tab.label }}
         </button>
       </div>
 

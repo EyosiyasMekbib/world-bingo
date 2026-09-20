@@ -276,35 +276,37 @@ const reconciliationMessage = computed(() => {
   return 'Reconciliation check failed — try again'
 })
 
-// Mirrors apps/api/src/lib/bonus-period.ts: Africa/Addis_Ababa is a fixed UTC+3
-// with no DST, so the local calendar day is found by shifting the instant
-// rather than by asking for the zone's transition rules.
-const ADDIS_OFFSET_MS = 3 * 60 * 60 * 1000
-
+// Mirrors getCurrentPeriod in apps/api/src/services/cashback.service.ts, which
+// cuts every cashback window in UTC — so the boundary is walked on the UTC
+// calendar. The Addis buckets of apps/api/src/lib/bonus-period.ts govern
+// DEPOSIT-BONUS periods, not these: reading a cashback close on that clock lands
+// three hours early and, on a Sunday night, names the wrong day.
 function nextPeriodStart(frequency: string, now: Date) {
-  const local = new Date(now.getTime() + ADDIS_OFFSET_MS)
-  const y = local.getUTCFullYear()
-  const m = local.getUTCMonth()
-  const d = local.getUTCDate()
-  if (frequency === 'MONTHLY') return new Date(Date.UTC(y, m + 1, 1) - ADDIS_OFFSET_MS)
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth()
+  const d = now.getUTCDate()
+  if (frequency === 'MONTHLY') return new Date(Date.UTC(y, m + 1, 1))
   if (frequency === 'WEEKLY') {
-    const daysToMonday = 7 - ((local.getUTCDay() + 6) % 7)
-    return new Date(Date.UTC(y, m, d + daysToMonday) - ADDIS_OFFSET_MS)
+    const daysToMonday = 7 - ((now.getUTCDay() + 6) % 7)
+    return new Date(Date.UTC(y, m, d + daysToMonday))
   }
-  return new Date(Date.UTC(y, m, d + 1) - ADDIS_OFFSET_MS)
+  return new Date(Date.UTC(y, m, d + 1))
 }
 
 function formatClose(at: Date, frequency: string) {
   const shape: Intl.DateTimeFormatOptions = frequency === 'MONTHLY'
     ? { month: 'short', day: 'numeric' }
     : { weekday: 'short' }
-  return new Intl.DateTimeFormat('en-GB', {
+  const stamp = new Intl.DateTimeFormat('en-GB', {
     ...shape,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: 'Africa/Addis_Ababa',
+    timeZone: 'UTC',
   }).format(at)
+  // Named outright because it is not the clock on the admin's wall: this close
+  // reads 02:59 the next morning in Addis.
+  return `${stamp} UTC`
 }
 
 const nextCashbackClose = computed(() => {
@@ -327,7 +329,7 @@ const nextCashbackClose = computed(() => {
 
 function openRow(row: PromotionRow) {
   if (row.kind !== PromoKind.CASHBACK) return
-  navigateTo(`/promotions/cashback/${row.id}`)
+  navigateTo(`/promotions/${row.id}`)
 }
 
 async function toggle(row: PromotionRow) {
@@ -345,13 +347,27 @@ async function toggle(row: PromotionRow) {
 const endTarget = ref<PromotionRow | null>(null)
 const ending = ref(false)
 
+// What ending owes depends on the timing: a PERIOD_CLOSE promotion settles the
+// window it was ended inside, an ON_THRESHOLD one has already paid whatever it
+// owes. PERIOD_CLOSE is the column default, so an unknown timing is read as the
+// branch that promises one more settlement rather than none.
+const paysAtClose = (row: PromotionRow) =>
+  cashbackById.value.get(row.id)?.payoutTiming !== 'ON_THRESHOLD'
+
 async function confirmEnd() {
   const row = endTarget.value
   if (!row) return
+  const owesFinalClose = paysAtClose(row)
   ending.value = true
   try {
     await api.fetch(`/admin/cashback/${row.id}/end`, { method: 'POST' })
-    toast.add({ title: 'Ended', description: `${row.name} will not settle another period`, color: 'success' })
+    toast.add({
+      title: 'Ended',
+      description: owesFinalClose
+        ? `${row.name} stops accruing now — the period in progress still settles at its close`
+        : `${row.name} stops paying now`,
+      color: 'success',
+    })
     endTarget.value = null
     await load()
   } catch (err: any) {
@@ -414,6 +430,10 @@ const providerGameResults = ref<any[]>([])
 const selectedProviderGames = ref<Array<{ providerId: string; gameCode: string; gameName: string }>>([])
 const loadingProviderGames = ref(false)
 let providerGameSearchTimer: ReturnType<typeof setTimeout> | undefined
+// Same guard as refreshProjection below: a slow answer for "star" landing after
+// a fast one for "starburst" would repopulate the list with games the admin is
+// no longer looking at, and they tick one they never searched for.
+let providerGameToken = 0
 
 const primaryProvider = computed(() => providers.value.find((p: any) => p.isPrimary) ?? providers.value[0] ?? null)
 
@@ -436,12 +456,21 @@ function onProviderGameSearch() {
   if (providerGameSearchTimer) clearTimeout(providerGameSearchTimer)
   providerGameSearchTimer = setTimeout(async () => {
     if (!primaryProvider.value) return
+    const token = ++providerGameToken
     loadingProviderGames.value = true
     try {
       const res = await getProviderGames(primaryProvider.value.code, { search: providerGameQuery.value, limit: 20 })
-      providerGameResults.value = (res as any)?.data ?? []
+      if (token === providerGameToken) providerGameResults.value = (res as any)?.data ?? []
+    } catch {
+      // Stale results under a new query read as "these are your matches", so
+      // they go — and the failure is said out loud rather than left as an
+      // unhandled rejection behind an empty list.
+      if (token === providerGameToken) {
+        providerGameResults.value = []
+        toast.add({ title: 'Error', description: 'Failed to search provider games', color: 'error' })
+      }
     } finally {
-      loadingProviderGames.value = false
+      if (token === providerGameToken) loadingProviderGames.value = false
     }
   }, 300)
 }
@@ -690,7 +719,7 @@ onMounted(() => {
         <div class="strip-rule" />
         <div class="strip-fact">
           <UIcon name="i-heroicons:globe-alt" class="w-[17px] h-[17px] text-white/55" />
-          <span>Windows run on <strong>Africa/Addis_Ababa</strong></span>
+          <span>Cashback periods run on <strong>UTC</strong>, deposit buckets on <strong>Africa/Addis_Ababa</strong></span>
         </div>
       </div>
       <UButton
@@ -942,13 +971,23 @@ onMounted(() => {
       </template>
     </UModal>
 
-    <!-- End confirmation: endsAt moves to now and isActive goes false, so there
-         is no undo through the toggle. -->
+    <!-- End confirmation: endsAt moves to now and isActive is deliberately left
+         alone, so the window the promotion was ended inside still settles at its
+         close. The move itself has no undo — a closed window cannot be reopened
+         through the toggle. -->
     <UModal :open="endTarget !== null" title="End promotion" :ui="{ footer: 'justify-end' }" @update:open="(open: boolean) => { if (!open) endTarget = null }">
       <template #body>
         <p class="secondary">
-          {{ endTarget?.name }} stops settling periods immediately. Its window closes now, so resuming it
-          later cannot pay the periods it missed.
+          {{ endTarget?.name }} stops accruing at this instant: its window closes now, and no period
+          opening later can ever settle.
+          <template v-if="endTarget && paysAtClose(endTarget)">
+            The play up to now is already earned, so the period in progress still settles at its close —
+            after that this promotion never pays again.
+          </template>
+          <template v-else>
+            It pays as players cross the threshold, so nothing further is paid.
+          </template>
+          There is no undo.
         </p>
       </template>
       <template #footer>

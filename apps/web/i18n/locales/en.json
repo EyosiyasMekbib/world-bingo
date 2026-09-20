@@ -73,7 +73,6 @@
     "spendFrom": "Spend From",
     "spendAccountReal": "Spend Real",
     "spendAccountBonus": "Spend Bonus",
-    "activeBonuses": "Active Bonuses",
     "bonusExpiresIn": "Expires in {time}",
     "bonusNoExpiry": "No expiry",
     "bonusExpiring": "Expiring...",
@@ -84,9 +83,7 @@
     "history": "History",
     "earnMore": "Earn More",
     "bonusHistory": "Bonus history",
-    "bonusHistoryHint": "Everything granted, spent and expired",
     "bonusToGo": "{amount} to go",
-    "bonusExpiresTonight": "Expires tonight",
     "bonusExpiryNudge": "{amount} expires tonight. Switch to Spend Bonus to use it first.",
     "switchToBonus": "Switch",
     "bonusSource": {
@@ -97,7 +94,9 @@
       "CAMPAIGN": "Campaign",
       "ADMIN": "Goodwill",
       "REFUND": "Refund"
-    }
+    },
+    "bonusGeneric": "Bonus",
+    "bonusExpiryNudgeWithinDay": "{amount} expires within the day. Switch to Spend Bonus to use it first."
   },
   "refer": {
     "title": "🎁 Refer & Earn",
@@ -206,7 +205,14 @@
     "lost_this_week": "Lost this week",
     "deposited_today": "Deposited today",
     "pays_out": "pays out {when}",
-    "chip_link": "Link"
+    "chip_link": "Link",
+    "expiry_headline_within_day": "{amount} of bonus expires within the day",
+    "kind": {
+      "CASHBACK": "Cashback",
+      "DEPOSIT_RULE": "Deposit Bonus",
+      "WELCOME": "Welcome",
+      "REFERRAL": "Referral"
+    }
   },
   "prediction": {
     "title": "Fight Markets",

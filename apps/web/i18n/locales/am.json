@@ -73,7 +73,6 @@
     "spendFrom": "የክፍያ ምንጭ",
     "spendAccountReal": "እውነተኛ ተጠቀም",
     "spendAccountBonus": "ጉርሻ ተጠቀም",
-    "activeBonuses": "ንቁ ጉርሻዎች",
     "bonusExpiresIn": "በ {time} ውስጥ ያበቃል",
     "bonusNoExpiry": "ማብቂያ የለውም",
     "bonusExpiring": "እያበቃ ነው...",
@@ -84,9 +83,7 @@
     "history": "ታሪክ",
     "earnMore": "ተጨማሪ ያግኙ",
     "bonusHistory": "የጉርሻ ታሪክ",
-    "bonusHistoryHint": "የተሰጠ፣ የተጠቀሙበት እና ያበቃ ሁሉ",
     "bonusToGo": "{amount} ይቀራል",
-    "bonusExpiresTonight": "ዛሬ ማታ ያበቃል",
     "bonusExpiryNudge": "{amount} ዛሬ ማታ ያበቃል። አስቀድመው ለመጠቀም ወደ “ጉርሻ ተጠቀም” ይቀይሩ።",
     "switchToBonus": "ቀይር",
     "bonusSource": {
@@ -97,7 +94,9 @@
       "CAMPAIGN": "ዘመቻ",
       "ADMIN": "የበጎ ፈቃድ",
       "REFUND": "ተመላሽ"
-    }
+    },
+    "bonusGeneric": "ጉርሻ",
+    "bonusExpiryNudgeWithinDay": "{amount} በዚህ ቀን ውስጥ ያበቃል። አስቀድመው ለመጠቀም ወደ “ጉርሻ ተጠቀም” ይቀይሩ።"
   },
   "refer": {
     "title": "🎁 ጓደኛ ጋብዝ፣ ሽልማት ወሰድ",
@@ -206,7 +205,14 @@
     "lost_this_week": "በዚህ ሳምንት ያጡት",
     "deposited_today": "ዛሬ ያስገቡት",
     "pays_out": "{when} ይከፈላል",
-    "chip_link": "ሊንክ"
+    "chip_link": "ሊንክ",
+    "expiry_headline_within_day": "{amount} ጉርሻ በዚህ ቀን ውስጥ ያበቃል",
+    "kind": {
+      "CASHBACK": "ካሽባክ",
+      "DEPOSIT_RULE": "የተቀማጭ ጉርሻ",
+      "WELCOME": "እንኳን ደህና መጡ",
+      "REFERRAL": "ጥሪ"
+    }
   },
   "prediction": {
     "title": "የግጥሚያ ገበያዎች",

@@ -70,4 +70,26 @@ describe('BonusGrantQueryService.listActiveForUser', () => {
 
     expect(grants).toHaveLength(0)
   })
+
+  it('carries each lot\'s source, which is the only thing telling three of them apart', async () => {
+    // Cashback, welcome and campaign lots all have ruleId null, so the ruleName
+    // asserted above is null for all three. This service's explicit field map is
+    // the only thing deciding whether `source` reaches the wallet at all, and a
+    // field dropped from it does not fail a type check — the client falls through
+    // to its own default chip, so every lot silently reads as one anonymous
+    // "Bonus" and the per-source chips become unreachable code.
+    const user = await makeUser('grantquery4', '+251900000039')
+    const expiresAt = new Date(Date.now() + 86_400_000)
+
+    await prisma.$transaction(async (tx) => {
+      for (const source of ['CASHBACK', 'FIRST_DEPOSIT', 'CAMPAIGN'] as const) {
+        await BonusService.grant(tx, { userId: user.id, amount: 50, source, expiresAt })
+      }
+    })
+
+    const grants = await BonusGrantQueryService.listActiveForUser(user.id)
+
+    expect(grants).toHaveLength(3)
+    expect(grants.map((g) => g.source).sort()).toEqual(['CAMPAIGN', 'CASHBACK', 'FIRST_DEPOSIT'])
+  })
 })

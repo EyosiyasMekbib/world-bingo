@@ -50,8 +50,43 @@ const adjustForm = reactive({
   note: '',
 })
 
-/** Opens the existing adjust modal aimed at bonus, for the panel's deduct action. */
+// adjust-balance reads `amount` as a signed delta, and the deduct entry point
+// used to leave that sign to the admin: 50 typed under a button labelled
+// "Deduct bonus" GRANTED 50 ETB of bonus which, sent without an expiresAt,
+// never expired. Direction is the modal's own state now, not a typing habit.
+const adjustMode = ref<'signed' | 'deduct'>('signed')
+
+const adjustDelta = computed(() =>
+  adjustMode.value === 'deduct' ? -Math.abs(adjustForm.amount) : adjustForm.amount,
+)
+
+const adjustTitle = computed(() =>
+  adjustMode.value === 'deduct' ? 'Deduct Player Bonus' : 'Adjust Player Balance',
+)
+
+// Mode as well as sign, so a modal opened to deduct never offers to credit
+// while the amount still sits at zero.
+const adjustIsDeduction = computed(() => adjustMode.value === 'deduct' || adjustDelta.value < 0)
+
+/** Names the direction and the amount, because "Apply" named neither. */
+const adjustActionLabel = computed(() => {
+  const target = adjustForm.type === 'bonus' ? 'bonus' : 'real balance'
+  return adjustIsDeduction.value
+    ? `Deduct ${fmt(Math.abs(adjustDelta.value))} ETB ${target}`
+    : `Credit ${fmt(adjustDelta.value)} ETB ${target}`
+})
+
+function openAdjust() {
+  adjustMode.value = 'signed'
+  adjustForm.type = 'real'
+  adjustForm.amount = 0
+  adjustForm.note = ''
+  showAdjust.value = true
+}
+
+/** The bonus panel's deduct action: the same modal, one direction only. */
 function openBonusDeduction() {
+  adjustMode.value = 'deduct'
   adjustForm.type = 'bonus'
   adjustForm.amount = 0
   adjustForm.note = ''
@@ -64,6 +99,12 @@ const HOUR_MS = 3600_000
 const grants = ref<PlayerBonusGrant[]>([])
 const grantsLoading = ref(false)
 const grantsLoaded = ref(false)
+const grantsFailed = ref(false)
+
+// Comes from the API, summed off the player's BONUS_EXPIRED transactions: the
+// expiry sweep zeroes a lot's `remaining` as it marks it EXPIRED, so no
+// arithmetic over the lots below can recover what went unused.
+const expiredUnused = ref(0)
 
 // Relative expiry labels go stale on a page a clerk leaves open all shift, and
 // "3h left" turning red is the whole point of the column.
@@ -72,11 +113,23 @@ const now = ref(Date.now())
 async function fetchGrants() {
   grantsLoading.value = true
   try {
-    grants.value = await getPlayerBonusGrants(route.params.id as string)
+    const payload = await getPlayerBonusGrants(route.params.id as string)
+    grants.value = payload.grants
+    expiredUnused.value = payload.expiredUnused
+    grantsFailed.value = false
     grantsLoaded.value = true
-  } catch {
+  } catch (err: any) {
     // The tab's own data: an empty strip beats taking the player page down.
+    // But unread lots are not zero lots, and silence here made the tab argue
+    // the wallet disagreed with nothing and the player had never held a bonus.
     grants.value = []
+    expiredUnused.value = 0
+    grantsFailed.value = true
+    toast.add({
+      title: 'Could not load bonus lots',
+      description: err?.data?.error ?? 'Request failed',
+      color: 'error',
+    })
   } finally {
     grantsLoading.value = false
   }
@@ -87,12 +140,18 @@ const closedLots = computed(() => grants.value.filter((g) => g.status !== BonusG
 
 const walletBonus = computed(() => Number(player.value?.wallet?.bonusBalance ?? 0))
 const activeLotSum = computed(() => activeLots.value.reduce((sum, g) => sum + g.remaining, 0))
-const lifetimeGranted = computed(() => grants.value.reduce((sum, g) => sum + g.amount, 0))
-const closedTotal = computed(() => closedLots.value.reduce((sum, g) => sum + g.amount, 0))
-const expiredUnused = computed(() =>
-  closedLots.value
-    .filter((g) => g.status === BonusGrantStatus.EXPIRED)
-    .reduce((sum, g) => sum + g.remaining, 0),
+
+// BonusService.restore mints a fresh lot for bonus handed back, from 15 call
+// sites — a per-order prediction cancel among them — so a player granted 100
+// ETB who cancels five bonus-funded orders owns lots summing to 600. Only the
+// non-REFUND lots are bonus the house actually gave away; totalling the rest is
+// the overstatement bonus.service.ts:229-233 warns about.
+const receivedLots = computed(() => grants.value.filter((g) => g.source !== BonusSource.REFUND))
+const lifetimeGranted = computed(() => receivedLots.value.reduce((sum, g) => sum + g.amount, 0))
+const closedTotal = computed(() =>
+  receivedLots.value
+    .filter((g) => g.status !== BonusGrantStatus.ACTIVE)
+    .reduce((sum, g) => sum + g.amount, 0),
 )
 
 // wallets.bonusBalance is Decimal(20,8) and the lots are Decimal(12,2), so an
@@ -138,13 +197,20 @@ function expiryUrgent(expiresAt: string | null) {
   return left !== null && left < 6
 }
 
-/** Spent in full / expired with the unused amount / partially spent. */
+/**
+ * Expired / spent in full / partially spent. Status is read before `remaining`
+ * because the expiry sweep zeroes `remaining` as it marks a lot EXPIRED: test
+ * the amount first and a player who lost 500 ETB to the sweep reads as having
+ * spent every birr of it, in green. That zeroing is also why no per-lot unused
+ * figure appears here — it is gone from the lot, and the strip's "Expired
+ * unused" comes from the BONUS_EXPIRED transactions instead.
+ */
 function outcome(g: PlayerBonusGrant) {
+  if (g.status === BonusGrantStatus.EXPIRED) {
+    return { label: 'Expired', color: 'error' as const }
+  }
   if (g.status === BonusGrantStatus.CONSUMED || g.remaining <= 0) {
     return { label: 'Spent in full', color: 'success' as const }
-  }
-  if (g.remaining >= g.amount) {
-    return { label: `Expired · ${fmt(g.remaining)} unused`, color: 'error' as const }
   }
   return { label: `Partially spent · ${fmt(g.remaining)} unused`, color: 'warning' as const }
 }
@@ -346,14 +412,17 @@ async function submitAdjustment() {
   try {
     await adjustPlayerBalance(route.params.id as string, {
       type: adjustForm.type,
-      amount: adjustForm.amount,
+      amount: adjustDelta.value,
       note: adjustForm.note,
     })
     toast.add({ title: 'Balance adjusted', color: 'success' })
     showAdjust.value = false
     adjustForm.amount = 0
     adjustForm.note = ''
-    await fetchPlayer()
+    // Both, as submitGrant does: a bonus adjustment moves the wallet and the
+    // lots together, and refreshing one of them is what made the
+    // reconciliation strip cry drift at a ledger that was fine.
+    await Promise.all([fetchPlayer(), fetchGrants()])
   } catch (err: any) {
     toast.add({ title: 'Error', description: err?.data?.error ?? 'Failed to adjust', color: 'error' })
   } finally {
@@ -441,7 +510,7 @@ onUnmounted(() => {
           @click="activeTab = tab"
         >
           {{ tab }}
-          <span v-if="tab === 'bonuses' && grantsLoaded" class="ml-1 text-xs text-white/60">({{ activeLots.length }})</span>
+          <span v-if="tab === 'bonuses' && grantsLoaded && !grantsFailed" class="ml-1 text-xs text-white/60">({{ activeLots.length }})</span>
         </button>
       </div>
 
@@ -491,7 +560,7 @@ onUnmounted(() => {
 
       <!-- Actions -->
       <div v-if="activeTab === 'overview'" class="flex gap-2">
-        <UButton icon="i-heroicons:adjustments-horizontal" label="Adjust Balance" color="primary" variant="soft" @click="showAdjust = true" />
+        <UButton icon="i-heroicons:adjustments-horizontal" label="Adjust Balance" color="primary" variant="soft" @click="openAdjust" />
       </div>
 
       <!-- Transaction History -->
@@ -578,8 +647,33 @@ onUnmounted(() => {
         </div>
 
         <template v-else>
+          <!-- Lots nobody managed to read cannot disagree with the wallet, so the
+               verdict below is withheld rather than guessed at. -->
+          <div
+            v-if="grantsFailed"
+            class="p-4 rounded-2xl border border-amber-400/40 shadow-lg flex flex-wrap items-center gap-x-3 gap-y-2"
+            style="background:var(--surface-raised);"
+          >
+            <UIcon name="i-heroicons:exclamation-triangle" class="w-[18px] h-[18px] shrink-0 text-amber-400" />
+            <span class="text-[13px] text-white/80">
+              Bonus lots could not be loaded, so wallet
+              <strong class="text-white font-semibold tabular-nums">{{ fmt(walletBonus) }}</strong>
+              has nothing to reconcile against.
+            </span>
+            <UButton
+              class="min-h-11 ml-auto"
+              size="sm"
+              color="neutral"
+              variant="soft"
+              label="Retry"
+              :loading="grantsLoading"
+              @click="fetchGrants"
+            />
+          </div>
+
           <!-- Reconciliation: the wallet number against the lots that justify it -->
           <div
+            v-else
             class="p-4 rounded-2xl border shadow-lg flex flex-wrap items-center gap-x-6 gap-y-2"
             :class="ledgerAgrees ? 'border-(--surface-border)' : 'border-red-500/40'"
             style="background:var(--surface-raised);"
@@ -631,7 +725,9 @@ onUnmounted(() => {
                     </thead>
                     <tbody class="divide-y divide-white/5">
                       <tr v-if="!activeLots.length">
-                        <td colspan="5" class="px-4 py-8 text-center text-white/60">No active bonus lots</td>
+                        <td colspan="5" class="px-4 py-8 text-center text-white/60">
+                          {{ grantsFailed ? 'Bonus lots could not be loaded' : 'No active bonus lots' }}
+                        </td>
                       </tr>
                       <tr v-for="lot in activeLots" :key="lot.id" class="hover:bg-white/3">
                         <td class="px-4 py-3">
@@ -690,7 +786,9 @@ onUnmounted(() => {
                     </thead>
                     <tbody class="divide-y divide-white/5">
                       <tr v-if="!closedLots.length">
-                        <td colspan="4" class="px-4 py-8 text-center text-white/60">No closed bonus lots yet</td>
+                        <td colspan="4" class="px-4 py-8 text-center text-white/60">
+                          {{ grantsFailed ? 'Bonus lots could not be loaded' : 'No closed bonus lots yet' }}
+                        </td>
                       </tr>
                       <tr v-for="lot in closedLots" :key="lot.id" class="hover:bg-white/3">
                         <td class="px-4 py-3">
@@ -709,7 +807,8 @@ onUnmounted(() => {
               </div>
               <p v-if="closedLots.length" class="text-xs text-white/60">
                 {{ closedLots.length === 1 ? '1 closed lot' : `${closedLots.length} closed lots` }}
-                totalling {{ fmt(closedTotal) }} ETB, plus the {{ fmt(activeLotSum) }} ETB still active above.
+                totalling {{ fmt(closedTotal) }} ETB granted (refund lots excluded), plus the
+                {{ fmt(activeLotSum) }} ETB still active above.
               </p>
             </div>
 
@@ -800,18 +899,19 @@ onUnmounted(() => {
     </template>
 
     <!-- Adjust Balance Modal -->
-    <UModal v-model:open="showAdjust" title="Adjust Player Balance" :ui="{ content: 'max-w-md' }">
+    <UModal v-model:open="showAdjust" :title="adjustTitle" :ui="{ content: 'max-w-md' }">
       <template #body>
         <div class="space-y-4">
           <UFormField label="Balance Type">
             <USelect
               v-model="adjustForm.type"
               :items="[{ label: 'Real Balance', value: 'real' }, { label: 'Bonus Balance', value: 'bonus' }]"
+              :disabled="adjustMode === 'deduct'"
               class="w-full"
               value-key="value"
             />
           </UFormField>
-          <UFormField label="Amount (use negative to deduct)">
+          <UFormField :label="adjustMode === 'deduct' ? 'Amount to deduct (ETB)' : 'Amount (use negative to deduct)'">
             <UInput v-model.number="adjustForm.amount" type="number" class="w-full" />
           </UFormField>
           <UFormField label="Note (required for audit trail)">
@@ -822,7 +922,13 @@ onUnmounted(() => {
       <template #footer>
         <div class="flex justify-end gap-2">
           <UButton color="neutral" variant="ghost" label="Cancel" @click="showAdjust = false" />
-          <UButton color="primary" :loading="adjusting" :disabled="!adjustForm.note || adjustForm.amount === 0" label="Apply" @click="submitAdjustment" />
+          <UButton
+            :color="adjustIsDeduction ? 'error' : 'primary'"
+            :loading="adjusting"
+            :disabled="!adjustForm.note || adjustForm.amount === 0"
+            :label="adjustActionLabel"
+            @click="submitAdjustment"
+          />
         </div>
       </template>
     </UModal>

@@ -321,6 +321,83 @@ describe('POST /admin/players/:id/adjust-balance — grant validity', () => {
     })
 })
 
+describe('POST /admin/cashback — a promotion must be creatable complete', () => {
+    afterEach(async () => {
+        await expectInvariantClean()
+    })
+
+    it('creates a paused, fully-priced promotion in one write', async () => {
+        // Duplicating a live promotion used to be create-then-PATCH: the create
+        // dropped the caps and the copy defaulted isActive true, then the PATCH
+        // hit the closed-window guard and answered 409. The caller was told it
+        // failed while a live, cap-less copy existed, ready to settle the same
+        // window again under a second promotionId — which the
+        // (promotionId, userId, periodStart) disbursement key does not stop.
+        const admin = await mk('ADMIN')
+        const app = await buildApp(admin.id)
+
+        const res = await app.inject({
+            method: 'POST',
+            url: '/admin/cashback',
+            payload: {
+                name: 'Copy of Weekend Cashback',
+                lossThreshold: 500,
+                refundType: 'PERCENTAGE',
+                refundValue: 10,
+                frequency: 'WEEKLY',
+                startsAt: new Date(Date.now() - 30 * DAY).toISOString(),
+                endsAt: new Date(Date.now() + 30 * DAY).toISOString(),
+                maxPayoutPerPlayer: 200,
+                periodBudget: 5000,
+                bonusValidityHours: 168,
+                isActive: false,
+            },
+        })
+
+        expect(res.statusCode).toBe(200)
+        const created = await prisma.cashbackPromotion.findFirstOrThrow({
+            where: { name: 'Copy of Weekend Cashback' },
+        })
+        expect(created.isActive).toBe(false)
+        expect(new Decimal(created.maxPayoutPerPlayer!).toNumber()).toBe(200)
+        expect(new Decimal(created.periodBudget!).toNumber()).toBe(5000)
+        expect(created.bonusValidityHours).toBe(168)
+
+        // Paused is what keeps it from paying: runChecks filters on isActive, so
+        // a copy that inherited a past startsAt settles nothing until an admin
+        // deliberately turns it on.
+        const result = await CashbackService.runChecks()
+        expect(result.settlements.some((x) => x.promotionId === created.id)).toBe(false)
+    })
+
+    it('still defaults to live and uncapped when those fields are omitted', async () => {
+        // The normal create path must not start landing promotions paused just
+        // because the duplicate path needs to.
+        const admin = await mk('ADMIN')
+        const app = await buildApp(admin.id)
+
+        const res = await app.inject({
+            method: 'POST',
+            url: '/admin/cashback',
+            payload: {
+                name: 'Plain New Cashback',
+                lossThreshold: 100,
+                refundType: 'FIXED',
+                refundValue: 25,
+                frequency: 'DAILY',
+                startsAt: new Date(Date.now() - HOUR).toISOString(),
+                endsAt: new Date(Date.now() + 30 * DAY).toISOString(),
+            },
+        })
+
+        expect(res.statusCode).toBe(200)
+        const created = await prisma.cashbackPromotion.findFirstOrThrow({ where: { name: 'Plain New Cashback' } })
+        expect(created.isActive).toBe(true)
+        expect(created.maxPayoutPerPlayer).toBeNull()
+        expect(created.periodBudget).toBeNull()
+    })
+})
+
 describe('/admin/players/:id/bonus-grants', () => {
     afterEach(async () => {
         await expectInvariantClean()
@@ -350,7 +427,21 @@ describe('/admin/players/:id/bonus-grants', () => {
 
         const res = await app.inject({ method: 'GET', url: `/admin/players/${player.id}/bonus-grants` })
         expect(res.statusCode).toBe(200)
-        expect(res.json()[0].source).toBe('CASHBACK')
+        expect(res.json().grants[0].source).toBe('CASHBACK')
+    })
+
+    it('reports nothing lost to expiry for a player who has lost nothing', async () => {
+        // The companion to the cap suite's positive case: `expiredUnused` comes
+        // from BONUS_EXPIRED rows, so a player with an active lot and no expiry
+        // history must read 0 rather than inheriting some other player's total.
+        const admin = await mk('ADMIN')
+        const { player } = await playerWithLot()
+        const app = await buildApp(admin.id)
+
+        const res = await app.inject({ method: 'GET', url: `/admin/players/${player.id}/bonus-grants` })
+
+        expect(res.statusCode).toBe(200)
+        expect(res.json().expiredUnused).toBe(0)
     })
 
     it('extends an active lot and records who moved the deadline', async () => {

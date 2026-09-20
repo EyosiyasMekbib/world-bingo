@@ -71,10 +71,23 @@ const clerkCreateSchema = z.object({
     password: z.string().min(8),
 })
 
+// A ceiling on one manual adjustment. The route moved out of the clerk scope
+// and gained an audit row, but neither stops a mistyped digit: an admin who
+// means 100000 and types 1000000 moves ten times the money, and the audit row
+// only records it afterwards. Tunable because the right number is a business
+// decision, not a code one.
+const MAX_BALANCE_ADJUSTMENT = Number(process.env.ADMIN_MAX_BALANCE_ADJUSTMENT ?? 100_000)
+
 const adjustBalanceSchema = z
     .object({
         type: z.enum(['real', 'bonus']),
-        amount: z.number(),
+        // The magnitude is what is capped, in both directions: a deduction that
+        // large is as likely to be a typo as a credit.
+        amount: z
+            .number()
+            .refine((n) => Math.abs(n) <= MAX_BALANCE_ADJUSTMENT, {
+                message: `Amount may not exceed ${MAX_BALANCE_ADJUSTMENT} ETB in one adjustment`,
+            }),
         note: z.string().min(1, 'Note is required for audit trail'),
         // Bonus branch only. Absent and null both mean a lot that never
         // expires; zod would otherwise strip the validity the grant form sends
@@ -114,6 +127,22 @@ const cashbackCreateSchema = z.object({
     endsAt: z.string(),
     templateIds: z.array(z.string().uuid()).default([]),
     providerGameKeys: z.array(z.string()).default([]),
+    // These four were creatable only by a follow-up PATCH, which is a trap for
+    // any caller copying an existing promotion: the PATCH refuses a
+    // payout-shaping edit while a closed window is unsettled, so the copy was
+    // left live with no cap and no budget while the caller was told it failed.
+    // A promotion has to be creatable complete.
+    maxPayoutPerPlayer: z.coerce.number().positive().nullish(),
+    periodBudget: z.coerce.number().positive().nullish(),
+    payoutTiming: z.enum(['PERIOD_CLOSE', 'ON_THRESHOLD']).optional(),
+    bonusValidityHours: z.coerce.number().int().min(0).optional(),
+    // A copy of a live promotion inherits a past startsAt and a future endsAt,
+    // so it is live the instant it exists and the next hourly run settles the
+    // closed window again — under a second promotionId, which the
+    // (promotionId, userId, periodStart) disbursement key does not stop. Letting
+    // the caller create it paused is the only way to make that copy safe
+    // without a gap between two writes.
+    isActive: z.boolean().optional(),
 }).refine(
     (data) => new Date(data.startsAt) < new Date(data.endsAt),
     { message: 'endsAt must be after startsAt', path: ['endsAt'] }
@@ -1041,8 +1070,17 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         f.post('/cashback', async (req: any, reply) => {
             const parsed = cashbackCreateSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
-            const { name, lossThreshold, refundType, refundValue, frequency, startsAt, endsAt, templateIds, providerGameKeys } = parsed.data
-            const promotion = await CashbackService.createPromotion({ name, lossThreshold, refundType: refundType as any, refundValue, frequency: frequency as any, startsAt, endsAt, templateIds, providerGameKeys })
+            const {
+                name, lossThreshold, refundType, refundValue, frequency, startsAt, endsAt,
+                templateIds, providerGameKeys, maxPayoutPerPlayer, periodBudget, payoutTiming,
+                bonusValidityHours, isActive,
+            } = parsed.data
+            const promotion = await CashbackService.createPromotion({
+                name, lossThreshold, refundType: refundType as any, refundValue,
+                frequency: frequency as any, startsAt, endsAt, templateIds, providerGameKeys,
+                maxPayoutPerPlayer, periodBudget, payoutTiming: payoutTiming as any,
+                bonusValidityHours, isActive,
+            })
             await writePromotionAudit(req, 'promotion.create', promotion.id, {
                 kind: PromoKind.CASHBACK,
                 ...auditSnapshot(promotion, CASHBACK_AUDIT_FIELDS),
@@ -1443,12 +1481,23 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Player detail: bonus grants panel ────────────────────────────────────
         f.get('/players/:id/bonus-grants', async (req: any, _reply) => {
-            const grants = await prisma.bonusGrant.findMany({
-                where: { userId: req.params.id },
-                orderBy: { createdAt: 'desc' },
-                include: { rule: { select: { name: true, type: true } } },
-            })
-            return grants.map((g) => ({
+            const [grants, expired] = await Promise.all([
+                prisma.bonusGrant.findMany({
+                    where: { userId: req.params.id },
+                    orderBy: { createdAt: 'desc' },
+                    include: { rule: { select: { name: true, type: true } } },
+                }),
+                // How much bonus this player lost to expiry cannot be read off
+                // the lots: expireForUser zeroes `remaining` as it sets EXPIRED,
+                // so summing it over expired lots is always 0. The BONUS_EXPIRED
+                // transaction sweepExpired writes alongside is the surviving
+                // record, and its amount IS the unused remainder.
+                prisma.transaction.aggregate({
+                    where: { userId: req.params.id, type: TransactionType.BONUS_EXPIRED },
+                    _sum: { amount: true },
+                }),
+            ])
+            const rows = grants.map((g) => ({
                 id: g.id,
                 amount: Number(g.amount),
                 remaining: Number(g.remaining),
@@ -1462,6 +1511,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 ruleType: g.rule?.type ?? null,
                 createdAt: g.createdAt,
             }))
+            return { grants: rows, expiredUnused: Number(expired._sum.amount ?? 0) }
         })
 
         // Rescuing one lot whose deadline is about to pass (or has, while a

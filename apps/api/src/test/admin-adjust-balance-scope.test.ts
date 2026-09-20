@@ -161,4 +161,67 @@ describe('POST /admin/players/:id/adjust-balance — admin scope + audit trail',
         // 999 would overstate what the admin actually took.
         expect(audit.detail).toMatchObject({ type: 'bonus', requestedAmount: -999, appliedDelta: -30 })
     })
+
+    it('refuses an adjustment past the cap, in either direction, and moves no money', async () => {
+        // The scope move and the audit row both landed; neither stops a mistyped
+        // digit. An admin who means 100000 and types 1000000 moves ten times the
+        // money and the audit row only records it afterwards.
+        const player = await mk('PLAYER', 100)
+        const admin = await mk('ADMIN')
+        const app = await buildApp({ id: admin.id, role: 'ADMIN' })
+
+        for (const amount of [100_001, -100_001]) {
+            const res = await app.inject({
+                method: 'POST',
+                url: `/admin/players/${player.id}/adjust-balance`,
+                payload: { type: 'real', amount, note: 'fat finger' },
+            })
+            expect(res.statusCode).toBe(400)
+        }
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: player.id } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(100)
+        expect(await auditRowsFor(player.id)).toHaveLength(0)
+
+        // The boundary itself is allowed: the cap is a ceiling, not an exclusion.
+        const ok = await app.inject({
+            method: 'POST',
+            url: `/admin/players/${player.id}/adjust-balance`,
+            payload: { type: 'real', amount: 100_000, note: 'large but deliberate' },
+        })
+        expect(ok.statusCode).toBe(200)
+    })
+
+    it('reports bonus lost to expiry, which cannot be read off the lots', async () => {
+        // expireForUser zeroes `remaining` as it sets EXPIRED, so summing
+        // remaining over expired lots is always 0 — the panel's "expired unused"
+        // stat was structurally dead. The BONUS_EXPIRED transaction is the
+        // surviving record, and its amount IS the unused remainder.
+        const player = await mk('PLAYER', 0, 0)
+        const admin = await mk('ADMIN')
+        const app = await buildApp({ id: admin.id, role: 'ADMIN' })
+
+        await prisma.bonusGrant.create({
+            data: {
+                userId: player.id, amount: 500, remaining: 0, periodStart: new Date(),
+                status: 'EXPIRED', source: 'CASHBACK',
+            },
+        })
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: TransactionType.BONUS_EXPIRED, amount: 500,
+                status: 'APPROVED', balanceBefore: 0, balanceAfter: 0,
+                bonusBalanceBefore: 500, bonusBalanceAfter: 0,
+            },
+        })
+
+        const res = await app.inject({ method: 'GET', url: `/admin/players/${player.id}/bonus-grants` })
+
+        expect(res.statusCode).toBe(200)
+        const body = res.json()
+        expect(body.expiredUnused).toBe(500)
+        // Provenance still rides along per lot, or every row reads as a manual grant.
+        expect(body.grants).toHaveLength(1)
+        expect(body.grants[0]).toMatchObject({ status: 'EXPIRED', source: 'CASHBACK', remaining: 0 })
+    })
 })

@@ -2,11 +2,12 @@
 import type { PromotionProgressDto, PublicPromotionDto } from '@world-bingo/shared-types'
 import { useAuthStore } from '~/store/auth'
 import { usePromotionsStore } from '~/store/promotions'
+import { expiresTonight } from '~/utils/bonus-expiry'
 
 const auth = useAuthStore()
 const promos = usePromotionsStore()
 const router = useRouter()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 // Redirect unauthenticated users
 onMounted(async () => {
@@ -77,6 +78,14 @@ async function setSpendAccount(account: 'REAL' | 'BONUS') {
   }
 }
 
+/** Every amount on this page, so the same money never reads two ways. */
+function formatMoney(value: number | string): string {
+  return Number(value).toLocaleString('en-ET', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 // ── Active bonus grants ─────────────────────────────────────────────
 /** One lot as `/wallet/bonus-grants` answers it. `source` is newer than the route. */
 interface BonusGrantRow {
@@ -120,22 +129,35 @@ async function fetchBonusGrants() {
   }
 }
 
-const BONUS_SOURCE_CHIPS: Record<string, { label: string; tone: string }> = {
-  CASHBACK: { label: 'Cashback', tone: 'cyan' },
-  FIRST_DEPOSIT: { label: 'Welcome', tone: 'emerald' },
-  DAILY_DEPOSIT: { label: 'Deposit Bonus', tone: 'amber' },
-  WEEKLY_DEPOSIT: { label: 'Deposit Bonus', tone: 'amber' },
-  CAMPAIGN: { label: 'Campaign', tone: 'violet' },
-  ADMIN: { label: 'Goodwill', tone: 'slate' },
-  REFUND: { label: 'Refund', tone: 'slate' },
+/**
+ * One tone per source, keyed by the BonusSource values the route sends. The
+ * words live at `wallet.bonusSource.<source>` under that same key, so a source
+ * can never arrive with a colour but no label of its own.
+ */
+const BONUS_SOURCE_TONES: Record<string, string> = {
+  CASHBACK: 'cyan',
+  FIRST_DEPOSIT: 'emerald',
+  DAILY_DEPOSIT: 'amber',
+  WEEKLY_DEPOSIT: 'amber',
+  CAMPAIGN: 'violet',
+  ADMIN: 'slate',
+  REFUND: 'slate',
 }
 
 /**
- * Where a lot came from, as the player should read it. An API that predates
- * `source` sends none, so the fallback has to be a chip that is still true.
+ * Where a lot came from, as the player should read it. `source` is NOT NULL in
+ * the schema, so a lot without one can only have come from an API build older
+ * than the field — naming no provenance beats guessing one, and 'Goodwill' on a
+ * cashback lot is a guess. That bare noun has no key yet, so it ships English
+ * `wallet.bonusGeneric` names no provenance rather than guessing one: 'Goodwill'
+ * on a legacy cashback lot would be a lie.
  */
 function sourceChip(source: string | null | undefined): { label: string; tone: string } {
-  return BONUS_SOURCE_CHIPS[source ?? ''] ?? { label: 'Bonus', tone: 'slate' }
+  const tone = source ? BONUS_SOURCE_TONES[source] : undefined
+  if (!tone) {
+    return { label: t('wallet.bonusGeneric'), tone: 'slate' }
+  }
+  return { label: t(`wallet.bonusSource.${source}`), tone }
 }
 
 function formatDuration(ms: number): string {
@@ -176,7 +198,6 @@ const bonusLots = computed(() =>
   }),
 )
 
-// The route orders lots by expiry, so the first one here is the soonest to die.
 const expiringLots = computed(() =>
   bonusLots.value.filter((lot) => lot.msLeft !== null && lot.msLeft <= NUDGE_MS),
 )
@@ -188,18 +209,24 @@ const showSwitchNudge = computed(
 const expiringTotal = computed(() =>
   expiringLots.value.reduce((sum, lot) => sum + Number(lot.remaining), 0),
 )
-const expiringIn = computed(() => {
-  const soonest = expiringLots.value[0]
-  return soonest?.msLeft != null ? formatDuration(soonest.msLeft) : ''
-})
+// NUDGE_MS is a whole day wide, so "tonight" is only sometimes true. The soonest
+// deadline decides the wording, through the same `expiresTonight` the lobby bar
+// uses — the two surfaces describe one lot the same way or they look broken.
+const expiringSoonest = computed(() =>
+  expiringLots.value.reduce<number | null>((soonest, lot) => {
+    const at = lot.msLeft === null ? null : now.value + lot.msLeft
+    if (at === null) return soonest
+    return soonest === null || at < soonest ? at : soonest
+  }, null),
+)
+const expiryNudgeKey = computed(() =>
+  expiringSoonest.value === null || expiresTonight(expiringSoonest.value, now.value)
+    ? 'wallet.bonusExpiryNudge'
+    : 'wallet.bonusExpiryNudgeWithinDay',
+)
 
 // ── Earn more — progress toward the live promotions ──────────────────
-const PROMO_KIND_LABELS: Record<string, string> = {
-  CASHBACK: 'Cashback',
-  DEPOSIT_RULE: 'Deposit',
-  WELCOME: 'Welcome',
-  REFERRAL: 'Referral',
-}
+
 
 /**
  * Only offers this player is part-way through. An empty bar says less than the
@@ -214,38 +241,45 @@ const earnMore = computed(() =>
     ),
 )
 
+/** Falls back to the raw enum value, which is at least not a key path. */
 function promoKindLabel(kind: string): string {
-  return PROMO_KIND_LABELS[kind] ?? kind
+  const key = `promo.kind.${kind}`
+  return te(key) ? t(key) : kind
 }
 
-/** Progress figures are read at a glance, so they drop the cents. */
+/**
+ * The precision the API itself prints, because `progress.hint` lands right under
+ * these figures: rounding to whole ETB put a bar reading '5,000 / 5,000' above
+ * the API's own '0.4 ETB to go'. Trailing zeros still go, so 5000 reads '5,000'.
+ */
 function formatFigure(value: number): string {
-  return Number(value).toLocaleString('en-ET', { maximumFractionDigits: 0 })
+  return Number(value).toLocaleString('en-ET', { maximumFractionDigits: 2 })
 }
 
+/**
+ * Clamped at BOTH ends. `current` is signed — the cashback net-loss query
+ * credits wins as negatives — so a player up on the period gives a negative
+ * percentage, and the browser drops a negative `width` outright; with none
+ * declared in the CSS the fill then spanned its whole parent, drawing the
+ * emptiest bar as the fullest. PromoTile clamps the same figure the same way.
+ */
 function progressPct(progress: PromotionProgressDto): number {
   if (!(progress.target > 0)) return 0
-  return Math.min(100, Math.round((progress.current / progress.target) * 100))
+  return Math.max(0, Math.min(100, Math.round((progress.current / progress.target) * 100)))
 }
 
 function remainingToGo(progress: PromotionProgressDto): string {
-  return `${formatFigure(Math.max(0, progress.target - progress.current))} ETB to go`
+  const remaining = Math.max(0, progress.target - progress.current)
+  return t('wallet.bonusToGo', { amount: `${formatFigure(remaining)} ETB` })
 }
 
-const formattedRealBalance = computed(() => {
-  const bal = Number(auth.wallet?.realBalance ?? 0)
-  return bal.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-})
+const formattedRealBalance = computed(() => formatMoney(auth.wallet?.realBalance ?? 0))
 
-const formattedBonusBalance = computed(() => {
-  const bal = Number(auth.wallet?.bonusBalance ?? 0)
-  return bal.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-})
+const formattedBonusBalance = computed(() => formatMoney(auth.wallet?.bonusBalance ?? 0))
 
-const formattedTotalBalance = computed(() => {
-  const total = Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0)
-  return total.toLocaleString('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-})
+const formattedTotalBalance = computed(() =>
+  formatMoney(Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0)),
+)
 
 async function refreshBalance() {
   refreshing.value = true
@@ -459,10 +493,7 @@ function formatRelativeTime(dateStr: string): string {
             <path stroke-linecap="round" d="M12 11v5" />
             <path stroke-linecap="round" d="M12 8h.01" />
           </svg>
-          <p class="bonus-explainer-text">
-            Bonus money plays like cash but can't be withdrawn. Anything you win with it lands in
-            your withdrawable balance.
-          </p>
+          <p class="bonus-explainer-text">{{ t('wallet.bonusExplainer') }}</p>
         </div>
 
         <p v-if="confirmingDeposit" class="deposit-confirming">
@@ -489,8 +520,15 @@ function formatRelativeTime(dateStr: string): string {
       <!-- ── My Bonuses ───────────────────────────────────────────── -->
       <div v-if="bonusLots.length" class="section">
         <div class="section-header">
-          <span class="section-title">My Bonuses</span>
-          <NuxtLink to="/transactions" class="section-link bonus-history-link">History →</NuxtLink>
+          <span class="section-title">{{ t('wallet.myBonuses') }}</span>
+          <!-- 'History' alone does not say which history it is out of context. -->
+          <NuxtLink
+            to="/transactions"
+            class="section-link bonus-history-link"
+            :aria-label="t('wallet.bonusHistory')"
+          >
+            {{ t('wallet.history') }} →
+          </NuxtLink>
         </div>
 
         <div class="tx-card">
@@ -518,7 +556,7 @@ function formatRelativeTime(dateStr: string): string {
                 </div>
               </div>
 
-              <span class="lot-amount">{{ Number(lot.remaining).toFixed(2) }} ETB</span>
+              <span class="lot-amount">{{ formatMoney(lot.remaining) }} ETB</span>
             </div>
 
             <div
@@ -545,8 +583,7 @@ function formatRelativeTime(dateStr: string): string {
               <path stroke-linecap="round" d="M12 17h.01" />
             </svg>
             <p class="nudge-text">
-              {{ expiringTotal.toFixed(2) }} ETB expires in {{ expiringIn }}. Switch to
-              <strong>{{ t('wallet.spendAccountBonus') }}</strong> to use it first.
+              {{ t(expiryNudgeKey, { amount: `${formatMoney(expiringTotal)} ${t('common.etb')}` }) }}
             </p>
             <button
               type="button"
@@ -554,7 +591,7 @@ function formatRelativeTime(dateStr: string): string {
               :disabled="togglingAccount"
               @click="setSpendAccount('BONUS')"
             >
-              Switch
+              {{ t('wallet.switchToBonus') }}
             </button>
           </div>
         </div>
@@ -563,8 +600,10 @@ function formatRelativeTime(dateStr: string): string {
       <!-- ── Earn More ────────────────────────────────────────────── -->
       <div v-if="earnMore.length" class="section">
         <div class="section-header">
-          <span class="section-title">Earn More</span>
-          <NuxtLink to="/promotions" class="section-link bonus-history-link">All offers →</NuxtLink>
+          <span class="section-title">{{ t('wallet.earnMore') }}</span>
+          <NuxtLink to="/promotions" class="section-link bonus-history-link">
+            {{ t('promo.all_promotions') }} →
+          </NuxtLink>
         </div>
 
         <div class="earn-list">
@@ -604,7 +643,10 @@ function formatRelativeTime(dateStr: string): string {
 
             <div class="earn-foot">
               <div class="earn-foot-text">
-                <span class="earn-togo">{{ remainingToGo(row.progress) }}</span>
+                <!-- The hint opens with the same figure, so it says it once. -->
+                <span v-if="!row.progress.hint" class="earn-togo">
+                  {{ remainingToGo(row.progress) }}
+                </span>
                 <span v-if="row.progress.hint" class="earn-hint">
                   <svg class="earn-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
                     <circle cx="12" cy="12" r="9" />
@@ -619,7 +661,7 @@ function formatRelativeTime(dateStr: string): string {
                 class="earn-btn"
                 @click="showDeposit = true"
               >
-                Deposit
+                {{ t('wallet.deposit') }}
               </button>
             </div>
           </div>
@@ -1247,10 +1289,6 @@ function formatRelativeTime(dateStr: string): string {
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-secondary);
-}
-.nudge-text strong {
-  font-weight: 700;
-  color: var(--text-primary);
 }
 .nudge-btn {
   flex-shrink: 0;

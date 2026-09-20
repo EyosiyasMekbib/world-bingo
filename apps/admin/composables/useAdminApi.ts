@@ -140,6 +140,16 @@ export type PlayerBonusGrant = {
     createdAt: string
 }
 
+/**
+ * The lots plus the one figure that cannot be summed from them: the expiry
+ * sweep zeroes a lot's `remaining` as it marks it EXPIRED, so the API derives
+ * `expiredUnused` from the player's BONUS_EXPIRED transactions instead.
+ */
+export type PlayerBonusGrantsPayload = {
+    grants: PlayerBonusGrant[]
+    expiredUnused: number
+}
+
 export const useAdminApi = () => {
     const { apiFetch } = useAdminAuth()
 
@@ -577,7 +587,7 @@ export const useAdminApi = () => {
         adjustPlayerBalance: (id: string, data: { type: 'real' | 'bonus'; amount: number; note: string }) =>
             apiFetch(`/admin/players/${id}/adjust-balance`, { method: 'POST', body: data }),
         getPlayerBonusGrants: (id: string) =>
-            apiFetch<PlayerBonusGrant[]>(`/admin/players/${id}/bonus-grants`),
+            apiFetch<PlayerBonusGrantsPayload>(`/admin/players/${id}/bonus-grants`),
 
         // ── Account status ────────────────────────────────────────────────
         // restrict is clerk-accessible; suspend and reinstate are ADMIN-only and
@@ -641,13 +651,25 @@ export const useAdminApi = () => {
             endsAt: string
             templateIds?: string[]
             providerGameKeys?: string[]
-        }) => apiFetch('/admin/cashback', { method: 'POST', body: data }),
+            // A promotion has to be creatable complete. These five were once
+            // PATCH-only, which made duplicating one a two-step that the closed-
+            // window guard could refuse halfway — leaving a live, uncapped copy
+            // behind an error toast. `isActive: false` is what lets a copy exist
+            // without being able to pay anyone first.
+            maxPayoutPerPlayer?: number | null
+            periodBudget?: number | null
+            payoutTiming?: 'PERIOD_CLOSE' | 'ON_THRESHOLD'
+            bonusValidityHours?: number
+            isActive?: boolean
+        }) => apiFetch<CashbackPromotionDetail>('/admin/cashback', { method: 'POST', body: data }),
         toggleCashbackPromotion: (id: string, isActive: boolean) =>
             apiFetch(`/admin/cashback/${id}/toggle`, { method: 'PATCH', body: { isActive } }),
         updateCashbackPromotion: (id: string, patch: CashbackPromotionPatch) =>
             apiFetch<CashbackPromotionDetail>(`/admin/cashback/${id}`, { method: 'PATCH', body: patch }),
-        // Ending is not pausing: it closes the window *and* clears isActive, so
-        // no period that opens later can ever settle. There is no undo.
+        // Ending moves `endsAt` to now and deliberately leaves isActive ALONE, so
+        // the window it was ended inside still settles at its close — that play is
+        // already earned, and clearing isActive would strand it (runChecks filters
+        // on isActive). Only periods that open later are lost. There is no undo.
         endCashbackPromotion: (id: string) =>
             apiFetch<CashbackPromotionDetail>(`/admin/cashback/${id}/end`, { method: 'POST' }),
 

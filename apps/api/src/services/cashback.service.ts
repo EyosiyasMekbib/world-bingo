@@ -116,6 +116,7 @@ export class CashbackService {
         periodBudget?: number | null
         payoutTiming?: CashbackPayoutTiming
         bonusValidityHours?: number
+        isActive?: boolean
     }) {
         return prisma.cashbackPromotion.create({
             data: {
@@ -136,6 +137,9 @@ export class CashbackService {
                 periodBudget: data.periodBudget ?? null,
                 ...(data.payoutTiming ? { payoutTiming: data.payoutTiming } : {}),
                 ...(data.bonusValidityHours != null ? { bonusValidityHours: data.bonusValidityHours } : {}),
+                // Same reason as the two above: the column defaults to true, and
+                // an omitted field should mean "as the schema says", not false.
+                ...(data.isActive != null ? { isActive: data.isActive } : {}),
             },
         })
     }

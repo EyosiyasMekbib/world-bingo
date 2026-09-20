@@ -11,14 +11,14 @@ import type {
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
+const api = useAdminApi()
 const {
   getCashbackDetail,
   getCashbackQualifiers,
   updateCashbackPromotion,
   toggleCashbackPromotion,
   endCashbackPromotion,
-  createCashbackPromotion,
-} = useAdminApi()
+} = api
 const toast = useToast()
 
 const id = route.params.id as string
@@ -38,9 +38,15 @@ const showEdit = ref(false)
 const showEndConfirm = ref(false)
 
 // ── Formatting ─────────────────────────────────────────────────────────────
-// Periods are UTC instants; every label has to be read back in Addis time or a
-// Mon-Sun week renders as Sunday-Saturday for anyone west of UTC+3.
+// Two clocks, deliberately. getCurrentPeriod in
+// apps/api/src/services/cashback.service.ts cuts every period in UTC, so a
+// boundary read in Addis time names a day the disburser does not agree with: a
+// UTC Mon–Sun week renders Mon–Mon, eight days long, closing a day late. The
+// promotion's own window and the activity stamps are instants an admin picked on
+// their own clock, so those stay in Addis — and a label carrying a UTC boundary
+// says which clock it is on, because it is not the one on the wall.
 const ADDIS = 'Africa/Addis_Ababa'
+const PERIOD_ZONE = 'UTC'
 
 const money = (v: number, dp = 2) =>
   v.toLocaleString('en-ET', { minimumFractionDigits: dp, maximumFractionDigits: dp })
@@ -53,12 +59,16 @@ const dayLabel = (iso: string) =>
 const dayYearLabel = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { timeZone: ADDIS, month: 'short', day: 'numeric', year: 'numeric' })
 
+/** For period boundaries only — the promotion's own window is not one. */
+const periodDayLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { timeZone: PERIOD_ZONE, month: 'short', day: 'numeric' })
+
 // `periodEnd` may be the exclusive next-period boundary or the last instant
 // inside the period, and the API is free to change its mind. Stepping back a
 // millisecond lands on the closing day under either convention.
 const lastInstant = (iso: string) => new Date(new Date(iso).getTime() - 1).toISOString()
 
-const periodLabel = (start: string, end: string) => `${dayLabel(start)} – ${dayLabel(lastInstant(end))}`
+const periodLabel = (start: string, end: string) => `${periodDayLabel(start)} – ${periodDayLabel(lastInstant(end))}`
 
 // ── Load ───────────────────────────────────────────────────────────────────
 async function load() {
@@ -141,13 +151,13 @@ const closesAtLabel = computed(() => {
   if (!qualifiers.value) return 'Open period unknown'
   const at = new Date(lastInstant(qualifiers.value.periodEnd))
   const stamp = at.toLocaleString('en-GB', {
-    timeZone: ADDIS,
+    timeZone: PERIOD_ZONE,
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   })
-  return `Period closes ${stamp}`
+  return `Period closes ${stamp} UTC`
 })
 
 const periodBudget = computed(() => {
@@ -233,11 +243,11 @@ const refundLabel = computed(() => {
 const frequencyLabel = computed(() => {
   switch (promotion.value?.frequency) {
     case 'DAILY':
-      return 'Daily · midnight to midnight'
+      return 'Daily · UTC midnight to midnight'
     case 'MONTHLY':
-      return 'Monthly · 1st to last'
+      return 'Monthly · 1st to last, UTC'
     default:
-      return 'Weekly · Mon–Sun'
+      return 'Weekly · Mon–Sun, UTC'
   }
 })
 
@@ -325,7 +335,7 @@ const form = reactive({
   refundValue: 0,
   maxPayoutPerPlayer: '' as string,
   periodBudget: '' as string,
-  bonusValidityHours: 0,
+  bonusValidityHours: 0 as number | '',
   endsAt: '',
 })
 
@@ -358,6 +368,21 @@ const optionalMoney = (raw: string): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Both cap columns take a positive number or null, so 0 is not a cap — yet it is
+ * the obvious way to write "no cap", and a number field invites it. The route
+ * answers "Number must be greater than 0" without ever mentioning the gesture
+ * that does work, so the field is checked here and the gesture named.
+ */
+const capProblem = (label: string, raw: string): string | null => {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return `${label} must be a number. Clear the field for no cap.`
+  if (n <= 0) return `${label} must be more than 0. Clear the field for no cap.`
+  return null
+}
+
 async function saveEdit() {
   const p = promotion.value
   if (!p) return
@@ -366,11 +391,39 @@ async function saveEdit() {
     return
   }
 
+  const capIssue =
+    capProblem('Max payout per player', form.maxPayoutPerPlayer) ??
+    capProblem('Budget per period', form.periodBudget)
+  if (capIssue) {
+    toast.add({ title: 'Nothing saved', description: capIssue, color: 'error' })
+    return
+  }
+
+  // v-model.number leaves '' in the model when the field is emptied, and the
+  // route coerces '' to 0 — which checkAndDisburse reads as "no expiry", making
+  // every bonus this promotion pays permanent. Emptying a field is not that
+  // decision, so a number is required; 0 typed on purpose still means no expiry.
+  const validityHours = Number(form.bonusValidityHours)
+  if (
+    form.bonusValidityHours === '' ||
+    !Number.isInteger(validityHours) ||
+    validityHours < 0 ||
+    validityHours > 24 * 90
+  ) {
+    toast.add({
+      title: 'Nothing saved',
+      description:
+        'Bonus validity must be a whole number of hours, 0 to 2160. An empty field would be stored as 0, which is "never expires".',
+      color: 'error',
+    })
+    return
+  }
+
   const patch: CashbackPromotionPatch = {}
   if (form.name.trim() !== p.name) patch.name = form.name.trim()
   if (form.lossThreshold !== Number(p.lossThreshold)) patch.lossThreshold = form.lossThreshold
   if (form.refundValue !== Number(p.refundValue)) patch.refundValue = form.refundValue
-  if (form.bonusValidityHours !== p.bonusValidityHours) patch.bonusValidityHours = form.bonusValidityHours
+  if (validityHours !== p.bonusValidityHours) patch.bonusValidityHours = validityHours
 
   const nextMax = optionalMoney(form.maxPayoutPerPlayer)
   if (nextMax !== maxPerPlayer.value) patch.maxPayoutPerPlayer = nextMax
@@ -418,11 +471,21 @@ async function togglePause() {
   }
 }
 
+// POST /admin/cashback/:id/end moves endsAt to this instant and deliberately
+// leaves isActive alone, so a PERIOD_CLOSE promotion still settles the window it
+// was ended inside — with the loss clamped at endsAt. Only the periods that open
+// after it are lost. ON_THRESHOLD stops dead on its own `endsAt < now` guard.
 async function endNow() {
   busy.value = true
   try {
     await endCashbackPromotion(id)
-    toast.add({ title: 'Promotion ended', description: 'No further period will settle.', color: 'success' })
+    toast.add({
+      title: 'Promotion ended',
+      description: paysAtClose.value
+        ? 'Nothing accrues past this instant. The period in progress still settles at its close.'
+        : 'Nothing further is paid.',
+      color: 'success',
+    })
     showEndConfirm.value = false
     await load()
   } catch (err: any) {
@@ -432,38 +495,76 @@ async function endNow() {
   }
 }
 
+/**
+ * A copy has to be safe before it exists, so it is created complete and paused in
+ * a single write. POST /admin/cashback takes the caps, the budget, the validity,
+ * the payout timing and `isActive` — which the column defaults to true — so there
+ * is no follow-up PATCH to be refused with a 409 and no instant in which the copy
+ * is live with no cap and no budget.
+ *
+ * The window starts at this instant rather than inheriting the original's past
+ * start, which is the other half of the danger and outlives the pause. A copy
+ * carrying that start is due for a window that has already closed, and the
+ * disbursement key is (promotionId, userId, periodStart) — so the first run after
+ * an admin enables it pays every qualifier a second time for a period the
+ * original already settled. Starting now leaves the copy able to settle only
+ * windows that opened after it did, which is the rule runChecks applies to every
+ * other new promotion.
+ */
 async function duplicate() {
   const p = promotion.value
   if (!p) return
+
+  // Create insists on startsAt < endsAt, and the end date cannot be pushed out
+  // afterwards either — the PATCH refuses an endsAt in the past. A lapsed
+  // original has no window a copy could start in, and inventing one would be
+  // guessing at the offer.
+  if (new Date(p.endsAt).getTime() <= Date.now()) {
+    toast.add({
+      title: 'Nothing to copy into',
+      description:
+        'This window has already closed, and a copy has to start inside one. Build it from New Promotion, where both dates are yours to set.',
+      color: 'error',
+    })
+    return
+  }
+
   busy.value = true
   try {
-    const created = (await createCashbackPromotion({
+    const created = await api.createCashbackPromotion({
       name: `${p.name} (copy)`,
       lossThreshold: Number(p.lossThreshold),
       refundType: p.refundType,
       refundValue: Number(p.refundValue),
       frequency: p.frequency,
-      startsAt: p.startsAt,
+      startsAt: new Date().toISOString(),
       endsAt: p.endsAt,
       templateIds: p.templateIds,
       providerGameKeys: p.providerGameKeys,
-    })) as { id?: string } | null
+      maxPayoutPerPlayer: maxPerPlayer.value,
+      periodBudget: periodBudget.value,
+      payoutTiming: p.payoutTiming,
+      bonusValidityHours: p.bonusValidityHours,
+      isActive: false,
+    })
 
-    // Create does not take the caps or the validity window, so the copy is only
-    // a real copy after this second call. It lands paused either way, so a
-    // half-copied promotion cannot pay anyone.
-    if (created?.id) {
-      await updateCashbackPromotion(created.id, {
-        maxPayoutPerPlayer: maxPerPlayer.value,
-        periodBudget: periodBudget.value,
-        bonusValidityHours: p.bonusValidityHours,
-      })
-    }
-
-    toast.add({ title: 'Duplicated', description: 'The copy is inactive until you enable it.', color: 'success' })
+    toast.add({
+      title: 'Duplicated',
+      description:
+        'The copy is paused, with the caps, budget and validity carried across. Its window starts now — enable it when you are ready.',
+      color: 'success',
+    })
+    // A copy the route did not name is still paused and still in the list, so
+    // the only thing lost is the jump to it.
     if (created?.id) await navigateTo(`/promotions/${created.id}`)
   } catch (err: any) {
-    toast.add({ title: 'Failed to duplicate', description: err?.data?.error ?? '', color: 'error' })
+    // One write, so there is no half-made copy to warn about: anything that did
+    // land is paused.
+    toast.add({
+      title: 'Failed to duplicate',
+      description: err?.data?.error ?? err?.message ?? 'No copy was made.',
+      color: 'error',
+    })
   } finally {
     busy.value = false
   }
@@ -548,7 +649,7 @@ function exportCsv() {
           <p class="mt-1 text-[13.5px] text-white/60">
             {{ promotion.rewardSummary }} ·
             {{ paysAtClose ? 'pays at period close' : 'pays on threshold' }} ·
-            Africa/Addis_Ababa
+            periods cut in UTC
           </p>
         </div>
 
@@ -655,7 +756,10 @@ function exportCsv() {
             <span class="cv">{{ paysAtClose ? 'At period close' : 'On threshold' }}</span>
           </div>
           <div class="cfg"><span class="ck">Frequency</span><span class="cv">{{ frequencyLabel }}</span></div>
-          <div class="cfg"><span class="ck">Time zone</span><span class="cv">Africa/Addis_Ababa (UTC+3)</span></div>
+          <div class="cfg">
+            <span class="ck">Clocks</span>
+            <span class="cv">Periods cut in UTC · window and activity in Addis (UTC+3)</span>
+          </div>
           <div class="cfg"><span class="ck">Game scope</span><span class="cv">{{ scopeLabel }}</span></div>
           <div class="cfg"><span class="ck">Audience</span><span class="cv">All players</span></div>
           <div class="cfg"><span class="ck">Bonus validity</span><span class="cv">{{ validityLabel }}</span></div>
@@ -719,7 +823,7 @@ function exportCsv() {
 
           <template v-if="qualifiers">
             <p class="text-[12.5px] text-white/60">
-              Open period {{ periodLabel(qualifiers.periodStart, qualifiers.periodEnd) }}
+              Open period {{ periodLabel(qualifiers.periodStart, qualifiers.periodEnd) }} (UTC)
             </p>
 
             <div class="grid grid-cols-3 gap-2.5">
@@ -800,7 +904,7 @@ function exportCsv() {
           <table v-if="periodRows.length" class="admin-table">
             <thead>
               <tr>
-                <th>Period</th>
+                <th>Period (UTC)</th>
                 <th class="num">Payouts</th>
                 <th class="num">Total</th>
                 <th class="num">Average</th>
@@ -891,14 +995,20 @@ function exportCsv() {
           >
             <UInput v-model.number="form.refundValue" type="number" min="0.01" class="w-full" />
           </UFormField>
-          <UFormField label="Max payout per player (ETB)" help="Leave empty for no per-player cap.">
-            <UInput v-model="form.maxPayoutPerPlayer" type="number" min="0" placeholder="Unlimited" class="w-full" />
+          <UFormField
+            label="Max payout per player (ETB)"
+            help="Leave empty for no per-player cap. 0 is not a cap."
+          >
+            <UInput v-model="form.maxPayoutPerPlayer" type="number" min="0.01" step="0.01" placeholder="Unlimited" class="w-full" />
           </UFormField>
-          <UFormField label="Budget per period (ETB)" help="Disbursement stops once a close reaches this.">
-            <UInput v-model="form.periodBudget" type="number" min="0" placeholder="Unlimited" class="w-full" />
+          <UFormField
+            label="Budget per period (ETB)"
+            help="Disbursement stops once a close reaches this. Leave empty for no budget."
+          >
+            <UInput v-model="form.periodBudget" type="number" min="0.01" step="0.01" placeholder="Unlimited" class="w-full" />
           </UFormField>
-          <UFormField label="Bonus validity (hours)">
-            <UInput v-model.number="form.bonusValidityHours" type="number" min="1" class="w-full" />
+          <UFormField label="Bonus validity (hours)" help="0 means the payout never expires.">
+            <UInput v-model.number="form.bonusValidityHours" type="number" min="0" max="2160" class="w-full" />
           </UFormField>
           <UFormField label="Window end">
             <UInput v-model="form.endsAt" type="datetime-local" class="w-full" />
@@ -917,18 +1027,30 @@ function exportCsv() {
       </template>
     </UModal>
 
-    <!-- End now: irreversible, so it is confirmed rather than undone. -->
+    <!-- End now: irreversible — endsAt moves to this instant and the route will
+         not move it back, so it is confirmed rather than undone. It does not
+         deactivate: the window in progress still owes its settlement. -->
     <UModal v-model:open="showEndConfirm" title="End this promotion?" :ui="{ content: 'max-w-md' }">
       <template #body>
         <div class="space-y-3 text-sm text-white/80">
           <p class="m-0">
-            Ending closes the window and deactivates <strong class="text-white">{{ promotion?.name }}</strong>.
-            No period that opens after this settles, and there is no undo.
+            Ending moves <strong class="text-white">{{ promotion?.name }}</strong>'s window end to this
+            instant. Nothing played after now accrues, no period opening later can ever settle, and there
+            is no undo.
           </p>
-          <p v-if="qualifiers && qualifiers.players > 0" class="m-0 text-amber-400">
-            {{ whole(qualifiers.players) }} player{{ qualifiers.players === 1 ? '' : 's' }} currently
-            projected for {{ whole(projected) }} ETB will not be paid.
-          </p>
+          <template v-if="qualifiers && qualifiers.players > 0">
+            <p v-if="paysAtClose" class="m-0 text-amber-400">
+              It does not cancel the {{ whole(projected) }} ETB projected for
+              {{ whole(qualifiers.players) }} player{{ qualifiers.players === 1 ? '' : 's' }}: that play is
+              already earned, so it settles at the next period close — while this page already reads
+              Ended. After that close the promotion never pays again.
+            </p>
+            <p v-else class="m-0 text-amber-400">
+              It pays as players cross the threshold, and that stops now: the {{ whole(projected) }} ETB
+              projected for {{ whole(qualifiers.players) }}
+              player{{ qualifiers.players === 1 ? '' : 's' }} is not paid.
+            </p>
+          </template>
           <p class="m-0 text-white/60">Pause instead if you only want to stop it temporarily.</p>
         </div>
       </template>
