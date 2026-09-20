@@ -1,26 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import Fastify from 'fastify'
-import jwt from '@fastify/jwt'
 import settingsRoutes from '../routes/settings'
 import { prisma } from './setup'
-import { jwtPrivateKey, jwtPublicKey } from '../lib/jwt-keys'
 
+/**
+ * The route under test is a public GET. `routes/settings` also carries admin
+ * routes whose `preValidation` reads `fastify.requireAdmin`, and a decorator
+ * referenced at registration has to exist even for a route no test calls — so
+ * it is stubbed, the convention the admin suites already follow.
+ *
+ * No JWT plugin. This suite used to register @fastify/jwt with the real RS256
+ * keypair from the environment; `lib/jwt-keys` returns an empty string for an
+ * unset var and @fastify/jwt rejects that at registration, so all three tests
+ * died on "missing public key" on any machine without JWT keys exported. It
+ * also decorated `authenticate`, which nothing in these routes reads — so even
+ * with keys present it would have failed on the missing `requireAdmin`. Both
+ * were dropped rather than propped up with a throwaway keypair: a public
+ * endpoint's test should not need one, and needing one was the bug.
+ */
 async function buildApp() {
   const app = Fastify()
-  await app.register(jwt, {
-    secret: {
-      private: jwtPrivateKey,
-      public: jwtPublicKey,
-    },
-    sign: { algorithm: 'RS256', expiresIn: '15m' },
-  })
-  app.decorate('authenticate', async function (request: any, reply: any) {
-    try {
-      await request.jwtVerify()
-    } catch (err) {
-      reply.send(err)
-    }
-  })
+  app.decorate('requireAdmin', async () => {})
   await app.register(settingsRoutes, { prefix: '/settings' })
   return app
 }
