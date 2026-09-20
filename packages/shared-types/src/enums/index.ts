@@ -60,8 +60,27 @@ export enum PaymentStatus {
 export enum UserRole {
     PLAYER = 'PLAYER',
     CLERK = 'CLERK',
+    AGENT = 'AGENT',
     ADMIN = 'ADMIN',
     SUPER_ADMIN = 'SUPER_ADMIN',
+}
+
+/** Movements in and out of a cash agent's prepaid float. Mirrors
+ *  AgentLedgerType in apps/api/prisma/schema.prisma - change both together. */
+export enum AgentLedgerType {
+    TOP_UP = 'TOP_UP',
+    COMMISSION = 'COMMISSION',
+    FULFILLMENT = 'FULFILLMENT',
+    ADJUSTMENT = 'ADJUSTMENT',
+}
+
+/** Lifecycle of a player's request to pay cash at an agent. Mirrors
+ *  AgentDepositRequestStatus in apps/api/prisma/schema.prisma - change both together. */
+export enum AgentDepositRequestStatus {
+    PENDING = 'PENDING',
+    FULFILLED = 'FULFILLED',
+    EXPIRED = 'EXPIRED',
+    CANCELLED = 'CANCELLED',
 }
 
 export enum PatternType {

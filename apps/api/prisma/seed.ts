@@ -147,6 +147,13 @@ async function main() {
         { key: 'ball_interval_secs', value: '3' },
         { key: 'first_deposit_bonus_amount', value: '0' },
         { key: 'bot_max_spend_etb', value: '500' },
+        // Cash agent network. agent_commission_rate is a PERCENT, not a
+        // fraction: '5' means the agent receives 5% of the cash they paid as
+        // extra float on top. A fraction here would be a silent 100x error.
+        { key: 'agent_commission_rate', value: '5' },
+        { key: 'agent_deposit_min', value: '50' },
+        { key: 'agent_deposit_max', value: '5000' },
+        { key: 'agent_code_ttl_seconds', value: '900' },
     ]
     for (const flag of defaultFlags) {
         await prisma.siteSetting.upsert({

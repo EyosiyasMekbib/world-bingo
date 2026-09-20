@@ -1,0 +1,323 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+/* Same palette as the admin back-office and the Arada Bingo player brand
+   (packages/ui/src/theme/brands/arada.ts): deep-navy surfaces, amber accent,
+   Barlow Condensed UI + Inter body. */
+:root {
+  --surface-base: #0a1628;
+  --surface-raised: #0d1f3c;
+  --surface-overlay: #122a4e;
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --surface-line: rgba(255, 255, 255, 0.06);
+
+  --brand-primary: #f5a623;
+  --brand-primary-dim: #c8851a;
+  --brand-glow: rgba(245, 166, 35, 0.09);
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  /* Deliberately lighter than the admin app's 0.4. These labels are 11px on a
+     navy surface and sit directly above money figures, where 0.4 fails WCAG
+     contrast and a misread column header costs cash across the counter. */
+  --text-muted: rgba(255, 255, 255, 0.55);
+
+  --positive: #34d399;
+  --positive-bg: rgba(52, 211, 153, 0.1);
+  --positive-border: rgba(52, 211, 153, 0.26);
+  --negative: #ef4444;
+  --negative-bg: rgba(239, 68, 68, 0.1);
+  --negative-border: rgba(239, 68, 68, 0.28);
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.08);
+  --warning-border: rgba(251, 191, 36, 0.28);
+
+  --font-ui: 'Barlow Condensed', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+html,
+body {
+  font-family: var(--font-body);
+  background: var(--surface-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* Headings & UI chrome use the condensed display face, like the home page. */
+h1,
+h2,
+h3,
+h4,
+.agent-table thead th,
+.status-tag {
+  font-family: var(--font-ui);
+}
+
+/* Anything that is a number a person reads off against cash. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Card ──────────────────────────────────────────────────────────────── */
+.agent-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+}
+
+.agent-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 0;
+}
+
+.agent-card__title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.agent-card__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Data table ────────────────────────────────────────────────────────── */
+.agent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.agent-table thead tr {
+  border-bottom: 1px solid var(--surface-border);
+}
+.agent-table thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.agent-table thead th.num {
+  text-align: right;
+}
+.agent-table tbody tr {
+  border-bottom: 1px solid var(--surface-line);
+  transition: background 0.1s ease;
+}
+.agent-table tbody tr:last-child {
+  border-bottom: none;
+}
+.agent-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.018);
+}
+.agent-table tbody td {
+  padding: 11px 16px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.agent-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.agent-table tbody td.code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+.agent-table tbody td.muted {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── Status tags ───────────────────────────────────────────────────────── */
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.status-tag--positive {
+  color: var(--positive);
+  background: var(--positive-bg);
+  border-color: var(--positive-border);
+}
+.status-tag--negative {
+  color: var(--negative);
+  background: var(--negative-bg);
+  border-color: var(--negative-border);
+}
+.status-tag--warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.status-tag--brand {
+  color: var(--brand-primary);
+  background: var(--brand-glow);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, transparent);
+}
+.status-tag--neutral {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--surface-border);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+
+.btn--primary {
+  background: var(--brand-primary);
+  color: #0a1628;
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--brand-primary-dim);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--surface-border);
+  color: var(--text-secondary);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* ── Field ─────────────────────────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.field-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  outline: none;
+  -webkit-appearance: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.field-input::placeholder {
+  color: var(--text-muted);
+}
+.field-input:focus {
+  border-color: color-mix(in srgb, var(--brand-primary) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 11%, transparent);
+}
+.field-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+/* ── Nuxt UI form input overrides ──────────────────────────────────────── */
+/* Nuxt UI v3 defaults to near-black input backgrounds in dark mode.
+   Override to match the navy brand surface palette. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+select,
+textarea {
+  background-color: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}

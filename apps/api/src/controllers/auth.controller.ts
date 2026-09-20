@@ -36,6 +36,24 @@ export class AuthController {
         return { user, accessToken, refreshToken }
     }
 
+    /**
+     * Sign-in for the cash agent app. Deliberately its own gate rather than a
+     * widened adminLogin: an agent holds float and fulfils deposit codes, and
+     * must never reach the admin back office.
+     */
+    static async agentLogin(request: FastifyRequest<{ Body: LoginDto }>, reply: FastifyReply) {
+        const { user, refreshToken } = await AuthService.login(request.body)
+        if (user.role !== 'AGENT') {
+            reply.status(403).send({ error: 'Access denied' })
+            return
+        }
+        const accessToken = await reply.jwtSign(
+            { id: user.id, role: user.role },
+            { expiresIn: '15m' }
+        )
+        return { user, accessToken, refreshToken }
+    }
+
     static async refresh(request: FastifyRequest<{ Body: RefreshTokenDto }>, reply: FastifyReply) {
         const { user, refreshToken } = await AuthService.refreshToken(request.body.refreshToken)
         const accessToken = await reply.jwtSign(

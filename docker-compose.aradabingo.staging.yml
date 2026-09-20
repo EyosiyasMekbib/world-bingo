@@ -163,6 +163,28 @@ services:
       - internal
       - dokploy-network
 
+  # Cash agent app. Renders client-side and keeps its token in localStorage, so
+  # unlike admin it needs no NUXT_API_BASE_SERVER and no JWT secret of its own.
+  # Nitro still runs, because it serves the /api and /socket.io proxies.
+  agent-arada-stg:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+      args:
+        NUXT_API_PROXY_TARGET: http://api-arada-stg:8080
+    image: world-bingo-agent:arada-stg
+    restart: unless-stopped
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-staging}
+    depends_on:
+      api-arada-stg:
+        condition: service_healthy
+    networks:
+      - internal
+      - dokploy-network
+
 volumes:
   uploads_data:
 

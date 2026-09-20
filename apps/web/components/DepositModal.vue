@@ -15,11 +15,6 @@
             <span class="spin">⏳</span> Loading payment methods…
           </div>
 
-          <!-- No methods available -->
-          <div v-else-if="depositMethods.length === 0" class="wb-empty">
-            No deposit methods are currently available. Please try again later.
-          </div>
-
           <template v-else>
             <div class="method-stack">
               <section
@@ -226,7 +221,19 @@
                   </template>
                 </div>
               </section>
+
+              <!-- Cash at an agent shop. It needs no gateway of its own, so it
+                   stands even when the gateway list comes back empty. -->
+              <AgentDepositCard
+                :open="openMethod === AGENT_METHOD"
+                @expand="openAgent"
+                @active="onAgentCodeLive"
+              />
             </div>
+
+            <p v-if="depositMethods.length === 0" class="method-card__hint methods-empty">
+              {{ t('wallet.agent.noOtherMethods') }}
+            </p>
 
             <!-- Outside the v-for on purpose: a `ref` inside v-for is populated
                  as an ARRAY in Vue 3, so fileInputRef?.click() was undefined and
@@ -292,6 +299,13 @@ const MIN_DEPOSIT = 200
 const loadingMethods = ref(false)
 const depositMethods = ref<DepositMethod[]>([])
 
+/**
+ * The agent card is not a payment method row from the API — it has no gateway
+ * and no merchant account — but it shares the accordion, so it needs a code of
+ * its own that can never collide with one.
+ */
+const AGENT_METHOD = 'agent_cash'
+
 // Accordion: exactly one card open at a time.
 const openMethod = ref<string | null>(null)
 const selectedMethod = computed(
@@ -301,6 +315,18 @@ const selectedMethod = computed(
 function toggleMethod(m: DepositMethod) {
   openMethod.value = openMethod.value === m.code ? null : m.code
   if (openMethod.value) track('deposit_method_selected', { paymentMethod: m.code })
+}
+
+function openAgent() {
+  openMethod.value = AGENT_METHOD
+}
+
+// A live agent code outranks the default "open the first gateway": the two
+// fetches race, and the player holding a code needs to see it, not a form.
+const agentHasLiveCode = ref(false)
+function onAgentCodeLive() {
+  agentHasLiveCode.value = true
+  openMethod.value = AGENT_METHOD
 }
 
 // Fires when the amount is actually entered — on the input's `change`
@@ -441,7 +467,7 @@ const fetchMethods = async () => {
   try {
     const data = await auth.apiFetch<DepositMethod[]>('/payment-methods?type=DEPOSIT')
     depositMethods.value = Array.isArray(data) ? data : []
-    if (depositMethods.value.length > 0) {
+    if (depositMethods.value.length > 0 && !agentHasLiveCode.value) {
       openMethod.value = depositMethods.value[0].code
       // The openMethod watcher does not fire when the modal reopens onto the
       // same first card, so prefill here too. Idempotent: never overwrites.
@@ -456,6 +482,8 @@ const fetchMethods = async () => {
 
 watch(() => props.modelValue, (open) => {
   if (open) {
+    // The agent card remounts with the modal and re-reports a live code.
+    agentHasLiveCode.value = false
     fetchMethods()
     promotions.fetch()
     track('deposit_modal_opened')
@@ -614,6 +642,7 @@ function resetForm() {
 .method-card__cta { width: 100%; justify-content: center; }
 .deposit-missing { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
 .method-card__hint { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.methods-empty { margin-top: 14px; text-align: center; }
 
 .chips {
   display: flex;

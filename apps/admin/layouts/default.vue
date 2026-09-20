@@ -59,6 +59,7 @@ const allNavGroups = [
       { label: 'Players',         icon: 'i-heroicons:user-group',             to: '/players',                  adminOnly: true },
       { label: 'Users',           icon: 'i-heroicons:users',                  to: '/users',                    adminOnly: true },
       { label: 'Clerks',          icon: 'i-heroicons:identification',         to: '/clerks',                   adminOnly: true },
+      { label: 'Agents',          icon: 'i-heroicons:building-storefront',    to: '/agents',                   adminOnly: true },
       { label: 'Providers',       icon: 'i-heroicons:globe-alt',              to: '/providers',                adminOnly: true },
       { label: 'Cashback',        icon: 'i-heroicons:gift',                   to: '/cashback',                 adminOnly: true },
       { label: 'Bonus Rules',     icon: 'i-heroicons:calendar-days',          to: '/bonus-rules',              adminOnly: true },

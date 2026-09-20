@@ -166,6 +166,25 @@ services:
     networks:
       - dokploy-network
 
+  # Cash agent app. Renders client-side and keeps its token in localStorage, so
+  # unlike admin it needs no NUXT_API_BASE_SERVER and no JWT secret of its own.
+  # Nitro still runs, because it serves the /api and /socket.io proxies.
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    image: world-bingo-agent
+    restart: unless-stopped
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_PUBLIC_SENTRY_ENVIRONMENT: ${NUXT_PUBLIC_SENTRY_ENVIRONMENT:-production}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+
   prometheus:
     image: prom/prometheus:v2.51.2
     restart: unless-stopped
