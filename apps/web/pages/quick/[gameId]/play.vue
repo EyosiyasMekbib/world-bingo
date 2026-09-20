@@ -113,7 +113,8 @@
               🎟 <strong>{{ (gameStore.currentGame as any).ticketPrice }} ETB</strong> / card
             </span>
             <span class="wallet-chip" :class="{ 'low-balance': walletBalance < totalCost && selectedSerials.length > 0 }">
-              💰 Balance: <strong>{{ walletBalance.toFixed(2) }} ETB</strong>
+              💰 {{ spendAccount === 'BONUS' ? 'Bonus' : 'Withdrawable' }}:
+              <strong>{{ walletBalance.toFixed(2) }} ETB</strong>
             </span>
           </div>
           <p v-if="selectedSerials.length > 0" class="selected-summary">
@@ -121,6 +122,21 @@
             = <strong class="total-cost">{{ totalCost.toFixed(2) }} ETB</strong>
             <span v-if="walletBalance < totalCost" class="insufficient">⚠ Insufficient balance</span>
           </p>
+          <!-- The money is there, just in the other account. Offer the switch here
+               rather than sending the player to the wallet page to find a toggle. -->
+          <button
+            v-if="otherAccountCovers"
+            type="button"
+            class="switch-account-btn"
+            :disabled="switchingAccount"
+            @click="useOtherAccount"
+          >
+            <span v-if="switchingAccount"><span class="btn-spinner" /> Switching…</span>
+            <span v-else>
+              You have {{ otherBalance.toFixed(2) }} ETB in your
+              {{ spendAccount === 'BONUS' ? 'withdrawable' : 'bonus' }} balance — tap to use it
+            </span>
+          </button>
           <p class="join-hint">{{ gameStore.availableCartelas.filter(c => !(c as any).isTaken).length }} cards available — tap to select</p>
         </div>
 
@@ -150,7 +166,7 @@
             <span class="btn-spinner" /> Joining…
           </span>
           <span v-else-if="walletBalance < totalCost && selectedSerials.length > 0">
-            Insufficient Balance
+            Not Enough {{ spendAccount === 'BONUS' ? 'Bonus' : 'Withdrawable' }} Balance
           </span>
           <span v-else-if="!selectedSerials.length">Select a Card to Join</span>
           <span v-else>Pay {{ totalCost.toFixed(2) }} ETB &amp; Join</span>
@@ -412,8 +428,20 @@ const COLUMNS = ['B', 'I', 'N', 'G', 'O']
 // ── Computed ───────────────────────────────────────────────────────────────
 const isWinner = computed(() => gameStore.winner?.username === auth.user?.username)
 
-/** Current wallet balance from persisted auth store */
-const walletBalance = computed(() => Number(auth.wallet?.realBalance ?? 0) + Number(auth.wallet?.bonusBalance ?? 0))
+/**
+ * An entry is paid from ONE account — whichever `wallet.spendAccount` names — so
+ * the combined total is not what is spendable here. Gating on the sum promised a
+ * player with 100 bonus and nothing withdrawable that they could join, then the
+ * server refused them, which reads as the game eating their money.
+ */
+const spendAccount = computed<'REAL' | 'BONUS'>(() => (auth.wallet?.spendAccount as 'REAL' | 'BONUS') ?? 'REAL')
+const realBalance = computed(() => Number(auth.wallet?.realBalance ?? 0))
+const bonusBalance = computed(() => Number(auth.wallet?.bonusBalance ?? 0))
+
+/** What this entry can actually be paid from. */
+const walletBalance = computed(() => (spendAccount.value === 'BONUS' ? bonusBalance.value : realBalance.value))
+const otherBalance = computed(() => (spendAccount.value === 'BONUS' ? realBalance.value : bonusBalance.value))
+
 
 /** Resolved UI phase driven by gameStore.gameStatus + hasJoined */
 const phase = computed<'join' | 'waiting' | 'active'>(() => {
@@ -425,6 +453,33 @@ const phase = computed<'join' | 'waiting' | 'active'>(() => {
 const totalCost = computed(
   () => selectedSerials.value.length * Number((gameStore.currentGame as any)?.ticketPrice ?? 0),
 )
+
+/**
+ * The recoverable case, and the whole reason this screen offers a switch: the
+ * selected account is short but the other one covers the stake. Without this the
+ * player has to find the toggle in the wallet, which is a different page.
+ */
+const otherAccountCovers = computed(
+  () => walletBalance.value < totalCost.value && otherBalance.value >= totalCost.value,
+)
+
+const switchingAccount = ref(false)
+async function useOtherAccount() {
+  if (switchingAccount.value) return
+  switchingAccount.value = true
+  joinError.value = ''
+  try {
+    await auth.apiFetch('/wallet/spend-account', {
+      method: 'PATCH',
+      body: { account: spendAccount.value === 'BONUS' ? 'REAL' : 'BONUS' },
+    })
+    await auth.fetchWallet()
+  } catch {
+    joinError.value = 'Could not switch account. Please try again.'
+  } finally {
+    switchingAccount.value = false
+  }
+}
 
 const statusClass = computed(() => {
   const s = gameStore.currentGame?.status?.toLowerCase() ?? ''
@@ -1049,6 +1104,27 @@ onUnmounted(() => {
   font-size: 0.9rem;
   color: #94a3b8;
   margin: 0;
+}
+
+.switch-account-btn {
+  margin-top: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  border-radius: 10px;
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+.switch-account-btn:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.2);
+}
+.switch-account-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .insufficient {

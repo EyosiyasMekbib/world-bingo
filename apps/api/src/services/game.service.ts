@@ -5,7 +5,7 @@ import { GameStatus, TransactionType, PaymentStatus, NotificationType } from '@w
 import { checkPattern, PatternName } from '@world-bingo/game-logic'
 import { Decimal } from '@prisma/client/runtime/library'
 import { NotificationService } from './notification.service'
-import { BonusService } from './bonus.service'
+import { BonusService, InsufficientSelectedBalanceError } from './bonus.service'
 import { startGameEngine, stopGameEngine } from '../lib/game-engine'
 import { RefundService } from './refund.service'
 import { clearGameState } from '../lib/game-state'
@@ -101,13 +101,25 @@ export class GameService {
             let bonusAfter = bonusBefore
             let bonusExpiresAtSpend: Date | null = null
 
+            // An entry is paid from exactly ONE account — whichever `spendAccount`
+            // names — and never silently from the other: falling back from BONUS to
+            // REAL would spend withdrawable money the player did not offer, and the
+            // reverse would burn a bonus they may be holding for something else.
+            //
+            // So a short account is refused, but the refusal has to say WHERE the
+            // money is. The player is looking at a combined balance that covers the
+            // ticket, and "Insufficient funds" against a wallet they can see is full
+            // reads as the game losing their money.
             if (wallet.spendAccount === 'BONUS') {
+                if (bonusBefore.lessThan(totalCost)) {
+                    throw new InsufficientSelectedBalanceError('BONUS', bonusBefore, totalCost, realBefore)
+                }
                 const spendResult = await BonusService.spend(tx, userId, totalCost)
                 bonusAfter = spendResult.bonusBalanceAfter
                 bonusExpiresAtSpend = spendResult.soonestExpiryConsumed
             } else {
                 if (realBefore.lessThan(totalCost)) {
-                    throw new Error('Insufficient funds')
+                    throw new InsufficientSelectedBalanceError('REAL', realBefore, totalCost, bonusBefore)
                 }
                 realAfter = realBefore.minus(totalCost)
                 await tx.wallet.update({ where: { userId }, data: { realBalance: realAfter } })

@@ -173,7 +173,7 @@ describe('GameService.joinGame (T8)', () => {
         const c = await createCartela('POOR-C1')
 
         await expect(GameService.joinGame(poorUser.id, gameId, [c.serial])).rejects.toThrow(
-            'Insufficient funds',
+            'Not enough withdrawable balance',
         )
     })
 

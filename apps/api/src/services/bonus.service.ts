@@ -68,6 +68,41 @@ export class InsufficientBonusBalanceError extends Error {
     }
 }
 
+/**
+ * A stake refused because the account the player is spending FROM is short,
+ * while the other one may well cover it. Carries both sides so the client can
+ * offer the switch instead of making the player hunt for the wallet toggle —
+ * and so support reading a log knows the money was there all along.
+ *
+ * 400, not 500: nothing failed. The player asked to spend from an account that
+ * does not hold enough, which is an ordinary, recoverable answer.
+ */
+export class InsufficientSelectedBalanceError extends Error {
+    statusCode = 400
+    readonly account: 'REAL' | 'BONUS'
+    readonly available: string
+    readonly required: string
+    readonly otherAvailable: string
+    /** True when simply switching accounts would let this same stake through. */
+    readonly otherAccountCovers: boolean
+
+    constructor(account: 'REAL' | 'BONUS', available: Decimal, required: Decimal, otherAvailable: Decimal) {
+        const label = account === 'BONUS' ? 'bonus' : 'withdrawable'
+        const covers = otherAvailable.gte(required)
+        super(
+            covers
+                ? `Not enough ${label} balance for this entry. You have ${otherAvailable.toFixed(2)} ETB in your ${account === 'BONUS' ? 'withdrawable' : 'bonus'} balance — switch accounts to use it.`
+                : `Not enough ${label} balance for this entry.`,
+        )
+        this.name = 'InsufficientSelectedBalanceError'
+        this.account = account
+        this.available = available.toFixed(2)
+        this.required = required.toFixed(2)
+        this.otherAvailable = otherAvailable.toFixed(2)
+        this.otherAccountCovers = covers
+    }
+}
+
 export class BonusService {
     /**
      * Grants a bonus lot. Idempotent on (ruleId, userId, periodStart) when

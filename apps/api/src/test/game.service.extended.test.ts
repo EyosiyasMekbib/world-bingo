@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { GameService } from '../services/game.service'
-import { BonusService } from '../services/bonus.service'
+import { BonusService, InsufficientSelectedBalanceError } from '../services/bonus.service'
 import { prisma, expectInvariantClean } from './setup'
 import { GameStatus, PatternType, NotificationType, PaymentStatus, TransactionType } from '@world-bingo/shared-types'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -257,7 +257,7 @@ describe('GameService.joinGame — Extended', () => {
 
         await expect(
             GameService.joinGame(poorUser.id, gameId, [c.serial]),
-        ).rejects.toThrow('Insufficient funds')
+        ).rejects.toThrow('Not enough withdrawable balance')
     })
 
     it('should succeed if balance is exactly equal to the cost', async () => {
@@ -422,7 +422,59 @@ describe('GameService.joinGame — spendAccount defaults to REAL', () => {
         // defaults to REAL, so bonus is never consulted.
         await expect(
             GameService.joinGame(user.id, gameId, [c.serial]),
-        ).rejects.toThrow('Insufficient funds')
+        ).rejects.toThrow('Not enough withdrawable balance')
+    })
+
+    it('names the account holding the money, so a full-looking wallet is not refused blankly', async () => {
+        // The complaint this answers: the player is shown a combined balance that
+        // covers the ticket, spends from REAL by default, and is told "Insufficient
+        // funds" — which reads as the game losing their money. Nothing is spent
+        // from the other account without them asking, but the refusal has to say
+        // the money is there and that switching would let it through.
+        const user = await prisma.user.create({
+            data: {
+                username: 'bonus_only_player',
+                phone: '+251911100009',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 0, bonusBalance: 0 } },
+            },
+        })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 200, source: 'CASHBACK' }))
+        const c = await createCartela('BF-C9')
+
+        const err = await GameService.joinGame(user.id, gameId, [c.serial]).catch((e) => e)
+
+        expect(err).toBeInstanceOf(InsufficientSelectedBalanceError)
+        expect(err.statusCode).toBe(400)
+        expect(err.account).toBe('REAL')
+        expect(err.otherAccountCovers).toBe(true)
+        expect(err.otherAvailable).toBe('200.00')
+        expect(err.message).toContain('switch accounts')
+
+        // Refused means refused: neither account moved, and no entry exists.
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(Number(wallet.realBalance)).toBe(0)
+        expect(Number(wallet.bonusBalance)).toBe(200)
+        expect(await prisma.gameEntry.count({ where: { userId: user.id } })).toBe(0)
+    })
+
+    it('does not claim the other account covers it when neither does', async () => {
+        const user = await prisma.user.create({
+            data: {
+                username: 'broke_both_ways',
+                phone: '+251911100010',
+                passwordHash: 'hashed:pass',
+                wallet: { create: { realBalance: 5, bonusBalance: 0 } },
+            },
+        })
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 5, source: 'ADMIN' }))
+        const c = await createCartela('BF-C10')
+
+        const err = await GameService.joinGame(user.id, gameId, [c.serial]).catch((e) => e)
+
+        expect(err).toBeInstanceOf(InsufficientSelectedBalanceError)
+        expect(err.otherAccountCovers).toBe(false)
+        expect(err.message).not.toContain('switch accounts')
     })
 })
 
@@ -447,7 +499,7 @@ describe('GameService.joinGame — spendAccount selection', () => {
         expect(entryTxn.bonusExpiresAtSpend?.getTime()).toBe(expiresAt.getTime())
     })
 
-    it('rejects with Insufficient bonus balance when BONUS is selected but short, without touching real', async () => {
+    it('rejects when BONUS is selected but short, without touching real', async () => {
         const user = await createUserWithWallet('spendbonus2', '+251900000020')
         await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'BONUS', realBalance: 1000 } })
         await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 5, source: 'ADMIN' }))
@@ -455,7 +507,7 @@ describe('GameService.joinGame — spendAccount selection', () => {
         const game = await createGame({ ticketPrice: 10 })
         const c = await createCartela('SA-BONUS-C2')
         await expect(GameService.joinGame(user.id, game.id, [c.serial])).rejects.toThrow(
-            'Insufficient bonus balance',
+            'Not enough bonus balance',
         )
 
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
