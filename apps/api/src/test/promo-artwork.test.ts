@@ -359,6 +359,51 @@ describe('admin promo-artwork routes', () => {
             await app.close()
         })
 
+        it('clears the position when the body sends an explicit null', async () => {
+            const app = await buildApp()
+            await putArtwork(app, 'CASHBACK', 'promo-1', [
+                image(PROMO_PNG),
+                { name: 'altText', value: 'Keep me' },
+                { name: 'position', value: '2' },
+            ])
+
+            const res = await app.inject({
+                method: 'PATCH',
+                url: '/admin/promo-artwork/CASHBACK/promo-1',
+                payload: { position: null },
+            })
+
+            expect(res.statusCode).toBe(200)
+            // null clears the ordering; it must not be coerced to 0, and it must
+            // not be dropped as undefined and leave the old 2 in place.
+            expect(res.json().item).toMatchObject({ altText: 'Keep me', position: null })
+            const row = await prisma.promoArtwork.findFirst({ where: { refId: 'promo-1' } })
+            expect(row?.position).toBeNull()
+            await app.close()
+        })
+
+        it('rejects a position that is not an integer', async () => {
+            const app = await buildApp()
+            await putArtwork(app, 'CASHBACK', 'promo-1', [image(PROMO_PNG), { name: 'position', value: '2' }])
+
+            // A JSON body is not multipart, so nothing here may be coerced: each
+            // of these used to slip through z.coerce.number() as a real number.
+            for (const position of ['3', true, [], {}, 1.5, 'abc']) {
+                const res = await app.inject({
+                    method: 'PATCH',
+                    url: '/admin/promo-artwork/CASHBACK/promo-1',
+                    payload: { position },
+                })
+
+                expect(res.statusCode, `position ${JSON.stringify(position)}`).toBe(400)
+                expect(typeof res.json().error).toBe('string')
+            }
+
+            const row = await prisma.promoArtwork.findFirst({ where: { refId: 'promo-1' } })
+            expect(row?.position).toBe(2)
+            await app.close()
+        })
+
         it('returns 404 for a promotion with no artwork', async () => {
             const app = await buildApp()
 

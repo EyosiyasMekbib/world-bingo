@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/library'
-import { prisma } from './setup'
+import { prisma, expectInvariantClean } from './setup'
 import { BonusService, InsufficientBonusBalanceError } from '../services/bonus.service'
+
+// Registered here so it runs before setup.ts's cleanDb() afterEach (hooks run
+// in reverse registration order), i.e. against the state each test left behind.
+afterEach(async () => {
+    await expectInvariantClean()
+})
 
 async function makeUser(username: string, phone: string) {
     return prisma.user.create({
@@ -192,6 +198,31 @@ describe('BonusService.spend', () => {
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(10)
     })
+
+    it('rounds a fractional-cent spend down to 2dp, so the lot and the wallet cannot drift apart', async () => {
+        // The mirror of the rounding test on grant(), through the other door:
+        // bonus_grants.remaining is Decimal(12,2) and Postgres rounds on cast
+        // into it, while wallets.bonusBalance is Decimal(20,8) and keeps every
+        // digit — so an unrounded debit would leave 37.65 in the lot against
+        // 37.6544 on the wallet, breaking the system invariant permanently.
+        const user = await makeUser('spendround', '+251900000097')
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 50, source: 'ADMIN' }))
+
+        const result = await prisma.$transaction((tx) => BonusService.spend(tx, user.id, new Decimal('12.3456')))
+
+        // DOWN, never UP: a player must not spend value that was never granted.
+        expect(result.spent.toString()).toBe('12.34')
+        expect(result.bonusBalanceAfter.toString()).toBe('37.66')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(37.66)
+
+        const lots = await prisma.bonusGrant.findMany({ where: { userId: user.id } })
+        expect(lots).toHaveLength(1)
+        expect(new Decimal(lots[0].remaining).toNumber()).toBe(37.66)
+
+        await expectInvariantClean()
+    })
 })
 
 describe('BonusService.reduce', () => {
@@ -216,6 +247,21 @@ describe('BonusService.reduce', () => {
 
         const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
         expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(0)
+    })
+
+    it('rounds a fractional-cent reduction down to 2dp as well — the rounding lives in the shared path', async () => {
+        const user = await makeUser('reduceround', '+251900000096')
+        await prisma.$transaction((tx) => BonusService.grant(tx, { userId: user.id, amount: 20, source: 'ADMIN' }))
+
+        const result = await prisma.$transaction((tx) => BonusService.reduce(tx, user.id, new Decimal('5.019')))
+
+        expect(result.reduced.toString()).toBe('5.01')
+        expect(result.bonusBalanceAfter.toString()).toBe('14.99')
+
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } })
+        expect(new Decimal(wallet.bonusBalance).toNumber()).toBe(14.99)
+
+        await expectInvariantClean()
     })
 })
 

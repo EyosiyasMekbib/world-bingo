@@ -102,12 +102,39 @@ describe('BonusReminderService.sweepExpiring', () => {
         expect(windows).toEqual(['24h', '2h'])
     })
 
+    // Telegram-registered players carry neither a passwordHash nor a username
+    // (AuthService.telegramAuth sets neither), so a plain `<>` against the bot
+    // marker evaluates to NULL for them and the WHERE clause silently dropped
+    // an entire authentication cohort from every expiry warning.
+    it('warns a Telegram player whose passwordHash and username are NULL', async () => {
+        const player = await makeUser('unused', '+251900000048', {
+            username: null,
+            passwordHash: null,
+            telegramId: 'tg-remind-7',
+        })
+        await grantExpiringIn(player.id, 25, 20 * HOUR_MS)
+
+        const result = await BonusReminderService.sweepExpiring()
+
+        expect(result.notificationsSent).toBe(1)
+        expect(result.usersNotified).toBe(1)
+        expect(result.byWindow['24h']).toBe(1)
+        const sent = await warnings(player.id)
+        expect(sent).toHaveLength(1)
+        expect(sent[0].body).toContain('25.00 ETB')
+    })
+
     it('skips bots, suspended accounts and fully consumed lots', async () => {
         const bot = await makeUser('bot_t7', '+251900000045')
+        // The other bot marker: bot.service.ts stamps passwordHash and the
+        // codebase matches on either, so the username prefix alone is not
+        // enough to keep house money out of a player notification.
+        const houseBot = await makeUser('house1', '+251900000049', { passwordHash: 'BOT_ACCOUNT' })
         const suspended = await makeUser('remind5', '+251900000046', { accountStatus: 'SUSPENDED' })
         const spender = await makeUser('remind6', '+251900000047')
 
         await grantExpiringIn(bot.id, 10, 20 * HOUR_MS)
+        await grantExpiringIn(houseBot.id, 10, 20 * HOUR_MS)
         await grantExpiringIn(suspended.id, 10, 20 * HOUR_MS)
         await grantExpiringIn(spender.id, 10, 20 * HOUR_MS)
         await prisma.$transaction(async (tx) => {
@@ -119,6 +146,7 @@ describe('BonusReminderService.sweepExpiring', () => {
 
         expect(result.notificationsSent).toBe(0)
         expect(await warnings(bot.id)).toHaveLength(0)
+        expect(await warnings(houseBot.id)).toHaveLength(0)
         expect(await warnings(suspended.id)).toHaveLength(0)
         expect(await warnings(spender.id)).toHaveLength(0)
     })

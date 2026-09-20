@@ -4,6 +4,7 @@ import {
   CashbackFrequency,
   BonusRuleType,
   BonusRewardType,
+  CashbackPayoutTiming,
   PromoKind,
   REFERRAL_BONUS_ETB,
 } from '@world-bingo/shared-types'
@@ -35,6 +36,13 @@ const CASHBACK_PERIOD_NOUN: Record<CashbackFrequency, string> = {
   [CashbackFrequency.DAILY]: 'day',
   [CashbackFrequency.WEEKLY]: 'week',
   [CashbackFrequency.MONTHLY]: 'month',
+}
+
+/** How the window after the open one is named when it is the one that pays. */
+const CASHBACK_NEXT_PERIOD_NOUN: Record<CashbackFrequency, string> = {
+  [CashbackFrequency.DAILY]: 'tomorrow',
+  [CashbackFrequency.WEEKLY]: 'next week',
+  [CashbackFrequency.MONTHLY]: 'next month',
 }
 
 const CASHBACK_PROGRESS_LABEL: Record<CashbackFrequency, string> = {
@@ -74,16 +82,67 @@ function pad2(value: number): string {
 }
 
 /**
- * When the open cashback period closes. Read in UTC because getCurrentPeriod
- * cuts its windows there — rendering the same instant in Addis local time would
- * name a weekday the disburser does not agree with, and the whole point of this
- * line is to promise the payout the job will actually make.
+ * When a cashback window closes. Read in UTC because getCurrentPeriod cuts its
+ * windows there — rendering the same instant in Addis local time would name a
+ * weekday the disburser does not agree with, and the whole point of this line
+ * is to promise the payout the job will actually make.
+ *
+ * Relative wording only holds for the window the player is standing in: 'today'
+ * or a bare 'Sunday' for a window one further out names a close days or weeks
+ * off the one meant, so anything past the open window is dated outright.
  */
-function payoutLabel(frequency: CashbackFrequency, periodEnd: Date): string {
+function payoutLabel(frequency: CashbackFrequency, periodEnd: Date, now: Date): string {
   const time = `${pad2(periodEnd.getUTCHours())}:${pad2(periodEnd.getUTCMinutes())}`
+  const dated = `${periodEnd.getUTCDate()} ${MONTHS[periodEnd.getUTCMonth()]} ${time}`
+  if (frequency === CashbackFrequency.MONTHLY) return dated
+  if (periodEnd > getCurrentPeriod(frequency, now).periodEnd) return dated
   if (frequency === CashbackFrequency.DAILY) return `today ${time}`
-  if (frequency === CashbackFrequency.WEEKLY) return `${WEEKDAYS[periodEnd.getUTCDay()]} ${time}`
-  return `${periodEnd.getUTCDate()} ${MONTHS[periodEnd.getUTCMonth()]} ${time}`
+  return `${WEEKDAYS[periodEnd.getUTCDay()]} ${time}`
+}
+
+/**
+ * The line under one cashback bar. Every branch mirrors a branch of
+ * CashbackService.runChecks, because a hint that promises what the disburser
+ * refuses — or promises again what it has already paid — is worse than no hint:
+ * the player reads it as money owed and opens a ticket when it never lands.
+ */
+function cashbackHint(args: {
+  promotion: { startsAt: Date; endsAt: Date; payoutTiming: CashbackPayoutTiming }
+  frequency: CashbackFrequency
+  periodStart: Date
+  periodEnd: Date
+  remaining: number
+  paid: number | null
+  now: Date
+}): string {
+  const { promotion, frequency, periodStart, periodEnd, remaining, paid, now } = args
+
+  if (paid !== null) return `Paid out · ${figure(paid)} ETB`
+
+  const standing = remaining > 0 ? `${figure(remaining)} ETB to go` : 'Qualified'
+
+  // ON_THRESHOLD grants inside the LIVE window, at the first hourly run that
+  // sees the threshold cleared. Naming the period close would put the money
+  // hours further away than it is.
+  if (promotion.payoutTiming === CashbackPayoutTiming.ON_THRESHOLD) {
+    return `${standing} · pays out within the hour`
+  }
+
+  // runChecks settles a closed window only for a promotion that was already
+  // live at the start of it, so a promotion that began mid-window never pays
+  // for that window however much the player loses in it. Promise the first
+  // window it will actually settle instead.
+  if (promotion.startsAt > periodStart) {
+    const nextStart = new Date(periodEnd.getTime() + 1)
+    // The other half of the same gate: a promotion that is also over before that
+    // window opens has no window left it can ever settle, so it has nothing to
+    // promise either.
+    if (promotion.endsAt < nextStart) return `No payout due this ${CASHBACK_PERIOD_NOUN[frequency]}`
+    const nextEnd = getCurrentPeriod(frequency, nextStart).periodEnd
+    return `Counts from ${CASHBACK_NEXT_PERIOD_NOUN[frequency]} · pays out ${payoutLabel(frequency, nextEnd, now)}`
+  }
+
+  return `${standing} · pays out ${payoutLabel(frequency, periodEnd, now)}`
 }
 
 /**
@@ -125,6 +184,7 @@ export class PromotionsService {
           refundType: true,
           refundValue: true,
           frequency: true,
+          maxPayoutPerPlayer: true,
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -181,9 +241,16 @@ export class PromotionsService {
 
     for (const promo of cashbackRows) {
       const frequency = promo.frequency as CashbackFrequency
-      const value = Number(promo.refundValue)
       const isPercentage = promo.refundType === CashbackRefundType.PERCENTAGE
-      const reward = isPercentage ? `${figure(value)}%` : `${figure(value)} ETB`
+      const cap = promo.maxPayoutPerPlayer != null ? Number(promo.maxPayoutPerPlayer) : null
+      // CashbackService.payoutFor clamps every payout against
+      // maxPayoutPerPlayer, so quoting the raw refundValue advertises money the
+      // disburser will not pay. A percentage keeps its rate and carries the
+      // ceiling along; a flat refund above the cap simply IS the cap.
+      const refundValue = Number(promo.refundValue)
+      const value = !isPercentage && cap !== null ? Math.min(refundValue, cap) : refundValue
+      const reward = isPercentage ? `${figure(value)}% back` : `${figure(value)} ETB back`
+      const ceiling = isPercentage && cap !== null ? `, up to ${figure(cap)} ETB` : ''
       const noun = CASHBACK_PERIOD_NOUN[frequency]
       drafts.push({
         kind: PromoKind.CASHBACK,
@@ -193,7 +260,7 @@ export class PromotionsService {
         // 'BACK' rides along in the unit so a cashback tile never reads as a
         // deposit bonus of the same size sitting beside it in the row.
         unit: isPercentage ? '% BACK' : 'ETB BACK',
-        sub: `Lose ${figure(Number(promo.lossThreshold))} ETB in a ${noun} and get ${reward} back`,
+        sub: `Lose ${figure(Number(promo.lossThreshold))} ETB in a ${noun} and get ${reward}${ceiling}`,
         href: '/promotions',
         action: null,
         accent: 'cyan',
@@ -205,6 +272,11 @@ export class PromotionsService {
       const value = Number(rule.rewardValue)
       const isPercentage = rule.rewardType === BonusRewardType.PERCENTAGE
       const noun = rule.type === 'DAILY_DEPOSIT' ? 'day' : 'week'
+      // DepositBonusService.computeReward clamps a PERCENTAGE reward against
+      // maxReward (and only a percentage one — a FIXED reward pays its face
+      // value), so the ceiling belongs in the copy wherever it can bite.
+      const cap = rule.maxReward != null ? Number(rule.maxReward) : null
+      const ceiling = isPercentage && cap !== null ? `, up to ${figure(cap)} ETB` : ''
       drafts.push({
         kind: PromoKind.DEPOSIT_RULE,
         refId: rule.id,
@@ -212,7 +284,7 @@ export class PromotionsService {
         figure: figure(value),
         unit: isPercentage ? '% BONUS' : 'ETB',
         sub: isPercentage
-          ? `Deposit ${figure(threshold)} ETB in a ${noun} for ${figure(value)}% in bonus`
+          ? `Deposit ${figure(threshold)} ETB in a ${noun} for ${figure(value)}% in bonus${ceiling}`
           : `Deposit ${figure(threshold)} ETB in a ${noun}, play with ${figure(threshold + value)}`,
         href: '/wallet',
         action: 'deposit',
@@ -315,17 +387,45 @@ export class PromotionsService {
 
     const progress: PromotionProgressDto[] = []
 
-    for (const promo of cashbackPromos) {
+    // The window each promotion is measured over, resolved once so the batched
+    // disbursement read and the loop below cannot disagree about it.
+    const cashbackWindows = cashbackPromos.map((promo) => {
       const frequency = promo.frequency as CashbackFrequency
-      const { periodStart, periodEnd } = getCurrentPeriod(frequency, now)
-      // The hourly disburser's own net-loss query, game scope and all. Run one
-      // promotion at a time rather than in parallel: it is a per-user GROUP BY
-      // over the whole period, and a lobby refresh should not fan that out.
-      const netLossByUser = await CashbackService.getNetLossByUser(promo, periodStart, periodEnd)
+      return { promo, frequency, ...getCurrentPeriod(frequency, now) }
+    })
+
+    // What this player has already been paid for those windows, in one
+    // round-trip on the (promotionId, userId, periodStart) unique key rather
+    // than a read per tile. An ON_THRESHOLD promotion settles inside the live
+    // window, so the row is there for anyone the hourly checker has already
+    // topped up — and a future-tense hint over it promises a second payout that
+    // is never coming.
+    const paidRows =
+      cashbackWindows.length > 0
+        ? await prisma.cashbackDisbursement.findMany({
+            where: {
+              userId,
+              OR: cashbackWindows.map((w) => ({ promotionId: w.promo.id, periodStart: w.periodStart })),
+            },
+            select: { promotionId: true, amount: true },
+          })
+        : []
+    const paidByPromotion = new Map(paidRows.map((row) => [row.promotionId, Number(row.amount)]))
+
+    for (const { promo, frequency, periodStart, periodEnd } of cashbackWindows) {
+      // The hourly disburser's own net-loss query, game scope and all, narrowed
+      // to this one player: unbound it is a site-wide GROUP BY, and one
+      // authenticated /promotions/me would materialise the whole player base
+      // per promotion. Run the promotions in series for the same reason.
+      //
+      // Clamped through the same helper the disburser uses, so the bar counts
+      // exactly the play that will be paid for — an unclamped window credits
+      // the player for losses outside the promotion's own life and then pays
+      // less than the bar promised.
+      const { lossStart, lossEnd } = CashbackService.lossWindow(promo, periodStart, periodEnd)
+      const netLossByUser = await CashbackService.getNetLossByUser(promo, lossStart, lossEnd, userId)
       const current = Number(netLossByUser.get(userId) ?? 0)
       const target = Number(promo.lossThreshold)
-      const remaining = target - current
-      const closes = payoutLabel(frequency, periodEnd)
 
       progress.push({
         kind: PromoKind.CASHBACK,
@@ -333,7 +433,19 @@ export class PromotionsService {
         label: CASHBACK_PROGRESS_LABEL[frequency],
         current,
         target,
-        hint: remaining > 0 ? `${figure(remaining)} ETB to go · pays out ${closes}` : `Qualified · pays out ${closes}`,
+        hint: cashbackHint({
+          promotion: {
+            startsAt: promo.startsAt,
+            endsAt: promo.endsAt,
+            payoutTiming: promo.payoutTiming as CashbackPayoutTiming,
+          },
+          frequency,
+          periodStart,
+          periodEnd,
+          remaining: target - current,
+          paid: paidByPromotion.get(promo.id) ?? null,
+          now,
+        }),
       })
     }
 

@@ -134,13 +134,24 @@ export class BonusService {
      * caller already holds a FOR UPDATE lock on the wallet row in this same
      * transaction; this does not re-lock it. Shared by `spend` (throws when
      * short) and `reduce` (clamps at zero when short).
+     *
+     * Rounds to 2dp DOWN here, in the shared path, for the same reason `grant`
+     * does it before its own writes: `bonus_grants.remaining` is Decimal(12,2)
+     * and Postgres rounds on cast into it, while `wallets.bonusBalance` is
+     * Decimal(20,8) and keeps every digit — so a fractional-cent debit sent
+     * straight through would leave the lot and the wallet permanently
+     * disagreeing. DOWN, never UP: rounding up would debit value that was
+     * never granted, and against a lot that cannot hold the fraction it would
+     * fail the invariant in the player's favour.
      */
     private static async consumeLots(
         tx: Prisma.TransactionClient,
         userId: string,
-        amount: Decimal,
+        requested: Decimal,
         opts: { clamp: boolean },
     ): Promise<{ consumed: Decimal; soonestExpiryConsumed: Date | null }> {
+        const amount = requested.toDecimalPlaces(2, Decimal.ROUND_DOWN)
+
         const lots = await tx.$queryRaw<Array<{ id: string; remaining: Decimal; expiresAt: Date | null }>>`
             SELECT id, remaining, "expiresAt" FROM bonus_grants
             WHERE "userId" = ${userId} AND status = 'ACTIVE'

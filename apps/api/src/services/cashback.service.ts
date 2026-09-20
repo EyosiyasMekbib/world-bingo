@@ -266,6 +266,31 @@ export class CashbackService {
     }
 
     /**
+     * The window a period's loss is actually measured over: the period
+     * intersected with the promotion's own life. Play before a promotion
+     * started, or after it ended, never earned cashback — and a PERIOD_CLOSE
+     * promotion is settled after its own endsAt by design, so without the end
+     * clamp its final settlement pays for the rest of a window it was already
+     * dead for. Every caller of getNetLossByUser goes through this, or the
+     * figure a progress bar shows is not the figure that will be paid.
+     *
+     * The periodStart used as the (promotionId, userId, periodStart) idempotency
+     * key is deliberately NOT this clamped start: a promotion beginning
+     * mid-window must keep settling under the canonical window start, or every
+     * later run would pay again under a second key.
+     */
+    static lossWindow(
+        promotion: { startsAt: Date; endsAt: Date },
+        periodStart: Date,
+        periodEnd: Date,
+    ): { lossStart: Date; lossEnd: Date } {
+        return {
+            lossStart: promotion.startsAt > periodStart ? promotion.startsAt : periodStart,
+            lossEnd: promotion.endsAt < periodEnd ? promotion.endsAt : periodEnd,
+        }
+    }
+
+    /**
      * Net loss per user within [periodStart, periodEnd], restricted to the
      * promotion's game scope. Empty templateIds AND empty providerGameKeys
      * means unscoped — every bingo and provider game counts, matching
@@ -286,11 +311,16 @@ export class CashbackService {
      *    portion comes back off the loss. REFUND is also used for withdrawal
      *    reversals and tournament exits, hence the `g.id IS NOT NULL` guard:
      *    only refunds that resolve to a game are game refunds.
+     *
+     * `userId` narrows the whole thing to one player. The hourly disburser wants
+     * every player; a per-player progress bar wants one, and unbound this is a
+     * site-wide GROUP BY that a single authenticated request would pay for.
      */
     static async getNetLossByUser(
         promotion: { templateIds: string[]; providerGameKeys: string[] },
         periodStart: Date,
         periodEnd: Date,
+        userId?: string,
     ): Promise<Map<string, Decimal>> {
         const templateIds = promotion.templateIds ?? []
         const providerGameKeys = promotion.providerGameKeys ?? []
@@ -321,6 +351,12 @@ export class CashbackService {
                 )})`
               : Prisma.sql`AND false`
 
+        // Both CTEs have to carry the same player predicate. Binding it to only
+        // one would silently return that player's bingo loss plus the whole
+        // site's provider loss, which reads as a qualifying loss for everyone.
+        const bingoUserFilter = userId ? Prisma.sql`AND t."userId" = ${userId}` : Prisma.empty
+        const providerUserFilter = userId ? Prisma.sql`AND tpt."userId" = ${userId}` : Prisma.empty
+
         // "createdAt" is `timestamp` WITHOUT time zone holding UTC. Binding a JS
         // Date sends it as timestamptz, which Postgres reconciles through the
         // SESSION timezone — silently shifting the window on any session not
@@ -345,45 +381,65 @@ export class CashbackService {
                 WHERE t.status = 'APPROVED'
                   AND t."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
                   AND (t.type IN ('GAME_ENTRY', 'PRIZE_WIN') OR (t.type = 'REFUND' AND g.id IS NOT NULL))
+                  ${bingoUserFilter}
                   ${bingoFilter}
                 GROUP BY t."userId"
             ),
-            provider_loss AS (
+            provider_rows AS (
+                SELECT tpt."userId", tpt."transactionId", tpt.amount
+                FROM third_party_transactions tpt
+                -- A rollback flips the original BET to ROLLED_BACK and books a
+                -- compensating ROLLBACK row for the same money, split across the same
+                -- two accounts, so the pair always nets to exactly zero. Dropping both
+                -- halves is therefore arithmetically identical to keeping both, and it
+                -- sidesteps a scope trap: Atlas-V's game_code is optional on a cancel,
+                -- and a (providerId, gameCode) IN (...) test never matches a NULL, so a
+                -- scoped promotion would have admitted the rolled-back bet while
+                -- dropping its own refund, billing the player's cancelled stake as a
+                -- real loss. It also stops a bet and its later cancel landing in two
+                -- different periods, which would pay cashback on returned money.
+                -- An unpaired ROLLBACK is always amount 0 (every provider records one
+                -- so retries short-circuit, and never credits without a verified bet),
+                -- so nothing real is lost by excluding the type outright. FAILED rows
+                -- are inert for the same reason: amount 0, no paired audit row.
+                WHERE tpt.status = 'COMPLETED'
+                  AND tpt.type <> 'ROLLBACK'
+                  AND tpt."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
+                  ${providerUserFilter}
+                  ${providerFilter}
+            ),
+            provider_bonus AS (
                 -- third_party_transactions.balanceBefore/After hold the COMBINED
                 -- real+bonus total, so a bonus-funded spin is indistinguishable from a
-                -- real-funded one in this table — and all three provider integrations
+                -- real-funded one in that table — and all three provider integrations
                 -- debit the bonus wallet when spendAccount = 'BONUS'. The paired wallet
                 -- audit row each provider write site commits in the same transaction
                 -- (transactions."referenceId" = the provider transactionId, type TP_*)
-                -- is the only place that split survives, so its bonus delta comes off
-                -- the loss exactly as the bingo CTE above takes it off a GAME_ENTRY.
-                -- Correlated rather than joined so a stray duplicate audit row can
-                -- never multiply the provider row it belongs to. No paired row at all
-                -- (data predating this pairing) leaves the row wholly real, which is
-                -- what this CTE previously assumed for every row.
-                SELECT tpt."userId",
-                       SUM(
-                           -tpt.amount - COALESCE((
-                               SELECT SUM(COALESCE(pair."bonusBalanceBefore", 0) - COALESCE(pair."bonusBalanceAfter", 0))
-                               FROM transactions pair
-                               WHERE pair."referenceId" = tpt."transactionId"
-                                 AND pair."userId" = tpt."userId"
-                                 AND pair.status = 'APPROVED'
-                                 AND pair.type IN ('TP_BET', 'TP_WIN', 'TP_ROLLBACK', 'TP_ADJUSTMENT')
-                           ), 0)
-                       ) AS "netLoss"
-                FROM third_party_transactions tpt
-                -- A rollback flips the original BET to ROLLED_BACK and books a
-                -- compensating ROLLBACK row for the same money. Keeping only COMPLETED
-                -- drops the debit and keeps the credit, so a cancelled bet reads as a
-                -- win; both halves in, and the pair nets to zero — the same pairing
-                -- provider-round-ledger.ts reconciles on. FAILED rows are inert either
-                -- way: their write site persists amount 0 and no paired audit row,
-                -- since nothing left the wallet.
-                WHERE tpt.status IN ('COMPLETED', 'ROLLED_BACK')
-                  AND tpt."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
-                  ${providerFilter}
-                GROUP BY tpt."userId"
+                -- is the only place that split survives.
+                -- Pre-aggregated per (referenceId, userId) so the LEFT JOIN below cannot
+                -- multiply a provider row against a stray duplicate audit row, and
+                -- semi-joined to provider_rows rather than run per row: transactions has
+                -- no index on referenceId, so a correlated subquery here is one scan of
+                -- the table per provider row.
+                SELECT pair."referenceId" AS "transactionId", pair."userId",
+                       SUM(COALESCE(pair."bonusBalanceBefore", 0) - COALESCE(pair."bonusBalanceAfter", 0)) AS "bonusSpent"
+                FROM transactions pair
+                WHERE pair.status = 'APPROVED'
+                  AND pair.type IN ('TP_BET', 'TP_WIN', 'TP_ADJUSTMENT')
+                  AND pair."referenceId" IN (SELECT "transactionId" FROM provider_rows)
+                GROUP BY pair."referenceId", pair."userId"
+            ),
+            provider_loss AS (
+                -- The bonus-funded part comes off the loss exactly as the bingo CTE
+                -- takes it off a GAME_ENTRY. No paired row at all (data predating this
+                -- pairing) leaves the row wholly real, which is what this CTE assumed
+                -- for every row before the split existed.
+                SELECT r."userId", SUM(-r.amount - COALESCE(b."bonusSpent", 0)) AS "netLoss"
+                FROM provider_rows r
+                LEFT JOIN provider_bonus b
+                       ON b."transactionId" = r."transactionId"
+                      AND b."userId" = r."userId"
+                GROUP BY r."userId"
             )
             SELECT "userId", SUM("netLoss") AS "netLoss"
             FROM (SELECT * FROM bingo_loss UNION ALL SELECT * FROM provider_loss) combined
@@ -453,18 +509,7 @@ export class CashbackService {
         const promotion = await prisma.cashbackPromotion.findUnique({ where: { id: promotionId } })
         if (!promotion || !promotion.isActive) return { disbursed: 0, skipped: 0, budgetSkipped: 0, total: new Decimal(0) }
 
-        // The loss window is the period intersected with the promotion's own life:
-        // play before it started, or after it ended, never earned cashback. A
-        // PERIOD_CLOSE promotion is settled after its own endsAt by design, so
-        // without the end clamp its final settlement pays for the rest of the
-        // window it was already dead for.
-        //
-        // The periodStart ARGUMENT is deliberately left unclamped: it is the
-        // (promotionId, userId, periodStart) idempotency key, and a promotion
-        // starting mid-window must keep settling under the canonical window start
-        // or every later run would pay again under a second key.
-        const lossStart = promotion.startsAt > periodStart ? promotion.startsAt : periodStart
-        const lossEnd = promotion.endsAt < periodEnd ? promotion.endsAt : periodEnd
+        const { lossStart, lossEnd } = CashbackService.lossWindow(promotion, periodStart, periodEnd)
 
         const netLossByUser = await CashbackService.withoutBots(
             await CashbackService.getNetLossByUser(promotion, lossStart, lossEnd),
@@ -619,9 +664,10 @@ export class CashbackService {
     static async previewQualifiers(promotionId: string, now = new Date()): Promise<CashbackPreview> {
         const promotion = await prisma.cashbackPromotion.findUniqueOrThrow({ where: { id: promotionId } })
         const { periodStart, periodEnd } = getCurrentPeriod(promotion.frequency as CashbackFrequency, now)
+        const { lossStart, lossEnd } = CashbackService.lossWindow(promotion, periodStart, periodEnd)
 
         const netLossByUser = await CashbackService.withoutBots(
-            await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd),
+            await CashbackService.getNetLossByUser(promotion, lossStart, lossEnd),
         )
         const lossThreshold = new Decimal(promotion.lossThreshold)
 

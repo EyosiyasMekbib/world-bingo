@@ -108,6 +108,13 @@ export class BonusReminderService {
             // a load-test bot must not be messaged. `LEFT(username, 5)` rather
             // than a LIKE pattern because `_` is a LIKE wildcard, and 'bot\_t%'
             // needs double-escaping through a JS template literal to survive.
+            //
+            // Both bot markers are nullable, and both must therefore be
+            // NULL-safe: `passwordHash` is NULL for every Telegram-registered
+            // player (AuthService.telegramAuth never sets one) and `username`
+            // is NULL with it, so a plain `<>` would evaluate to NULL and drop
+            // that whole cohort from the warning instead of keeping it. Same
+            // fix, same reason as player-metrics.service.ts's rollup.
             const lots = await prisma.$queryRaw<ExpiringLotRow[]>`
                 SELECT g.id,
                        g."userId",
@@ -122,11 +129,14 @@ export class BonusReminderService {
                 LEFT JOIN bonus_rules r ON r.id = g."ruleId"
                 WHERE g.status = 'ACTIVE'
                   AND g.remaining > 0
+                  -- expiresAt is nullable. A lot with no expiry has nothing to
+                  -- warn about, and NULL fails both bounds, which is what lets
+                  -- ExpiringLotRow promise a non-null Date.
                   AND g."expiresAt" > ${fromUtc}::timestamp
                   AND g."expiresAt" <= ${toUtc}::timestamp
                   AND u."accountStatus" = 'ACTIVE'
                   AND u.role = 'PLAYER'
-                  AND u."passwordHash" <> 'BOT_ACCOUNT'
+                  AND u."passwordHash" IS DISTINCT FROM 'BOT_ACCOUNT'
                   AND (u.username IS NULL OR LEFT(u.username, 5) <> 'bot_t')
                   AND NOT EXISTS (
                       SELECT 1 FROM notifications n

@@ -15,12 +15,20 @@ import { BotService } from '../../services/bot.service'
 import prisma from '../../lib/prisma'
 import { GameSchedulerService } from '../../services/game-scheduler.service'
 import { HouseWalletService } from '../../services/house-wallet.service'
-import { CashbackService } from '../../services/cashback.service'
+import { CashbackService, getPreviousPeriod } from '../../services/cashback.service'
 import { BonusRuleService, SegmentNotFoundError, EmptySegmentError } from '../../services/bonus-rule.service'
 import { NotificationService } from '../../services/notification.service'
 import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from '../../services/featured-game.service'
 import { SupportService } from '../../services/support/support.service'
-import { TransactionType, PaymentStatus, UserRole, PromoKind } from '@world-bingo/shared-types'
+import {
+    TransactionType,
+    PaymentStatus,
+    UserRole,
+    PromoKind,
+    BonusSource,
+    CashbackFrequency,
+    CashbackPayoutTiming,
+} from '@world-bingo/shared-types'
 import bcrypt from 'bcryptjs'
 import { captureEvent } from '../../lib/posthog'
 import { weekBucketStart } from '../../lib/bonus-period'
@@ -63,11 +71,38 @@ const clerkCreateSchema = z.object({
     password: z.string().min(8),
 })
 
-const adjustBalanceSchema = z.object({
-    type: z.enum(['real', 'bonus']),
-    amount: z.number(),
-    note: z.string().min(1, 'Note is required for audit trail'),
-})
+const adjustBalanceSchema = z
+    .object({
+        type: z.enum(['real', 'bonus']),
+        amount: z.number(),
+        note: z.string().min(1, 'Note is required for audit trail'),
+        // Bonus branch only. Absent and null both mean a lot that never
+        // expires; zod would otherwise strip the validity the grant form sends
+        // and quietly make every manual grant immortal.
+        expiresAt: z.string().datetime({ offset: true }).nullish(),
+    })
+    .refine((data) => data.expiresAt == null || new Date(data.expiresAt) > new Date(), {
+        message: 'expiresAt must be in the future',
+        path: ['expiresAt'],
+    })
+    .refine((data) => data.type === 'bonus' || data.expiresAt == null, {
+        message: 'expiresAt applies to bonus adjustments only',
+        path: ['expiresAt'],
+    })
+
+/**
+ * Extending one lot's deadline. `null` is how the admin UI says "no expiry" —
+ * the same vocabulary the grant form uses — so a lot can be made permanent as
+ * well as given more time. A past deadline is refused rather than honoured:
+ * "extend" that hands the lot straight to the expiry sweep is never what the
+ * actor meant.
+ */
+const extendGrantSchema = z
+    .object({ expiresAt: z.string().datetime({ offset: true }).nullable() })
+    .refine((data) => data.expiresAt == null || new Date(data.expiresAt) > new Date(), {
+        message: 'expiresAt must be in the future',
+        path: ['expiresAt'],
+    })
 
 const cashbackCreateSchema = z.object({
     name: z.string().min(1),
@@ -291,6 +326,21 @@ const PROMO_PAYOUT_TYPES = [
     TransactionType.WEEKLY_DEPOSIT_BONUS,
 ]
 
+/**
+ * The grant sources those payout types create.
+ *
+ * The liability figure aggregates lots while the paid figures aggregate
+ * transactions, so the two only reconcile if they cover the same offers: an
+ * ADMIN, CAMPAIGN or REFUND lot is money owed by something that is not a
+ * promotion and has no tile beside it to be read against.
+ */
+const PROMO_GRANT_SOURCES: Array<`${BonusSource}`> = [
+    BonusSource.FIRST_DEPOSIT,
+    BonusSource.CASHBACK,
+    BonusSource.DAILY_DEPOSIT,
+    BonusSource.WEEKLY_DEPOSIT,
+]
+
 /** The three that name the offer that paid in `referenceId`. */
 const REF_PAYOUT_TYPES = [
     TransactionType.CASHBACK_BONUS,
@@ -366,6 +416,41 @@ function windowStatus(row: { isActive: boolean; startsAt: Date; endsAt: Date }, 
     if (!row.isActive) return 'paused'
     if (row.startsAt > now) return 'scheduled'
     return 'live'
+}
+
+/**
+ * The already-closed window this promotion still owes a settlement for, if any.
+ *
+ * `CashbackService.checkAndDisburse` re-reads the promotion row when the hourly
+ * tick settles a window, so every payout-shaping column is read long after the
+ * play it prices. Between a window closing and that tick there is a gap in
+ * which an edit re-prices a period players have already finished, and a
+ * deactivation makes the tick skip it for good.
+ *
+ * Whether a window was settled is inferred from its disbursement rows because
+ * nothing else records a tick — so a window in which nobody cleared the
+ * threshold reads as unsettled until the next boundary stops it being the
+ * previous period. That is the deliberate direction to be wrong in: it costs an
+ * admin a wait, where the other way pays players under rules they never played
+ * under.
+ */
+async function pendingClosedWindow(
+    promotion: { id: string; frequency: string; payoutTiming: string; startsAt: Date; endsAt: Date },
+    now: Date,
+): Promise<{ periodStart: Date; periodEnd: Date } | null> {
+    // ON_THRESHOLD pays into the live window and settles nothing afterwards.
+    if (promotion.payoutTiming !== CashbackPayoutTiming.PERIOD_CLOSE) return null
+
+    const window = getPreviousPeriod(promotion.frequency as CashbackFrequency, now)
+    // The same dueness test runChecks applies: only a window the promotion was
+    // already live at the start of ever earned anyone cashback.
+    if (promotion.startsAt > window.periodStart || promotion.endsAt < window.periodStart) return null
+
+    const settled = await prisma.cashbackDisbursement.findFirst({
+        where: { promotionId: promotion.id, periodStart: window.periodStart },
+        select: { id: true },
+    })
+    return settled ? null : window
 }
 
 /** Drops a pointless trailing '.00' — a reward reads '50 ETB', not '50.00 ETB'. */
@@ -738,6 +823,10 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             const parsed = adjustBalanceSchema.safeParse(req.body)
             if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', details: parsed.error.issues })
             const { type, amount, note } = parsed.data
+            // The lot's own expiresAt is the only thing the expiry sweep reads,
+            // so a grant that drops it is permanent money however the admin
+            // labelled it.
+            const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null
             const userId = req.params.id
             const result = await prisma.$transaction(async (tx) => {
                 const wallets = await tx.$queryRaw<Array<{ id: string; realBalance: Decimal; bonusBalance: Decimal }>>`
@@ -765,6 +854,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                                 requestedAmount: Number(adjustAmount),
                                 appliedDelta: Number(appliedDelta),
                                 note,
+                                ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}),
                             },
                         },
                     })
@@ -779,7 +869,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 } else {
                     const grantOrReduce =
                         adjustAmount.gte(0)
-                            ? await BonusService.grant(tx, { userId, amount: adjustAmount, source: 'ADMIN' })
+                            ? await BonusService.grant(tx, { userId, amount: adjustAmount, source: 'ADMIN', expiresAt })
                             : await BonusService.reduce(tx, userId, adjustAmount.abs()).then((r) => ({
                                   bonusBalanceBefore: r.bonusBalanceBefore,
                                   bonusBalanceAfter: r.bonusBalanceAfter,
@@ -976,9 +1066,50 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             if (!existing) return reply.status(404).send({ error: 'Promotion not found' })
 
             const { name, lossThreshold, refundValue, maxPayoutPerPlayer, periodBudget, bonusValidityHours } = parsed.data
+            const now = new Date()
             const endsAt = parsed.data.endsAt === undefined ? undefined : new Date(parsed.data.endsAt)
-            if (endsAt && endsAt <= existing.startsAt) {
-                return reply.status(400).send({ error: 'endsAt must be after startsAt' })
+            if (endsAt) {
+                if (endsAt <= existing.startsAt) {
+                    return reply.status(400).send({ error: 'endsAt must be after startsAt' })
+                }
+                // A window may only ever be shortened into the future. An endsAt
+                // in the past clamps `lossEnd` inside a period players have
+                // already played, cancelling a settlement they have earned — and
+                // moving it there is what the end action is for, which settles
+                // the remainder first.
+                if (endsAt <= now) {
+                    return reply.status(400).send({
+                        error: 'endsAt must be in the future — use the end action to stop a promotion now',
+                    })
+                }
+                // Forward, on a promotion that has already lapsed, is the same
+                // bug from the other side: the next tick would settle windows the
+                // promotion was dead through and advertised nowhere.
+                if (existing.endsAt <= now) {
+                    return reply.status(409).send({
+                        error: `This promotion ended at ${existing.endsAt.toISOString()} and cannot be extended — create a new promotion instead`,
+                    })
+                }
+            }
+
+            // Every one of these is read at settle time, not at play time, so
+            // editing one while a closed window waits for the tick re-prices a
+            // period that is already over.
+            const reprices =
+                lossThreshold !== undefined ||
+                refundValue !== undefined ||
+                maxPayoutPerPlayer !== undefined ||
+                periodBudget !== undefined ||
+                bonusValidityHours !== undefined
+            if (reprices) {
+                const unsettled = await pendingClosedWindow(existing, now)
+                if (unsettled) {
+                    return reply.status(409).send({
+                        error:
+                            `The period ${unsettled.periodStart.toISOString()} → ${unsettled.periodEnd.toISOString()} has closed but is not settled yet, ` +
+                            'and players have already earned against these terms. Thresholds, refund values, caps and bonus validity can be changed once it has paid out.',
+                    })
+                }
             }
 
             const data = {
@@ -1002,18 +1133,41 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             return updated
         })
 
-        // Ending is not pausing. isActive alone leaves a future endsAt behind, so
-        // resuming the promotion would settle every window that closed meanwhile;
-        // endsAt alone does not stop it, because a PERIOD_CLOSE promotion settles
-        // the window that closed after its own end date. Both, together, stop it.
+        // Ends by moving `endsAt` to this instant and deliberately leaving
+        // isActive alone. That a PERIOD_CLOSE promotion keeps settling after its
+        // own end date is the point, not a leak: the window that closed before
+        // this call, and the play up to this instant once the window containing
+        // it closes, are both already earned, and `checkAndDisburse` clamps the
+        // loss window with `lossEnd = endsAt` so nothing later can be counted.
+        // Once that final window has been settled every later one fails
+        // `endsAt >= periodStart` and the promotion never pays again; `endsAt` in
+        // the past already reads as `ended` everywhere (see windowStatus), and
+        // ON_THRESHOLD stops on its own `endsAt < now` guard.
+        //
+        // Clearing isActive here — the previous behaviour — instead stranded that
+        // money for good: runChecks filters on isActive and checkAndDisburse
+        // returns early without it.
+        //
+        // The other candidate, settling the due window inline and then
+        // deactivating, was rejected: it moves money inside an admin HTTP
+        // request, and it still forfeits the open window's play between the last
+        // boundary and now — the very payout an admin ending a promotion
+        // mid-period is most likely to owe.
         f.post('/cashback/:id/end', async (req: any, reply) => {
             const { id } = req.params
             const existing = await prisma.cashbackPromotion.findUnique({ where: { id } })
             if (!existing) return reply.status(404).send({ error: 'Promotion not found' })
 
+            const now = new Date()
+            // Ending an ended promotion would move endsAt FORWARD, reviving it
+            // for the stretch it has been dead through.
+            if (existing.endsAt <= now) {
+                return reply.status(409).send({ error: `This promotion already ended at ${existing.endsAt.toISOString()}` })
+            }
+
             const updated = await prisma.cashbackPromotion.update({
                 where: { id },
-                data: { endsAt: new Date(), isActive: false },
+                data: { endsAt: now },
             })
             await writePromotionAudit(req, 'promotion.update', id, {
                 kind: PromoKind.CASHBACK,
@@ -1178,7 +1332,15 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 // The grants are the liability, not wallets.bonusBalance: the cached
                 // balance is derived from them (see the ledger invariant), and a
                 // drift would otherwise be reported here as real money owed.
-                prisma.bonusGrant.aggregate({ where: { status: 'ACTIVE' }, _sum: { remaining: true } }),
+                //
+                // Scoped to the promotion sources so this tile counts the same
+                // offers the paid tiles beside it do — over every ACTIVE lot it
+                // also carried manual credits and refunded bonus stakes, and an
+                // admin could not reconcile the two numbers at all.
+                prisma.bonusGrant.aggregate({
+                    where: { status: 'ACTIVE', source: { in: PROMO_GRANT_SOURCES } },
+                    _sum: { remaining: true },
+                }),
             ])
 
             return {
@@ -1292,10 +1454,64 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 remaining: Number(g.remaining),
                 expiresAt: g.expiresAt,
                 status: g.status,
+                // Provenance, not decoration: a cashback or deposit-rule lot has
+                // no rule name to fall back on, so without this every lot reads
+                // as a manual admin credit.
+                source: g.source,
                 ruleName: g.rule?.name ?? null,
                 ruleType: g.rule?.type ?? null,
                 createdAt: g.createdAt,
             }))
+        })
+
+        // Rescuing one lot whose deadline is about to pass (or has, while a
+        // support ticket sat in a queue). ACTIVE only: an EXPIRED lot has already
+        // had its remaining taken off wallets.bonusBalance, so reviving it here
+        // would break the lot/wallet invariant with no compensating credit.
+        f.post('/players/:id/bonus-grants/:grantId/extend', async (req: any, reply) => {
+            const parsed = extendGrantSchema.safeParse(req.body)
+            if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message })
+            const userId = req.params.id as string
+            const grantId = req.params.grantId as string
+            const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null
+
+            const updated = await prisma.$transaction(async (tx) => {
+                // Wallet first, then the lot — the lock order BonusService uses
+                // everywhere (see expireForUser). This races the expiry sweep,
+                // which decides under a FOR UPDATE on these same rows which lots
+                // are past due, and taking them the other way round would
+                // deadlock against it.
+                await tx.$queryRaw`SELECT id FROM wallets WHERE "userId" = ${userId} FOR UPDATE`
+                const locked = await tx.$queryRaw<Array<{ expiresAt: Date | null }>>`
+                    SELECT "expiresAt" FROM bonus_grants
+                    WHERE id = ${grantId} AND "userId" = ${userId} AND status = 'ACTIVE'
+                    FOR UPDATE
+                `
+                if (locked.length === 0) return null
+                const previousExpiry = locked[0].expiresAt
+
+                const row = await tx.bonusGrant.update({ where: { id: grantId }, data: { expiresAt } })
+                // Awaited inside the transaction, like a balance adjustment's:
+                // the lot row itself records the new deadline but not who moved
+                // it, and an extension nobody can attribute is the hole.
+                await tx.auditLog.create({
+                    data: {
+                        action: 'player.bonus.extend',
+                        actorId: req.user?.id ?? null,
+                        actorName: await actorNameFor(tx, req.user?.id),
+                        target: `player:${userId}`,
+                        detail: {
+                            grantId,
+                            from: previousExpiry ? previousExpiry.toISOString() : null,
+                            to: expiresAt ? expiresAt.toISOString() : null,
+                        },
+                    },
+                })
+                return { id: row.id, expiresAt: row.expiresAt, status: row.status }
+            })
+
+            if (!updated) return reply.status(404).send({ error: 'No active bonus lot with that id for this player' })
+            return updated
         })
 
         // ── Payment Methods ───────────────────────────────────────────────────

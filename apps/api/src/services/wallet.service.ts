@@ -27,6 +27,23 @@ function formatAddisTime(at: Date): string {
     }).format(at)
 }
 
+/**
+ * The referral reward credits the REFERRER's realBalance and writes a
+ * referralReward row, so a silent failure here is an unpaid referrer with no
+ * trace of the debt anywhere. It runs post-commit and must stay best-effort —
+ * the deposit is already durable and cannot be unwound over it — so reporting
+ * loudly is the only thing left that makes the miss recoverable by a human.
+ */
+function reportReferralRewardFailure(err: unknown, userId: string, transactionId: string): void {
+    console.error(
+        '[WalletService] referral first-deposit reward failed for user %s after deposit %s:',
+        userId,
+        transactionId,
+        (err as Error)?.message,
+    )
+    reportError(err, { service: 'wallet', phase: 'referral-first-deposit-bonus', userId, transactionId })
+}
+
 export class WalletService {
     static async getBalance(userId: string) {
         const wallet = await prisma.wallet.findUnique({
@@ -415,7 +432,9 @@ export class WalletService {
             // Check referral bonus (only on first deposit, bonus already handled above)
             if (bonusAwarded > 0) {
                 // bonusAwarded > 0 means this IS the first deposit
-                await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+                await ReferralService.processFirstDepositBonus(transaction.userId).catch((err) =>
+                    reportReferralRewardFailure(err, transaction.userId, transaction.id),
+                )
             } else if (!sharedPayer && !payerCheckFailure) {
                 // Still check if it's first deposit for referral purposes
                 const previousApproved = await prisma.transaction.count({
@@ -427,7 +446,9 @@ export class WalletService {
                     },
                 })
                 if (previousApproved === 0) {
-                    await ReferralService.processFirstDepositBonus(transaction.userId).catch(() => {})
+                    await ReferralService.processFirstDepositBonus(transaction.userId).catch((err) =>
+                        reportReferralRewardFailure(err, transaction.userId, transaction.id),
+                    )
                 }
             }
 

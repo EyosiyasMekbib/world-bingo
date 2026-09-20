@@ -1,7 +1,7 @@
 import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { Multipart } from '@fastify/multipart'
 import { imageSize } from 'image-size'
-import type { ZodError } from 'zod'
+import { z, type ZodError } from 'zod'
 import {
     PROMO_CARD_SPEC,
     PromoArtworkFieldsSchema,
@@ -9,7 +9,11 @@ import {
     promoCardImageProblem,
 } from '@world-bingo/shared-types'
 import { uploadFile } from '../../lib/storage'
-import { PromoArtworkNotFoundError, PromoArtworkService } from '../../services/promo-artwork.service'
+import {
+    PromoArtworkNotFoundError,
+    PromoArtworkService,
+    type PromoArtworkPatch,
+} from '../../services/promo-artwork.service'
 
 /**
  * Artwork for the promo tiles under the lobby hero. Mounted inside the admin
@@ -44,6 +48,20 @@ const MULTIPART_ERRORS: Record<string, string> = {
 }
 
 class UploadRejected extends Error {}
+
+/**
+ * PATCH bodies are JSON, and JSON is a different wire format from the multipart
+ * PUT: values arrive already typed, so PromoArtworkFieldsSchema is the wrong
+ * schema here. Its `position` is `z.coerce.number()`, and coercion only skips
+ * `undefined` -- a JSON `null`, `true` or `[]` would each be quietly turned into
+ * a number instead of being rejected. Nothing is coerced below, and `null` is
+ * accepted as the explicit "clear the ordering" signal. The bounds mirror the
+ * multipart schema's position field.
+ */
+const PatchBodySchema = z.object({
+    altText: z.string().trim().max(160).optional(),
+    position: z.number().int().min(0).max(999).nullable().optional(),
+})
 
 type BufferedFile = { buffer: Buffer; mimetype: string }
 
@@ -171,12 +189,21 @@ const promoArtworkAdminRoutes: FastifyPluginAsync = async (fastify) => {
         const { kind, refId } = req.params as ArtworkParams
         if (!isKind(kind)) return reply.status(400).send({ error: `Unknown promo kind "${kind}"` })
 
-        // Partial, so leaving altText out keeps the stored caption instead of
-        // taking the schema's empty-string default.
-        const parsed = PromoArtworkFieldsSchema.partial().safeParse(req.body ?? {})
+        const parsed = PatchBodySchema.safeParse(req.body ?? {})
         if (!parsed.success) return reply.status(400).send({ error: zodMessage(parsed.error) })
+
+        // Zod drops absent keys, so `in` is what separates "left out" (keep what
+        // is stored) from an explicit null (clear the ordering).
+        const patch: { altText?: string; position?: number | null } = {}
+        if ('altText' in parsed.data) patch.altText = parsed.data.altText
+        if ('position' in parsed.data) patch.position = parsed.data.position ?? null
+
         try {
-            return { item: await PromoArtworkService.update({ kind, refId }, parsed.data) }
+            // The service spells position as `number`, but it forwards every
+            // non-undefined value to a column that is nullable, so the null
+            // lands as NULL. Cast rather than widen the shared service type.
+            const item = await PromoArtworkService.update({ kind, refId }, patch as PromoArtworkPatch)
+            return { item }
         } catch (err) {
             if (err instanceof PromoArtworkNotFoundError) return reply.status(404).send({ error: err.message })
             throw err

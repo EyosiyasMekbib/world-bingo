@@ -468,6 +468,83 @@ describe('CashbackService.runChecks — payout timing', () => {
         const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { promotionId: promotion.id } })
         expect(disbursement.periodStart.toISOString()).toBe(current.periodStart.toISOString())
     })
+
+    it('PERIOD_CLOSE settles only the part of the window the promotion was still live for', async () => {
+        const player = await makeUser('timingended1', '+251900000042')
+        const previous = getPreviousPeriod(CashbackFrequency.DAILY)
+
+        // Dies six hours into the window this run settles: live for the first
+        // half of it, over for the rest. A PERIOD_CLOSE promotion is settled
+        // after its own endsAt by design, which is what exposes the gap.
+        const promotion = await makeDailyPromotion({
+            payoutTiming: 'PERIOD_CLOSE',
+            refundType: 'PERCENTAGE',
+            refundValue: 50,
+            endsAt: new Date(previous.periodStart.getTime() + 6 * 3600000),
+        })
+
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: 'GAME_ENTRY', amount: 60, status: 'APPROVED',
+                createdAt: new Date(previous.periodStart.getTime() + 3600000),
+            },
+        })
+        // Played after the promotion ended — it advertised no cashback for this.
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED',
+                createdAt: new Date(previous.periodStart.getTime() + 10 * 3600000),
+            },
+        })
+
+        const run = await CashbackService.runChecks()
+        expect(run.totalDisbursed).toBe(1)
+        expect(run.totalAmount.toNumber()).toBe(30) // 50% of the 60 lost while live, not of 160
+
+        // Only the LOSS window is clamped: the disbursement stays keyed to the
+        // canonical window start, which is what keeps the run idempotent.
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { promotionId: promotion.id } })
+        expect(disbursement.periodStart.toISOString()).toBe(previous.periodStart.toISOString())
+
+        const repeatRun = await CashbackService.runChecks()
+        expect(repeatRun.totalDisbursed).toBe(0)
+        expect(await prisma.cashbackDisbursement.count({ where: { promotionId: promotion.id } })).toBe(1)
+    })
+
+    it('ignores play from before a promotion started, still keying the disbursement to the window start', async () => {
+        const player = await makeUser('timingstarted1', '+251900000043')
+        const previous = getPreviousPeriod(CashbackFrequency.DAILY)
+
+        // Born six hours into the window. runChecks deliberately skips a window
+        // a promotion was not live at the start of, so the symmetric start clamp
+        // is exercised through checkAndDisburse, which admin settlement also uses.
+        const promotion = await makeDailyPromotion({
+            payoutTiming: 'PERIOD_CLOSE',
+            refundType: 'PERCENTAGE',
+            refundValue: 50,
+            startsAt: new Date(previous.periodStart.getTime() + 6 * 3600000),
+        })
+
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: 'GAME_ENTRY', amount: 100, status: 'APPROVED',
+                createdAt: new Date(previous.periodStart.getTime() + 3600000),
+            },
+        })
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: 'GAME_ENTRY', amount: 60, status: 'APPROVED',
+                createdAt: new Date(previous.periodStart.getTime() + 9 * 3600000),
+            },
+        })
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, previous.periodStart, previous.periodEnd)
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(30)
+
+        const disbursement = await prisma.cashbackDisbursement.findFirstOrThrow({ where: { promotionId: promotion.id } })
+        expect(disbursement.periodStart.toISOString()).toBe(previous.periodStart.toISOString())
+    })
 })
 
 describe('CashbackService.checkAndDisburse — caps, budgets and expiry', () => {
@@ -697,6 +774,202 @@ describe('CashbackService.getNetLossByUser — what counts as a real loss', () =
         const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
         expect(result.disbursed).toBe(1)
         expect(result.total.toNumber()).toBe(20)
+    })
+
+    /**
+     * Writes a provider callback exactly as the three wallet services do: the
+     * third_party_transactions row (whose balance columns are the COMBINED
+     * real+bonus total) plus the paired wallet-audit row keyed on
+     * referenceId = the provider transactionId, which is the only row carrying
+     * the real/bonus split. `pairedType: null` stands for pre-pairing data.
+     */
+    async function writeProviderPlay(opts: {
+        userId: string
+        transactionId: string
+        tptType: 'BET' | 'ROLLBACK'
+        tptStatus: 'COMPLETED' | 'ROLLED_BACK'
+        amount: number
+        pairedType: 'TP_BET' | 'TP_ROLLBACK' | null
+        bonusBefore?: number
+        bonusAfter?: number
+        /** null stands for Atlas-V, whose game_code is optional on every call. */
+        gameCode?: string | null
+    }) {
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: opts.userId,
+                providerId: 'provider-real-loss-suite',
+                transactionId: opts.transactionId,
+                gameCode: opts.gameCode === undefined ? 'SLOT-1' : opts.gameCode,
+                type: opts.tptType,
+                status: opts.tptStatus,
+                amount: opts.amount,
+                balanceBefore: 0,
+                balanceAfter: 0,
+            },
+        })
+        if (!opts.pairedType) return
+        await prisma.transaction.create({
+            data: {
+                userId: opts.userId,
+                type: opts.pairedType,
+                amount: Math.abs(opts.amount),
+                status: 'APPROVED',
+                referenceId: opts.transactionId,
+                balanceBefore: 0,
+                balanceAfter: 0,
+                bonusBalanceBefore: opts.bonusBefore ?? 0,
+                bonusBalanceAfter: opts.bonusAfter ?? 0,
+            },
+        })
+    }
+
+    it('counts only the real-balance part of a bonus-funded provider bet, so slots cannot recycle bonus into bonus', async () => {
+        const bonusOnly = await makeUser('lossprovbonus1', '+251900000055')
+        const mixed = await makeUser('lossprovmixed1', '+251900000056')
+        const legacy = await makeUser('lossprovlegacy1', '+251900000057')
+
+        const promotion = await makeUnscopedPromotion('Provider Bonus Aware', { refundType: 'PERCENTAGE', refundValue: 50 })
+
+        // spendAccount = 'BONUS': the whole 100 stake came out of the bonus
+        // wallet, so no real money was lost and no cashback may be earned.
+        await writeProviderPlay({
+            userId: bonusOnly.id, transactionId: 'tp-bonus-only', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -100, pairedType: 'TP_BET', bonusBefore: 100, bonusAfter: 0,
+        })
+        // 30 of this 100 came from bonus → 70 real, a 50% refund of 35.
+        await writeProviderPlay({
+            userId: mixed.id, transactionId: 'tp-mixed', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -100, pairedType: 'TP_BET', bonusBefore: 30, bonusAfter: 0,
+        })
+        // No paired audit row at all (data predating the pairing) still counts as
+        // wholly real, which is how this ledger was read before the split.
+        await writeProviderPlay({
+            userId: legacy.id, transactionId: 'tp-legacy', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -100, pairedType: null,
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(bonusOnly.id) ?? 0).toNumber()).toBe(0)
+        expect(new Decimal(netLoss.get(mixed.id) ?? 0).toNumber()).toBe(70)
+        expect(new Decimal(netLoss.get(legacy.id) ?? 0).toNumber()).toBe(100)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(2)
+        expect(result.total.toNumber()).toBe(85) // 35 + 50, nothing for the bonus-only player
+
+        const paid = await prisma.cashbackDisbursement.findMany({ where: { promotionId: promotion.id } })
+        expect(paid.map((p) => p.userId).sort()).toEqual([legacy.id, mixed.id].sort())
+
+        const bonusOnlyWallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: bonusOnly.id } })
+        expect(new Decimal(bonusOnlyWallet.bonusBalance).toNumber()).toBe(0)
+    })
+
+    it('leaves a cancelled provider bet out entirely, so it is neither a loss nor a win', async () => {
+        const cancelledOnly = await makeUser('lossprovrb1', '+251900000058')
+        const alsoLost = await makeUser('lossprovrb2', '+251900000059')
+
+        const promotion = await makeUnscopedPromotion('Rollback Aware')
+
+        // A rollback flips the original BET to ROLLED_BACK and books a
+        // compensating ROLLBACK row for the same money across the same accounts,
+        // so the pair nets to zero and both halves are dropped. Keeping only one
+        // side is the bug either way round: the credit alone reads as a win, the
+        // debit alone bills a stake that was handed straight back.
+        await writeProviderPlay({
+            userId: cancelledOnly.id, transactionId: 'tp-rb-bet', tptType: 'BET', tptStatus: 'ROLLED_BACK',
+            amount: -60, pairedType: 'TP_BET',
+        })
+        await writeProviderPlay({
+            userId: cancelledOnly.id, transactionId: 'tp-rb-cancel', tptType: 'ROLLBACK', tptStatus: 'COMPLETED',
+            amount: 60, pairedType: 'TP_ROLLBACK',
+        })
+
+        // A genuine 100 loss alongside a rolled-back 60 bet: the reversal must
+        // not eat into the loss the player really took.
+        await writeProviderPlay({
+            userId: alsoLost.id, transactionId: 'tp-real-bet', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -100, pairedType: 'TP_BET',
+        })
+        await writeProviderPlay({
+            userId: alsoLost.id, transactionId: 'tp-rb2-bet', tptType: 'BET', tptStatus: 'ROLLED_BACK',
+            amount: -60, pairedType: 'TP_BET',
+        })
+        await writeProviderPlay({
+            userId: alsoLost.id, transactionId: 'tp-rb2-cancel', tptType: 'ROLLBACK', tptStatus: 'COMPLETED',
+            amount: 60, pairedType: 'TP_ROLLBACK',
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(cancelledOnly.id) ?? 0).toNumber()).toBe(0)
+        expect(new Decimal(netLoss.get(alsoLost.id) ?? 0).toNumber()).toBe(100)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(20)
+
+        const paid = await prisma.cashbackDisbursement.findMany({ where: { promotionId: promotion.id } })
+        expect(paid.map((p) => p.userId)).toEqual([alsoLost.id])
+    })
+
+    it('drops a cancelled bet from a game-scoped promotion even when the rollback row names no game', async () => {
+        // Atlas-V's game_code is optional on a cancel, so the ROLLBACK row it
+        // writes can carry a NULL gameCode while the bet it reverses names the
+        // scoped game. A (providerId, gameCode) IN (...) test never matches a
+        // NULL, so scoping the two halves independently kept the debit and threw
+        // away the credit — billing a stake the player got back in full.
+        const player = await makeUser('lossprovscoped1', '+251900000066')
+
+        const promotion = await makeUnscopedPromotion('Scoped Rollback Aware', {
+            providerGameKeys: ['provider-real-loss-suite:SLOT-1'],
+        })
+
+        await writeProviderPlay({
+            userId: player.id, transactionId: 'tp-scoped-bet', tptType: 'BET', tptStatus: 'ROLLED_BACK',
+            amount: -80, pairedType: 'TP_BET',
+        })
+        await writeProviderPlay({
+            userId: player.id, transactionId: 'tp-scoped-cancel', tptType: 'ROLLBACK', tptStatus: 'COMPLETED',
+            amount: 80, pairedType: 'TP_ROLLBACK', gameCode: null,
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(player.id) ?? 0).toNumber()).toBe(0)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(0)
+    })
+
+    it('returns one player when asked for one, so a progress bar never scans the player base', async () => {
+        const asking = await makeUser('lossoneplayer1', '+251900000067')
+        const other = await makeUser('lossoneplayer2', '+251900000068')
+
+        const promotion = await makeUnscopedPromotion('Single Player Scope')
+
+        await writeProviderPlay({
+            userId: asking.id, transactionId: 'tp-single-mine', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -70, pairedType: 'TP_BET',
+        })
+        // Both a bingo row and a provider row, because the predicate has to be
+        // bound in BOTH CTEs — binding one leaks the other's site-wide total.
+        await prisma.transaction.create({
+            data: { userId: other.id, type: 'GAME_ENTRY', amount: 5000, status: 'APPROVED' },
+        })
+        await writeProviderPlay({
+            userId: other.id, transactionId: 'tp-single-theirs', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -5000, pairedType: 'TP_BET',
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const scoped = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd, asking.id)
+        expect([...scoped.keys()]).toEqual([asking.id])
+        expect(new Decimal(scoped.get(asking.id) ?? 0).toNumber()).toBe(70)
+
+        const everyone = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(everyone.get(other.id) ?? 0).toNumber()).toBe(10000)
     })
 })
 
