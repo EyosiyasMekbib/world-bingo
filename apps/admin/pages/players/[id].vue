@@ -1050,6 +1050,10 @@ onUnmounted(() => {
         <div class="flex justify-end gap-2">
           <UButton color="neutral" variant="ghost" class="min-h-11" label="Cancel" @click="showExtend = false" />
           <UButton color="primary" class="min-h-11" :loading="extending" label="Extend" @click="submitExtend" />
+        </div>
+      </template>
+    </UModal>
+
     <!-- Not dismissible while the password is on screen: a stray click on the
          overlay would lose it for good and force a second reset. -->
     <UModal v-model:open="showReset" :dismissible="!temporaryPassword">

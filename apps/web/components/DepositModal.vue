@@ -64,10 +64,7 @@
                           v-for="chip in [200, 500, 1000, 2000]"
                           :key="chip"
                           class="wb-chip"
-                          @click="
-                            checkoutAmount = chip
-                            openMethod = m.code
-                          "
+                          @click="pickCheckoutChip(m.code, chip)"
                         >
                           +{{ chip }}
                         </button>
@@ -141,10 +138,7 @@
                             v-for="chip in [200, 500, 1000, 2000]"
                             :key="chip"
                             class="wb-chip"
-                            @click="
-                              form.amount = chip
-                              trackAmountEntered(m.code)
-                            "
+                            @click="pickAmountChip(m.code, chip)"
                           >
                             +{{ chip }}
                           </button>
@@ -168,12 +162,7 @@
                           placeholder="e.g. TLB202601011234"
                           class="wb-input"
                           :class="{ 'wb-input--error': fieldError === 'transactionId' }"
-                          @input="
-                            if (fieldError === 'transactionId') {
-                              fieldError = ''
-                              error = ''
-                            }
-                          "
+                          @input="clearTransactionIdError"
                         />
                         <span v-if="fieldError === 'transactionId'" class="wb-hint wb-hint--error">
                           Already used — check your pending deposits below.
@@ -408,6 +397,28 @@ function onAgentCodeLive() {
 function trackAmountEntered(paymentMethod: string) {
   if (!(form.amount > 0)) return
   track('deposit_amount_entered', { paymentMethod, amountBucket: amountBucket(form.amount) })
+}
+
+// These three were inline handlers holding two statements each, written across
+// newlines with nothing between them. Vue parses an inline handler as one
+// expression, so the template failed to compile and took the whole web build
+// with it. Named functions rather than semicolons: the compiler cannot be
+// tripped by them, and the call sites read as what they do.
+function pickCheckoutChip(methodCode: string, chip: number) {
+  checkoutAmount.value = chip
+  openMethod.value = methodCode
+}
+
+function pickAmountChip(methodCode: string, chip: number) {
+  form.amount = chip
+  trackAmountEntered(methodCode)
+}
+
+/** Clears the transaction-ID error as soon as the player starts correcting it. */
+function clearTransactionIdError() {
+  if (fieldError.value !== 'transactionId') return
+  fieldError.value = ''
+  error.value = ''
 }
 
 // A logoUrl that 404s must not leave a broken-image glyph sitting on the card:
