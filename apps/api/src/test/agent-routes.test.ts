@@ -237,14 +237,14 @@ describe('GET /agent/requests/:code', () => {
             code: CODE,
             amount: '250.00',
             expiresAt: '2026-09-18T10:05:00.000Z',
-            player: { maskedName: 'A**** T*****', maskedPhone: '2519****4321', since: '2026-01-02', depositCount: 4 },
+            player: { name: 'Almaz Tesfaye', phoneTail: '•••• 4321', since: '2026-01-02', depositCount: 4 },
         })
         const app = await buildApp()
 
         const res = await app.inject({ method: 'GET', url: `/agent/requests/${CODE}` })
 
         expect(res.statusCode).toBe(200)
-        expect(res.json().player.maskedPhone).toBe('2519****4321')
+        expect(res.json().player.phoneTail).toBe('•••• 4321')
         expect(h.AgentDepositService.lookupByCode).toHaveBeenCalledWith(CODE)
         await app.close()
     })
@@ -285,7 +285,7 @@ describe('POST /agent/requests/:code/fulfill', () => {
             code: CODE,
             fulfilledAt: '2026-09-18T10:01:00.000Z',
             floatAfter: '750.00',
-            player: { maskedName: 'A**** T*****' },
+            player: { name: 'Almaz Tesfaye' },
         })
         const app = await buildApp()
 
