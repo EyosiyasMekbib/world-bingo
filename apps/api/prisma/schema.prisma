@@ -691,6 +691,10 @@ model GameProvider {
   apiBaseUrl   String // e.g. "https://api.gasea.com/v3"
   currency     String                @default("ETB")
   isPrimary    Boolean               @default(false)
+  // Lobby de-dup priority: when several ACTIVE providers carry the same title,
+  // the lowest number wins (ties: isPrimary, then oldest). Set on the admin
+  // providers dashboard. See GameCatalogService.applyShadowing().
+  priority     Int                   @default(100)
   config       Json? // provider-specific config blob
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
@@ -709,6 +713,10 @@ model GameVendor {
   name         String // e.g. "Pragmatic Play"
   categoryCode String? // e.g. "SLOTS,LIVE"
   isActive     Boolean        @default(true)
+  // Lobby de-dup group override. Two providers can name the same studio
+  // differently ("Atlas-V" vs "ATLAS V2"); setting the same alias on both
+  // vendors puts their games in one de-dup group. Null falls back to `name`.
+  dedupAlias   String?
   lastSyncedAt DateTime?
   provider     GameProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
   games        ProviderGame[]
@@ -735,12 +743,17 @@ model ProviderGame {
   autoHidden     Boolean      @default(false) // hidden by us after an upstream "disabled" launch; re-enabled on next sync
   sortOrder      Int          @default(0)
   featuredRank   Int? // curated lobby rank projected from FeaturedGame; null = unpinned
+  // A higher-priority ACTIVE provider carries this same vendor + title, so the
+  // cross-provider lobby feed hides this copy. Projected by
+  // GameCatalogService.applyShadowing(); provider-scoped listings ignore it.
+  shadowed       Boolean      @default(false)
   provider       GameProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   vendor         GameVendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([providerId, gameCode])
   @@index([categoryCode])
   @@index([isActive, categoryCode])
+  @@index([isActive, shadowed, categoryCode])
   @@index([featuredRank])
   @@map("provider_games")
 }

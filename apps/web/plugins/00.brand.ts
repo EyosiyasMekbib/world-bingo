@@ -40,7 +40,7 @@ export default defineNuxtPlugin(async () => {
       ...(theme.typography.googleHref
         ? [
             { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-            { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+            { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' as const },
             { rel: 'stylesheet', href: theme.typography.googleHref },
           ]
         : []),

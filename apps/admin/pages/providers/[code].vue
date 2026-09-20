@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const { getProviderVendors, updateVendorStatus, getProviderGames, updateGameStatus, syncProvider, getProviderTransactions } = useAdminApi()
+const { getProviderVendors, updateVendorStatus, updateVendorAlias, getProviderGames, updateGameStatus, syncProvider, getProviderTransactions } = useAdminApi()
 const toast = useToast()
 
 const code = route.params.code as string
@@ -14,6 +14,18 @@ const vendorsLoading = ref(false)
 const gamesData = ref<{ data: any[]; total: number; page: number; limit: number } | null>(null)
 const gamesLoading = ref(false)
 const gamesPage = ref(1)
+const GAMES_PAGE_SIZE = 50
+// Games tab filters: a name search plus one studio (vendor code). Both are
+// server-side, so a provider with thousands of games stays browsable. The
+// select needs a non-empty value for "all", hence the sentinel.
+const ALL_STUDIOS = '__all__'
+const gamesSearch = ref('')
+const gamesVendor = ref(ALL_STUDIOS)
+const gamesFiltered = computed(() => Boolean(gamesSearch.value.trim() || gamesVendor.value !== ALL_STUDIOS))
+const vendorOptions = computed(() => [
+  { label: 'All studios', value: ALL_STUDIOS },
+  ...vendors.value.map((v) => ({ label: v.name, value: v.code })),
+])
 
 // Transactions
 const txData = ref<{ data: any[]; total: number; page: number; limit: number } | null>(null)
@@ -37,7 +49,12 @@ const fetchGames = async (page = 1) => {
   gamesLoading.value = true
   gamesPage.value = page
   try {
-    gamesData.value = await getProviderGames(code, { page, limit: 50 }) as any
+    gamesData.value = await getProviderGames(code, {
+      page,
+      limit: GAMES_PAGE_SIZE,
+      search: gamesSearch.value.trim() || undefined,
+      vendor: gamesVendor.value === ALL_STUDIOS ? undefined : gamesVendor.value,
+    }) as any
   } catch {
     toast.add({ title: 'Error', description: 'Failed to load games', color: 'error' })
   } finally {
@@ -57,6 +74,29 @@ const fetchTransactions = async (page = 1) => {
   }
 }
 
+// Lobby de-dup alias: vendors on different providers with the same alias are
+// treated as one studio, so the lobby shows only the higher-priority provider's
+// copy of a title they both carry. Empty clears it (falls back to the name).
+const savingAlias = ref<string | null>(null)
+const saveAlias = async (vendor: any, value: string) => {
+  const alias = value.trim() || null
+  if (alias === (vendor.dedupAlias ?? null)) return
+  savingAlias.value = vendor.id
+  try {
+    const updated = await updateVendorAlias(code, vendor.code, alias)
+    vendor.dedupAlias = updated.dedupAlias ?? null
+    toast.add({
+      title: 'Updated',
+      description: alias ? `${vendor.name} now de-dups as "${alias}"` : `${vendor.name} de-dups by its own name`,
+      color: 'success',
+    })
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to update alias', color: 'error' })
+  } finally {
+    savingAlias.value = null
+  }
+}
+
 const toggleVendor = async (vendor: any) => {
   try {
     await updateVendorStatus(code, vendor.code, !vendor.isActive)
@@ -66,10 +106,46 @@ const toggleVendor = async (vendor: any) => {
   }
 }
 
+// Filter changes restart from page 1; a search is applied on Enter or blur so
+// each keystroke does not hit the API.
+const applyGamesSearch = (value: string) => {
+  if (value.trim() === gamesSearch.value.trim()) return
+  gamesSearch.value = value
+  fetchGames(1)
+}
+watch(gamesVendor, () => fetchGames(1))
+const clearGamesFilters = () => {
+  gamesSearch.value = ''
+  gamesVendor.value = ALL_STUDIOS
+  fetchGames(1)
+}
+
+// Where the lobby stands on a row. A manual "off" is the override that wins
+// over the automatic de-dup: a disabled game never shows, whichever copy the
+// de-dup would otherwise pick, and the next sync leaves it off.
+const lobbyState = (game: any): { label: string; color: 'success' | 'warning' | 'neutral' | 'error' } => {
+  if (!game.isActive) return game.autoHidden
+    ? { label: 'Off (delisted upstream)', color: 'error' }
+    : { label: 'Off', color: 'neutral' }
+  if (game.vendorActive === false) return { label: 'Off (studio disabled)', color: 'neutral' }
+  if (game.shadowed) return { label: 'Hidden as duplicate', color: 'warning' }
+  return { label: 'Showing', color: 'success' }
+}
+
 const toggleGame = async (game: any) => {
+  const next = !game.isActive
   try {
-    await updateGameStatus(code, game.gameCode, !game.isActive)
-    game.isActive = !game.isActive
+    const updated = await updateGameStatus(code, game.gameCode, next) as any
+    game.isActive = updated?.isActive ?? next
+    game.autoHidden = updated?.autoHidden ?? false
+    game.shadowed = updated?.shadowed ?? game.shadowed
+    toast.add({
+      title: next ? 'Game enabled' : 'Game disabled',
+      description: next
+        ? `${game.gameName} can show in the lobby again`
+        : `${game.gameName} is hidden from the lobby until you switch it back on`,
+      color: 'success',
+    })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to update game', color: 'error' })
   }
@@ -133,12 +209,39 @@ onMounted(async () => {
     </div>
 
     <!-- Games tab -->
-    <div v-if="activeTab === 'games'">
+    <div v-if="activeTab === 'games'" class="space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <UInput
+          :model-value="gamesSearch"
+          icon="i-heroicons:magnifying-glass"
+          size="sm"
+          class="w-full sm:w-64"
+          placeholder="Search games by name"
+          aria-label="Search games by name"
+          @change="applyGamesSearch(($event.target as HTMLInputElement).value)"
+          @keydown.enter.prevent="applyGamesSearch(($event.target as HTMLInputElement).value)"
+        />
+        <USelect
+          v-model="gamesVendor"
+          :items="vendorOptions"
+          size="sm"
+          class="w-full sm:w-56"
+          aria-label="Filter games by studio"
+        />
+        <UButton v-if="gamesFiltered" size="sm" variant="ghost" color="neutral" @click="clearGamesFilters">
+          Clear filters
+        </UButton>
+        <p class="text-xs text-white/40 sm:ml-auto">
+          Switch a game off to keep it out of the lobby, whichever copy the de-dup would pick.
+        </p>
+      </div>
+
       <div v-if="gamesLoading" class="flex justify-center py-12 text-zinc-500">
         <UIcon name="i-heroicons:arrow-path" class="w-6 h-6 animate-spin" />
       </div>
       <div v-else-if="!gamesData?.data.length" class="text-center py-12 text-white/40">
-        No games found. Run a sync to populate the catalog.
+        <template v-if="gamesFiltered">No games match these filters.</template>
+        <template v-else>No games found. Run a sync to populate the catalog.</template>
       </div>
       <div v-else>
         <div class="overflow-x-auto rounded-xl border border-(--surface-border)">
@@ -146,8 +249,10 @@ onMounted(async () => {
             <thead style="background: var(--surface-overlay);">
               <tr class="text-left text-white/50 text-xs uppercase tracking-wider">
                 <th class="px-4 py-3 font-semibold">Game</th>
+                <th class="px-4 py-3 font-semibold">Studio</th>
                 <th class="px-4 py-3 font-semibold">Category</th>
                 <th class="px-4 py-3 font-semibold">Code</th>
+                <th class="px-4 py-3 font-semibold">Lobby</th>
                 <th class="px-4 py-3 font-semibold text-right">Active</th>
               </tr>
             </thead>
@@ -159,22 +264,31 @@ onMounted(async () => {
                 style="background: var(--surface-raised);"
               >
                 <td class="px-4 py-3 text-white font-medium">{{ game.gameName }}</td>
+                <td class="px-4 py-3 text-white/60">{{ game.vendorName ?? game.vendorCode ?? '—' }}</td>
                 <td class="px-4 py-3">
                   <UBadge color="neutral" variant="subtle" size="xs">{{ game.categoryCode }}</UBadge>
                 </td>
                 <td class="px-4 py-3 text-white/40 font-mono text-xs">{{ game.gameCode }}</td>
+                <td class="px-4 py-3">
+                  <UBadge :color="lobbyState(game).color" variant="subtle" size="xs">{{ lobbyState(game).label }}</UBadge>
+                </td>
                 <td class="px-4 py-3 text-right">
-                  <UToggle :model-value="game.isActive" size="xs" @change="toggleGame(game)" />
+                  <USwitch
+                    :model-value="game.isActive"
+                    size="xs"
+                    :aria-label="`${game.isActive ? 'Disable' : 'Enable'} ${game.gameName}`"
+                    @update:model-value="toggleGame(game)"
+                  />
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="flex items-center justify-between mt-3 text-sm text-white/40">
-          <span>{{ gamesData.total }} games total</span>
+          <span>{{ gamesData.total }} games{{ gamesFiltered ? ' match' : ' total' }}</span>
           <div class="flex gap-2">
             <UButton size="xs" variant="ghost" :disabled="gamesPage <= 1" @click="fetchGames(gamesPage - 1)">Prev</UButton>
-            <UButton size="xs" variant="ghost" :disabled="gamesPage * 50 >= gamesData.total" @click="fetchGames(gamesPage + 1)">Next</UButton>
+            <UButton size="xs" variant="ghost" :disabled="gamesPage * GAMES_PAGE_SIZE >= gamesData.total" @click="fetchGames(gamesPage + 1)">Next</UButton>
           </div>
         </div>
       </div>
@@ -199,7 +313,25 @@ onMounted(async () => {
             <p class="text-sm font-bold text-white">{{ v.name }}</p>
             <p class="text-xs text-white/40 font-mono">{{ v.code }} · {{ v.categoryCode }}</p>
           </div>
-          <UToggle :model-value="v.isActive" size="sm" @change="toggleVendor(v)" />
+          <label class="flex items-center gap-1.5 text-xs text-white/50 flex-shrink-0">
+            De-dup alias
+            <UInput
+              :model-value="v.dedupAlias ?? ''"
+              size="xs"
+              class="w-32"
+              :placeholder="v.name"
+              :loading="savingAlias === v.id"
+              :aria-label="`Lobby de-dup alias for ${v.name}`"
+              @change="saveAlias(v, ($event.target as HTMLInputElement).value)"
+              @keydown.enter.prevent="saveAlias(v, ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <USwitch
+            :model-value="v.isActive"
+            size="sm"
+            :aria-label="`${v.isActive ? 'Disable' : 'Enable'} ${v.name}`"
+            @update:model-value="toggleVendor(v)"
+          />
         </div>
       </div>
     </div>

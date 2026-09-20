@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getGameProviderGateway } from '../gateways/game-provider/index.js'
-import { FeaturedGameService, PROVIDER_GAME_ORDER_BY } from './featured-game.service.js'
+import { FeaturedGameService, PROVIDER_GAME_ORDER_BY, PROVIDER_ORDER_BY, toNameKey } from './featured-game.service.js'
 import { PatternType } from '@world-bingo/shared-types'
 
 const CURRENCY = process.env.GASEA_DEFAULT_CURRENCY ?? 'ETB'
@@ -32,13 +32,21 @@ type SearchResult = {
     imageLandscape: string | null
 }
 
+/** One launchable catalog row, as findGameByName() returns it. */
+type NamedGameRow = Pick<
+    SearchResult,
+    | 'providerCode'
+    | 'providerName'
+    | 'vendorCode'
+    | 'gameCode'
+    | 'gameName'
+    | 'categoryCode'
+    | 'imageSquare'
+    | 'imageLandscape'
+>
+
 function normalizeQuery(query: string) {
     return query.trim().toLowerCase()
-}
-
-function dedupKey(vendorName: string, gameName: string): string {
-    const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-    return `${clean(vendorName)}::${clean(gameName)}`
 }
 
 function matchesBingoSearch(game: {
@@ -194,10 +202,13 @@ export class GameCatalogService {
         // admin's list so a newly listed title lands in its pinned position.
         await FeaturedGameService.applyRanks()
 
-        // Invalidate Redis cache for this provider (games + categories)
-        const keys = await redis.keys(`tp:games:${providerCode}:*`)
-        if (keys.length > 0) await redis.del(...keys)
-        await redis.del(`tp:categories:${providerCode}`)
+        // New, re-enabled or delisted games change which provider's copy of a
+        // title wins the lobby — recompute before the cache is dropped.
+        await GameCatalogService.applyShadowing()
+
+        // Invalidate Redis cache for this provider (games + categories). The
+        // merged all-providers feed is keyed separately and changes too.
+        await GameCatalogService.bustProviderCache(providerCode)
 
         console.log(`[GameCatalog] Synced ${total} games for ${providerCode}/${vendorCode}`)
         return { total, reenabled, autoHidden: autoHiddenCount }
@@ -245,6 +256,109 @@ export class GameCatalogService {
     }
 
     /**
+     * Project cross-provider duplicates onto provider_games.shadowed.
+     *
+     * Among the ACTIVE games of ACTIVE providers (with an active vendor), rows
+     * are grouped by normalized vendor + game name. The vendor half is, in
+     * order: the vendor's dedupAlias when set; else the name of a "studio
+     * provider" (config.catalogSync === false: a direct integration whose whole
+     * catalog is one studio, e.g. Atlas-V) when the vendor's name contains it
+     * or is contained in it, so Palace's "ATLAS V2" / "Atlas-V Games" / "Atlas"
+     * all read as Atlas-V without anyone typing an alias; else the vendor's
+     * own name. One row per group wins: the
+     * provider with the lowest priority number, then the primary provider,
+     * then the oldest provider. Every other row in the group is shadowed and
+     * the all-providers lobby feed, categories and search leave it out.
+     *
+     * Rows that fall outside the ranking (inactive game / provider / vendor)
+     * are un-shadowed, so a copy surfaces again the moment it qualifies — e.g.
+     * when the winning provider is disabled. Runs at the end of every catalog
+     * sync and after every provider / vendor / game status or priority change.
+     */
+    static async applyShadowing(): Promise<void> {
+        await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`
+                WITH studio AS (
+                    SELECT regexp_replace(lower(name), '[^a-z0-9]', '', 'g') AS key
+                    FROM game_providers
+                    WHERE COALESCE(config->>'catalogSync', 'true') = 'false'
+                      AND length(regexp_replace(lower(name), '[^a-z0-9]', '', 'g')) >= 4
+                ),
+                vendor_key AS (
+                    SELECT v.id,
+                           COALESCE(
+                               NULLIF(regexp_replace(lower(v."dedupAlias"), '[^a-z0-9]', '', 'g'), ''),
+                               (SELECT s.key FROM studio s
+                                 WHERE regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g') LIKE '%' || s.key || '%'
+                                    OR (length(regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')) >= 5
+                                        AND s.key LIKE '%' || regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g') || '%')
+                                 ORDER BY length(s.key) DESC
+                                 LIMIT 1),
+                               regexp_replace(lower(v.name), '[^a-z0-9]', '', 'g')
+                           ) AS key
+                    FROM game_vendors v
+                ),
+                ranked AS (
+                    SELECT g.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY vk.key,
+                                            regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g')
+                               ORDER BY p.priority ASC, p."isPrimary" DESC, p."createdAt" ASC, g.id ASC
+                           ) AS rn
+                    FROM provider_games g
+                    JOIN game_providers p ON p.id = g."providerId"
+                    JOIN game_vendors v ON v.id = g."vendorId"
+                    JOIN vendor_key vk ON vk.id = v.id
+                    WHERE g."isActive" = true AND p.status = 'ACTIVE' AND v."isActive" = true
+                )
+                UPDATE provider_games g
+                SET "shadowed" = (r.rn > 1)
+                FROM ranked r
+                WHERE r.id = g.id AND g."shadowed" IS DISTINCT FROM (r.rn > 1)
+            `
+            await tx.$executeRaw`
+                UPDATE provider_games g
+                SET "shadowed" = false
+                FROM game_providers p, game_vendors v
+                WHERE p.id = g."providerId" AND v.id = g."vendorId"
+                  AND g."shadowed" = true
+                  AND (g."isActive" = false OR p.status <> 'ACTIVE' OR v."isActive" = false)
+            `
+        })
+    }
+
+    /**
+     * Drop the cached games + categories pages for one provider AND the merged
+     * all-providers feed (keyed `__all__`), which changes whenever any single
+     * provider's catalog does.
+     */
+    static async bustProviderCache(providerCode: string): Promise<void> {
+        const keys = await redis.keys(`tp:games:${providerCode}:*`)
+        if (keys.length > 0) await redis.del(...keys)
+        await redis.del(`tp:categories:${providerCode}`)
+        await GameCatalogService.bustAllProvidersCache()
+    }
+
+    /**
+     * Drop every cached catalog page and category list, for every provider and
+     * the merged feed. Runs once at API boot: a migration can re-project
+     * provider_games (priority backfill, vendor alias) while Redis still holds
+     * the feed from before the deploy, which then served the old lobby for up
+     * to GAME_CACHE_TTL after the fix had landed.
+     */
+    static async bustCatalogCache(): Promise<void> {
+        const keys = [...(await redis.keys('tp:games:*')), ...(await redis.keys('tp:categories:*'))]
+        if (keys.length > 0) await redis.del(...keys)
+    }
+
+    /** Drop only the merged all-providers feed + categories. */
+    static async bustAllProvidersCache(): Promise<void> {
+        const keys = await redis.keys('tp:games:__all__:*')
+        if (keys.length > 0) await redis.del(...keys)
+        await redis.del('tp:categories:__all__')
+    }
+
+    /**
      * Get paginated games from DB (with Redis cache). Omitting providerCode
      * queries across every ACTIVE provider — this is what the lobby's "ALL
      * games" feed actually wants (a curated pin should be able to outrank
@@ -283,9 +397,11 @@ export class GameCatalogService {
             vendorId = v?.id
         }
 
+        // Provider-scoped browsing shows that provider's whole catalog; only the
+        // merged feed hides the copies a higher-priority provider shadows.
         const where: any = {
             isActive: true,
-            ...(providerId ? { providerId } : { provider: { is: { status: 'ACTIVE' } } }),
+            ...(providerId ? { providerId } : { shadowed: false, provider: { is: { status: 'ACTIVE' } } }),
             ...(category && category !== 'ALL' ? { categoryCode: category } : {}),
             ...(search ? { gameName: { contains: search, mode: 'insensitive' } } : {}),
             ...(vendorId ? { vendorId } : {}),
@@ -310,6 +426,7 @@ export class GameCatalogService {
         const games = rows.map((g: any) => ({
             ...g,
             vendorCode: g.vendor?.code ?? null,
+            vendorName: g.vendor?.name ?? null,
             providerCode: g.provider?.code ?? null,
             providerName: g.provider?.name ?? null,
         }))
@@ -345,6 +462,7 @@ export class GameCatalogService {
             if (!provider) return []
             where.providerId = provider.id
         } else {
+            where.shadowed = false
             where.provider = { is: { status: 'ACTIVE' } }
         }
 
@@ -387,10 +505,7 @@ export class GameCatalogService {
         const [providers, bingoGames, categories, page] = await Promise.all([
             prisma.gameProvider.findMany({
                 where: { status: 'ACTIVE' },
-                // Deterministic: the primary provider leads, then the oldest. With no
-                // order Postgres returns physical row order, which changes when a row
-                // is updated, so the lobby's first provider could silently flip.
-                orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+                orderBy: PROVIDER_ORDER_BY,
                 select: { code: true, name: true, currency: true },
             }),
             GameCatalogService.getActiveBingoGames(),
@@ -409,15 +524,56 @@ export class GameCatalogService {
         }
     }
 
+    /**
+     * The one catalog row a named entry point (the Aviator nav tab) launches.
+     *
+     * Game codes are provider-specific, so the lookup is by normalized name —
+     * the same key featured pins use (toNameKey / featured_games.nameKey). Only
+     * rows the lobby would show qualify (active game, ACTIVE provider, active
+     * vendor, not shadowed), and among those the admin's provider priority
+     * decides, so this launches the same copy the lobby tile does.
+     * null when no ACTIVE provider carries the title right now.
+     */
+    static async findGameByName(nameKey: string): Promise<NamedGameRow | null> {
+        const key = toNameKey(nameKey)
+        if (!key) return null
+
+        const rows = await prisma.$queryRaw<NamedGameRow[]>`
+            SELECT p.code            AS "providerCode",
+                   p.name            AS "providerName",
+                   v.code            AS "vendorCode",
+                   g."gameCode",
+                   g."gameName",
+                   g."categoryCode",
+                   g."imageSquare",
+                   g."imageLandscape"
+            FROM provider_games g
+            JOIN game_providers p ON p.id = g."providerId"
+            JOIN game_vendors v ON v.id = g."vendorId"
+            WHERE g."isActive" = true
+              AND g."shadowed" = false
+              AND p.status = 'ACTIVE'
+              AND v."isActive" = true
+              AND regexp_replace(lower(g."gameName"), '[^a-z0-9]', '', 'g') = ${key}
+            ORDER BY p.priority ASC, p."isPrimary" DESC, p."createdAt" ASC, g."sortOrder" ASC, g.id ASC
+            LIMIT 1
+        `
+        return rows[0] ?? null
+    }
+
     static async searchCatalog(query: string) {
         const normalized = normalizeQuery(query)
         if (!normalized) {
             return { query: normalized, results: [] as SearchResult[] }
         }
 
+        // Cross-provider duplicates are resolved by applyShadowing(): only the
+        // highest-priority provider's copy of a title is unshadowed, so search
+        // and the lobby feed agree on which one shows.
         const providerGames = await prisma.providerGame.findMany({
             where: {
                 isActive: true,
+                shadowed: false,
                 provider: { is: { status: 'ACTIVE' } },
                 vendor: { is: { isActive: true } },
                 OR: [
@@ -438,25 +594,9 @@ export class GameCatalogService {
                 categoryCode: true,
                 imageSquare: true,
                 imageLandscape: true,
-                provider: { select: { code: true, name: true, isPrimary: true } },
+                provider: { select: { code: true, name: true } },
                 vendor: { select: { code: true, name: true } },
             },
-        })
-
-        // Dedup: when multiple providers serve the same game (same vendor+game name),
-        // show only the primary provider's version. Primary providers sort first.
-        const sortedForDedup = [...providerGames].sort((a, b) => {
-            if (a.provider.isPrimary && !b.provider.isPrimary) return -1
-            if (!a.provider.isPrimary && b.provider.isPrimary) return 1
-            return 0
-        })
-        const seenDedupKeys = new Map<string, true>()
-        const dedupedGames = sortedForDedup.filter((game) => {
-            if (!game.vendor?.name) return true // no vendor info → always include
-            const key = dedupKey(game.vendor.name, game.gameName)
-            if (seenDedupKeys.has(key)) return false
-            seenDedupKeys.set(key, true)
-            return true
         })
 
         const bingoGames = await prisma.game.findMany({
@@ -475,7 +615,7 @@ export class GameCatalogService {
             orderBy: { createdAt: 'desc' },
         })
 
-        const results: SearchResult[] = dedupedGames.map((game) => ({
+        const results: SearchResult[] = providerGames.map((game) => ({
             kind: 'provider',
             id: game.id,
             providerCode: game.provider.code,

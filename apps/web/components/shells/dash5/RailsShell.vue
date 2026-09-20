@@ -14,7 +14,7 @@ const { auth, mobileNavOpen, predictionsEnabled, referralsEnabled } = useAppShel
           <h3 class="d5-panel-head">Game Rooms</h3>
           <NuxtLink to="/games" class="d5-rail-row">All Games</NuxtLink>
           <NuxtLink to="/games/bingo" class="d5-rail-row">Bingo</NuxtLink>
-          <NuxtLink to="/games/mini" class="d5-rail-row">Aviator</NuxtLink>
+          <NuxtLink to="/aviator" class="d5-rail-row">Aviator</NuxtLink>
           <NuxtLink to="/games/live" class="d5-rail-row">Live</NuxtLink>
           <NuxtLink v-if="predictionsEnabled" to="/predictions" class="d5-rail-row">Fights</NuxtLink>
         </div>

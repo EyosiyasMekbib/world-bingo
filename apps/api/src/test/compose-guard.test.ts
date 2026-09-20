@@ -33,7 +33,7 @@ function serviceBlock(content: string, servicePrefix: string): string | null {
   if (start === -1) return null
   let end = lines.length
   for (let i = start + 1; i < lines.length; i++) {
-    if (/^  \S/.test(lines[i])) {
+    if (/^ {2}\S/.test(lines[i])) {
       end = i
       break
     }

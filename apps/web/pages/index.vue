@@ -169,7 +169,7 @@ const BASE_SLIDES: HeroSlide[] = [
     watermark: 'X10',
     gradient: 'linear-gradient(105deg,#0a2c22 0%,#0e3a2c 45%,#0f5346 100%)',
     accent: '#34d399',
-    action: 'games',
+    action: 'aviator',
   },
   {
     id: 'bingo',
@@ -334,6 +334,9 @@ function heroAction(slide: HeroSlide) {
   if (action === 'predictions') {
     track('hero_predictions_click')
     navigateTo('/predictions')
+  } else if (action === 'aviator') {
+    // Into the game itself, via the same resolver as the Aviator nav tab.
+    navigateTo('/aviator')
   } else if (action === 'rooms') {
     document.getElementById('games-grid')?.scrollIntoView({ behavior: 'smooth' })
     selectCategory('BINGO')
@@ -358,10 +361,13 @@ const vendorsAreReal = computed(() =>
   providerStore.games.some((g) => g.vendorCode || g.providerName),
 )
 
+// One chip per vendor (studio), labelled with the vendor's own name. Falling
+// back to the provider name for the label made every Palace vendor read
+// "Palace Casino", so the row showed the same chip nine times.
 const vendorChips = computed<{ code: string; name: string }[]>(() => {
   const map = new Map<string, string>()
   for (const g of providerStore.games) {
-    const name = g.providerName ?? g.vendorCode
+    const name = g.vendorName ?? g.providerName ?? g.vendorCode
     const code = g.vendorCode ?? g.providerName
     if (name && code) map.set(code, name)
   }

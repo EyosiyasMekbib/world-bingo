@@ -1,6 +1,6 @@
 import type { ThemeId } from '@world-bingo/shared-types'
 
-export type HeroAction = 'games' | 'rooms' | 'deposit' | 'predictions' | 'promotions'
+export type HeroAction = 'games' | 'aviator' | 'rooms' | 'deposit' | 'predictions' | 'promotions'
 
 export interface HeroArtwork {
   id: string

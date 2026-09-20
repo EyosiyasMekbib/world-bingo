@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import redis from '../../lib/redis.js'
 import prisma from '../../lib/prisma.js'
 import { GameCatalogService } from '../../services/game-catalog.service.js'
+import { PROVIDER_ORDER_BY } from '../../services/featured-game.service.js'
 import { getGameProviderGateway } from '../../gateways/game-provider/index.js'
 import { EventService } from '../../services/event.service.js'
 import { accountForLaunch } from './account-for-launch.js'
@@ -49,7 +50,7 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                 where: { status: 'ACTIVE' },
                 // Same order as GameCatalogService.getLobby — the web store's
                 // fetchProviders fallback takes the first entry as the active provider.
-                orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+                orderBy: PROVIDER_ORDER_BY,
                 select: { code: true, name: true, currency: true },
             })
         },
@@ -86,6 +87,23 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
             const pg = Math.max(1, parseInt(page, 10))
             const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10)))
             return GameCatalogService.getGames({ category, page: pg, pageSize: ps, search })
+        },
+    })
+
+    // ── One game by normalized name, for named entry points like the Aviator tab
+    // Static "games" segment, so it can't collide with /:providerCode/games.
+    fastify.get('/games/by-name/:nameKey', {
+        handler: async (req, reply) => {
+            const { nameKey } = req.params as { nameKey: string }
+            const game = await GameCatalogService.findGameByName(nameKey)
+            if (!game) {
+                return reply.code(404).send({
+                    statusCode: 404,
+                    error: 'NotFound',
+                    message: 'No active provider carries this game right now.',
+                })
+            }
+            return game
         },
     })
 
@@ -224,9 +242,10 @@ const gameProviderRoutes: FastifyPluginAsync = async (fastify) => {
                             data: { isActive: false, autoHidden: true },
                         })
                         .catch(() => {})
-                    const keys = await redis.keys(`tp:games:${providerCode}:*`)
-                    if (keys.length > 0) await redis.del(...keys)
-                    await redis.del(`tp:categories:${providerCode}`)
+                    // Hiding this copy may un-shadow another provider's copy of
+                    // the same title, so the merged feed changes as well.
+                    await GameCatalogService.applyShadowing().catch(() => {})
+                    await GameCatalogService.bustProviderCache(providerCode)
 
                     req.log.warn(
                         { providerCode, gameCode, userId: user.id, err: msg },

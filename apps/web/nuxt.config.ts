@@ -176,6 +176,7 @@ export default defineNuxtConfig({
         '/': { ssr: false },
         '/quick/**': { ssr: false },
         '/play/**': { ssr: false },
+        '/aviator': { ssr: false },
         '/profile': { ssr: false },
         '/transactions': { ssr: false },
         '/ads/hero/**': {
