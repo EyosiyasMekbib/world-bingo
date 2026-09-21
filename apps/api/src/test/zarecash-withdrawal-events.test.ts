@@ -83,6 +83,7 @@ describe('withdrawal webhook events', () => {
     // But an operator has to know a payout is parked (spec: "raise an admin alert").
     expect(reportWarning).toHaveBeenCalled()
     expect((prisma as any).auditLog.create).toHaveBeenCalled()
+    expect(postOpsAlert).toHaveBeenCalledWith(expect.stringContaining('wd_5'))
   })
 
   it('tolerates a refund replay for an already-rejected withdrawal', async () => {

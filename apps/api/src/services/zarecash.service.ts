@@ -816,6 +816,9 @@ export class ZareCashService {
             userId: tx?.userId ?? null,
             amount: tx ? Number(tx.amount).toFixed(2) : null,
         })
+        await postOpsAlert(
+            `🚩 Withdrawal ${data.id} on risk hold${tx ? ` — ${Number(tx.amount).toFixed(2)} ETB, tx ${tx.id}` : ''}.`,
+        )
     }
 
     /**
