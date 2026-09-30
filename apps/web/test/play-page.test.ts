@@ -29,7 +29,7 @@ describe('play page', () => {
   })
 
   it('drives the overlay from showsOverlay, so a dismissed load unmounts it', () => {
-    expect(play).toContain('const showOverlay = computed(() => !choosing.value && showsOverlay(load.value))')
+    expect(play).toContain('const showOverlay = computed(() => showsOverlay(load.value))')
     // v-if, not v-show: an overlay left in the DOM would still sit over the frame.
     expect(play).toMatch(/<div v-if="showOverlay" class="play-state play-state--overlay"/)
   })
@@ -39,38 +39,6 @@ describe('play page', () => {
     expect(play).toMatch(/<button v-if="dismissible"[^>]*@click="dismissOverlay"/)
     expect(play).toContain("t('providers.showGameAnyway')")
     expect(play).toContain("track('provider_game_load_dismissed'")
-  })
-
-  it('asks for real or bonus before launching when the player holds bonus', () => {
-    expect(play).toContain("from '~/utils/spend-choice'")
-    expect(play).toContain('if (needsSpendChoice(auth.wallet)) choosing.value = true')
-    expect(play).toContain('else beginLaunch()')
-    expect(play).toMatch(/<SpendAccountPicker[\s\S]*?v-if="choosing && auth\.wallet"[\s\S]*?@choose="chooseAccount"/)
-  })
-
-  it('switches the spend account before the launch, and stays on the picker if that fails', () => {
-    const choose = play.slice(play.indexOf('async function chooseAccount'), play.indexOf('function onFrameLoad'))
-    expect(choose).toContain("'/wallet/spend-account', { method: 'PATCH', body: { account } }")
-    expect(choose.indexOf("'/wallet/spend-account'")).toBeLessThan(choose.indexOf('beginLaunch()'))
-    expect(choose).toMatch(/catch \{\s*spendError\.value = t\('providers\.switchFailed'\)\s*return/)
-    expect(choose).toContain("track('provider_spend_account_chosen'")
-  })
-
-  it('does not ask again on retry', () => {
-    const retry = play.slice(play.indexOf('function retry()'), play.indexOf('function dismissOverlay'))
-    expect(retry).not.toContain('choosing')
-  })
-
-  it('has the picker strings in both locales', () => {
-    for (const locale of ['en', 'am']) {
-      const json = JSON.parse(
-        readFileSync(join(__dirname, '..', 'i18n', 'locales', `${locale}.json`), 'utf8'),
-      )
-      for (const key of ['playWith', 'realBalance', 'bonusBalance', 'bonusWinsNote', 'switchFailed', 'startGame', 'emptyBalance']) {
-        const label = json.providers?.[key]
-        expect(typeof label === 'string' && label.trim().length > 0, `${locale}.${key}`).toBe(true)
-      }
-    }
   })
 
   it('has the "Show game anyway" label in both locales', () => {

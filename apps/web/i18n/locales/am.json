@@ -412,13 +412,6 @@
     "play": "ጫወት",
     "backToLobby": "ወደ ሎቢ ተመለስ",
     "loadMore": "ተጨማሪ ጫን",
-    "showGameAnyway": "ጨዋታውን ለማንኛውም አሳይ",
-    "playWith": "በምን ይጫወታሉ",
-    "realBalance": "እውነተኛ ቀሪ ሂሳብ",
-    "bonusBalance": "የጉርሻ ቀሪ ሂሳብ",
-    "bonusWinsNote": "ያሸነፉት ሁሌም ወደ እውነተኛ ቀሪ ሂሳብዎ ይገባል።",
-    "switchFailed": "ቀሪ ሂሳብ መቀየር አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
-    "startGame": "ጨዋታ ጀምር",
-    "emptyBalance": "ቀሪ ሂሳብ የለም"
+    "showGameAnyway": "ጨዋታውን ለማንኛውም አሳይ"
   }
 }

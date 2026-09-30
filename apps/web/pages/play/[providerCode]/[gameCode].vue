@@ -2,7 +2,6 @@
 import { useAuthStore } from '~/store/auth'
 import { describeFailure } from '~/utils/http-failure'
 import { takeTap } from '~/utils/launch-handoff'
-import { needsSpendChoice, type SpendAccount } from '~/utils/spend-choice'
 import {
   canDismiss,
   crossedReady,
@@ -29,15 +28,8 @@ const now = ref(0)
 const sessionStartedAt = ref<number | null>(null)
 let ticker: ReturnType<typeof setInterval> | null = null
 
-// Provider callbacks debit only wallet.spendAccount, so a player holding bonus
-// picks the balance before the launch. Load timing starts after the choice.
-const choosing = ref(false)
-const switchingAccount = ref(false)
-const spendError = ref('')
-let unmounted = false
-
 const elapsed = computed(() => elapsedSeconds(load.value, now.value))
-const showOverlay = computed(() => !choosing.value && showsOverlay(load.value))
+const showOverlay = computed(() => showsOverlay(load.value))
 const canRetry = computed(() => load.value.phase === 'slow' || load.value.phase === 'timeout')
 const dismissible = computed(() => canDismiss(load.value))
 
@@ -116,34 +108,6 @@ async function launch() {
   }
 }
 
-function beginLaunch() {
-  now.value = performance.now()
-  load.value = initialLoadState(now.value)
-  startTicker()
-  void launch()
-}
-
-async function chooseAccount(account: SpendAccount) {
-  if (switchingAccount.value) return
-  const switched = account !== auth.wallet?.spendAccount
-  spendError.value = ''
-  if (switched) {
-    switchingAccount.value = true
-    try {
-      await auth.apiFetch('/wallet/spend-account', { method: 'PATCH', body: { account } })
-      await auth.fetchWallet()
-    } catch {
-      spendError.value = t('providers.switchFailed')
-      return
-    } finally {
-      switchingAccount.value = false
-    }
-  }
-  track('provider_spend_account_chosen', { providerCode, gameCode, account, switched })
-  choosing.value = false
-  beginLaunch()
-}
-
 function onFrameLoad() {
   dispatch({ type: 'frame_loaded', now: performance.now() })
 }
@@ -190,7 +154,7 @@ function fireSessionEnd() {
   sessionStartedAt.value = null
 }
 
-onMounted(async () => {
+onMounted(() => {
   if (!auth.isAuthenticated) {
     router.replace(`/auth/login?redirect=${encodeURIComponent(route.fullPath)}`)
     return
@@ -203,21 +167,18 @@ onMounted(async () => {
     gameCode,
     msFromTap: tappedAt === null ? null : Math.round(performance.now() - tappedAt),
   })
+  now.value = performance.now()
+  load.value = initialLoadState(now.value)
+  startTicker()
+  void launch()
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') fireSessionEnd()
   })
   window.addEventListener('beforeunload', fireSessionEnd)
-
-  // Fresh balances: the persisted wallet can be stale after play elsewhere.
-  await auth.fetchWallet()
-  // Left the page while the wallet loaded: nothing to launch.
-  if (unmounted) return
-  if (needsSpendChoice(auth.wallet)) choosing.value = true
-  else beginLaunch()
 })
 
 onUnmounted(() => {
-  unmounted = true
   stopTicker()
   fireSessionEnd()
 })
@@ -241,14 +202,6 @@ useHead({
       frameborder="0"
       scrolling="no"
       @load="onFrameLoad"
-    />
-
-    <SpendAccountPicker
-      v-if="choosing && auth.wallet"
-      :wallet="auth.wallet"
-      :busy="switchingAccount"
-      :error="spendError"
-      @choose="chooseAccount"
     />
 
     <div v-if="showOverlay" class="play-state play-state--overlay" role="status" aria-live="polite">

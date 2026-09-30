@@ -33,8 +33,6 @@ const ALLOWED = new Set([
     'provider_game_load_timeout',
     'provider_game_retry',
     'provider_game_load_dismissed',
-    // Real or bonus picked on the play page before a provider launch (2026-09-30).
-    'provider_spend_account_chosen',
     // Deposit form and password recovery (2026-09-15).
     'deposit_submit_blocked',
     'deposit_submit_failed',

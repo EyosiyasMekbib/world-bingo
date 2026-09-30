@@ -20,7 +20,6 @@ describe('/events allowlist', () => {
     'password_changed',
     'password_change_failed',
     'provider_game_load_dismissed',
-    'provider_spend_account_chosen',
   ])('includes %s', (name) => {
     expect(allowed.has(name)).toBe(true)
   })
