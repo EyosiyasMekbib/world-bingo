@@ -8,8 +8,12 @@
  */
 import { AVIATOR_NAME_KEY, aviatorDestination, type NamedGame } from '~/utils/aviator-launch'
 
+useSeoMeta({
+  title: 'Aviator',
+  description: 'Play Aviator online: cash out before the plane flies away. Deposit in Birr and play on your phone.',
+})
+
 definePageMeta({ shell: 'wide' })
-useHead({ title: 'Aviator — World Bingo' })
 
 const config = useRuntimeConfig()
 const { track } = useAnalytics()

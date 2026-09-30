@@ -34,7 +34,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const categoryLabel = computed(() => CATEGORY_LABELS[category.value] ?? category.value)
 
-useHead({ title: computed(() => `${categoryLabel.value} — World Bingo`) })
+useSeoMeta({
+  title: () => (isBingo.value ? 'Online Bingo' : `${categoryLabel.value} Games`),
+  description: () =>
+    isBingo.value
+      ? 'Play live online bingo in Ethiopia. Pick your cartela, join the next game and win in Birr.'
+      : `Play ${categoryLabel.value.toLowerCase()} games online. Deposit in Birr and play instantly on your phone.`,
+})
 
 const CRASH_PRIORITY = [
   'hotline', 'helicopterx', 'aviator',

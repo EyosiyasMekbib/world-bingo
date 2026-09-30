@@ -193,6 +193,11 @@ import type { SupportContactInfo, TelegramAuthDto } from '@world-bingo/shared-ty
 import { validateLoginForm, applyAutofill, type LoginFormError } from '~/utils/auth-form'
 import { describeFailure } from '~/utils/http-failure'
 
+useSeoMeta({
+  title: 'Log In',
+  description: 'Log in to play live bingo, slots and Aviator. Your wallet and games in one place.',
+})
+
 declare global {
   interface Window {
     __worldBingoTelegramAuth: (user: TelegramAuthDto) => void

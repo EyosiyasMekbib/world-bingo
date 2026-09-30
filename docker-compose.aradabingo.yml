@@ -143,6 +143,8 @@ services:
       NUXT_PUBLIC_POSTHOG_UI_HOST: ${NUXT_PUBLIC_POSTHOG_UI_HOST:-https://eu.posthog.com}
       NUXT_PUBLIC_POSTHOG_REPLAY: ${NUXT_PUBLIC_POSTHOG_REPLAY:-true}
       NUXT_PUBLIC_POSTHOG_BRAND: ${NUXT_PUBLIC_POSTHOG_BRAND:-arada}
+      # SEO: only this host is indexable; see apps/web/utils/seo.ts.
+      NUXT_PUBLIC_SEO_SITE_URL: ${NUXT_PUBLIC_SEO_SITE_URL:-https://aradabet.games}
     depends_on:
       api-arada:
         condition: service_healthy

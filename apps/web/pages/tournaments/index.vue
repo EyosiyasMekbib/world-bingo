@@ -82,6 +82,11 @@ import type { TournamentDto } from '@world-bingo/shared-types'
 import { TournamentStatus } from '@world-bingo/shared-types'
 import { useSocket } from '~/composables/useSocket'
 
+useSeoMeta({
+  title: 'Bingo Tournaments',
+  description: 'Join multi-round online bingo tournaments and compete for the prize pool. See active and upcoming tournaments.',
+})
+
 const config = useRuntimeConfig()
 const { socket } = useSocket()
 const { tournamentsEnabled } = useFeatureFlags()
@@ -160,7 +165,6 @@ onUnmounted(() => {
   socket.value?.off('tournament:winner')
 })
 
-useHead({ title: 'Tournaments — World Bingo' })
 </script>
 
 <style scoped>

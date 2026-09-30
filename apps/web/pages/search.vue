@@ -103,7 +103,7 @@ watch(
 
 useHead({
   title: computed(() =>
-    query.value ? `Search results for "${query.value}" — World Bingo` : 'Search — World Bingo',
+    query.value ? `Search results for "${query.value}"` : 'Search',
   ),
 })
 </script>

@@ -8,6 +8,11 @@ import type { ProviderGame } from '~/store/provider-games'
 import { launchProviderFor } from '~/utils/provider-launch'
 import type { Game } from '@world-bingo/shared-types'
 
+useSeoMeta({
+  title: 'Casino & Bingo Games',
+  description: 'Browse every game in one lobby: live bingo, slots, Aviator and crash games, live casino and table games. Deposit in Birr and play instantly.',
+})
+
 const auth = useAuthStore()
 const gameStore = useGameStore()
 const providerStore = useProviderGamesStore()

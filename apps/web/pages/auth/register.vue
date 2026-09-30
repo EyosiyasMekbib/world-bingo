@@ -118,6 +118,11 @@
 import { describeFailure } from '~/utils/http-failure'
 import { useAuthStore } from '~/store/auth'
 
+useSeoMeta({
+  title: 'Sign Up',
+  description: 'Create a free account in under a minute and start playing live online bingo, slots and Aviator in Ethiopia.',
+})
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 definePageMeta({ layout: 'auth' as any })
 

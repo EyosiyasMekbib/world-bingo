@@ -13,6 +13,11 @@ import { PromoKind } from '@world-bingo/shared-types'
 import type { PublicPromotionDto } from '@world-bingo/shared-types'
 import { usePromotionsStore } from '~/store/promotions'
 
+useSeoMeta({
+  title: 'Promotions & Bonuses',
+  description: 'Deposit bonuses, cashback and referral rewards. See every live promotion and how to claim it.',
+})
+
 const { t } = useI18n()
 const store = usePromotionsStore()
 const { referralsEnabled } = useFeatureFlags()
@@ -66,7 +71,6 @@ onMounted(async () => {
   loading.value = false
 })
 
-useHead({ title: 'Promotions — World Bingo' })
 </script>
 
 <template>
