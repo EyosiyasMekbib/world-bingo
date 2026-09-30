@@ -84,6 +84,7 @@ async function cleanDb() {
     await prisma.houseTransaction.deleteMany()
     await prisma.houseWallet.deleteMany()
     await prisma.notification.deleteMany()
+    await prisma.notificationBroadcast.deleteMany()
     await prisma.refreshToken.deleteMany()
     await prisma.jackpotWin.deleteMany()
     await prisma.jackpot.deleteMany()

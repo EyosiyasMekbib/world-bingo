@@ -6,6 +6,7 @@ import analyticsRoutes from './analytics'
 import crmRoutes, { isBadRules, ruleErrorMessage } from './crm'
 import atlasVAdminRoutes from './atlasv'
 import agentAdminRoutes from './agents'
+import notificationAdminRoutes from './notifications'
 import fraudAdminRoutes from './fraud'
 import heroBannerAdminRoutes from './hero-banners'
 import promoArtworkAdminRoutes from './promo-artwork'
@@ -655,6 +656,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
         // ── Cash agent network (float, deposit codes, agent accounts) ─────────
         await f.register(agentAdminRoutes, { prefix: '/agents' })
+
+        // ── Broadcast announcements to every player ───────────────────────────
+        await f.register(notificationAdminRoutes, { prefix: '/notifications' })
 
         // ── Clerk management ──────────────────────────────────────────────────
         f.get('/clerks', async (_req, _reply) => {

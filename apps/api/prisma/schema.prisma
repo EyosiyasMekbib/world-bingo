@@ -342,6 +342,23 @@ enum NotificationType {
   ACCOUNT_STATUS_CHANGED
   BONUS_GRANTED
   BONUS_EXPIRING
+  ANNOUNCEMENT
+}
+
+/// One row per admin broadcast. The per-player copies live in `notifications`
+/// (type ANNOUNCEMENT, metadata.broadcastId); this is the history the admin
+/// page lists, so it never has to group the notifications table.
+model NotificationBroadcast {
+  id             String   @id @default(uuid())
+  title          String
+  body           String
+  recipientCount Int      @default(0)
+  sentById       String?
+  sentByName     String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("notification_broadcasts")
 }
 
 model ReferralReward {

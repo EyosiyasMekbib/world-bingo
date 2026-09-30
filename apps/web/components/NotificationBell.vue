@@ -198,6 +198,10 @@ const NOTIF_ICONS: Record<NotificationType, NotifIcon> = {
     tone: TONE.error,
     paths: [RING, 'M12 7.6V12l3 2'],
   },
+  [NotificationType.ANNOUNCEMENT]: {
+    tone: TONE.accent,
+    paths: ['M4.5 10.2 14 6.2v9.6l-9.5-4z', 'M7 14.6 8 20h2.6l-.8-4.4', 'M17 9.6a3 3 0 0 1 0 4.8', 'M19.4 7.6a6 6 0 0 1 0 8.8'],
+  },
 }
 
 const FALLBACK_ICON: NotifIcon = { tone: TONE.muted, paths: BELL }
