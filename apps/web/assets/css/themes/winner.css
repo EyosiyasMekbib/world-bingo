@@ -1,0 +1,468 @@
+/* Winner skin. Structure lives in components.css; typography and density tokens
+   come from themeToCssVars (packages/shared-types/src/themes). Black chrome,
+   charcoal panels, one yellow primary and a red accent. The few literal colours
+   below (the black header, the light-grey secondary button, the mid-grey tab
+   fill) are theme constants with no token equivalent — do not "fix" them to
+   tokens: this theme reproduces a reference. */
+
+[data-theme='winner'] {
+  --wn-chrome: #000000;
+  --wn-light: #f6f6f6;
+  --wn-tab-fill: #474747;
+}
+
+[data-theme='winner'] .wn-shell {
+  /* dvh, not vh — vh jumps when iOS Safari collapses its URL bar. */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-base);
+}
+
+/* Keyboard users get nothing from :hover. One ring for every element. */
+[data-theme='winner'] :focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+/* ── Buttons ── */
+[data-theme='winner'] .wn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  padding: 0 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s, filter 0.12s;
+}
+[data-theme='winner'] .wn-btn--primary {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+[data-theme='winner'] .wn-btn--light {
+  background: var(--wn-light);
+  color: var(--surface-base);
+}
+[data-theme='winner'] .wn-btn--block { width: 100%; }
+[data-theme='winner'] .wn-btn:hover { filter: brightness(0.92); }
+/* Tactile press. transform only — never a layout property. */
+[data-theme='winner'] .wn-btn:active { transform: scale(0.97); }
+
+[data-theme='winner'] .wn-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: var(--border-w) solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+[data-theme='winner'] .wn-icon-btn svg { width: 20px; height: 20px; }
+[data-theme='winner'] .wn-icon-btn:hover { color: var(--brand-primary); }
+
+/* ── Top bar ── */
+[data-theme='winner'] .wn-top {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: var(--util-h);
+  padding: 0 24px;
+  background: var(--wn-chrome);
+}
+[data-theme='winner'] .wn-logo { display: inline-flex; align-items: center; flex: none; }
+
+[data-theme='winner'] .wn-quick {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  min-width: 0;
+}
+[data-theme='winner'] .wn-quick-link {
+  font-family: var(--font-ui);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+[data-theme='winner'] .wn-quick-link:hover,
+[data-theme='winner'] .wn-quick-link.router-link-active { color: var(--brand-primary); }
+
+[data-theme='winner'] .wn-top-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+[data-theme='winner'] .wn-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  cursor: pointer;
+}
+[data-theme='winner'] .wn-balance strong {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  color: var(--brand-primary);
+  /* Digits stop jittering as the balance updates. */
+  font-variant-numeric: tabular-nums;
+}
+[data-theme='winner'] .wn-balance strong span { color: var(--text-secondary); font-size: 12px; }
+[data-theme='winner'] .wn-balance small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='winner'] .wn-lang {
+  height: var(--control-h);
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* ── Icon nav ── */
+[data-theme='winner'] .wn-nav {
+  display: flex;
+  align-items: stretch;
+  height: var(--nav-h);
+  padding: 0 12px;
+  background: var(--wn-chrome);
+  border-top: var(--border-w) solid rgba(255, 255, 255, 0.06);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+[data-theme='winner'] .wn-nav::-webkit-scrollbar { display: none; }
+[data-theme='winner'] .wn-tab {
+  flex: 1 0 auto;
+  min-width: 96px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  text-decoration: none;
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0.86;
+  transition: color 0.12s, opacity 0.12s;
+}
+[data-theme='winner'] .wn-tab svg { width: 32px; height: 32px; }
+[data-theme='winner'] .wn-tab:hover { opacity: 1; }
+[data-theme='winner'] .wn-tab--active {
+  color: var(--brand-primary);
+  opacity: 1;
+}
+/* The rail is a column on desktop, so Menu only exists where it is a drawer. */
+[data-theme='winner'] .wn-tab--menu { display: none; }
+
+/* ── Three-column body ── */
+[data-theme='winner'] .wn-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--aside-w);
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+}
+[data-theme='winner'] .wn-main { min-width: 0; }
+[data-theme='winner'] .wn-wide { flex: 1; min-width: 0; }
+
+/* ── Left rail ── */
+[data-theme='winner'] .wn-rail { min-width: 0; }
+[data-theme='winner'] .wn-rail--drawer-only { display: none; }
+
+[data-theme='winner'] .wn-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--input-h);
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: var(--border-w) solid #5b5b5b;
+  border-radius: var(--radius-sm);
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+[data-theme='winner'] .wn-search svg { flex: none; width: 20px; height: 20px; }
+[data-theme='winner'] .wn-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  /* 16px: iOS Safari zooms the page into any focused field under that. */
+  font-size: 16px;
+  outline: none;
+}
+[data-theme='winner'] .wn-search input::placeholder { color: var(--text-primary); opacity: 0.85; }
+[data-theme='winner'] .wn-search:focus-within { border-color: var(--brand-primary); }
+
+[data-theme='winner'] .wn-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+[data-theme='winner'] .wn-rail-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: var(--row-h);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  text-transform: uppercase;
+  text-align: left;
+  text-decoration: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+[data-theme='winner'] .wn-rail-row svg { flex: none; width: 20px; height: 20px; }
+[data-theme='winner'] .wn-rail-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chevron is decoration, so it lives here rather than in every row's markup. */
+[data-theme='winner'] .wn-rail-row::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  opacity: 0.7;
+}
+[data-theme='winner'] .wn-rail-row:hover { background: var(--surface-overlay); }
+[data-theme='winner'] .wn-rail-row--active { color: var(--brand-primary); }
+
+[data-theme='winner'] .wn-rail-label {
+  margin: 0 0 6px;
+  padding: 0 4px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── Right aside ── */
+[data-theme='winner'] .wn-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+[data-theme='winner'] .wn-aside-tab {
+  display: grid;
+  place-items: center;
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  background: var(--wn-tab-fill);
+  font-family: var(--font-ui);
+  font-size: 17px;
+  font-weight: 500;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+[data-theme='winner'] .wn-aside-tab:hover { filter: brightness(1.12); }
+
+[data-theme='winner'] .wn-aside-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 12px 12px;
+  text-align: center;
+}
+[data-theme='winner'] .wn-aside-empty svg { width: 64px; height: 64px; color: var(--text-secondary); }
+[data-theme='winner'] .wn-aside-empty h3 {
+  margin: 8px 0 0;
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+[data-theme='winner'] .wn-aside-empty p {
+  margin: 0 0 12px;
+  max-width: 26ch;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* The reference's red "Contact us" card, wired to the support chat. */
+[data-theme='winner'] .wn-help {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 22px 20px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+[data-theme='winner'] .wn-help strong { font-size: 30px; font-weight: 800; line-height: 1; text-transform: uppercase; }
+[data-theme='winner'] .wn-help span { font-size: 16px; }
+[data-theme='winner'] .wn-help:hover { filter: brightness(1.08); }
+
+/* ── Lobby hero (coded slides only) ──
+   The reference's cashback banner: a red sweep cutting across black, a yellow
+   headline, a solid red tag. The red tones themselves come from heroToneFor.
+   `.lobby-page` is here for specificity — the page's own rules are scoped, and
+   a tie would go to whichever stylesheet loaded last. Image and admin banners
+   are someone's finished artwork, so they are left alone. */
+[data-theme='winner'] .lobby-page .hero:not(.hero--image, .hero--banner)::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  /* An angled gradient, not a skewed box: anything poking past the edge makes
+     the overflow:hidden hero scrollable, and focusing the Next arrow then
+     scrolls the whole slide sideways. */
+  inset: 0;
+  background: linear-gradient(
+    112deg,
+    transparent 50%,
+    rgba(255, 60, 70, 0.5) 63%,
+    transparent 76%
+  );
+  pointer-events: none;
+}
+[data-theme='winner'] .lobby-page .hero-title {
+  color: var(--brand-primary);
+  font-weight: 800;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+[data-theme='winner'] .lobby-page .hero-sub { color: var(--text-primary); }
+[data-theme='winner'] .lobby-page .hero-badge {
+  background: var(--accent-primary);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+[data-theme='winner'] .lobby-page .hero-watermark { opacity: 0.1; }
+
+/* ── Footer ── */
+[data-theme='winner'] .wn-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  background: var(--wn-chrome);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+[data-theme='winner'] .wn-footer p { margin: 0; flex: 1; }
+[data-theme='winner'] .wn-18 {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  border: 2px solid var(--accent-primary);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1279px) {
+  [data-theme='winner'] .wn-body { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+  [data-theme='winner'] .wn-aside { display: none; }
+  [data-theme='winner'] .wn-quick { display: none; }
+  [data-theme='winner'] .wn-top { justify-content: space-between; }
+}
+
+@media (max-width: 900px) {
+  [data-theme='winner'] .wn-body { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+
+  /* The rail becomes a drawer under the chrome, opened from the Menu tab. */
+  [data-theme='winner'] .wn-tab--menu { display: inline-flex; }
+  [data-theme='winner'] .wn-rail,
+  [data-theme='winner'] .wn-rail--drawer-only {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    /* Over the support launcher, under modals — see the scale in components.css. */
+    z-index: 80;
+    width: min(86vw, 320px);
+    padding: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--wn-chrome);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.22s ease-out, visibility 0s linear 0.22s;
+  }
+  [data-theme='winner'] .wn-rail--open,
+  [data-theme='winner'] .wn-rail--drawer-only.wn-rail--open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s ease-out;
+  }
+  [data-theme='winner'] .wn-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 79;
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  [data-theme='winner'] .wn-top { gap: 8px; padding: 0 10px; height: 56px; }
+  [data-theme='winner'] .wn-top-end { min-width: 0; gap: 6px; }
+  [data-theme='winner'] .wn-hide-sm { display: none; }
+  [data-theme='winner'] .wn-btn { height: 38px; padding: 0 14px; font-size: 14px; }
+  [data-theme='winner'] .wn-lang { padding: 0 4px; }
+
+  [data-theme='winner'] .wn-nav { height: 68px; padding: 0 4px; }
+  [data-theme='winner'] .wn-tab { min-width: 68px; gap: 5px; padding: 0 6px; font-size: 13px; }
+  [data-theme='winner'] .wn-tab svg { width: 24px; height: 24px; }
+
+  [data-theme='winner'] .wn-footer { padding: 14px 10px; }
+}
+
+@media (max-width: 380px) {
+  [data-theme='winner'] .wn-balance small { display: none; }
+  [data-theme='winner'] .wn-btn { padding: 0 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='winner'] .wn-rail,
+  [data-theme='winner'] .wn-btn { transition: none; }
+}

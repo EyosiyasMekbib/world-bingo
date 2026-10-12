@@ -125,7 +125,7 @@ export default defineNuxtConfig({
         // Both load unconditionally; the data-theme attribute on <html> (set by
         // plugins/00.brand.ts) selects which block applies. SSR-rendered, so no flash.
         '~/assets/css/themes/arada.css',
-        '~/assets/css/themes/dash5.css',
+        '~/assets/css/themes/winner.css',
     ],
 
     runtimeConfig: {

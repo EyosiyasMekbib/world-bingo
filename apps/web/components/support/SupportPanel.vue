@@ -515,7 +515,7 @@ const onFile = async (event: Event) => {
   min-height: 0;
   padding: 0.4rem 0.75rem;
   /* Mixed against the brand's own error colour rather than a fixed maroon
-     tint: dash5's statusError is a pure red that a hand-picked dark-red
+     tint: a theme's statusError can be a pure red that a hand-picked dark-red
      background clashes with badly, and only the brand knows which red it
      ships. */
   background: color-mix(in srgb, var(--status-error) 22%, var(--surface-raised));
@@ -551,7 +551,7 @@ const onFile = async (event: Event) => {
   border-radius: 0.5rem;
   background: var(--surface-base);
   color: inherit;
-  /* Not inherited. The body font size is 13px under dash5, and Safari
+  /* Not inherited. A theme can set the body font size under 16px, and Safari
      auto-zooms the whole page when a field under 16px takes focus — which
      leaves the player zoomed in on a panel they then have to pinch back out
      of. `--wb-font-size-base` is set on `body`, not `:root`, so `1rem` here
@@ -592,8 +592,8 @@ const onFile = async (event: Event) => {
   .sc-compose input[type='text'],
   .sc-compose input:not([type]),
   .sc-compose button {
-    /* dash5 ships `inputH: 36px`, so `var(--input-h, 44px)` on its own still
-       resolves under the 44px minimum on that brand. */
+    /* A theme can ship `inputH` under 44px, so `var(--input-h, 44px)` on its own
+       would resolve under the minimum on that brand. */
     min-height: max(var(--input-h, 44px), 44px);
   }
   /* Height alone left the attach button 38px wide — a target has two

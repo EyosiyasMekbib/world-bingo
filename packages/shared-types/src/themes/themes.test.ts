@@ -24,15 +24,15 @@ describe('theme registry', () => {
     expect(themes.arada.defaultTokens).toBe(DEFAULT_BRAND.tokens)
   })
 
-  it('gives dash5 its own palette', () => {
-    expect(themes.dash5.defaultTokens.brandPrimary).toBe('#00ff9d')
-    expect(themes.dash5.defaultTokens.surfaceRaised).toBe('#06262d')
+  it('gives winner its own palette', () => {
+    expect(themes.winner.defaultTokens.brandPrimary).toBe('#fff203')
+    expect(themes.winner.defaultTokens.surfaceRaised).toBe('#242424')
   })
 })
 
 describe('resolveTheme', () => {
   it('returns the named theme', () => {
-    expect(resolveTheme('dash5').id).toBe('dash5')
+    expect(resolveTheme('winner').id).toBe('winner')
   })
 
   it('falls back to the default for undefined', () => {
@@ -46,10 +46,10 @@ describe('resolveTheme', () => {
 
 describe('themeToCssVars', () => {
   it('emits typography', () => {
-    const css = themeToCssVars(themes.dash5)
+    const css = themeToCssVars(themes.winner)
     expect(css).toContain("--font-ui: 'Roboto Condensed', sans-serif;")
     expect(css).toContain("--font-body: 'Roboto Condensed', sans-serif;")
-    expect(css).toContain('--wb-font-size-base: 13px;')
+    expect(css).toContain('--wb-font-size-base: 14px;')
   })
 
   it('aliases --font-game to the heading family', () => {
@@ -58,14 +58,14 @@ describe('themeToCssVars', () => {
   })
 
   it('emits density', () => {
-    const css = themeToCssVars(themes.dash5)
-    expect(css).toContain('--row-h: 27px;')
-    expect(css).toContain('--rail-w: 225px;')
-    expect(css).toContain('--radius-sm: 2px;')
+    const css = themeToCssVars(themes.winner)
+    expect(css).toContain('--row-h: 48px;')
+    expect(css).toContain('--rail-w: 280px;')
+    expect(css).toContain('--radius-sm: 4px;')
   })
 
   it('emits no colour tokens', () => {
-    const css = themeToCssVars(themes.dash5)
+    const css = themeToCssVars(themes.winner)
     expect(css).not.toContain('--brand-primary')
     expect(css).not.toContain('--surface-base')
   })

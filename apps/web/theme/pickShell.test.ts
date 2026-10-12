@@ -3,10 +3,10 @@ import { pickShell, FALLBACK_SHELL } from './pickShell'
 
 const A_RAILS = { name: 'a-rails' }
 const A_WIDE = { name: 'a-wide' }
-const D_RAILS = { name: 'd-rails' }
+const W_RAILS = { name: 'w-rails' }
 const registry = {
   arada: { rails: A_RAILS, wide: A_WIDE },
-  dash5: { rails: D_RAILS },
+  winner: { rails: W_RAILS },
 } as any
 
 describe('pickShell', () => {
@@ -15,12 +15,12 @@ describe('pickShell', () => {
   })
 
   it('defaults to rails when no shell is requested', () => {
-    expect(pickShell(registry, 'dash5', undefined)).toBe(D_RAILS)
+    expect(pickShell(registry, 'winner', undefined)).toBe(W_RAILS)
     expect(FALLBACK_SHELL).toBe('rails')
   })
 
   it("falls back to the theme's own rails when it lacks the requested shell", () => {
-    expect(pickShell(registry, 'dash5', 'wide')).toBe(D_RAILS)
+    expect(pickShell(registry, 'winner', 'wide')).toBe(W_RAILS)
   })
 
   it('falls back to arada when the theme is absent from the registry', () => {

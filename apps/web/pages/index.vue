@@ -4,7 +4,7 @@ import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
 import { usePromotionsStore } from '~/store/promotions'
-import { heroArtworkFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
+import { heroArtworkFor, heroToneFor, type HeroAction, type HeroArtwork } from '~/utils/hero-artwork'
 import { launchProviderFor } from '~/utils/provider-launch'
 import { expiresTonight } from '~/utils/bonus-expiry'
 import {
@@ -272,9 +272,11 @@ const heroSlides = computed<LobbyHeroSlide[]>(() => {
   // Artwork carries its brand in the pixels, so only the deployment it was drawn
   // for gets it. Brands with none run on the coded slides alone.
   const art = heroArtworkFor(brand.value.themeId).filter((s) => !brokenSlides.value.has(s.id))
-  return predictionsEnabled.value
-    ? [...art, PREDICTION_SLIDE, ...BASE_SLIDES]
-    : [...art, ...BASE_SLIDES]
+  const coded = predictionsEnabled.value ? [PREDICTION_SLIDE, ...BASE_SLIDES] : BASE_SLIDES
+  return [
+    ...art,
+    ...coded.map((s) => ({ ...s, ...heroToneFor(brand.value.themeId, s.id) })),
+  ]
 })
 
 const currentSlide = ref(0)

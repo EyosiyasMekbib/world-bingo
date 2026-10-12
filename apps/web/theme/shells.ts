@@ -1,7 +1,7 @@
 import AradaRailsShell from '~/components/shells/arada/RailsShell.vue'
 import AradaWideShell from '~/components/shells/arada/WideShell.vue'
-import Dash5RailsShell from '~/components/shells/dash5/RailsShell.vue'
-import Dash5WideShell from '~/components/shells/dash5/WideShell.vue'
+import WinnerRailsShell from '~/components/shells/winner/RailsShell.vue'
+import WinnerWideShell from '~/components/shells/winner/WideShell.vue'
 import type { ShellRegistry } from './pickShell'
 
 export { pickShell, FALLBACK_SHELL, type ShellRegistry } from './pickShell'
@@ -13,5 +13,5 @@ export { pickShell, FALLBACK_SHELL, type ShellRegistry } from './pickShell'
  */
 export const shells: ShellRegistry = {
   arada: { rails: AradaRailsShell, wide: AradaWideShell },
-  dash5: { rails: Dash5RailsShell, wide: Dash5WideShell },
+  winner: { rails: WinnerRailsShell, wide: WinnerWideShell },
 }
