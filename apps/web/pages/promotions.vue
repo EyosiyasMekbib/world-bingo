@@ -19,6 +19,7 @@ useSeoMeta({
 })
 
 const { t } = useI18n()
+const { name: productName, isLegacy } = useProductName()
 const store = usePromotionsStore()
 const { referralsEnabled } = useFeatureFlags()
 
@@ -78,7 +79,9 @@ onMounted(async () => {
     <!-- Header -->
     <div class="promo-header">
       <h1 class="promo-title">{{ t('promo.title') }}</h1>
-      <p class="promo-subtitle">{{ t('promo.subtitle') }}</p>
+      <p class="promo-subtitle">
+        {{ isLegacy ? t('promo.subtitle') : t('promo.subtitleBrand', { brand: productName }) }}
+      </p>
     </div>
 
     <!-- Loading -->

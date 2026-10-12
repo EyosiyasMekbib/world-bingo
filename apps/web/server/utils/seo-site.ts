@@ -1,10 +1,12 @@
 import type { H3Event } from 'h3'
 import { getRequestHost, getRequestProtocol } from 'h3'
 import { defaultDescription, isIndexableHost, resolveOrigin, type SeoSite } from '../../utils/seo'
+import { themeLogoFor } from '../../utils/theme-logo'
 
 interface BrandLite {
   displayName?: string
   logoUrl?: string | null
+  themeId?: string
 }
 
 // The brand rarely changes; one fetch per 5 minutes per instance is plenty and
@@ -47,7 +49,7 @@ export async function resolveSeo(event: H3Event): Promise<ResolvedSeo> {
       origin,
       name,
       description,
-      logoUrl: brand.logoUrl ?? null,
+      logoUrl: brand.logoUrl || themeLogoFor(brand.themeId),
       ogImage: seo.ogImage || null,
       locale,
     },

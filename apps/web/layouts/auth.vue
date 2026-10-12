@@ -37,17 +37,17 @@
 .orb-1 {
   width: 500px; height: 500px;
   top: -180px; left: -120px;
-  background: radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(var(--skin-amber-rgb, 245, 158, 11),0.12) 0%, transparent 70%);
 }
 .orb-2 {
   width: 400px; height: 400px;
   bottom: -150px; right: -100px;
-  background: radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%);
+  background: var(--skin-glow-b, radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%));
 }
 .orb-3 {
   width: 300px; height: 300px;
   top: 40%; left: 60%;
-  background: radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%);
+  background: var(--skin-glow-c, radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%));
 }
 
 .auth-main {

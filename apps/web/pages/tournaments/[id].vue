@@ -274,7 +274,8 @@ onUnmounted(() => {
 // Fix typo: fetchTournaments → fetchTournament in onMounted
 function fetchTournaments() { fetchTournament() }
 
-useHead({ title: computed(() => tournament.value ? `${tournament.value.title} — World Bingo` : 'Tournament') })
+const { name: productName } = useProductName()
+useHead({ title: computed(() => tournament.value ? `${tournament.value.title} — ${productName.value}` : 'Tournament') })
 </script>
 
 <style scoped>

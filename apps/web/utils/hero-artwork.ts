@@ -77,6 +77,11 @@ const TONES_BY_THEME: Partial<Record<ThemeId, Record<string, HeroTone>>> = {
       gradient: 'linear-gradient(105deg,#140203 0%,#6b0b14 45%,#e62733 100%)',
       accent: '#fff203',
     },
+    // /games only.
+    tournaments: {
+      gradient: 'linear-gradient(105deg,#0a0a0a 0%,#3a0509 45%,#b3121e 100%)',
+      accent: '#fff203',
+    },
   },
 }
 

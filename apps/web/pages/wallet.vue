@@ -829,7 +829,7 @@ function formatRelativeTime(dateStr: string): string {
 /* ── Balance Card — echoes the home "Bingo" hero slide ────────────── */
 .balance-card {
   position: relative;
-  background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%);
+  background: var(--skin-feature-bg, linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg, 16px);
   padding: 1.6rem 1.75rem;

@@ -9,6 +9,26 @@
   --wn-chrome: #000000;
   --wn-light: #f6f6f6;
   --wn-tab-fill: #474747;
+
+  /* Skin hooks for the shared pages. Each page writes its arada colour as
+     var(--skin-x, <arada literal>), so only a theme that sets these changes
+     anything — arada never defines them and renders exactly as before. */
+  --skin-feature-bg: linear-gradient(105deg, #0a0a0a 0%, #45070e 50%, #c41a26 100%);
+  --skin-head-bg: linear-gradient(150deg, #000000 0%, #141414 55%, #1f1f1f 100%);
+  --skin-thumb-bg: linear-gradient(150deg, #5c0a12 0%, #1f1f1f 100%);
+  --skin-tile-bg: var(--surface-raised);
+  --skin-card-bg: var(--surface-raised);
+  --skin-promo-art: linear-gradient(100deg, #3d070d 0%, #1f1f1f 52%, #141414 100%);
+  --skin-scrim: rgba(0, 0, 0, 0.82);
+  --skin-text: #ffffff;
+  --skin-on-amber: #000000;
+  --skin-amber: var(--brand-primary);
+  --skin-amber-light: #fff65c;
+  --skin-amber-dark: var(--brand-primary-dim);
+  --skin-amber-rgb: 255, 242, 3;
+  --skin-cool-rgb: 255, 255, 255;
+  --skin-glow-b: radial-gradient(circle, rgba(230, 39, 51, 0.16) 0%, transparent 70%);
+  --skin-glow-c: radial-gradient(circle, rgba(230, 39, 51, 0.08) 0%, transparent 70%);
 }
 
 [data-theme='winner'] .wn-shell {
@@ -347,10 +367,10 @@
 /* ── Lobby hero (coded slides only) ──
    The reference's cashback banner: a red sweep cutting across black, a yellow
    headline, a solid red tag. The red tones themselves come from heroToneFor.
-   `.lobby-page` is here for specificity — the page's own rules are scoped, and
+   `.lobby-page` / `.lobby` (the lobby and /games) are here for specificity — the page's own rules are scoped, and
    a tie would go to whichever stylesheet loaded last. Image and admin banners
    are someone's finished artwork, so they are left alone. */
-[data-theme='winner'] .lobby-page .hero:not(.hero--image, .hero--banner)::before {
+[data-theme='winner'] :is(.lobby-page, .lobby) .hero:not(.hero--image, .hero--banner)::before {
   content: '';
   position: absolute;
   z-index: 0;
@@ -366,18 +386,18 @@
   );
   pointer-events: none;
 }
-[data-theme='winner'] .lobby-page .hero-title {
+[data-theme='winner'] :is(.lobby-page, .lobby) .hero-title {
   color: var(--brand-primary);
   font-weight: 800;
   text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
 }
-[data-theme='winner'] .lobby-page .hero-sub { color: var(--text-primary); }
-[data-theme='winner'] .lobby-page .hero-badge {
+[data-theme='winner'] :is(.lobby-page, .lobby) .hero-sub { color: var(--text-primary); }
+[data-theme='winner'] :is(.lobby-page, .lobby) .hero-badge {
   background: var(--accent-primary);
   border-color: transparent;
   color: var(--text-primary);
 }
-[data-theme='winner'] .lobby-page .hero-watermark { opacity: 0.1; }
+[data-theme='winner'] :is(.lobby-page, .lobby) .hero-watermark { opacity: 0.1; }
 
 /* ── Footer ── */
 [data-theme='winner'] .wn-footer {

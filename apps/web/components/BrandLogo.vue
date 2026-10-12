@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { useBrand } from '~/composables/useBrand'
+import { themeLogoFor } from '~/utils/theme-logo'
 
 withDefaults(defineProps<{ height?: number }>(), { height: 30 })
 const brand = useBrand()
+const logoSrc = computed(() => brand.value.logoUrl || themeLogoFor(brand.value.themeId))
 </script>
 
 <template>
   <img
-    v-if="brand.logoUrl"
-    :src="brand.logoUrl"
+    v-if="logoSrc"
+    :src="logoSrc"
     :alt="brand.displayName"
     class="brand-logo"
     :style="{ height: `${height}px` }"

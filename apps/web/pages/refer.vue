@@ -8,6 +8,7 @@
  */
 
 const { referralsEnabled } = useFeatureFlags()
+const { name: productName } = useProductName()
 
 // Redirect to home if referrals feature is disabled
 watch(referralsEnabled, (enabled) => {
@@ -59,7 +60,7 @@ const copyLink = async () => {
 const shareViaWhatsApp = () => {
   if (!stats.value) return
   const text = encodeURIComponent(
-    `Join me on World Bingo and win big! 🎉\nUse my referral link: ${stats.value.referralLink}`,
+    `Join me on ${productName.value} and win big! 🎉\nUse my referral link: ${stats.value.referralLink}`,
   )
   window.open(`https://wa.me/?text=${text}`, '_blank')
 }
@@ -73,7 +74,7 @@ onMounted(fetchStats)
     <div class="refer-header">
       <h1 class="refer-title">🎁 Refer &amp; Earn</h1>
       <p class="refer-subtitle">
-        Invite friends to World Bingo and earn
+        Invite friends to {{ productName }} and earn
         <strong class="highlight">50 ETB</strong>
         for each friend who completes their first deposit!
       </p>
@@ -254,7 +255,7 @@ onMounted(fetchStats)
 /* ── Code card — echoes the home "Bingo" hero slide ──────────────────── */
 .code-card {
   position: relative;
-  background: linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%);
+  background: var(--skin-feature-bg, linear-gradient(105deg, #071633 0%, #0d2a5c 50%, #143b86 100%));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg, 16px);
   padding: 1.5rem;

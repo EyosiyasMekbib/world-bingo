@@ -2,6 +2,7 @@
 definePageMeta({ shell: 'wide' })
 
 import { useGameStore } from '~/store/game'
+import { heroToneFor } from '~/utils/hero-artwork'
 import { useAuthStore } from '~/store/auth'
 import { useProviderGamesStore } from '~/store/provider-games'
 import type { ProviderGame } from '~/store/provider-games'
@@ -32,7 +33,7 @@ interface HeroSlide {
   to: string
 }
 
-const slides: HeroSlide[] = [
+const BASE_SLIDES: HeroSlide[] = [
   {
     id: 'bonus',
     badge: 'Welcome Offer',
@@ -68,16 +69,31 @@ const slides: HeroSlide[] = [
   },
 ]
 
+const brand = useBrand()
+const { name: productName, isLegacy } = useProductName()
+
+// arada renders BASE_SLIDES untouched. Other themes take their hero tones and
+// drop arada's name from the tournaments slide.
+const slides = computed<HeroSlide[]>(() =>
+  BASE_SLIDES.map((s) => ({
+    ...s,
+    ...heroToneFor(brand.value.themeId, s.id),
+    ...(s.id === 'tournaments' && !isLegacy.value
+      ? { title: `Win Big On\n${productName.value} Tournaments` }
+      : {}),
+  })),
+)
+
 const current = ref(0)
-const activeSlide = computed(() => slides[current.value])
+const activeSlide = computed(() => slides.value[current.value])
 let heroTimer: ReturnType<typeof setInterval> | null = null
 
 function goSlide(i: number) {
-  current.value = (i + slides.length) % slides.length
+  current.value = (i + slides.value.length) % slides.value.length
   if (heroTimer) clearInterval(heroTimer)
   heroTimer = setInterval(nextSlide, 6000)
 }
-function nextSlide() { current.value = (current.value + 1) % slides.length }
+function nextSlide() { current.value = (current.value + 1) % slides.value.length }
 function prevSlide() { goSlide(current.value - 1) }
 
 const touchStartX = ref(0)
@@ -156,9 +172,9 @@ interface Card {
 }
 
 const BINGO_THUMBS = [
-  'linear-gradient(150deg,#1d4a8a,#0a1628)',
-  'linear-gradient(150deg,#143a6e,#0a1628)',
-  'linear-gradient(150deg,#0e2f5e,#0a1628)',
+  'var(--skin-thumb-bg, linear-gradient(150deg,#1d4a8a,#0a1628))',
+  'var(--skin-thumb-bg, linear-gradient(150deg,#143a6e,#0a1628))',
+  'var(--skin-thumb-bg, linear-gradient(150deg,#0e2f5e,#0a1628))',
 ]
 
 function bingoStatusLabel(status: string) {
@@ -198,7 +214,7 @@ const providerCards = computed<Card[]>(() => {
     kind: 'provider',
     name: g.gameName,
     glyph: (g.gameName?.[0] ?? 'G').toUpperCase(),
-    thumb: 'linear-gradient(150deg,#16233f,#0a1628)',
+    thumb: 'var(--skin-thumb-bg, linear-gradient(150deg,#16233f,#0a1628))',
     image: g.imageSquare || g.imageLandscape || null,
     raw: g,
   }))

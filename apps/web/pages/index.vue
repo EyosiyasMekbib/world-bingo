@@ -2122,13 +2122,13 @@ onUnmounted(() => {
 .gc-thumb {
   position: relative;
   aspect-ratio: 4 / 3;
-  background: linear-gradient(150deg, #0d2050 0%, #16306a 100%);
+  background: var(--skin-thumb-bg, linear-gradient(150deg, #0d2050 0%, #16306a 100%));
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
-.gc-thumb--bingo { background: linear-gradient(150deg, #091840 0%, #142e62 100%); }
+.gc-thumb--bingo { background: var(--skin-thumb-bg, linear-gradient(150deg, #091840 0%, #142e62 100%)); }
 
 .gc-letter {
   font-family: var(--font-ui);
@@ -2281,7 +2281,7 @@ onUnmounted(() => {
 .gc-skel-thumb {
   position: relative;
   aspect-ratio: 4 / 3;
-  background: linear-gradient(150deg, #0d2050 0%, #16306a 100%);
+  background: var(--skin-thumb-bg, linear-gradient(150deg, #0d2050 0%, #16306a 100%));
 }
 
 /* dim placeholder blocks — the sheen above gives them life */
