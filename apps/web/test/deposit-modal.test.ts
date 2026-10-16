@@ -14,6 +14,12 @@ describe('DepositModal manual form', () => {
     expect(src).toContain("track('deposit_submit_failed'")
   })
 
+  it('takes the deposit floor from the API, not a built-in constant', () => {
+    expect(src).toContain("'/settings/deposit-limits'")
+    expect(src).not.toContain('MIN_DEPOSIT = ')
+    expect(src).not.toContain('[200, 500, 1000, 2000]')
+  })
+
   it('prefills from the registered phone and the remembered name', () => {
     expect(src).toContain('auth.user?.phone')
     expect(src).toContain('recallSenderName()')

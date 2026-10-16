@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest'
-import { amountBucket, missingDepositFields } from './deposit'
+import { amountBucket, depositChips, missingDepositFields } from './deposit'
+
+describe('depositChips', () => {
+  it('keeps the original row for a 200 floor', () => {
+    expect(depositChips(200)).toEqual([200, 500, 1000, 2000])
+  })
+
+  it('leads with a lower floor so its first chip is depositable', () => {
+    expect(depositChips(50)).toEqual([50, 100, 200, 500])
+    expect(depositChips(75)).toEqual([75, 100, 200, 500])
+  })
+
+  it('never offers a chip below a higher floor', () => {
+    expect(depositChips(300)).toEqual([300, 500, 1000, 2000])
+  })
+
+  it('treats a missing or non-positive floor as the default', () => {
+    expect(depositChips(0)).toEqual([200, 500, 1000, 2000])
+    expect(depositChips(NaN)).toEqual([200, 500, 1000, 2000])
+  })
+})
 
 // The same buckets the deposit_amount_entered event has always sent. They
 // were duplicated inline twice in DepositModal.vue; this pins them.

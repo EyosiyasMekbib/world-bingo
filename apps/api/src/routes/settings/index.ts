@@ -174,6 +174,22 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         return { templateId: value.trim() !== '' ? value : null }
     })
 
+    // ── Public: GET /settings/deposit-limits ────────────────────────────────
+    // The deposit form's floor, read per deployment so each brand's admin
+    // setting reaches the player instead of a constant built into the web app.
+    // Same fallbacks as WalletService.initiateDeposit, which stays the check
+    // that actually enforces them.
+    fastify.get('/deposit-limits', async (_req, _reply) => {
+        const rows = await prisma.siteSetting.findMany({
+            where: { key: { in: ['min_deposit_amount', 'max_deposit_amount'] } },
+        })
+        const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
+        return {
+            min: Number(map.min_deposit_amount ?? 10),
+            max: Number(map.max_deposit_amount ?? 50000),
+        }
+    })
+
   // ── Public: GET /settings/support ───────────────────────────────────────
   // No auth — the widget renders these in its footer for signed-out visitors too.
   fastify.get('/support', async (_req, reply) => {

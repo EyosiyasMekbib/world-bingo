@@ -7,7 +7,24 @@ export function amountBucket(amount: number): '<500' | '500-1000' | '1000-5000' 
   return '5000+'
 }
 
-export type DepositFormField = 'amount' | 'transactionId' | 'senderName' | 'senderAccount' | 'receipt'
+/**
+ * The floor the form shows until GET /settings/deposit-limits answers, and if it
+ * never does. It was the hardcoded value before the floor came from the API.
+ */
+export const DEFAULT_MIN_DEPOSIT = 200
+
+const CHIP_STEPS = [50, 100, 200, 500, 1000, 2000]
+
+/**
+ * Four quick-amount chips starting at the brand's floor. A 200 floor keeps the
+ * original 200/500/1000/2000 row; a lower floor leads with itself. Pure.
+ */
+export function depositChips(minDeposit: number): number[] {
+  const min = Number(minDeposit) > 0 ? Number(minDeposit) : DEFAULT_MIN_DEPOSIT
+  return [min, ...CHIP_STEPS.filter((c) => c > min)].slice(0, 4)
+}
+
+export type DepositFormField ='amount' | 'transactionId' | 'senderName' | 'senderAccount' | 'receipt'
 
 /** The floors DepositModal's Submit enforced while disabled, as a list the page can show. Pure. */
 export function missingDepositFields(

@@ -54,14 +54,14 @@
                       <input
                         v-model.number="checkoutAmount"
                         type="number"
-                        :min="MIN_DEPOSIT"
-                        :placeholder="`Min ${MIN_DEPOSIT} ETB`"
+                        :min="minDeposit"
+                        :placeholder="`Min ${minDeposit} ETB`"
                         class="wb-input"
                         @focus="openMethod = m.code"
                       />
                       <div class="chips">
                         <button
-                          v-for="chip in [200, 500, 1000, 2000]"
+                          v-for="chip in amountChips"
                           :key="chip"
                           class="wb-chip"
                           @click="pickCheckoutChip(m.code, chip)"
@@ -73,7 +73,7 @@
                     <p v-if="checkoutError" class="wb-hint wb-hint--error">{{ checkoutError }}</p>
                     <button
                       class="wb-btn wb-btn--primary method-card__cta"
-                      :disabled="redirecting || !(checkoutAmount >= MIN_DEPOSIT)"
+                      :disabled="redirecting || !(checkoutAmount >= minDeposit)"
                       @click="startCheckout(m)"
                     >
                       {{ redirecting ? t('wallet.redirecting') : t('wallet.continue') }}
@@ -119,23 +119,23 @@
                         <input
                           v-model.number="form.amount"
                           type="number"
-                          :min="MIN_DEPOSIT"
-                          :placeholder="`Min ${MIN_DEPOSIT} ETB`"
+                          :min="minDeposit"
+                          :placeholder="`Min ${minDeposit} ETB`"
                           :class="[
                             'wb-input',
-                            form.amount > 0 && form.amount < MIN_DEPOSIT ? 'wb-input--error' : '',
+                            form.amount > 0 && form.amount < minDeposit ? 'wb-input--error' : '',
                           ]"
                           @change="trackAmountEntered(m.code)"
                         />
                         <p
-                          v-if="form.amount > 0 && form.amount < MIN_DEPOSIT"
+                          v-if="form.amount > 0 && form.amount < minDeposit"
                           class="wb-hint wb-hint--error"
                         >
-                          Minimum deposit is {{ MIN_DEPOSIT }} ETB
+                          Minimum deposit is {{ minDeposit }} ETB
                         </p>
                         <div class="chips">
                           <button
-                            v-for="chip in [200, 500, 1000, 2000]"
+                            v-for="chip in amountChips"
                             :key="chip"
                             class="wb-chip"
                             @click="pickAmountChip(m.code, chip)"
@@ -221,7 +221,7 @@
                         class="wb-hint wb-hint--error deposit-missing"
                         role="alert"
                       >
-                        <li v-for="field in missing" :key="field">{{ MISSING_HINTS[field] }}</li>
+                        <li v-for="field in missing" :key="field">{{ missingHints[field] }}</li>
                       </ul>
 
                       <div v-if="error" class="wb-notice wb-notice--error">
@@ -320,6 +320,8 @@
 <script setup lang="ts">
 import {
   amountBucket,
+  DEFAULT_MIN_DEPOSIT,
+  depositChips,
   missingDepositFields,
   recallSenderName,
   rememberSenderName,
@@ -353,8 +355,21 @@ type DepositMethod = {
   logoUrl: string | null
 }
 
-/** Mirrors the API's min_deposit_amount site setting. */
-const MIN_DEPOSIT = 200
+/**
+ * The brand's min_deposit_amount site setting, so a deployment's admin value
+ * reaches the form. Holds the old constant until the API answers.
+ */
+const minDeposit = ref(DEFAULT_MIN_DEPOSIT)
+const amountChips = computed(() => depositChips(minDeposit.value))
+
+async function fetchDepositLimits() {
+  try {
+    const limits = await auth.apiFetch<{ min: number }>('/settings/deposit-limits')
+    if (Number(limits?.min) > 0) minDeposit.value = Number(limits.min)
+  } catch {
+    // Keep the last floor; the API enforces the real one on submit either way.
+  }
+}
 
 const loadingMethods = ref(false)
 const depositMethods = ref<DepositMethod[]>([])
@@ -525,18 +540,18 @@ const errorHint = computed(() => {
 })
 
 const missing = computed<DepositFormField[]>(() =>
-  missingDepositFields(form, selectedFile.value !== null, MIN_DEPOSIT),
+  missingDepositFields(form, selectedFile.value !== null, minDeposit.value),
 )
 const canSubmit = computed(() => !!selectedMethod.value && missing.value.length === 0)
 // Shown only after the player taps Submit, never while they are still typing.
 const showMissing = ref(false)
-const MISSING_HINTS: Record<DepositFormField, string> = {
-  amount: `Enter at least ${MIN_DEPOSIT} ETB.`,
+const missingHints = computed<Record<DepositFormField, string>>(() => ({
+  amount: `Enter at least ${minDeposit.value} ETB.`,
   transactionId: 'Enter the transaction ID from your payment SMS.',
   senderName: 'Enter the name on the account you paid from.',
   senderAccount: 'Enter the phone or account number you paid from.',
   receipt: 'Attach a screenshot of the receipt.',
-}
+}))
 
 // Most players pay from the number they registered with and type the same
 // name every time. Prefill both on a manual card; the fields stay editable.
@@ -571,6 +586,7 @@ watch(
       // The agent card remounts with the modal and re-reports a live code.
       agentHasLiveCode.value = false
       fetchMethods()
+      fetchDepositLimits()
       promotions.fetch()
       track('deposit_modal_opened')
     }
