@@ -98,9 +98,8 @@ export class WalletController {
             if (!amount || amount <= 0) {
                 return reply.status(400).send({ error: 'Amount is required and must be positive' })
             }
-            if (amount < 200) {
-                return reply.status(400).send({ error: 'Minimum deposit amount is 200 ETB' })
-            }
+            // No floor here: WalletService.initiateDeposit enforces the deployment's
+            // min_deposit_amount. A fixed 200 here once blocked a brand set to 50.
 
             try {
                 const transaction = await WalletService.initiateDeposit(userId, {
@@ -117,8 +116,11 @@ export class WalletController {
                 ).catch(() => {})
                 return reply.status(201).send(transaction)
             } catch (err: any) {
-                if (err.statusCode === 409) {
-                    return reply.status(409).send({ error: err.message })
+                // 400 carries the deposit limits ("Minimum deposit amount is 50 Birr").
+                // The default error mapping would put "Error" in `error`, which the
+                // deposit form shows ahead of `message`.
+                if (err.statusCode === 409 || err.statusCode === 400) {
+                    return reply.status(err.statusCode).send({ error: err.message })
                 }
                 throw err
             }
