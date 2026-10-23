@@ -31,7 +31,12 @@ function walletTx(realBalance: string) {
     return {
         $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance, bonusBalance: '0.00', spendAccount: 'REAL' }]),
         wallet: { update: vi.fn() },
-        thirdPartyTransaction: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+        thirdPartyTransaction: {
+            create: vi.fn(),
+            findUnique: vi.fn(),
+            update: vi.fn(),
+            aggregate: vi.fn().mockResolvedValue({ _sum: { winAmount: null }, _count: 0 }),
+        },
         transaction: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
     }
 }
