@@ -2,6 +2,9 @@ import { Decimal } from '@prisma/client/runtime/library'
 import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { TransactionType, PaymentStatus, ThirdPartyTxType, ThirdPartyTxStatus } from '@world-bingo/shared-types'
+import { getLogger } from '../lib/log-context.js'
+import { maskAccount } from '../lib/logger.js'
+import { checkRoundCap, restrictAfterRoundCap, roundCapLimits, type RoundCapBreach } from '../lib/provider-round-cap.js'
 import { BonusService } from './bonus.service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -184,6 +187,28 @@ async function findExisting(transactionId: string) {
     return prisma.thirdPartyTransaction.findUnique({
         where: { providerId_transactionId: { providerId, transactionId } },
     })
+}
+
+/**
+ * Refuse a credit that would take its round past the per-round cap, and contain
+ * the account. SC_USER_DISABLED is terminal for GASea, so it does not retry.
+ */
+async function refuseOverRoundCap(
+    userId: string,
+    params: { traceId: string; username: string; roundId: string; gameCode: string; transactionId: string },
+    credit: Decimal,
+    breach: RoundCapBreach,
+): Promise<WalletCallbackResponse> {
+    getLogger().warn(
+        {
+            component: 'gasea-fraud-flag', account: maskAccount(params.username),
+            round: params.roundId, game: params.gameCode, credit: credit.toNumber(),
+            ...breach, transactionId: params.transactionId,
+        },
+        '[gasea-fraud-flag] credit refused: round is past its cumulative cap',
+    )
+    await restrictAfterRoundCap(userId, 'GASea', params.roundId, params.gameCode)
+    return err(params.traceId, 'SC_USER_DISABLED')
 }
 
 /** Validate currency matches operator currency. */
@@ -494,6 +519,15 @@ export class ThirdPartyWalletService {
                 const totalBefore = realBefore.plus(bonusBefore)
                 balanceAttempt = totalBefore
 
+                // A WIN credits without taking a stake in this call; BET_WIN pays its own.
+                if (params.resultType === 'WIN') {
+                    const breach = await checkRoundCap(tx, {
+                        providerId: await getProviderId(), userId: user.id, roundId: params.roundId,
+                        credit: netChange, knownStake: priorBet?.betAmount, limits: roundCapLimits('GASEA'),
+                    })
+                    if (breach) throw { code: 'ROUND_CAP_EXCEEDED', breach }
+                }
+
                 // BET_WIN / BET_LOSE combine bet deduction + result in one call.
                 // The bet portion must always be covered by the player's balance,
                 // even when net change is positive (win > bet).
@@ -568,6 +602,7 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
+            if (e?.code === 'ROUND_CAP_EXCEEDED') return refuseOverRoundCap(user.id, params, netChange, e.breach)
             if (e?.code === 'SC_INSUFFICIENT_FUNDS' && balanceAttempt !== null) {
                 // Record the failed attempt so rollback can identify it and return SC_INSUFFICIENT_FUNDS
                 try {
@@ -1050,6 +1085,13 @@ export class ThirdPartyWalletService {
 
             const result = await prisma.$transaction(async (tx) => {
                 const wallet = await lockWallet(tx, user.id)
+                // Refunds included: a replayed refund pays out just the same.
+                const breach = await checkRoundCap(tx, {
+                    providerId: await getProviderId(), userId: user.id, roundId: params.roundId,
+                    credit: creditAmount, knownStake: priorDebit?.betAmount, limits: roundCapLimits('GASEA'),
+                })
+                if (breach) throw { code: 'ROUND_CAP_EXCEEDED', breach }
+
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
                 const totalBefore = realBefore.plus(bonusBefore)
@@ -1140,6 +1182,10 @@ export class ThirdPartyWalletService {
 
             return ok(params.traceId, params.username, result)
         } catch (e: any) {
+            if (e?.code === 'ROUND_CAP_EXCEEDED') {
+                const credit = new Decimal(params.amount ?? 0).plus(new Decimal(params.jackpotAmount ?? 0))
+                return refuseOverRoundCap(user.id, params, credit, e.breach)
+            }
             if (e?.code) return err(params.traceId, e.code)
             console.error('[GASea] Unexpected error in processBetCredit:', e)
             return err(params.traceId, 'SC_INTERNAL_ERROR')

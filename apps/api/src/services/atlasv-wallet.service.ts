@@ -6,6 +6,7 @@ import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getLogger } from '../lib/log-context.js'
 import { maskAccount } from '../lib/logger.js'
+import { checkRoundCap, restrictAfterRoundCap, roundCapLimits, type RoundCapBreach } from '../lib/provider-round-cap.js'
 import { BonusService } from './bonus.service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -107,6 +108,24 @@ async function findExisting(transactionId: string | undefined | null) {
     return prisma.thirdPartyTransaction.findUnique({
         where: { providerId_transactionId: { providerId, transactionId } },
     })
+}
+
+/** Log a credit refused by the per-round cap, then contain the account. */
+async function flagRoundCap(
+    userId: string,
+    params: { player_id: string; round_id?: string; game_code?: string; transaction_id: string },
+    credit: Decimal,
+    breach: RoundCapBreach,
+): Promise<void> {
+    getLogger().warn(
+        {
+            component: 'atlasv-fraud-flag', playerId: maskAccount(params.player_id),
+            round: params.round_id, game: params.game_code, credit: credit.toNumber(),
+            ...breach, transactionId: params.transaction_id,
+        },
+        '[atlasv-fraud-flag] credit refused: round is past its cumulative cap',
+    )
+    await restrictAfterRoundCap(userId, 'Atlas-V', params.round_id ?? '', params.game_code)
 }
 
 async function currentBalance(userId: string): Promise<Decimal> {
@@ -449,6 +468,14 @@ export class AtlasVWalletService {
                 return { errorCode: ATLASV_ERROR.SERVICE_ERROR } as const
             }
 
+            const breach = await checkRoundCap(tx, {
+                providerId, userId: user.id, roundId: params.round_id,
+                credit: winAmount, knownStake: betAmount, limits: roundCapLimits('ATLASV'),
+            })
+            // Not retried by Atlas-V (only "Service Error" is), and the account is
+            // restricted just below, so "Player Blocked" is the honest answer.
+            if (breach) return { errorCode: ATLASV_ERROR.PLAYER_BLOCKED, breach, credit: winAmount } as const
+
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
@@ -483,7 +510,10 @@ export class AtlasVWalletService {
             return { errorCode: null, winAmount: winAmount.toNumber(), betAmount: betAmount.toNumber() } as const
         })
 
-        if (outcome.errorCode) return errFail(outcome.errorCode)
+        if (outcome.errorCode) {
+            if ('breach' in outcome) await flagRoundCap(user.id, params, outcome.credit, outcome.breach)
+            return errFail(outcome.errorCode)
+        }
 
         emitProviderWin(user.id, {
             providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null,
@@ -556,8 +586,13 @@ export class AtlasVWalletService {
         }
 
         const providerId = await getAtlasVProviderId()
-        await prisma.$transaction(async (tx) => {
+        const breach = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
+            const capped = await checkRoundCap(tx, {
+                providerId, userId: user.id, roundId: params.round_id, credit: winAmount, limits: roundCapLimits('ATLASV'),
+            })
+            if (capped) return capped
+
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
@@ -584,7 +619,12 @@ export class AtlasVWalletService {
                     bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
                 },
             })
+            return null
         })
+        if (breach) {
+            await flagRoundCap(user.id, params, winAmount, breach)
+            return fail()
+        }
 
         emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: 0 })
         return { success: true }
@@ -602,8 +642,15 @@ export class AtlasVWalletService {
 
         const winAmount = new Decimal(params.amount).abs()
         const providerId = await getAtlasVProviderId()
-        await prisma.$transaction(async (tx) => {
+        const breach = await prisma.$transaction(async (tx) => {
             const wallet = await lockWallet(tx, user.id)
+            // A jackpot gets no amount cap, but one round still cannot be paid
+            // an unbounded number of times.
+            const capped = await checkRoundCap(tx, {
+                providerId, userId: user.id, roundId: params.round_id, credit: winAmount, limits: roundCapLimits('ATLASV'),
+            })
+            if (capped) return capped
+
             const realBefore = new Decimal(wallet.realBalance)
             const bonusBefore = new Decimal(wallet.bonusBalance)
             const totalBefore = realBefore.plus(bonusBefore)
@@ -630,7 +677,12 @@ export class AtlasVWalletService {
                     bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusBefore,
                 },
             })
+            return null
         })
+        if (breach) {
+            await flagRoundCap(user.id, params, winAmount, breach)
+            return fail()
+        }
 
         emitProviderWin(user.id, { providerCode: PROVIDER_CODE, gameCode: params.game_code ?? null, roundId: params.round_id ?? null, betId: params.transaction_id, amount: winAmount.toNumber(), roundStake: 0 })
         return { success: true }

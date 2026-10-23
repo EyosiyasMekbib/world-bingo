@@ -6,6 +6,7 @@ import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getLogger } from '../lib/log-context.js'
 import { maskAccount } from '../lib/logger.js'
+import { restrictAfterRoundCap } from '../lib/provider-round-cap.js'
 import { TransactionType, PaymentStatus, ThirdPartyTxType, ThirdPartyTxStatus } from '@world-bingo/shared-types'
 import { BonusService } from './bonus.service'
 
@@ -115,32 +116,6 @@ async function lockWallet(
     `
     if (!rows[0]) throw { code: 'USER_NOT_FOUND' }
     return rows[0]
-}
-
-/**
- * Contain an account whose round tripped a per-round cap. Refusing the win alone
- * is not enough: a replay that hits the cap can move to a fresh round with a new
- * small bet. RESTRICTED stops withdrawals and new games until staff review it.
- * Never weakens a stricter status, and never fails the callback.
- */
-async function restrictAfterRoundCap(userId: string, roundId: string, gameCode: string | undefined): Promise<void> {
-    try {
-        // resolveUser's copy can be an hour old; read the column itself.
-        const current = await prisma.user.findUnique({ where: { id: userId }, select: { accountStatus: true } })
-        if (current?.accountStatus !== AccountStatus.ACTIVE) return
-        // Loaded lazily: account-status pulls in ZareCash and the wallet service,
-        // which this callback path otherwise never needs.
-        const { AccountStatusService } = await import('./account-status.service.js')
-        await AccountStatusService.restrict(userId, {
-            reason: `Automatic: Palace round ${roundId} (${gameCode ?? 'unknown game'}) exceeded the per-round win cap`,
-            category: 'OTHER',
-        })
-    } catch (err) {
-        getLogger().error(
-            { component: 'palace-fraud-flag', err, round: roundId, game: gameCode },
-            '[palace-fraud-flag] could not restrict the account after a round cap',
-        )
-    }
 }
 
 async function findExisting(transactionId: string | undefined | null) {
@@ -558,7 +533,7 @@ export class PalaceWalletService {
                 },
                 '[palace-fraud-flag] win refused: round is past its cumulative cap',
             )
-            await restrictAfterRoundCap(user.id, params.round_id, params.game_code)
+            await restrictAfterRoundCap(user.id, 'Palace', params.round_id, params.game_code)
             return palaceErr(42, 'TRANS_ID_NOT_FOUND')
         }
 
