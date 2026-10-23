@@ -53,6 +53,15 @@ const MAX_WIN_AMOUNT = Number(process.env.PALACE_MAX_WIN_AMOUNT ?? 1_000_000)
 const MAX_WIN_MULTIPLE = Number(process.env.PALACE_MAX_WIN_MULTIPLE ?? 20_000)
 const REQUIRE_BET_FOR_WIN = process.env.PALACE_REQUIRE_BET_FOR_WIN === 'true'
 
+// Per-round cumulative caps. The caps above judge each win callback alone, so a
+// round could be paid any number of times: on 2026-10-22 one 50 ETB chicken-road
+// bet was followed by 2,844 distinct win callbacks (220,410 ETB), every one well
+// inside them. Across ~375k legitimate Palace rounds on both brands the most any
+// round paid was 75 wins and 525x its stake, so these defaults leave wide headroom.
+// Set either to 0 to disable it.
+const MAX_ROUND_WINS = Number(process.env.PALACE_MAX_ROUND_WINS ?? 200)
+const MAX_ROUND_WIN_MULTIPLE = Number(process.env.PALACE_MAX_ROUND_WIN_MULTIPLE ?? 2_000)
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let _providerId: string | null = null
@@ -106,6 +115,32 @@ async function lockWallet(
     `
     if (!rows[0]) throw { code: 'USER_NOT_FOUND' }
     return rows[0]
+}
+
+/**
+ * Contain an account whose round tripped a per-round cap. Refusing the win alone
+ * is not enough: a replay that hits the cap can move to a fresh round with a new
+ * small bet. RESTRICTED stops withdrawals and new games until staff review it.
+ * Never weakens a stricter status, and never fails the callback.
+ */
+async function restrictAfterRoundCap(userId: string, roundId: string, gameCode: string | undefined): Promise<void> {
+    try {
+        // resolveUser's copy can be an hour old; read the column itself.
+        const current = await prisma.user.findUnique({ where: { id: userId }, select: { accountStatus: true } })
+        if (current?.accountStatus !== AccountStatus.ACTIVE) return
+        // Loaded lazily: account-status pulls in ZareCash and the wallet service,
+        // which this callback path otherwise never needs.
+        const { AccountStatusService } = await import('./account-status.service.js')
+        await AccountStatusService.restrict(userId, {
+            reason: `Automatic: Palace round ${roundId} (${gameCode ?? 'unknown game'}) exceeded the per-round win cap`,
+            category: 'OTHER',
+        })
+    } catch (err) {
+        getLogger().error(
+            { component: 'palace-fraud-flag', err, round: roundId, game: gameCode },
+            '[palace-fraud-flag] could not restrict the account after a round cap',
+        )
+    }
 }
 
 async function findExisting(transactionId: string | undefined | null) {
@@ -420,58 +455,112 @@ export class PalaceWalletService {
             }
         }
 
-        const balanceAfter = await prisma.$transaction(async (tx) => {
-            const wallet = await lockWallet(tx, user.id)
-            const realBefore = new Decimal(wallet.realBalance)
-            const bonusBefore = new Decimal(wallet.bonusBalance)
-            const totalBefore = realBefore.plus(bonusBefore)
-            const newReal = realBefore.plus(winAmount)
-            const newTotal = newReal.plus(bonusBefore)
+        let balanceAfter: Decimal
+        try {
+            balanceAfter = await prisma.$transaction(async (tx) => {
+                const wallet = await lockWallet(tx, user.id)
+                const providerId = await getPalaceProviderId()
 
-            await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+                // Per-round cumulative caps, read under the wallet lock so concurrent
+                // callbacks for one round see each other's wins.
+                if (params.round_id) {
+                    const paid = await tx.thirdPartyTransaction.aggregate({
+                        where: {
+                            providerId,
+                            userId: user.id,
+                            roundId: params.round_id,
+                            type: ThirdPartyTxType.BET_RESULT,
+                        },
+                        _sum: { winAmount: true },
+                        _count: true,
+                    })
+                    const roundWon = new Decimal(paid._sum.winAmount ?? 0).plus(winAmount)
+                    const overRoundCount = MAX_ROUND_WINS > 0 && paid._count >= MAX_ROUND_WINS
+                    const overRoundTotal =
+                        MAX_ROUND_WIN_MULTIPLE > 0 &&
+                        roundStake.greaterThan(0) &&
+                        roundWon.greaterThan(roundStake.times(MAX_ROUND_WIN_MULTIPLE))
+                    if (overRoundCount || overRoundTotal) {
+                        throw {
+                            code: 'ROUND_CAP_EXCEEDED',
+                            roundWins: paid._count,
+                            roundWon: roundWon.toNumber(),
+                            overRoundCount,
+                            overRoundTotal,
+                        }
+                    }
+                }
 
-            const providerId = await getPalaceProviderId()
-            await tx.thirdPartyTransaction.create({
-                data: {
-                    providerId,
-                    userId: user.id,
-                    transactionId: params.trans_guid,
-                    betId: params.gplay_id,
-                    roundId: params.round_id,
-                    gameCode: params.game_code,
-                    type: ThirdPartyTxType.BET_RESULT,
-                    status: ThirdPartyTxStatus.COMPLETED,
-                    winAmount,
-                    amount: winAmount,
-                    balanceBefore: totalBefore,
-                    balanceAfter: newTotal,
-                    rawRequest: params as any,
-                },
+                const realBefore = new Decimal(wallet.realBalance)
+                const bonusBefore = new Decimal(wallet.bonusBalance)
+                const totalBefore = realBefore.plus(bonusBefore)
+                const newReal = realBefore.plus(winAmount)
+                const newTotal = newReal.plus(bonusBefore)
+
+                await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: newReal } })
+
+                await tx.thirdPartyTransaction.create({
+                    data: {
+                        providerId,
+                        userId: user.id,
+                        transactionId: params.trans_guid,
+                        betId: params.gplay_id,
+                        roundId: params.round_id,
+                        gameCode: params.game_code,
+                        type: ThirdPartyTxType.BET_RESULT,
+                        status: ThirdPartyTxStatus.COMPLETED,
+                        winAmount,
+                        amount: winAmount,
+                        balanceBefore: totalBefore,
+                        balanceAfter: newTotal,
+                        rawRequest: params as any,
+                    },
+                })
+
+                await tx.transaction.create({
+                    data: {
+                        userId: user.id,
+                        type: TransactionType.TP_WIN,
+                        amount: winAmount,
+                        status: PaymentStatus.APPROVED,
+                        note: `Palace win: ${params.game_code} round ${params.round_id}`,
+                        referenceId: params.trans_guid,
+                        balanceBefore: totalBefore,
+                        balanceAfter: newTotal,
+                        bonusBalanceBefore: bonusBefore,
+                        bonusBalanceAfter: bonusBefore,
+                    },
+                })
+
+                // Report back only the account this win is reflected in. A win always
+                // credits real balance (see the R1 guard comment above), so a player
+                // whose selected account is BONUS sees no change from this win at all —
+                // reporting the combined total would re-advertise real money that
+                // account doesn't hold, undoing the point of authenticate/getBalance/
+                // processBet already reporting per-account.
+                return wallet.spendAccount === 'BONUS' ? bonusBefore : newReal
             })
-
-            await tx.transaction.create({
-                data: {
-                    userId: user.id,
-                    type: TransactionType.TP_WIN,
-                    amount: winAmount,
-                    status: PaymentStatus.APPROVED,
-                    note: `Palace win: ${params.game_code} round ${params.round_id}`,
-                    referenceId: params.trans_guid,
-                    balanceBefore: totalBefore,
-                    balanceAfter: newTotal,
-                    bonusBalanceBefore: bonusBefore,
-                    bonusBalanceAfter: bonusBefore,
+        } catch (e: any) {
+            if (e?.code !== 'ROUND_CAP_EXCEEDED') throw e
+            getLogger().warn(
+                {
+                    component: 'palace-fraud-flag',
+                    account: maskAccount(params.account),
+                    round: params.round_id,
+                    game: params.game_code,
+                    winAmount: winAmount.toNumber(),
+                    roundStake: roundStake.toNumber(),
+                    roundWins: e.roundWins,
+                    roundWon: e.roundWon,
+                    overRoundCount: e.overRoundCount,
+                    overRoundTotal: e.overRoundTotal,
+                    transGuid: params.trans_guid,
                 },
-            })
-
-            // Report back only the account this win is reflected in. A win always
-            // credits real balance (see the R1 guard comment above), so a player
-            // whose selected account is BONUS sees no change from this win at all —
-            // reporting the combined total would re-advertise real money that
-            // account doesn't hold, undoing the point of authenticate/getBalance/
-            // processBet already reporting per-account.
-            return wallet.spendAccount === 'BONUS' ? bonusBefore : newReal
-        })
+                '[palace-fraud-flag] win refused: round is past its cumulative cap',
+            )
+            await restrictAfterRoundCap(user.id, params.round_id, params.game_code)
+            return palaceErr(42, 'TRANS_ID_NOT_FOUND')
+        }
 
         emitProviderWin(user.id, {
             providerCode: 'palace',
