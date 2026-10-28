@@ -14,10 +14,18 @@ export interface IgcoreConfig {
     simCallbackUrl: string
 }
 
-/** A positive finite number from the environment, else the default. A typo in a cap must not turn into NaN, which compares false against everything. */
-function positiveNumber(raw: string | undefined, fallback: number): number {
-    const n = Number(raw || fallback)
-    return Number.isFinite(n) && n > 0 ? n : fallback
+/**
+ * A cap from the environment: a finite number >= 0, else the default. `0`
+ * passes through and means the cap is disabled. The value is trimmed first,
+ * because `Number('  ')` is 0 and a blank variable must not silently disable
+ * the cap. A typo must not become NaN either, which compares false against
+ * everything and would also leave the cap off.
+ */
+function capFromEnv(raw: string | undefined, fallback: number): number {
+    const trimmed = (raw ?? '').trim()
+    if (!trimmed) return fallback
+    const n = Number(trimmed)
+    return Number.isFinite(n) && n >= 0 ? n : fallback
 }
 
 /**
@@ -35,8 +43,8 @@ export function igcoreConfig(): IgcoreConfig {
         securityHash: env.IGCORE_SECURITY_HASH || '',
         currency: env.IGCORE_CURRENCY || 'ETB',
         defaultLang: env.IGCORE_DEFAULT_LANG || 'en',
-        maxWinAmount: positiveNumber(env.IGCORE_MAX_WIN_AMOUNT, 1_000_000),
-        maxTicketPayout: positiveNumber(env.IGCORE_MAX_TICKET_PAYOUT, 1_000_000),
+        maxWinAmount: capFromEnv(env.IGCORE_MAX_WIN_AMOUNT, 1_000_000),
+        maxTicketPayout: capFromEnv(env.IGCORE_MAX_TICKET_PAYOUT, 1_000_000),
         callbackDebug: env.IGCORE_CALLBACK_DEBUG === 'true',
         simulator: env.IGCORE_SIMULATOR === 'true',
         simPublicUrl: env.IGCORE_SIM_PUBLIC_URL || env.API_BASE_URL || '',

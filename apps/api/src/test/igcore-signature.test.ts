@@ -97,6 +97,22 @@ describe('IGCORE config', () => {
         expect(igcoreConfig().maxWinAmount).toBe(750)
     })
 
+    it('lets 0 disable each cap', () => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '0')
+        vi.stubEnv('IGCORE_MAX_TICKET_PAYOUT', '0')
+        const cfg = igcoreConfig()
+        expect(cfg.maxWinAmount).toBe(0)
+        expect(cfg.maxTicketPayout).toBe(0)
+    })
+
+    it.each(['abc', '-5', '  ', 'Infinity'])('falls back to the default for the unusable cap %j', (bad) => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', bad)
+        vi.stubEnv('IGCORE_MAX_TICKET_PAYOUT', bad)
+        const cfg = igcoreConfig()
+        expect(cfg.maxWinAmount).toBe(1_000_000)
+        expect(cfg.maxTicketPayout).toBe(1_000_000)
+    })
+
     it('derives the simulator URLs from PORT and API_BASE_URL', () => {
         vi.stubEnv('PORT', '9090')
         vi.stubEnv('API_BASE_URL', 'https://api.example.test')
