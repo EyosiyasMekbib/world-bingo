@@ -45,6 +45,7 @@ import zarecashWebhookRoute from './routes/zarecash/webhook.js'
 import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { atlasVCallbackRoutes } from './routes/atlasv/callback.js'
+import { igcoreCallbackRoutes } from './routes/igcore/callback.js'
 import { atlasVSpokeCallbackRoute } from './routes/hub/atlasv-spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
@@ -218,6 +219,7 @@ await server.register(rateLimit, {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
         if (req.url.startsWith('/v1/atlasv/')) return true
+        if (req.url.startsWith('/v1/igcore')) return true
         // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
         // caller could name a whitelisted address and skip the limiter outright.
         const ip = req.ip
@@ -358,6 +360,7 @@ await server.register(paymentMethodRoutes, { prefix: '/payment-methods' })
 await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' })
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
 await server.register(atlasVCallbackRoutes, { prefix: '/v1/atlasv/callback' })
+await server.register(igcoreCallbackRoutes, { prefix: '/v1/igcore' })
 await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
