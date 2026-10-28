@@ -104,6 +104,11 @@ async function rollbackTxnsFor(userId: string) {
     return prisma.transaction.findMany({ where: { userId, type: 'TP_ROLLBACK' } })
 }
 
+/** Win reversals are booked as TP_ADJUSTMENT so the player's history shows them as debits (ruling R5). */
+async function adjustmentTxnsFor(userId: string) {
+    return prisma.transaction.findMany({ where: { userId, type: 'TP_ADJUSTMENT' } })
+}
+
 /** The `[igcore-rollback-shortfall]` log calls, with their context objects. */
 function shortfallLogs(warn: { mock: { calls: unknown[][] } }): Array<Record<string, unknown>> {
     return warn.mock.calls
@@ -761,6 +766,7 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         expect(refunds[0].amount.toNumber()).toBe(25)
         expect(refunds[0].balanceBefore!.toNumber()).toBe(75)
         expect(refunds[0].balanceAfter!.toNumber()).toBe(100)
+        expect(await adjustmentTxnsFor(user.id)).toHaveLength(0) // a refund is a credit: it stays TP_ROLLBACK
         await vi.waitFor(() => expect(push).toHaveBeenCalledWith(user.id, 100, 0))
 
         const again = await IgcoreWalletService.processRollback(body)
@@ -787,10 +793,12 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         expect(row.amount.toNumber()).toBe(20)
         expect(row.balanceBefore.toNumber()).toBe(130)
         expect(row.balanceAfter.toNumber()).toBe(150)
-        const [refund] = await rollbackTxnsFor(user.id)
-        expect(refund.amount.toNumber()).toBe(20)
-        expect(refund.bonusBalanceBefore!.toNumber()).toBe(30)
-        expect(refund.bonusBalanceAfter!.toNumber()).toBe(50)
+        const refunds = await rollbackTxnsFor(user.id)
+        expect(refunds).toHaveLength(1)
+        expect(refunds[0].amount.toNumber()).toBe(20)
+        expect(refunds[0].bonusBalanceBefore!.toNumber()).toBe(30)
+        expect(refunds[0].bonusBalanceAfter!.toNumber()).toBe(50)
+        expect(await adjustmentTxnsFor(user.id)).toHaveLength(0)
     })
 
     it('rollback of a result then a corrected result', async () => {
@@ -810,12 +818,16 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
         const [original] = await rowsFor('rbr-res-1')
         expect(original.status).toBe('ROLLED_BACK')
-        const reversals = await rollbackTxnsFor(user.id)
+        // Booked as an adjustment, so wallet.vue classifies it by the balance
+        // drop and shows a debit rather than a "Bet Reversed" credit.
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+        const reversals = await adjustmentTxnsFor(user.id)
         expect(reversals).toHaveLength(1)
-        expect(reversals[0]).toMatchObject({ referenceId: 'rbr-rb-1', status: 'APPROVED', note: 'IGCORE sports win reversed: ticket 3' })
+        expect(reversals[0]).toMatchObject({ type: 'TP_ADJUSTMENT', referenceId: 'rbr-rb-1', status: 'APPROVED', note: 'IGCORE sports win reversed: ticket 3' })
         expect(reversals[0].amount.toNumber()).toBe(62.5)
         expect(reversals[0].balanceBefore!.toNumber()).toBe(137.5)
         expect(reversals[0].balanceAfter!.toNumber()).toBe(75)
+        expect(reversals[0].balanceAfter!.lt(reversals[0].balanceBefore!)).toBe(true)
 
         const corrected = await IgcoreWalletService.processResult(result(user, 'rbr-res-2', 50, { ticketId: 3 }))
 
@@ -837,8 +849,13 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         const [row] = await rowsFor('rbs-rb-1')
         expect(row).toMatchObject({ type: 'ROLLBACK', status: 'COMPLETED', roundId: '4', rawResponse: { shortfall: '52.5' } })
         expect(row.amount.toNumber()).toBe(-10)
-        const [reversal] = await rollbackTxnsFor(user.id)
-        expect(reversal.amount.toNumber()).toBe(10)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+        const reversals = await adjustmentTxnsFor(user.id)
+        expect(reversals).toHaveLength(1)
+        expect(reversals[0]).toMatchObject({ type: 'TP_ADJUSTMENT', note: 'IGCORE sports win reversed: ticket 4' })
+        expect(reversals[0].amount.toNumber()).toBe(10)
+        expect(reversals[0].balanceBefore!.toNumber()).toBe(10)
+        expect(reversals[0].balanceAfter!.toNumber()).toBe(0)
         expect(shortfallLogs(warn)).toEqual([expect.objectContaining({ shortfall: '52.5', rowId: row.id })])
 
         const corrected = await IgcoreWalletService.processResult(result(user, 'rbs-res-2', 50, { ticketId: 4 }))
@@ -873,6 +890,7 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         expect(row).toMatchObject({ roundId: '5', rawResponse: { shortfall: '30' } })
         expect(row.amount.toNumber()).toBe(0)
         expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+        expect(await adjustmentTxnsFor(user.id)).toHaveLength(0) // nothing taken, nothing booked
         expect((await rowsFor('rbe-res'))[0].status).toBe('ROLLED_BACK')
         expect(shortfallLogs(warn)).toHaveLength(1)
     })
@@ -997,7 +1015,7 @@ describe('IgcoreWalletService rollbacks (real DB)', () => {
         expect(originals[0]).toMatchObject({ userId: owner.id, status: 'COMPLETED' })
         expect((await walletOf(owner.id)).realBalance.toNumber()).toBe(75)
         expect((await walletOf(other.id)).realBalance.toNumber()).toBe(100)
-        expect(await prisma.transaction.count({ where: { type: 'TP_ROLLBACK' } })).toBe(0)
+        expect(await prisma.transaction.count({ where: { type: { in: ['TP_ROLLBACK', 'TP_ADJUSTMENT'] } } })).toBe(0)
         expect(fraudFlags(warn)).toHaveLength(1)
     })
 

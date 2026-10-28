@@ -576,7 +576,7 @@ async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
         let realAfter = realBefore
         let bonusAfter = bonusBefore
         let amount = new Decimal(0) // signed: + a stake returned, − a payout taken back
-        let ledger: { amount: Decimal; note: string } | null = null
+        let ledger: { type: TransactionType; amount: Decimal; note: string } | null = null
         let reversal: { payout: Decimal; debit: Decimal } | null = null
         let roundId: string
         let rowBetId = betId
@@ -653,7 +653,9 @@ async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
                     bonusAfter = (await BonusService.restore(tx, user.id, bonusDelta, restoreExpiry)).bonusBalanceAfter
                 }
                 amount = stake
-                if (stake.gt(0)) ledger = { amount: stake, note: `IGCORE sports bet rolled back: ticket ${ticket}` }
+                if (stake.gt(0)) {
+                    ledger = { type: TransactionType.TP_ROLLBACK, amount: stake, note: `IGCORE sports bet rolled back: ticket ${ticket}` }
+                }
             } else if (original.type === ThirdPartyTxType.BET_RESULT && original.status === ThirdPartyTxStatus.COMPLETED) {
                 // Real only: a win always landed on real. Never below zero;
                 // what cannot be taken back is owed and netted off the
@@ -665,7 +667,11 @@ async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
                     realAfter = realBefore.minus(debit)
                     await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: realAfter } })
                     amount = debit.negated()
-                    ledger = { amount: debit, note: `IGCORE sports win reversed: ticket ${ticket}` }
+                    // Ruling R5: TP_ADJUSTMENT, not TP_ROLLBACK. The player's
+                    // history lists TP_ROLLBACK as a credit by type, so this
+                    // debit would show as "+ Bet Reversed"; an adjustment is
+                    // classified by its balance drop instead.
+                    ledger = { type: TransactionType.TP_ADJUSTMENT, amount: debit, note: `IGCORE sports win reversed: ticket ${ticket}` }
                 }
             }
             // Anything else (a refused bet, a row already rolled back) has
@@ -693,7 +699,7 @@ async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
         if (ledger) {
             await tx.transaction.create({
                 data: {
-                    userId: user.id, type: TransactionType.TP_ROLLBACK, amount: ledger.amount,
+                    userId: user.id, type: ledger.type, amount: ledger.amount,
                     status: PaymentStatus.APPROVED, note: ledger.note, referenceId: transactionId,
                     balanceBefore: totalBefore, balanceAfter: totalAfter,
                     bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter,
