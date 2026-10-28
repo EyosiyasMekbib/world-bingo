@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'
 import redis from '../lib/redis.js'
 import { getLogger } from '../lib/log-context.js'
 import { maskAccount } from '../lib/logger.js'
-import { emitProviderBet } from '../lib/posthog-events.js'
+import { emitProviderBet, emitProviderWin } from '../lib/posthog-events.js'
 import { igcoreConfig } from '../gateways/igcore/igcore-config.js'
 import { BonusService } from './bonus.service'
 import { NotificationService } from './notification.service'
@@ -52,6 +52,8 @@ const GAME_CODE = 'sportsbook'
 const USER_CACHE_TTL = 3600
 /** Also dropped by AccountStatusService.invalidate, so a status change reaches the sportsbook at once. */
 const USER_CACHE_PREFIX = 'tp:user:igcore:'
+/** `rawResponse.held` on a result row whose payout a safety cap is holding. */
+const HELD = 'CAP_EXCEEDED'
 
 type Tx = Prisma.TransactionClient
 type Db = Tx | typeof prisma
@@ -131,9 +133,36 @@ function ticketIdOf(b: IgcoreCallbackBody): string | null {
     return id == null ? null : String(id)
 }
 
-// TODO(Task 4): replaced by resolveTicketRoot, which follows partial-cashout lineage.
-function roundIdOf(b: IgcoreCallbackBody): string {
-    return String(b.info?.ticketId ?? b.transaction_id)
+/** The user UUID behind IGCORE's `user_id` (its bare 32-hex form), or null when it is not one. */
+function userIdOfPlayer(playerId: unknown): string | null {
+    if (typeof playerId !== 'string' || !/^[0-9a-f]{32}$/i.test(playerId)) return null
+    const hex = playerId.toLowerCase()
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
+ * The ticket's root: the id every callback of one ticket is filed under as
+ * `roundId`, partial-cashout remainders included. A remainder names its
+ * parent in `info.ticket.fromId`, and the parent's rows already carry the
+ * root, so one lookup follows any depth of remainders. The bet link, the
+ * per-ticket cap and shortfall netting all key on it.
+ *
+ * Scoped to the callback's player: a ticket only ever belongs to one, so
+ * another player's rows must never shape this one's lineage. `betId` has no
+ * index, so the scope also keeps the lookup on the userId index.
+ */
+export async function resolveTicketRoot(tx: Tx, providerId: string, b: IgcoreCallbackBody): Promise<string> {
+    const userId = userIdOfPlayer(b.user_id)
+    if (!userId) throw new Error('IGCORE callback has no valid user_id')
+    const fromId = b.info?.ticket?.fromId ?? null
+    const parent = fromId != null ? String(fromId) : ticketIdOf(b)
+    if (parent == null) return transactionIdOf(b)
+    const row = await tx.thirdPartyTransaction.findFirst({
+        where: { providerId, userId, betId: parent, roundId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { roundId: true },
+    })
+    return row?.roundId ?? parent
 }
 
 /** A stake must be a finite positive amount. Anything else is malformed and fails loudly (500). */
@@ -142,6 +171,27 @@ function stakeOf(b: IgcoreCallbackBody): Decimal {
     const stake = new Decimal(typeof raw === 'number' || typeof raw === 'string' ? raw : NaN)
     if (!stake.isFinite() || stake.lte(0)) throw new Error('IGCORE stake must be a positive amount')
     return stake
+}
+
+/** A payout must be a finite amount of 0 or more (0 is a loss under sendLose). Anything else fails loudly (retry). */
+function payoutOf(b: IgcoreCallbackBody): Decimal {
+    const raw: unknown = b.amount
+    const payout = new Decimal(typeof raw === 'number' || typeof raw === 'string' ? raw : NaN)
+    if (!payout.isFinite() || payout.lt(0)) throw new Error('IGCORE payout must be a non-negative amount')
+    return payout
+}
+
+/** A Decimal kept as a string under `key` of a row's rawResponse; 0 when absent. A malformed one fails loudly. */
+function storedDecimal(raw: Prisma.JsonValue | null, key: 'shortfall' | 'netted'): Decimal {
+    const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw[key] : undefined
+    if (value == null) return new Decimal(0)
+    const amount = new Decimal(typeof value === 'string' || typeof value === 'number' ? value : NaN)
+    if (!amount.isFinite() || amount.lt(0)) throw new Error(`IGCORE ledger row carries a malformed ${key}`)
+    return amount
+}
+
+function sum(values: Decimal[]): Decimal {
+    return values.reduce((total, v) => total.plus(v), new Decimal(0))
 }
 
 async function cacheGet(key: string): Promise<PlayerRef | null> {
@@ -167,13 +217,12 @@ async function cacheSet(key: string, user: PlayerRef): Promise<void> {
  * a username. Misses are not cached, so a lookup never records a player.
  */
 async function resolveUser(playerId: unknown): Promise<PlayerRef | null> {
-    if (typeof playerId !== 'string' || !/^[0-9a-f]{32}$/i.test(playerId)) return null
-    const hex = playerId.toLowerCase()
-    const cacheKey = `${USER_CACHE_PREFIX}${hex}`
+    const id = userIdOfPlayer(playerId)
+    if (!id) return null
+    const cacheKey = `${USER_CACHE_PREFIX}${id.replace(/-/g, '')}`
     const cached = await cacheGet(cacheKey)
     if (cached) return cached
 
-    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
     const user = await prisma.user.findUnique({ where: { id }, select: { id: true, accountStatus: true } })
     if (user) await cacheSet(cacheKey, user)
     return user
@@ -252,6 +301,204 @@ function answerBetDuplicate(row: ThirdPartyTransaction, userId: string): IgcoreO
     return typeof error === 'string' ? reject(error) : retry('FAILED_ROW_WITHOUT_ERROR')
 }
 
+/** A result row whose payout a safety cap is holding. A retry re-evaluates it under the lock. */
+function isHeld(row: ThirdPartyTransaction): boolean {
+    return (
+        row.type === ThirdPartyTxType.BET_RESULT &&
+        row.status === ThirdPartyTxStatus.FAILED &&
+        (row.rawResponse as { held?: unknown } | null)?.held === HELD
+    )
+}
+
+/**
+ * A result's stored outcome. Applied (or since rolled back) answers success
+ * with the same id. Anything else, a held payout included, asks for a retry:
+ * a result is never refused with a 200 (§4.7), and the retry is what lets a
+ * held payout be re-evaluated.
+ */
+function answerResultDuplicate(row: ThirdPartyTransaction, userId: string): IgcoreOutcome {
+    if (ownedByAnotherPlayer(row, userId)) return retry('TRANSACTION_ID_OF_ANOTHER_PLAYER')
+    if (row.status === ThirdPartyTxStatus.COMPLETED || row.status === ThirdPartyTxStatus.ROLLED_BACK) return ok(row)
+    return retry(isHeld(row) ? HELD : 'FAILED_ROW')
+}
+
+type ResultFields = Pick<
+    Prisma.ThirdPartyTransactionUncheckedCreateInput,
+    'status' | 'winAmount' | 'amount' | 'balanceBefore' | 'balanceAfter' | 'rawResponse'
+>
+
+/**
+ * Writes this result's row, or settles the held row already filed under its
+ * transaction_id. Updating that row, never adding a second, is what makes a
+ * held payout apply at most once however it is released.
+ */
+async function writeResultRow(
+    tx: Tx,
+    held: ThirdPartyTransaction | null,
+    base: Omit<Prisma.ThirdPartyTransactionUncheckedCreateInput, keyof ResultFields>,
+    fields: ResultFields,
+): Promise<{ id: string; userId: string }> {
+    const select = { id: true, userId: true } as const
+    if (!held) return tx.thirdPartyTransaction.create({ data: { ...base, ...fields }, select })
+    return tx.thirdPartyTransaction.update({
+        where: { id: held.id },
+        data: { ...fields, roundId: base.roundId, rawResponse: fields.rawResponse ?? Prisma.DbNull },
+        select,
+    })
+}
+
+type ResultSettled = {
+    outcome: IgcoreOutcome
+    credited?: { userId: string; roundId: string; betId: string | null; credit: Decimal; stake: Decimal }
+}
+
+/**
+ * §4.7: pays one result. Every non-success answer is a retry (the route's
+ * 500), because a 200 with an error makes IGCORE drop the payout for good.
+ * Account status never blocks: a result settles a stake already taken.
+ */
+async function settleResult(b: IgcoreCallbackBody): Promise<ResultSettled> {
+    const transactionId = transactionIdOf(b)
+    const user = await resolveUser(b.user_id)
+    if (!user) {
+        getLogger().warn(
+            { component: 'igcore-wallet', transactionId, playerId: typeof b.user_id === 'string' ? maskAccount(b.user_id) : null },
+            '[igcore-wallet] result for an unknown player; asking IGCORE to retry',
+        )
+        return { outcome: retry(IGCORE_REJECT.PLAYER_NOT_FOUND) }
+    }
+    const playerId = maskAccount(user.id.replace(/-/g, ''))
+
+    const providerId = await getIgcoreProviderId()
+    const seen = await findExisting(prisma, providerId, transactionId)
+    if (seen && !isHeld(seen)) return { outcome: answerResultDuplicate(seen, user.id) }
+
+    if (b.currency !== igcoreConfig().currency) {
+        getLogger().warn(
+            { component: 'igcore-wallet', transactionId, playerId, currency: b.currency },
+            '[igcore-wallet] result in a currency we do not accept; asking IGCORE to retry',
+        )
+        return { outcome: retry(IGCORE_REJECT.CURRENCY_NOT_SUPPORTED) }
+    }
+
+    const payout = payoutOf(b)
+    const betId = ticketIdOf(b)
+    const onDuplicate = (row: ThirdPartyTransaction): ResultSettled => ({ outcome: answerResultDuplicate(row, user.id) })
+
+    return lockedOnce<ResultSettled>(user.id, transactionId, async (tx, wallet, existing) => {
+        // Only our own held row goes on to be re-evaluated; anything else
+        // stored under this transaction_id is answered as it stands.
+        if (existing && (existing.userId !== user.id || !isHeld(existing))) return onDuplicate(existing)
+        const held = existing
+
+        const roundId = await resolveTicketRoot(tx, providerId, b)
+        const realBefore = new Decimal(wallet.realBalance)
+        const bonus = new Decimal(wallet.bonusBalance)
+        const totalBefore = realBefore.plus(bonus)
+        const base = {
+            providerId, userId: user.id, transactionId, betId, roundId, gameCode: GAME_CODE,
+            type: ThirdPartyTxType.BET_RESULT, rawRequest: b as unknown as Prisma.InputJsonValue,
+        }
+
+        // A loss under sendLose: recorded, nothing to credit, nothing to cap.
+        if (payout.isZero()) {
+            const row = await writeResultRow(tx, held, base, {
+                status: ThirdPartyTxStatus.COMPLETED, winAmount: payout, amount: payout,
+                balanceBefore: totalBefore, balanceAfter: totalBefore,
+                rawResponse: held ? { released: HELD } : undefined,
+            })
+            return { outcome: ok(row) }
+        }
+
+        const rootRows = await tx.thirdPartyTransaction.findMany({
+            where: { providerId, userId: user.id, roundId },
+            select: { type: true, status: true, amount: true, betAmount: true, rawResponse: true },
+        })
+        const completed = (type: ThirdPartyTxType) =>
+            rootRows.filter((r) => r.type === type && r.status === ThirdPartyTxStatus.COMPLETED)
+        const paidResults = completed(ThirdPartyTxType.BET_RESULT)
+        const paidOnTicket = sum(paidResults.map((r) => new Decimal(r.amount)))
+
+        // 1. Safety caps (0 disables one). Over → hold under this
+        // transaction_id and ask for a retry; raising the cap and having
+        // IGCORE resend releases it through the row above.
+        const cfg = igcoreConfig()
+        const breach =
+            cfg.maxWinAmount > 0 && payout.gt(cfg.maxWinAmount) ? 'IGCORE_MAX_WIN_AMOUNT'
+                : cfg.maxTicketPayout > 0 && payout.plus(paidOnTicket).gt(cfg.maxTicketPayout) ? 'IGCORE_MAX_TICKET_PAYOUT'
+                    : null
+        if (breach) {
+            const row = held ?? (await writeResultRow(tx, null, base, {
+                status: ThirdPartyTxStatus.FAILED, amount: new Decimal(0),
+                balanceBefore: totalBefore, balanceAfter: totalBefore, rawResponse: { held: HELD },
+            }))
+            getLogger().warn(
+                {
+                    component: 'igcore-fraud-flag', transactionId, rowId: row.id, playerId, roundId, cap: breach,
+                    payout: payout.toString(), paidOnTicket: paidOnTicket.toString(),
+                },
+                '[igcore-fraud-flag] result over a payout cap: held, asking IGCORE to retry',
+            )
+            return { outcome: retry(HELD) }
+        }
+
+        // 2. Shortfall netting: what a short rollback could not take back is
+        // owed by the player and comes off this payout first. A result rolled
+        // back since is out of both sums: its netted part was never paid.
+        const shortfall = sum(
+            rootRows.filter((r) => r.type === ThirdPartyTxType.ROLLBACK).map((r) => storedDecimal(r.rawResponse, 'shortfall')),
+        )
+        const alreadyNetted = sum(paidResults.map((r) => storedDecimal(r.rawResponse, 'netted')))
+        const outstanding = Decimal.max(0, shortfall.minus(alreadyNetted))
+        const netted = Decimal.min(payout, outstanding)
+        const credit = payout.minus(netted)
+
+        // 3. A win always lands on real, whichever account funded the stake.
+        const realAfter = realBefore.plus(credit)
+        const totalAfter = realAfter.plus(bonus)
+        if (credit.gt(0)) await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: realAfter } })
+
+        const response: Record<string, string> = {}
+        if (held) response.released = HELD
+        if (netted.gt(0)) response.netted = netted.toString()
+        const row = await writeResultRow(tx, held, base, {
+            status: ThirdPartyTxStatus.COMPLETED, winAmount: payout, amount: credit,
+            balanceBefore: totalBefore, balanceAfter: totalAfter,
+            rawResponse: Object.keys(response).length > 0 ? response : undefined,
+        })
+        if (credit.gt(0)) {
+            await tx.transaction.create({
+                data: {
+                    userId: user.id, type: TransactionType.TP_WIN, amount: credit,
+                    status: PaymentStatus.APPROVED,
+                    note: `IGCORE sports win: ticket ${betId ?? roundId}`,
+                    referenceId: transactionId,
+                    balanceBefore: totalBefore, balanceAfter: totalAfter,
+                    bonusBalanceBefore: bonus, bonusBalanceAfter: bonus,
+                },
+            })
+        }
+
+        // 4. Signed and never refusable, so paid either way; flagged for review.
+        const bets = rootRows.filter((r) => r.type === ThirdPartyTxType.BET)
+        const appliedBets = completed(ThirdPartyTxType.BET)
+        if (appliedBets.length === 0) {
+            getLogger().warn(
+                { component: 'igcore-fraud-flag', transactionId, rowId: row.id, playerId, roundId, payout: payout.toString(), betRows: bets.length },
+                bets.length === 0
+                    ? '[igcore-fraud-flag] result with no recorded bet'
+                    : '[igcore-fraud-flag] result for a ticket whose bet was refused or rolled back',
+            )
+        }
+
+        if (credit.isZero()) return { outcome: ok(row) }
+        const stake = sum(appliedBets.map((r) => new Decimal(r.betAmount ?? 0)))
+        return { outcome: ok(row), credited: { userId: user.id, roundId, betId, credit, stake } }
+    }, onDuplicate)
+}
+
+type BetResult = { outcome: IgcoreOutcome; applied?: { spendAccount: 'REAL' | 'BONUS'; roundId: string } }
+
 /** Thrown inside the bet transaction to abort it without moving money. */
 class InsufficientFunds extends Error {
     constructor() {
@@ -265,8 +512,6 @@ function isInsufficient(e: unknown): boolean {
     // fall short of the cached balance; that is a refusal too, not a 500.
     return e instanceof InsufficientFunds || (e as Error | null)?.name === 'InsufficientBonusBalanceError'
 }
-
-type BetResult = { outcome: IgcoreOutcome; spendAccount?: 'REAL' | 'BONUS' }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -293,13 +538,13 @@ export class IgcoreWalletService {
 
         const stake = stakeOf(b)
         const betId = ticketIdOf(b)
-        const roundId = roundIdOf(b)
         const onDuplicate = (row: ThirdPartyTransaction): BetResult => ({ outcome: answerBetDuplicate(row, user.id) })
 
         let result: BetResult
         try {
             result = await lockedOnce<BetResult>(user.id, transactionId, async (tx, wallet, existing) => {
                 if (existing) return onDuplicate(existing)
+                const roundId = await resolveTicketRoot(tx, providerId, b)
 
                 const realBefore = new Decimal(wallet.realBalance)
                 const bonusBefore = new Decimal(wallet.bonusBalance)
@@ -344,7 +589,7 @@ export class IgcoreWalletService {
                         bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter, bonusExpiresAtSpend,
                     },
                 })
-                return { outcome: ok(row), spendAccount: wallet.spendAccount }
+                return { outcome: ok(row), applied: { spendAccount: wallet.spendAccount, roundId } }
             }, onDuplicate)
         } catch (e) {
             if (!isInsufficient(e)) throw e
@@ -352,6 +597,7 @@ export class IgcoreWalletService {
             // refusal under this transaction_id, so a replay repeats it.
             result = await lockedOnce<BetResult>(user.id, transactionId, async (tx, wallet, existing) => {
                 if (existing) return onDuplicate(existing)
+                const roundId = await resolveTicketRoot(tx, providerId, b)
                 const total = new Decimal(wallet.realBalance).plus(new Decimal(wallet.bonusBalance))
                 await tx.thirdPartyTransaction.create({
                     data: {
@@ -367,10 +613,10 @@ export class IgcoreWalletService {
             }, onDuplicate)
         }
 
-        if (result.spendAccount) {
+        if (result.applied) {
             emitProviderBet(user.id, {
-                providerCode: PROVIDER_CODE, gameCode: GAME_CODE, roundId, betId,
-                amount: stake.toNumber(), spendAccount: result.spendAccount,
+                providerCode: PROVIDER_CODE, gameCode: GAME_CODE, roundId: result.applied.roundId, betId,
+                amount: stake.toNumber(), spendAccount: result.applied.spendAccount,
             })
             void IgcoreWalletService.pushBalance(user.id)
         }
@@ -386,10 +632,32 @@ export class IgcoreWalletService {
         return reject(IGCORE_REJECT.FREEBETS_NOT_ENABLED)
     }
 
-    // TODO(Task 4): results. Until then a result is never refused with a 200
-    // (IGCORE would drop the payout for good); a 500 makes them retry it.
-    static async processResult(_b: IgcoreCallbackBody): Promise<IgcoreOutcome> {
-        return retry('RESULT_NOT_IMPLEMENTED')
+    /**
+     * §4.7: pay a settled ticket (settlement, cashout, partial cashout or
+     * re-settlement). Queued and retried by IGCORE, and never refusable, so
+     * every failure, thrown or not, answers `retry` (the route's 500).
+     */
+    static async processResult(b: IgcoreCallbackBody): Promise<IgcoreOutcome> {
+        let settled: ResultSettled
+        try {
+            settled = await settleResult(b)
+        } catch (err) {
+            getLogger().error(
+                { component: 'igcore-wallet', err, transactionId: b?.transaction_id },
+                '[igcore-wallet] result failed; asking IGCORE to retry',
+            )
+            return retry('RESULT_FAILED')
+        }
+
+        const { credited } = settled
+        if (credited) {
+            emitProviderWin(credited.userId, {
+                providerCode: PROVIDER_CODE, gameCode: GAME_CODE, roundId: credited.roundId, betId: credited.betId,
+                amount: credited.credit.toNumber(), roundStake: credited.stake.toNumber(),
+            })
+            void IgcoreWalletService.pushBalance(credited.userId)
+        }
+        return settled.outcome
     }
 
     // TODO(Task 5): rollbacks. Retried for the same reason as results.

@@ -14,8 +14,9 @@ import { randomBytes } from 'node:crypto'
 import { prisma, expectInvariantClean } from './setup'
 import { BonusService } from '../services/bonus.service'
 import { NotificationService } from '../services/notification.service'
-import { emitProviderBet } from '../lib/posthog-events.js'
-import { IgcoreWalletService, getIgcoreProviderId, type IgcoreCallbackBody } from '../services/igcore-wallet.service.js'
+import { emitProviderBet, emitProviderWin } from '../lib/posthog-events.js'
+import { rootLogger } from '../lib/logger.js'
+import { IgcoreWalletService, getIgcoreProviderId, resolveTicketRoot, type IgcoreCallbackBody } from '../services/igcore-wallet.service.js'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────
 // `setup.ts` wipes users/wallets/bonus lots/thirdPartyTransactions/
@@ -70,6 +71,19 @@ async function rowsFor(transactionId: string) {
 
 async function betTxnsFor(userId: string) {
     return prisma.transaction.findMany({ where: { userId, type: 'TP_BET' } })
+}
+
+function result(user: { id: string }, transactionId: string, amount: number, info: IgcoreCallbackBody['info']): IgcoreCallbackBody {
+    return { transaction_id: transactionId, action: 'result', user_id: pid(user), currency: 'ETB', amount, info }
+}
+
+async function winTxnsFor(userId: string) {
+    return prisma.transaction.findMany({ where: { userId, type: 'TP_WIN' } })
+}
+
+/** `[igcore-fraud-flag]` lines logged through the root logger (getLogger() outside a request). */
+function fraudFlags(warn: { mock: { calls: unknown[][] } }): string[] {
+    return warn.mock.calls.map((c) => String(c[1] ?? '')).filter((msg) => msg.includes('[igcore-fraud-flag]'))
 }
 
 describe('IgcoreWalletService bets (real DB)', () => {
@@ -332,5 +346,352 @@ describe('IgcoreWalletService bets (real DB)', () => {
         expect(row.id).toBe(id)
         expect(row).toMatchObject({ name: 'IGCORE Sportsbook', status: 'INACTIVE', currency: 'ETB', config: { kind: 'sportsbook' } })
         expect(await getIgcoreProviderId()).toBe(id)
+    })
+})
+
+describe('IgcoreWalletService results (real DB)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    afterEach(async () => {
+        vi.restoreAllMocks()
+        vi.unstubAllEnvs()
+        await expectInvariantClean()
+    })
+
+    it('result credits real even for a bonus-funded stake', async () => {
+        const push = vi.spyOn(NotificationService, 'pushWalletUpdate')
+        const user = await createPlayer({ real: 100, bonus: 50, spendAccount: 'BONUS' })
+        await IgcoreWalletService.processBet(bet(user, 'res-bonus-bet', 20, 1))
+
+        const out = await IgcoreWalletService.processResult(result(user, 'res-bonus-1', 50, { ticketId: 1 }))
+
+        const rows = await rowsFor('res-bonus-1')
+        expect(rows).toHaveLength(1)
+        expect(out).toEqual({ kind: 'ok', transactionId: rows[0].id, userId: user.id })
+        expect(rows[0]).toMatchObject({
+            userId: user.id, type: 'BET_RESULT', status: 'COMPLETED', betId: '1', roundId: '1', gameCode: 'sportsbook', rawResponse: null,
+        })
+        expect(rows[0].winAmount!.toNumber()).toBe(50)
+        expect(rows[0].amount.toNumber()).toBe(50)
+        expect(rows[0].balanceBefore.toNumber()).toBe(130)
+        expect(rows[0].balanceAfter.toNumber()).toBe(180)
+        expect(rows[0].rawRequest).toMatchObject({ transaction_id: 'res-bonus-1', action: 'result', amount: 50 })
+
+        const wallet = await walletOf(user.id)
+        expect(wallet.realBalance.toNumber()).toBe(150)
+        expect(wallet.bonusBalance.toNumber()).toBe(30)
+
+        const wins = await winTxnsFor(user.id)
+        expect(wins).toHaveLength(1)
+        expect(wins[0]).toMatchObject({ referenceId: 'res-bonus-1', status: 'APPROVED', note: 'IGCORE sports win: ticket 1' })
+        expect(wins[0].amount.toNumber()).toBe(50)
+        expect(wins[0].balanceBefore!.toNumber()).toBe(130)
+        expect(wins[0].balanceAfter!.toNumber()).toBe(180)
+        expect(wins[0].bonusBalanceBefore!.toNumber()).toBe(30)
+        expect(wins[0].bonusBalanceAfter!.toNumber()).toBe(30)
+
+        expect(emitProviderWin).toHaveBeenCalledWith(user.id, {
+            providerCode: 'igcore', gameCode: 'sportsbook', roundId: '1', betId: '1', amount: 50, roundStake: 20,
+        })
+        await vi.waitFor(() => expect(push).toHaveBeenCalledWith(user.id, 150, 30))
+    })
+
+    it('losing result is recorded and moves nothing', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'res-lose-bet', 25, 2))
+
+        const out = await IgcoreWalletService.processResult(result(user, 'res-lose-1', 0, { ticketId: 2 }))
+
+        const rows = await rowsFor('res-lose-1')
+        expect(rows).toHaveLength(1)
+        expect(out).toEqual({ kind: 'ok', transactionId: rows[0].id, userId: user.id })
+        expect(rows[0]).toMatchObject({ type: 'BET_RESULT', status: 'COMPLETED', betId: '2', roundId: '2' })
+        expect(rows[0].amount.toNumber()).toBe(0)
+        expect(rows[0].winAmount!.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(await winTxnsFor(user.id)).toHaveLength(0)
+        expect(emitProviderWin).not.toHaveBeenCalled()
+    })
+
+    it('duplicate result answers the same id', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'res-dup-bet', 25, 3))
+        const body = result(user, 'res-dup-1', 40, { ticketId: 3 })
+
+        const first = await IgcoreWalletService.processResult(body)
+        const second = await IgcoreWalletService.processResult(body)
+
+        expect(first.kind).toBe('ok')
+        expect(second).toEqual(first)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(115)
+        expect(await rowsFor('res-dup-1')).toHaveLength(1)
+        expect(await winTxnsFor(user.id)).toHaveLength(1)
+        expect(emitProviderWin).toHaveBeenCalledTimes(1)
+    })
+
+    it('racing identical results apply once', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'res-race-bet', 25, 4))
+        const body = result(user, 'res-race-1', 40, { ticketId: 4 })
+
+        const [a, b] = await Promise.all([IgcoreWalletService.processResult(body), IgcoreWalletService.processResult(body)])
+
+        expect(a.kind).toBe('ok')
+        expect(b).toEqual(a)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(115)
+        expect(await rowsFor('res-race-1')).toHaveLength(1)
+        expect(await winTxnsFor(user.id)).toHaveLength(1)
+    })
+
+    it('unknown player asks for a retry', async () => {
+        const body = result({ id: randomBytes(16).toString('hex') }, 'res-ghost-1', 40, { ticketId: 5 })
+
+        const out = await IgcoreWalletService.processResult(body)
+
+        expect(out).toMatchObject({ kind: 'retry' })
+        expect(await prisma.thirdPartyTransaction.count()).toBe(0)
+    })
+
+    it('a result in another currency, or with a malformed payout, asks for a retry', async () => {
+        const user = await createPlayer({ real: 100 })
+
+        const euro = await IgcoreWalletService.processResult({ ...result(user, 'res-eur-1', 40, { ticketId: 6 }), currency: 'EUR' })
+        const negative = await IgcoreWalletService.processResult(result(user, 'res-neg-1', -5, { ticketId: 6 }))
+
+        expect(euro).toMatchObject({ kind: 'retry' })
+        expect(negative).toMatchObject({ kind: 'retry' })
+        expect(await prisma.thirdPartyTransaction.count()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+    })
+
+    it('result for a restricted player still pays', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'res-restricted-bet', 25, 7))
+        await prisma.user.update({ where: { id: user.id }, data: { accountStatus: 'RESTRICTED' } })
+
+        const out = await IgcoreWalletService.processResult(result(user, 'res-restricted-1', 40, { ticketId: 7 }))
+
+        expect(out.kind).toBe('ok')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(115)
+    })
+
+    it('a result with no recorded bet is still paid and flagged', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+
+        const out = await IgcoreWalletService.processResult(result(user, 'res-nobet-1', 40, { ticketId: 8 }))
+
+        expect(out.kind).toBe('ok')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(140)
+        expect(fraudFlags(warn)).toEqual([expect.stringContaining('result with no recorded bet')])
+    })
+
+    it('a result transaction_id already used by another player asks for a retry', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const owner = await createPlayer({ real: 100 })
+        const other = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(owner, 'res-shared-bet', 25, 9))
+        await IgcoreWalletService.processResult(result(owner, 'res-shared-1', 40, { ticketId: 9 }))
+
+        const out = await IgcoreWalletService.processResult(result(other, 'res-shared-1', 40, { ticketId: 9 }))
+
+        expect(out).toMatchObject({ kind: 'retry' })
+        expect((await walletOf(other.id)).realBalance.toNumber()).toBe(100)
+        expect((await walletOf(owner.id)).realBalance.toNumber()).toBe(115)
+        expect(await rowsFor('res-shared-1')).toHaveLength(1)
+        expect(fraudFlags(warn)).toEqual([expect.stringContaining('another player')])
+    })
+
+    it('per-callback cap holds the payout', async () => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '100')
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'cap-win-bet', 25, 10))
+        const body = result(user, 'cap-win-1', 150, { ticketId: 10 })
+
+        const out = await IgcoreWalletService.processResult(body)
+
+        expect(out).toMatchObject({ kind: 'retry' })
+        const rows = await rowsFor('cap-win-1')
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({ type: 'BET_RESULT', status: 'FAILED', betId: '10', roundId: '10' })
+        expect((rows[0].rawResponse as { held?: unknown }).held).toBe('CAP_EXCEEDED')
+        expect(rows[0].amount.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(fraudFlags(warn)).toHaveLength(1)
+
+        const again = await IgcoreWalletService.processResult(body)
+
+        expect(again).toMatchObject({ kind: 'retry' })
+        expect(await rowsFor('cap-win-1')).toHaveLength(1)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(await winTxnsFor(user.id)).toHaveLength(0)
+        expect(emitProviderWin).not.toHaveBeenCalled()
+    })
+
+    it('raised cap releases a held payout once', async () => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '100')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'cap-release-bet', 25, 11))
+        const body = result(user, 'cap-release-1', 150, { ticketId: 11 })
+        expect(await IgcoreWalletService.processResult(body)).toMatchObject({ kind: 'retry' })
+        const [held] = await rowsFor('cap-release-1')
+
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '1000')
+        const released = await IgcoreWalletService.processResult(body)
+
+        expect(released).toEqual({ kind: 'ok', transactionId: held.id, userId: user.id })
+        const rows = await rowsFor('cap-release-1')
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({ id: held.id, type: 'BET_RESULT', status: 'COMPLETED', roundId: '11' })
+        expect(rows[0].amount.toNumber()).toBe(150)
+        expect(rows[0].winAmount!.toNumber()).toBe(150)
+        expect((rows[0].rawResponse as { held?: unknown }).held).toBeUndefined()
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(225)
+        expect(await winTxnsFor(user.id)).toHaveLength(1)
+
+        const third = await IgcoreWalletService.processResult(body)
+
+        expect(third).toEqual(released)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(225)
+        expect(await rowsFor('cap-release-1')).toHaveLength(1)
+        expect(await winTxnsFor(user.id)).toHaveLength(1)
+        expect(emitProviderWin).toHaveBeenCalledTimes(1)
+    })
+
+    it('per-ticket cap sums across results', async () => {
+        vi.stubEnv('IGCORE_MAX_TICKET_PAYOUT', '100')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'cap-ticket-bet-a', 25, 12))
+        await IgcoreWalletService.processBet(bet(user, 'cap-ticket-bet-b', 25, 13))
+
+        const first = await IgcoreWalletService.processResult(result(user, 'cap-ticket-1', 60, { ticketId: 12 }))
+        const second = await IgcoreWalletService.processResult(result(user, 'cap-ticket-2', 60, { ticketId: 12 }))
+        const otherTicket = await IgcoreWalletService.processResult(result(user, 'cap-ticket-3', 60, { ticketId: 13 }))
+
+        expect(first.kind).toBe('ok')
+        expect(second).toMatchObject({ kind: 'retry' })
+        expect(otherTicket.kind).toBe('ok')
+        const [held] = await rowsFor('cap-ticket-2')
+        expect(held).toMatchObject({ status: 'FAILED', roundId: '12' })
+        expect((held.rawResponse as { held?: unknown }).held).toBe('CAP_EXCEEDED')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(170)
+    })
+
+    it('a zero cap disables it', async () => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '0')
+        vi.stubEnv('IGCORE_MAX_TICKET_PAYOUT', '0')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'cap-off-bet', 25, 14))
+
+        const out = await IgcoreWalletService.processResult(result(user, 'cap-off-1', 2_000_000, { ticketId: 14 }))
+
+        expect(out.kind).toBe('ok')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(2_000_075)
+    })
+
+    it('partial-cashout remainder shares the root', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'lineage-bet', 25, 10))
+
+        const cashout = await IgcoreWalletService.processResult(
+            result(user, 'lineage-cashout', 30, { ticketId: 10, newTicket: { id: 11, fromId: 10 } }),
+        )
+        const settle = await IgcoreWalletService.processResult(
+            result(user, 'lineage-settle', 20, { ticketId: 11, ticket: { id: 11, fromId: 10 } }),
+        )
+
+        expect(cashout.kind).toBe('ok')
+        expect(settle.kind).toBe('ok')
+        const [cashoutRow] = await rowsFor('lineage-cashout')
+        const [settleRow] = await rowsFor('lineage-settle')
+        expect(cashoutRow).toMatchObject({ betId: '10', roundId: '10' })
+        expect(settleRow).toMatchObject({ betId: '11', roundId: '10' })
+        expect(fraudFlags(warn)).toEqual([])
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(125)
+    })
+
+    it('resolveTicketRoot follows a remainder of a remainder and falls back per the brief', async () => {
+        const providerId = await getIgcoreProviderId()
+        const user = await createPlayer({ real: 100 })
+        const other = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'root-bet', 25, 40))
+        await IgcoreWalletService.processResult(result(user, 'root-cashout-1', 10, { ticketId: 40, newTicket: { id: 41, fromId: 40 } }))
+        await IgcoreWalletService.processResult(
+            result(user, 'root-cashout-2', 10, { ticketId: 41, ticket: { id: 41, fromId: 40 }, newTicket: { id: 42, fromId: 41 } }),
+        )
+
+        const root = (b: IgcoreCallbackBody) => resolveTicketRoot(prisma, providerId, b)
+        expect(await root(result(user, 'q-1', 5, { ticketId: 42, ticket: { id: 42, fromId: 41 } }))).toBe('40')
+        expect(await root(result(user, 'q-2', 5, { ticketId: 50, ticket: { id: 50, fromId: 49 } }))).toBe('49')
+        expect(await root(result(user, 'q-3', 5, { ticketId: 40 }))).toBe('40')
+        expect(await root(result(user, 'q-4', 5, { ticketId: 51 }))).toBe('51')
+        expect(await root(result(user, 'q-5', 5, undefined))).toBe('q-5')
+        // Another player's rows never feed this player's lineage.
+        expect(await root(result(other, 'q-6', 5, { ticketId: 42, ticket: { id: 42, fromId: 41 } }))).toBe('41')
+    })
+
+    it('a recorded shortfall is netted before crediting', async () => {
+        // Task 5's short rollback writes a ROLLBACK row carrying the
+        // shortfall; one is planted here so the netting is pinned now.
+        const providerId = await getIgcoreProviderId()
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'net-bet', 25, 30))
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                providerId, userId: user.id, transactionId: 'net-rollback', betId: '30', roundId: '30', gameCode: 'sportsbook',
+                type: 'ROLLBACK', status: 'COMPLETED', amount: -10, balanceBefore: 75, balanceAfter: 75,
+                rawResponse: { shortfall: '52.5' },
+            },
+        })
+
+        const corrected = await IgcoreWalletService.processResult(result(user, 'net-result-1', 50, { ticketId: 30 }))
+
+        expect(corrected.kind).toBe('ok')
+        const [correctedRow] = await rowsFor('net-result-1')
+        expect(correctedRow).toMatchObject({ status: 'COMPLETED', roundId: '30', rawResponse: { netted: '50' } })
+        expect(correctedRow.winAmount!.toNumber()).toBe(50)
+        expect(correctedRow.amount.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(await winTxnsFor(user.id)).toHaveLength(0)
+        expect(emitProviderWin).not.toHaveBeenCalled()
+
+        const further = await IgcoreWalletService.processResult(result(user, 'net-result-2', 10, { ticketId: 30 }))
+
+        expect(further.kind).toBe('ok')
+        const [furtherRow] = await rowsFor('net-result-2')
+        expect(furtherRow).toMatchObject({ status: 'COMPLETED', rawResponse: { netted: '2.5' } })
+        expect(furtherRow.winAmount!.toNumber()).toBe(10)
+        expect(furtherRow.amount.toNumber()).toBe(7.5)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(82.5)
+        const wins = await winTxnsFor(user.id)
+        expect(wins).toHaveLength(1)
+        expect(wins[0].amount.toNumber()).toBe(7.5)
+        expect(emitProviderWin).toHaveBeenCalledWith(user.id, expect.objectContaining({ roundId: '30', amount: 7.5 }))
+    })
+
+    it('a rolled-back result gives its netted part back to the outstanding shortfall', async () => {
+        // The netted part of a result that Task 5 later rolls back was never
+        // paid out, so it must stop reducing what the player still owes.
+        const providerId = await getIgcoreProviderId()
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'net-rb-bet', 25, 31))
+        const planted = { providerId, userId: user.id, betId: '31', roundId: '31', gameCode: 'sportsbook', balanceBefore: 75, balanceAfter: 75 }
+        await prisma.thirdPartyTransaction.create({
+            data: { ...planted, transactionId: 'net-rb-rollback', type: 'ROLLBACK', status: 'COMPLETED', amount: 0, rawResponse: { shortfall: '30' } },
+        })
+        await prisma.thirdPartyTransaction.create({
+            data: { ...planted, transactionId: 'net-rb-old', type: 'BET_RESULT', status: 'ROLLED_BACK', amount: 0, winAmount: 20, rawResponse: { netted: '20' } },
+        })
+
+        await IgcoreWalletService.processResult(result(user, 'net-rb-result', 40, { ticketId: 31 }))
+
+        const [row] = await rowsFor('net-rb-result')
+        expect(row).toMatchObject({ rawResponse: { netted: '30' } })
+        expect(row.amount.toNumber()).toBe(10)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(85)
     })
 })
