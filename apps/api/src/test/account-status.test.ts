@@ -87,6 +87,7 @@ describe('AccountStatusService.restrict', () => {
     expect(keys).toContain('acct:status:user-1')
     expect(keys).toContain('tp:user:user1') // dashless id
     expect(keys).toContain('tp:user:abebe') // username
+    expect(keys).toContain('tp:user:igcore:user1') // sportsbook wallet
   })
 
   it('requires a reason', async () => {

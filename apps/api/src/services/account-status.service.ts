@@ -97,12 +97,15 @@ export class AccountStatusService {
      * user under `tp:user:<account>` keyed by BOTH the dashless id and the
      * username, and it is an enforcement point (`resolveUser` refuses a
      * non-ACTIVE account). Missing it would leave a suspended player able to
-     * keep playing third-party casino games until that TTL expired.
+     * keep playing third-party casino games until that TTL expired. The
+     * IGCORE sportsbook wallet keeps its own copy under `tp:user:igcore:<id>`
+     * and refuses stakes from a non-ACTIVE account the same way.
      */
     static async invalidate(userId: string, username?: string | null): Promise<void> {
         const keys = [
             AccountStatusService.cacheKey(userId),
             `tp:user:${userId.replace(/-/g, '')}`,
+            `tp:user:igcore:${userId.replace(/-/g, '')}`,
         ]
         if (username) keys.push(`tp:user:${username}`)
         try {
