@@ -8,6 +8,7 @@ const DEFAULTS: Record<string, string> = {
     feature_tournaments: 'false',
     feature_prediction_market: 'false',
     feature_third_party_games: 'true',
+    feature_sportsbook: 'false',
     ball_interval_secs: '3',
     bot_max_spend_etb: '500',
     first_deposit_bonus_amount: '0',

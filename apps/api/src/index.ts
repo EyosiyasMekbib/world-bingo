@@ -49,6 +49,7 @@ import { igcoreCallbackRoutes } from './routes/igcore/callback.js'
 import { atlasVSpokeCallbackRoute } from './routes/hub/atlasv-spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
+import sportsbookRoutes from './routes/sportsbook/index.js'
 import eventsRoutes from './routes/events/index.js'
 import predictionRoutes from './routes/prediction/index.js'
 import adminPredictionRoutes from './routes/admin/prediction/index.js'
@@ -370,6 +371,7 @@ if (deploymentConfig().role === 'hub') {
     await server.register(internalProviderRoute, { prefix: '/v1/hub/provider' })
 }
 await server.register(gameProviderRoutes, { prefix: '/providers' })
+await server.register(sportsbookRoutes, { prefix: '/sportsbook' })
 await server.register(eventsRoutes)
 await server.register(predictionRoutes, { prefix: '/prediction' })
 await server.register(adminPredictionRoutes, { prefix: '/admin/prediction' })
