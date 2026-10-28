@@ -86,6 +86,31 @@ function fraudFlags(warn: { mock: { calls: unknown[][] } }): string[] {
     return warn.mock.calls.map((c) => String(c[1] ?? '')).filter((msg) => msg.includes('[igcore-fraud-flag]'))
 }
 
+function rollback(
+    user: { id: string },
+    transactionId: string,
+    original: string,
+    opts: { action?: IgcoreCallbackBody['rollback_transaction_action']; ticketId?: number } = {},
+): IgcoreCallbackBody {
+    return {
+        transaction_id: transactionId, action: 'rollback', user_id: pid(user), currency: 'ETB', amount: 0,
+        rollback_transaction_id: original,
+        ...(opts.action ? { rollback_transaction_action: opts.action } : {}),
+        ...(opts.ticketId != null ? { info: { ticketId: opts.ticketId } } : {}),
+    }
+}
+
+async function rollbackTxnsFor(userId: string) {
+    return prisma.transaction.findMany({ where: { userId, type: 'TP_ROLLBACK' } })
+}
+
+/** The `[igcore-rollback-shortfall]` log calls, with their context objects. */
+function shortfallLogs(warn: { mock: { calls: unknown[][] } }): Array<Record<string, unknown>> {
+    return warn.mock.calls
+        .filter((c) => String(c[1] ?? '').includes('[igcore-rollback-shortfall]'))
+        .map((c) => c[0] as Record<string, unknown>)
+}
+
 describe('IgcoreWalletService bets (real DB)', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -693,5 +718,387 @@ describe('IgcoreWalletService results (real DB)', () => {
         expect(row).toMatchObject({ rawResponse: { netted: '30' } })
         expect(row.amount.toNumber()).toBe(10)
         expect((await walletOf(user.id)).realBalance.toNumber()).toBe(85)
+    })
+})
+
+describe('IgcoreWalletService rollbacks (real DB)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    afterEach(async () => {
+        vi.restoreAllMocks()
+        vi.unstubAllEnvs()
+        await expectInvariantClean()
+    })
+
+    it('rollback of a bet returns the stake', async () => {
+        // No rollback_transaction_action: the kind comes from the stored row.
+        const push = vi.spyOn(NotificationService, 'pushWalletUpdate')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rb-bet-1', 25, 1))
+        const body = rollback(user, 'rb-1', 'rb-bet-1', { ticketId: 1 })
+
+        const out = await IgcoreWalletService.processRollback(body)
+
+        const rows = await rowsFor('rb-1')
+        expect(rows).toHaveLength(1)
+        expect(out).toEqual({ kind: 'ok', transactionId: rows[0].id, userId: user.id })
+        expect(rows[0]).toMatchObject({
+            userId: user.id, type: 'ROLLBACK', status: 'COMPLETED', betId: '1', roundId: '1', gameCode: 'sportsbook', rawResponse: null,
+        })
+        expect(rows[0].amount.toNumber()).toBe(25)
+        expect(rows[0].balanceBefore.toNumber()).toBe(75)
+        expect(rows[0].balanceAfter.toNumber()).toBe(100)
+        expect(rows[0].rawRequest).toMatchObject({ transaction_id: 'rb-1', action: 'rollback', rollback_transaction_id: 'rb-bet-1' })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        const [original] = await rowsFor('rb-bet-1')
+        expect(original.status).toBe('ROLLED_BACK')
+
+        const refunds = await rollbackTxnsFor(user.id)
+        expect(refunds).toHaveLength(1)
+        expect(refunds[0]).toMatchObject({ referenceId: 'rb-1', status: 'APPROVED', note: 'IGCORE sports bet rolled back: ticket 1' })
+        expect(refunds[0].amount.toNumber()).toBe(25)
+        expect(refunds[0].balanceBefore!.toNumber()).toBe(75)
+        expect(refunds[0].balanceAfter!.toNumber()).toBe(100)
+        await vi.waitFor(() => expect(push).toHaveBeenCalledWith(user.id, 100, 0))
+
+        const again = await IgcoreWalletService.processRollback(body)
+
+        expect(again).toEqual(out)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await rowsFor('rb-1')).toHaveLength(1)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(1)
+    })
+
+    it('stake goes back to the account it came from', async () => {
+        const user = await createPlayer({ real: 100, bonus: 50, spendAccount: 'BONUS' })
+        await IgcoreWalletService.processBet(bet(user, 'rb-bonus-bet', 20, 2))
+        await prisma.wallet.update({ where: { userId: user.id }, data: { spendAccount: 'REAL' } })
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rb-bonus-1', 'rb-bonus-bet', { action: 'bet', ticketId: 2 }))
+
+        expect(out.kind).toBe('ok')
+        const wallet = await walletOf(user.id)
+        expect(wallet.bonusBalance.toNumber()).toBe(50)
+        expect(wallet.realBalance.toNumber()).toBe(100)
+        const [row] = await rowsFor('rb-bonus-1')
+        expect(row).toMatchObject({ type: 'ROLLBACK', status: 'COMPLETED', roundId: '2', rawResponse: null })
+        expect(row.amount.toNumber()).toBe(20)
+        expect(row.balanceBefore.toNumber()).toBe(130)
+        expect(row.balanceAfter.toNumber()).toBe(150)
+        const [refund] = await rollbackTxnsFor(user.id)
+        expect(refund.amount.toNumber()).toBe(20)
+        expect(refund.bonusBalanceBefore!.toNumber()).toBe(30)
+        expect(refund.bonusBalanceAfter!.toNumber()).toBe(50)
+    })
+
+    it('rollback of a result then a corrected result', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbr-bet', 25, 3))
+        await IgcoreWalletService.processResult(result(user, 'rbr-res-1', 62.5, { ticketId: 3 }))
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(137.5)
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbr-rb-1', 'rbr-res-1', { action: 'result', ticketId: 3 }))
+
+        const [row] = await rowsFor('rbr-rb-1')
+        expect(out).toEqual({ kind: 'ok', transactionId: row.id, userId: user.id })
+        expect(row).toMatchObject({ type: 'ROLLBACK', status: 'COMPLETED', betId: '3', roundId: '3', rawResponse: null })
+        expect(row.amount.toNumber()).toBe(-62.5)
+        expect(row.balanceBefore.toNumber()).toBe(137.5)
+        expect(row.balanceAfter.toNumber()).toBe(75)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        const [original] = await rowsFor('rbr-res-1')
+        expect(original.status).toBe('ROLLED_BACK')
+        const reversals = await rollbackTxnsFor(user.id)
+        expect(reversals).toHaveLength(1)
+        expect(reversals[0]).toMatchObject({ referenceId: 'rbr-rb-1', status: 'APPROVED', note: 'IGCORE sports win reversed: ticket 3' })
+        expect(reversals[0].amount.toNumber()).toBe(62.5)
+        expect(reversals[0].balanceBefore!.toNumber()).toBe(137.5)
+        expect(reversals[0].balanceAfter!.toNumber()).toBe(75)
+
+        const corrected = await IgcoreWalletService.processResult(result(user, 'rbr-res-2', 50, { ticketId: 3 }))
+
+        expect(corrected.kind).toBe('ok')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(125)
+    })
+
+    it('short rollback records the shortfall and nets the next result', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbs-bet', 25, 4))
+        await IgcoreWalletService.processResult(result(user, 'rbs-res-1', 62.5, { ticketId: 4 }))
+        await prisma.wallet.update({ where: { userId: user.id }, data: { realBalance: 10 } }) // the player withdrew
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbs-rb-1', 'rbs-res-1', { action: 'result', ticketId: 4 }))
+
+        expect(out.kind).toBe('ok')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(0)
+        const [row] = await rowsFor('rbs-rb-1')
+        expect(row).toMatchObject({ type: 'ROLLBACK', status: 'COMPLETED', roundId: '4', rawResponse: { shortfall: '52.5' } })
+        expect(row.amount.toNumber()).toBe(-10)
+        const [reversal] = await rollbackTxnsFor(user.id)
+        expect(reversal.amount.toNumber()).toBe(10)
+        expect(shortfallLogs(warn)).toEqual([expect.objectContaining({ shortfall: '52.5', rowId: row.id })])
+
+        const corrected = await IgcoreWalletService.processResult(result(user, 'rbs-res-2', 50, { ticketId: 4 }))
+
+        expect(corrected.kind).toBe('ok')
+        const [correctedRow] = await rowsFor('rbs-res-2')
+        expect(correctedRow.amount.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(0)
+
+        const further = await IgcoreWalletService.processResult(result(user, 'rbs-res-3', 10, { ticketId: 4 }))
+
+        expect(further.kind).toBe('ok')
+        const [furtherRow] = await rowsFor('rbs-res-3')
+        expect(furtherRow.amount.toNumber()).toBe(7.5)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(7.5)
+    })
+
+    it('a result rollback against an empty real balance takes nothing and records the whole payout as owed', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100, bonus: 40 })
+        await IgcoreWalletService.processBet(bet(user, 'rbe-bet', 25, 5))
+        await IgcoreWalletService.processResult(result(user, 'rbe-res', 30, { ticketId: 5 }))
+        await prisma.wallet.update({ where: { userId: user.id }, data: { realBalance: 0 } })
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbe-rb', 'rbe-res', { action: 'result', ticketId: 5 }))
+
+        expect(out.kind).toBe('ok')
+        const wallet = await walletOf(user.id)
+        expect(wallet.realBalance.toNumber()).toBe(0)
+        expect(wallet.bonusBalance.toNumber()).toBe(40) // never taken from bonus
+        const [row] = await rowsFor('rbe-rb')
+        expect(row).toMatchObject({ roundId: '5', rawResponse: { shortfall: '30' } })
+        expect(row.amount.toNumber()).toBe(0)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+        expect((await rowsFor('rbe-res'))[0].status).toBe('ROLLED_BACK')
+        expect(shortfallLogs(warn)).toHaveLength(1)
+    })
+
+    it('unknown original writes two records and moves nothing', async () => {
+        const user = await createPlayer({ real: 100 })
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbu-1', 'never-seen', { action: 'bet', ticketId: 6 }))
+
+        const [row] = await rowsFor('rbu-1')
+        expect(out).toEqual({ kind: 'ok', transactionId: row.id, userId: user.id })
+        expect(row).toMatchObject({ userId: user.id, type: 'ROLLBACK', status: 'COMPLETED', roundId: '6', rawResponse: null })
+        expect(row.amount.toNumber()).toBe(0)
+        const placeholders = await rowsFor('never-seen')
+        expect(placeholders).toHaveLength(1)
+        expect(placeholders[0]).toMatchObject({
+            userId: user.id, type: 'BET', status: 'ROLLED_BACK', betId: '6', roundId: '6', gameCode: 'sportsbook', rawResponse: { placeholder: true },
+        })
+        expect(placeholders[0].amount.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+
+        const late = await IgcoreWalletService.processBet(bet(user, 'never-seen', 25, 6))
+
+        expect(late).toEqual({ kind: 'ok', transactionId: placeholders[0].id, userId: user.id })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await rowsFor('never-seen')).toHaveLength(1)
+        expect(await betTxnsFor(user.id)).toHaveLength(0)
+    })
+
+    it('a placeholder takes the type the rollback names, and a late result is not paid', async () => {
+        const user = await createPlayer({ real: 100 })
+
+        const asResult = await IgcoreWalletService.dispatch('transaction-rollback', rollback(user, 'rbp-1', 'rbp-orig-1', { action: 'result', ticketId: 7 }))
+        await IgcoreWalletService.processRollback(rollback(user, 'rbp-2', 'rbp-orig-2', { ticketId: 7 }))
+        await IgcoreWalletService.processRollback(rollback(user, 'rbp-3', 'rbp-orig-3', { action: 'freebet', ticketId: 7 }))
+
+        expect(asResult.kind).toBe('ok')
+        expect((await rowsFor('rbp-orig-1'))[0]).toMatchObject({ type: 'BET_RESULT', status: 'ROLLED_BACK' })
+        expect((await rowsFor('rbp-orig-2'))[0]).toMatchObject({ type: 'ROLLBACK', status: 'ROLLED_BACK' })
+        expect((await rowsFor('rbp-orig-3'))[0]).toMatchObject({ type: 'BET', status: 'ROLLED_BACK' })
+
+        const [placeholder] = await rowsFor('rbp-orig-1')
+        const late = await IgcoreWalletService.processResult(result(user, 'rbp-orig-1', 40, { ticketId: 7 }))
+
+        expect(late).toEqual({ kind: 'ok', transactionId: placeholder.id, userId: user.id })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await winTxnsFor(user.id)).toHaveLength(0)
+    })
+
+    it('rollback of a held result retires it', async () => {
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '100')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbh-bet', 25, 8))
+        const held = result(user, 'rbh-res', 150, { ticketId: 8 })
+        expect(await IgcoreWalletService.processResult(held)).toMatchObject({ kind: 'retry' })
+        const [heldRow] = await rowsFor('rbh-res')
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbh-rb', 'rbh-res', { action: 'result', ticketId: 8 }))
+
+        const [row] = await rowsFor('rbh-rb')
+        expect(out).toEqual({ kind: 'ok', transactionId: row.id, userId: user.id })
+        expect(row.amount.toNumber()).toBe(0)
+        expect(row.rawResponse).toBeNull()
+        expect((await rowsFor('rbh-res'))[0]).toMatchObject({ id: heldRow.id, status: 'ROLLED_BACK' })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(0)
+
+        vi.stubEnv('IGCORE_MAX_WIN_AMOUNT', '1000')
+        const resent = await IgcoreWalletService.processResult(held)
+
+        expect(resent).toEqual({ kind: 'ok', transactionId: heldRow.id, userId: user.id })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(await winTxnsFor(user.id)).toHaveLength(0)
+        expect(emitProviderWin).not.toHaveBeenCalled()
+    })
+
+    it('a refused or already rolled-back original moves nothing', async () => {
+        const user = await createPlayer({ real: 10 })
+        expect(await IgcoreWalletService.processBet(bet(user, 'rbf-bet', 25, 9))).toMatchObject({ kind: 'reject' })
+
+        const refused = await IgcoreWalletService.processRollback(rollback(user, 'rbf-rb-1', 'rbf-bet', { action: 'bet', ticketId: 9 }))
+
+        expect(refused.kind).toBe('ok')
+        const [refusedRow] = await rowsFor('rbf-rb-1')
+        expect(refusedRow).toMatchObject({ type: 'ROLLBACK', status: 'COMPLETED', roundId: '9' })
+        expect(refusedRow.amount.toNumber()).toBe(0)
+        // The refusal stands, so a replayed bet still repeats it.
+        expect((await rowsFor('rbf-bet'))[0].status).toBe('FAILED')
+        expect(await IgcoreWalletService.processBet(bet(user, 'rbf-bet', 25, 9))).toEqual({ kind: 'reject', error: 'INSUFFICIENT_FUNDS' })
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(10)
+
+        await prisma.wallet.update({ where: { userId: user.id }, data: { realBalance: 100 } })
+        await IgcoreWalletService.processBet(bet(user, 'rbf-bet-2', 25, 10))
+        await IgcoreWalletService.processRollback(rollback(user, 'rbf-rb-2', 'rbf-bet-2', { action: 'bet', ticketId: 10 }))
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+
+        const second = await IgcoreWalletService.processRollback(rollback(user, 'rbf-rb-3', 'rbf-bet-2', { action: 'bet', ticketId: 10 }))
+
+        const [secondRow] = await rowsFor('rbf-rb-3')
+        expect(second).toEqual({ kind: 'ok', transactionId: secondRow.id, userId: user.id })
+        expect(secondRow.amount.toNumber()).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(1)
+    })
+
+    it('a rollback naming another player\'s transaction moves nothing and writes no placeholder', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const owner = await createPlayer({ real: 100 })
+        const other = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(owner, 'rbx-bet', 25, 11))
+
+        const out = await IgcoreWalletService.processRollback(rollback(other, 'rbx-rb', 'rbx-bet', { action: 'bet', ticketId: 11 }))
+
+        const rows = await rowsFor('rbx-rb')
+        expect(rows).toHaveLength(1)
+        expect(out).toEqual({ kind: 'ok', transactionId: rows[0].id, userId: other.id })
+        expect(rows[0]).toMatchObject({ userId: other.id, type: 'ROLLBACK', status: 'COMPLETED', roundId: '11', rawResponse: null })
+        expect(rows[0].amount.toNumber()).toBe(0)
+        const originals = await rowsFor('rbx-bet')
+        expect(originals).toHaveLength(1)
+        expect(originals[0]).toMatchObject({ userId: owner.id, status: 'COMPLETED' })
+        expect((await walletOf(owner.id)).realBalance.toNumber()).toBe(75)
+        expect((await walletOf(other.id)).realBalance.toNumber()).toBe(100)
+        expect(await prisma.transaction.count({ where: { type: 'TP_ROLLBACK' } })).toBe(0)
+        expect(fraudFlags(warn)).toHaveLength(1)
+    })
+
+    it('a rollback whose action disagrees with the stored row asks for a retry', async () => {
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbk-bet', 25, 12))
+
+        const out = await IgcoreWalletService.processRollback(rollback(user, 'rbk-rb', 'rbk-bet', { action: 'result', ticketId: 12 }))
+
+        expect(out).toMatchObject({ kind: 'retry' })
+        expect(await rowsFor('rbk-rb')).toHaveLength(0)
+        expect((await rowsFor('rbk-bet'))[0].status).toBe('COMPLETED')
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+        expect(fraudFlags(warn)).toHaveLength(1)
+    })
+
+    it('a rollback that cannot be handled asks for a retry', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbq-bet', 25, 13))
+        const ghost = { id: randomBytes(16).toString('hex') }
+
+        const unknownPlayer = await IgcoreWalletService.processRollback(rollback(ghost, 'rbq-1', 'rbq-bet', { action: 'bet' }))
+        const noOriginal = await IgcoreWalletService.processRollback({ ...rollback(user, 'rbq-2', 'rbq-bet'), rollback_transaction_id: undefined })
+        const badAction = await IgcoreWalletService.processRollback({
+            ...rollback(user, 'rbq-3', 'rbq-bet'), rollback_transaction_action: 'cashout' as unknown as 'bet',
+        })
+
+        expect(unknownPlayer).toMatchObject({ kind: 'retry' })
+        expect(noOriginal).toMatchObject({ kind: 'retry' })
+        expect(badAction).toMatchObject({ kind: 'retry' })
+        expect(await prisma.thirdPartyTransaction.count({ where: { type: 'ROLLBACK' } })).toBe(0)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(75)
+    })
+
+    it('racing identical rollbacks apply once', async () => {
+        const user = await createPlayer({ real: 100 })
+        await IgcoreWalletService.processBet(bet(user, 'rbc-bet', 25, 14))
+        const body = rollback(user, 'rbc-rb', 'rbc-bet', { action: 'bet', ticketId: 14 })
+
+        const [a, b] = await Promise.all([IgcoreWalletService.processRollback(body), IgcoreWalletService.processRollback(body)])
+
+        expect(a.kind).toBe('ok')
+        expect(b).toEqual(a)
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect(await rowsFor('rbc-rb')).toHaveLength(1)
+        expect(await rollbackTxnsFor(user.id)).toHaveLength(1)
+    })
+
+    it('a racer that takes the placeholder key first is resolved by the immediate retry', async () => {
+        // lockedOnce re-reads only the rollback's own key after a P2002. Here
+        // the collision is on the placeholder key instead: another player's
+        // bet row lands at rollback_transaction_id while ours is uncommitted.
+        // The first answer is a retry (nothing written), and IGCORE's re-send
+        // then finds the other player's row and takes the R4 path.
+        const warn = vi.spyOn(rootLogger, 'warn')
+        const user = await createPlayer({ real: 100 })
+        const other = await createPlayer({ real: 100 })
+        const providerId = await getIgcoreProviderId()
+        let inserted!: () => void
+        let release!: () => void
+        const insertedSignal = new Promise<void>((r) => { inserted = r })
+        const releaseSignal = new Promise<void>((r) => { release = r })
+
+        const racer = prisma.$transaction(async (tx) => {
+            const row = await tx.thirdPartyTransaction.create({
+                data: {
+                    providerId, userId: other.id, transactionId: 'rbz-orig', type: 'BET', status: 'COMPLETED',
+                    betAmount: 25, amount: -25, balanceBefore: 100, balanceAfter: 100, roundId: '15', gameCode: 'sportsbook',
+                },
+            })
+            inserted()
+            await releaseSignal
+            return row
+        }, { timeout: 15_000 })
+        await insertedSignal
+
+        const body = rollback(user, 'rbz-rb', 'rbz-orig', { action: 'bet', ticketId: 15 })
+        const pending = IgcoreWalletService.processRollback(body)
+        await vi.waitFor(async () => {
+            const [{ n }] = await prisma.$queryRaw<Array<{ n: number }>>`
+                SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'transactionid' AND NOT granted
+            `
+            expect(n).toBeGreaterThan(0)
+        }, { timeout: 4_000, interval: 25 })
+        release()
+        const racerRow = await racer
+
+        const first = await pending
+
+        expect(first).toMatchObject({ kind: 'retry' })
+        expect(await rowsFor('rbz-rb')).toHaveLength(0)
+
+        const again = await IgcoreWalletService.processRollback(body)
+
+        const [row] = await rowsFor('rbz-rb')
+        expect(again).toEqual({ kind: 'ok', transactionId: row.id, userId: user.id })
+        expect(row.amount.toNumber()).toBe(0)
+        expect(await rowsFor('rbz-orig')).toEqual([expect.objectContaining({ id: racerRow.id, userId: other.id, status: 'COMPLETED' })])
+        expect((await walletOf(user.id)).realBalance.toNumber()).toBe(100)
+        expect((await walletOf(other.id)).realBalance.toNumber()).toBe(100)
+        expect(fraudFlags(warn)).toHaveLength(1)
     })
 })

@@ -497,6 +497,223 @@ async function settleResult(b: IgcoreCallbackBody): Promise<ResultSettled> {
     }, onDuplicate)
 }
 
+/**
+ * A rollback's stored outcome. Only a rollback row under this key is a
+ * duplicate; a bet or result filed under it is an id collision, and
+ * answering it as done would tell IGCORE a reversal happened that did not.
+ */
+function answerRollbackDuplicate(row: ThirdPartyTransaction, userId: string): IgcoreOutcome {
+    if (ownedByAnotherPlayer(row, userId)) return retry('TRANSACTION_ID_OF_ANOTHER_PLAYER')
+    if (row.type === ThirdPartyTxType.ROLLBACK) return ok(row)
+    getLogger().warn(
+        { component: 'igcore-fraud-flag', transactionId: row.transactionId, rowId: row.id, type: row.type },
+        '[igcore-fraud-flag] rollback transaction_id already recorded for another action',
+    )
+    return retry('TRANSACTION_ID_OF_ANOTHER_ACTION')
+}
+
+/**
+ * The ledger type IGCORE's `rollback_transaction_action` names (a freebet is
+ * filed as a bet), or null when it sent none. An action we do not know fails
+ * loudly (retry).
+ */
+function namedTypeOf(b: IgcoreCallbackBody): ThirdPartyTxType | null {
+    const action: unknown = b.rollback_transaction_action
+    if (action == null) return null
+    if (action === 'bet' || action === 'freebet') return ThirdPartyTxType.BET
+    if (action === 'result') return ThirdPartyTxType.BET_RESULT
+    throw new Error('IGCORE rollback names an unknown rollback_transaction_action')
+}
+
+type RollbackSettled = {
+    outcome: IgcoreOutcome
+    moved?: { userId: string }
+    shortfall?: Record<string, string>
+}
+
+/**
+ * §4.9: reverses the row at `rollback_transaction_id`. The kind is the one
+ * `rollback_transaction_action` names, else the stored row's type. Every path
+ * that answers success writes this rollback's own row (the id IGCORE gets
+ * back), filed under the original's root so shortfall netting sees it.
+ */
+async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
+    const transactionId = transactionIdOf(b)
+    const originalId: unknown = b.rollback_transaction_id
+    if (typeof originalId !== 'string' || originalId.length === 0) throw new Error('IGCORE rollback has no rollback_transaction_id')
+    if (originalId === transactionId) throw new Error('IGCORE rollback names itself')
+    const namedType = namedTypeOf(b)
+
+    const user = await resolveUser(b.user_id)
+    if (!user) {
+        getLogger().warn(
+            { component: 'igcore-wallet', transactionId, playerId: typeof b.user_id === 'string' ? maskAccount(b.user_id) : null },
+            '[igcore-wallet] rollback for an unknown player; asking IGCORE to retry',
+        )
+        return { outcome: retry(IGCORE_REJECT.PLAYER_NOT_FOUND) }
+    }
+    const playerId = maskAccount(user.id.replace(/-/g, ''))
+
+    const providerId = await getIgcoreProviderId()
+    const seen = await findExisting(prisma, providerId, transactionId)
+    if (seen) return { outcome: answerRollbackDuplicate(seen, user.id) }
+
+    const betId = ticketIdOf(b)
+    const onDuplicate = (row: ThirdPartyTransaction): RollbackSettled => ({ outcome: answerRollbackDuplicate(row, user.id) })
+
+    // A P2002 on the rollback's own key is a racing copy: lockedOnce answers
+    // it as a duplicate. A P2002 on the placeholder key (another player's row
+    // landed at rollback_transaction_id mid-flight) finds no row under ours,
+    // so it is rethrown and answered as a retry; IGCORE's re-send then sees
+    // that row and takes the other-player path below.
+    return lockedOnce<RollbackSettled>(user.id, transactionId, async (tx, wallet, existing) => {
+        if (existing) return onDuplicate(existing)
+
+        const original = await findExisting(tx, providerId, originalId)
+        const realBefore = new Decimal(wallet.realBalance)
+        const bonusBefore = new Decimal(wallet.bonusBalance)
+        const totalBefore = realBefore.plus(bonusBefore)
+        let realAfter = realBefore
+        let bonusAfter = bonusBefore
+        let amount = new Decimal(0) // signed: + a stake returned, − a payout taken back
+        let ledger: { amount: Decimal; note: string } | null = null
+        let reversal: { payout: Decimal; debit: Decimal } | null = null
+        let roundId: string
+        let rowBetId = betId
+
+        if (!original) {
+            // Nothing applied (§4.11 step 4). The placeholder takes the key, so
+            // an original that arrives late is a duplicate and never applies.
+            roundId = await resolveTicketRoot(tx, providerId, b)
+            const type = namedType ?? ThirdPartyTxType.ROLLBACK
+            await tx.thirdPartyTransaction.create({
+                data: {
+                    providerId, userId: user.id, transactionId: originalId, betId, roundId, gameCode: GAME_CODE,
+                    type, status: ThirdPartyTxStatus.ROLLED_BACK, amount: new Decimal(0),
+                    balanceBefore: totalBefore, balanceAfter: totalBefore, rawResponse: { placeholder: true },
+                },
+            })
+            getLogger().warn(
+                { component: 'igcore-wallet', transactionId, originalId, playerId, roundId, type },
+                '[igcore-wallet] rollback for a transaction we never recorded; placeholder written',
+            )
+        } else if (original.userId !== user.id) {
+            // Ruling R4: IGCORE queued this after we answered another player's
+            // id with a retry. The key is taken, so no placeholder, and the
+            // owner's row is never touched from here. Lineage stays this player's.
+            roundId = await resolveTicketRoot(tx, providerId, b)
+            getLogger().warn(
+                { component: 'igcore-fraud-flag', transactionId, originalId, rowId: original.id, playerId },
+                '[igcore-fraud-flag] rollback names another player\'s transaction: nothing moved',
+            )
+        } else {
+            roundId = original.roundId ?? (await resolveTicketRoot(tx, providerId, b))
+            rowBetId = betId ?? original.betId
+            const ticket = rowBetId ?? roundId
+            const reversible =
+                isHeld(original) ||
+                (original.status === ThirdPartyTxStatus.COMPLETED &&
+                    (original.type === ThirdPartyTxType.BET || original.type === ThirdPartyTxType.BET_RESULT))
+
+            if (reversible && namedType != null && namedType !== original.type) {
+                // Taking the action at its word would refund a result or claw
+                // back a stake. Nothing is written; IGCORE retries, and the
+                // unresolved callback surfaces on their side.
+                getLogger().warn(
+                    { component: 'igcore-fraud-flag', transactionId, originalId, rowId: original.id, playerId, named: namedType, stored: original.type },
+                    '[igcore-fraud-flag] rollback action disagrees with the stored transaction; asking IGCORE to retry',
+                )
+                return { outcome: retry('ROLLBACK_ACTION_MISMATCH') }
+            }
+
+            if (original.type === ThirdPartyTxType.BET && original.status === ThirdPartyTxStatus.COMPLETED) {
+                // Back to the account it came from, as the bet's ledger row
+                // recorded it, whatever the toggle says now (AtlasVWalletService).
+                const stake = new Decimal(original.betAmount ?? original.amount).abs()
+                let realDelta = stake
+                let bonusDelta = new Decimal(0)
+                let restoreExpiry: Date | null = null
+                const betTxn = await tx.transaction.findFirst({
+                    where: { userId: user.id, type: TransactionType.TP_BET, referenceId: original.transactionId },
+                    select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
+                })
+                if (betTxn) {
+                    const bonusSpent = new Decimal(betTxn.bonusBalanceBefore ?? 0).minus(new Decimal(betTxn.bonusBalanceAfter ?? 0))
+                    if (bonusSpent.gt(0)) {
+                        bonusDelta = Decimal.min(bonusSpent, stake)
+                        realDelta = stake.minus(bonusDelta)
+                        restoreExpiry = betTxn.bonusExpiresAtSpend ?? null
+                    }
+                }
+                if (realDelta.gt(0)) {
+                    realAfter = realBefore.plus(realDelta)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: realAfter } })
+                }
+                if (bonusDelta.gt(0)) {
+                    bonusAfter = (await BonusService.restore(tx, user.id, bonusDelta, restoreExpiry)).bonusBalanceAfter
+                }
+                amount = stake
+                if (stake.gt(0)) ledger = { amount: stake, note: `IGCORE sports bet rolled back: ticket ${ticket}` }
+            } else if (original.type === ThirdPartyTxType.BET_RESULT && original.status === ThirdPartyTxStatus.COMPLETED) {
+                // Real only: a win always landed on real. Never below zero;
+                // what cannot be taken back is owed and netted off the
+                // corrected result that §4.9 says follows.
+                const paid = Decimal.max(0, new Decimal(original.amount))
+                const debit = Decimal.max(0, Decimal.min(realBefore, paid))
+                reversal = { payout: paid, debit }
+                if (debit.gt(0)) {
+                    realAfter = realBefore.minus(debit)
+                    await tx.wallet.update({ where: { userId: user.id }, data: { realBalance: realAfter } })
+                    amount = debit.negated()
+                    ledger = { amount: debit, note: `IGCORE sports win reversed: ticket ${ticket}` }
+                }
+            }
+            // Anything else (a refused bet, a row already rolled back) has
+            // nothing to reverse. A held payout moved nothing either, but it
+            // is retired below so a later release can never pay it.
+            if (reversible) {
+                await tx.thirdPartyTransaction.update({ where: { id: original.id }, data: { status: ThirdPartyTxStatus.ROLLED_BACK } })
+            }
+        }
+
+        const totalAfter = realAfter.plus(bonusAfter)
+        const shortfall = reversal ? reversal.payout.minus(reversal.debit) : new Decimal(0)
+        const row = await tx.thirdPartyTransaction.create({
+            data: {
+                providerId, userId: user.id, transactionId, betId: rowBetId, roundId, gameCode: GAME_CODE,
+                type: ThirdPartyTxType.ROLLBACK, status: ThirdPartyTxStatus.COMPLETED, amount,
+                balanceBefore: totalBefore, balanceAfter: totalAfter,
+                rawRequest: b as unknown as Prisma.InputJsonValue,
+                // Only a short result reversal carries this: the netting sums it
+                // over every ROLLBACK row on the root.
+                rawResponse: shortfall.gt(0) ? { shortfall: shortfall.toString() } : undefined,
+            },
+            select: { id: true, userId: true },
+        })
+        if (ledger) {
+            await tx.transaction.create({
+                data: {
+                    userId: user.id, type: TransactionType.TP_ROLLBACK, amount: ledger.amount,
+                    status: PaymentStatus.APPROVED, note: ledger.note, referenceId: transactionId,
+                    balanceBefore: totalBefore, balanceAfter: totalAfter,
+                    bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter,
+                },
+            })
+        }
+
+        return {
+            outcome: ok(row),
+            moved: ledger ? { userId: user.id } : undefined,
+            shortfall: reversal && shortfall.gt(0)
+                ? {
+                    transactionId, originalId, rowId: row.id, playerId, roundId,
+                    payout: reversal.payout.toString(), debited: reversal.debit.toString(), shortfall: shortfall.toString(),
+                }
+                : undefined,
+        }
+    }, onDuplicate)
+}
+
 type BetResult = { outcome: IgcoreOutcome; applied?: { spendAccount: 'REAL' | 'BONUS'; roundId: string } }
 
 /** Thrown inside the bet transaction to abort it without moving money. */
@@ -660,9 +877,33 @@ export class IgcoreWalletService {
         return settled.outcome
     }
 
-    // TODO(Task 5): rollbacks. Retried for the same reason as results.
-    static async processRollback(_b: IgcoreCallbackBody): Promise<IgcoreOutcome> {
-        return retry('ROLLBACK_NOT_IMPLEMENTED')
+    /**
+     * §4.9: reverse a bet (placement failed on IGCORE's side) or a result
+     * (wrong settlement; a corrected result follows). Queued and retried like
+     * a result, so every failure, thrown or not, answers `retry` (the route's
+     * 500), and account status never blocks it.
+     */
+    static async processRollback(b: IgcoreCallbackBody): Promise<IgcoreOutcome> {
+        let settled: RollbackSettled
+        try {
+            settled = await settleRollback(b)
+        } catch (err) {
+            getLogger().error(
+                { component: 'igcore-wallet', err, transactionId: b?.transaction_id },
+                '[igcore-wallet] rollback failed; asking IGCORE to retry',
+            )
+            return retry('ROLLBACK_FAILED')
+        }
+
+        // After commit, so an admin is only ever pointed at a reversal that stuck.
+        if (settled.shortfall) {
+            getLogger().warn(
+                { component: 'igcore-rollback-shortfall', ...settled.shortfall },
+                '[igcore-rollback-shortfall] result rollback found too little real balance; the rest is owed and netted off the next result',
+            )
+        }
+        if (settled.moved) void IgcoreWalletService.pushBalance(settled.moved.userId)
+        return settled.outcome
     }
 
     /** Routes a verified, parsed callback by endpoint and action. Exceptions propagate (the route answers 500). */
