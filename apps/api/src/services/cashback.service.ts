@@ -408,6 +408,14 @@ export class CashbackService {
                 -- are inert for the same reason: amount 0, no paired audit row.
                 WHERE tpt.status = 'COMPLETED'
                   AND tpt.type <> 'ROLLBACK'
+                  -- Sportsbook (IGCORE) play never counts. A stake lands in the window it
+                  -- was PLACED in, but a ticket settles days later, usually in another
+                  -- period, so the stake would read as a loss whose win and rollback sit
+                  -- outside the window. Every other CTE is fed from provider_rows (the
+                  -- paired-transactions semi-join and the loss sum), so this one filter
+                  -- keeps the whole sportsbook out. If the igcore provider row does not
+                  -- exist yet the subquery is empty and NOT IN keeps everything.
+                  AND tpt."providerId" NOT IN (SELECT id FROM game_providers WHERE code = 'igcore')
                   AND tpt."createdAt" BETWEEN ${startUtc}::timestamp AND ${endUtc}::timestamp
                   ${providerUserFilter}
                   ${providerFilter}

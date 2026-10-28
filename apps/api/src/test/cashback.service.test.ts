@@ -943,6 +943,108 @@ describe('CashbackService.getNetLossByUser — what counts as a real loss', () =
         expect(result.disbursed).toBe(0)
     })
 
+    /**
+     * cleanDb() wipes third_party_transactions but never game_providers, so the
+     * igcore row may or may not already exist: upsert by its unique code.
+     */
+    async function ensureIgcoreProvider() {
+        return prisma.gameProvider.upsert({
+            where: { code: 'igcore' },
+            update: {},
+            create: {
+                code: 'igcore', name: 'IGCORE Sportsbook', status: 'INACTIVE',
+                apiBaseUrl: '', currency: 'ETB', config: { kind: 'sportsbook' },
+            },
+        })
+    }
+
+    it('leaves sportsbook stakes out of the loss, so a ticket that straddles two periods cannot earn cashback', async () => {
+        // Sports stakes are windowed by the moment the ticket was PLACED, but the
+        // ticket settles days later, in a different period. Counting the stake
+        // alone bills the whole bet as a loss while the win sits in another window.
+        const player = await makeUser('lossigcore1', '+251900000069')
+        const igcore = await ensureIgcoreProvider()
+        const promotion = await makeUnscopedPromotion('Sports Excluded')
+
+        await writeProviderPlay({
+            userId: player.id, transactionId: 'tp-igcore-casino', tptType: 'BET', tptStatus: 'COMPLETED',
+            amount: -100, pairedType: 'TP_BET',
+        })
+        await prisma.thirdPartyTransaction.create({
+            data: {
+                userId: player.id, providerId: igcore.id, transactionId: 'tp-igcore-stake',
+                gameCode: 'sportsbook', type: 'BET', status: 'COMPLETED',
+                amount: -100, balanceBefore: 0, balanceAfter: 0,
+            },
+        })
+        await prisma.transaction.create({
+            data: {
+                userId: player.id, type: 'TP_BET', amount: 100, status: 'APPROVED',
+                referenceId: 'tp-igcore-stake', balanceBefore: 0, balanceAfter: 0,
+            },
+        })
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+        expect(new Decimal(netLoss.get(player.id) ?? 0).toNumber()).toBe(100)
+
+        const result = await CashbackService.checkAndDisburse(promotion.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(1)
+        expect(result.total.toNumber()).toBe(20) // 20 off the casino 100, nothing for the sports 100
+    })
+
+    it('leaves every sportsbook row out, wins, adjustments and rollbacks included, scoped or not', async () => {
+        const player = await makeUser('lossigcore2', '+251900000070')
+        const igcore = await ensureIgcoreProvider()
+        const unscoped = await makeUnscopedPromotion('Sports Fully Excluded')
+        // A promotion that explicitly names the sportsbook still must not count it.
+        const scoped = await makeUnscopedPromotion('Sports Named', {
+            providerGameKeys: [`${igcore.id}:sportsbook`],
+        })
+
+        const write = async (
+            transactionId: string,
+            type: 'BET' | 'BET_RESULT' | 'ROLLBACK' | 'ADJUSTMENT',
+            status: 'COMPLETED' | 'ROLLED_BACK',
+            amount: number,
+            paired: 'TP_BET' | 'TP_WIN' | 'TP_ROLLBACK' | 'TP_ADJUSTMENT',
+        ) => {
+            await prisma.thirdPartyTransaction.create({
+                data: {
+                    userId: player.id, providerId: igcore.id, transactionId, gameCode: 'sportsbook',
+                    type, status, amount, balanceBefore: 0, balanceAfter: 0,
+                },
+            })
+            await prisma.transaction.create({
+                data: {
+                    userId: player.id, type: paired, amount: Math.abs(amount), status: 'APPROVED',
+                    referenceId: transactionId, balanceBefore: 0, balanceAfter: 0,
+                },
+            })
+        }
+
+        await write('tp-igcore-all-bet', 'BET', 'COMPLETED', -100, 'TP_BET')
+        await write('tp-igcore-all-win', 'BET_RESULT', 'COMPLETED', 40, 'TP_WIN')
+        await write('tp-igcore-all-adj', 'ADJUSTMENT', 'COMPLETED', -10, 'TP_ADJUSTMENT')
+        // A win reversal that hit a short balance: the ROLLED_BACK payout and its
+        // compensating debit do not net to zero, so this pair is the one that
+        // would corrupt a count that tried to keep rollbacks.
+        await write('tp-igcore-all-rbwin', 'BET_RESULT', 'ROLLED_BACK', 300, 'TP_WIN')
+        await write('tp-igcore-all-rbdebit', 'ROLLBACK', 'COMPLETED', -200, 'TP_ADJUSTMENT')
+        await write('tp-igcore-all-rbbet', 'BET', 'ROLLED_BACK', -50, 'TP_BET')
+        await write('tp-igcore-all-rbstake', 'ROLLBACK', 'COMPLETED', 50, 'TP_ROLLBACK')
+
+        const { periodStart, periodEnd } = getCurrentPeriod(CashbackFrequency.DAILY)
+        for (const promotion of [unscoped, scoped]) {
+            const netLoss = await CashbackService.getNetLossByUser(promotion, periodStart, periodEnd)
+            expect(netLoss.has(player.id)).toBe(false)
+            expect(netLoss.size).toBe(0)
+        }
+
+        const result = await CashbackService.checkAndDisburse(unscoped.id, periodStart, periodEnd)
+        expect(result.disbursed).toBe(0)
+    })
+
     it('returns one player when asked for one, so a progress bar never scans the player base', async () => {
         const asking = await makeUser('lossoneplayer1', '+251900000067')
         const other = await makeUser('lossoneplayer2', '+251900000068')
