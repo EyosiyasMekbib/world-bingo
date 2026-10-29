@@ -12,7 +12,7 @@ Send the staging column first. The production column is for later, after staging
 
 | Field | Staging | Production |
 |---|---|---|
-| Server IP(s) we call from | `72.62.234.120` (to be confirmed, see section 2) | To confirm: run `wget -qO- https://api.ipify.org` inside the Winner prod api container (section 2) |
+| Server IP(s) we call from | `72.62.234.120` (to be confirmed, see section 2) | `72.62.234.120`: same Dokploy host as staging; confirm with `wget -qO- https://api.ipify.org` inside the prod api container (section 2) |
 | Callback URL | `https://staging-api.betbawa.bet/v1/igcore` | `https://api.dash1.games/v1/igcore` |
 | Website URL | `https://staging.betbawa.bet` | `https://winneret.cc` |
 | Currencies | ETB | ETB |
@@ -50,9 +50,11 @@ Run it in the staging api container (compose service `api-betbawa-stg`) for the 
 and in the Winner production api container (compose service `api-betbawa`) for the production
 column. Dokploy's container terminal or `docker exec -it <container> sh` both work.
 
-If the staging answer is not `72.62.234.120`, put the answer on the form instead. The production
-address is not known yet and is not assumed to match the staging one: put whatever the production
-container reports on the production column.
+Production runs on the same Dokploy host as staging: Dokploy reports its address as
+`72.62.234.120` with no remote servers, and `api.dash1.games`, `winneret.cc`,
+`staging-api.betbawa.bet` and `staging.betbawa.bet` all resolve to it. Both columns therefore
+carry `72.62.234.120`; confirm it the same way in each container, and if either answers something
+else, put that answer on its column instead.
 
 ## 3. Env lines to paste into Dokploy
 
@@ -123,7 +125,7 @@ Optional, with their defaults:
 | `IGCORE_DEFAULT_LANG` | `en` | Language when the player's is not supported |
 | `IGCORE_MAX_WIN_AMOUNT` | `1000000` | Per-callback payout cap; `0` disables it |
 | `IGCORE_MAX_TICKET_PAYOUT` | `1000000` | Cumulative payout cap per ticket; `0` disables it |
-| `IGCORE_CALLBACK_DEBUG` | `false` | Log the raw body and expected/received hash on a signature failure |
+| `IGCORE_CALLBACK_DEBUG` | `false` | On a signature failure, log the first 8 hex characters of the expected and received hash, the body length and the body's SHA-256 (never the body or the full expected hash) |
 
 ## 4. After the deploy
 
@@ -149,3 +151,25 @@ Optional, with their defaults:
    - `[igcore-rollback-shortfall]`: rolling back a result found less real balance than it paid out
      (the player had withdrawn); we took what was there, answered success, and the rest is netted
      off the next result on that ticket.
+
+   Cases that keep retrying until someone acts, one line each:
+   - **Held payout (`CAP_EXCEEDED`).** Release it by raising `IGCORE_MAX_WIN_AMOUNT` /
+     `IGCORE_MAX_TICKET_PAYOUT` and redeploying. That releases EVERY held payout under the new cap
+     on IGCORE's next retry, so list the held rows first:
+
+     ```sql
+     SELECT t.id, t."transactionId", t."userId", t."betId", t."roundId",
+            t."rawRequest"->>'amount' AS payout, t."createdAt"
+     FROM third_party_transactions t
+     JOIN game_providers p ON p.id = t."providerId"
+     WHERE p.code = 'igcore' AND t.status = 'FAILED' AND t."rawResponse"->>'held' = 'CAP_EXCEEDED'
+     ORDER BY t."createdAt";
+     ```
+   - **`ROLLBACK_ACTION_MISMATCH`.** A rollback whose `rollback_transaction_action` disagrees with
+     the stored transaction. Nothing is written and it never self-resolves: IGCORE must fix it.
+   - **A result for an unknown player.** A result is never refused, so it retries forever. Find out
+     which player IGCORE meant before anything else.
+   - **A bet or result whose `transaction_id` is already held by another action's row, or a
+     callback with an unknown action or sent to the wrong endpoint.** Answered with a retry and a
+     `[igcore-fraud-flag]` line naming the id, the stored type and the endpoint. Nothing moves and
+     it never self-resolves: escalate to IGCORE.
