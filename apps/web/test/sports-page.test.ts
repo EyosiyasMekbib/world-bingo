@@ -9,6 +9,11 @@ const sports = read('pages', 'sports.vue')
 const chrome = read('components', 'shells', 'winner', 'Chrome.vue')
 const rail = read('components', 'shells', 'winner', 'Rail.vue')
 
+/** open() from its signature up to the request: everything that runs before it. */
+const openStart = sports.indexOf('async function open()')
+const requestAt = sports.indexOf("'/sportsbook/session'")
+const beforeRequest = openStart >= 0 && requestAt > openStart ? sports.slice(openStart, requestAt) : ''
+
 /** Every opening <NuxtLink ...> tag in a template, as written. */
 function navLinks(source: string): string[] {
   return source.match(/<NuxtLink\b[^>]*>/g) ?? []
@@ -36,14 +41,27 @@ describe('sports page', () => {
   it('prompts a logged-out player instead of calling the api', () => {
     expect(sports).toContain('AuthPromptModal')
     expect(sports).toContain('v-model="showAuthPrompt"')
-    // The auth check sits ahead of the request in the same function.
-    expect(sports.indexOf('auth.isAuthenticated')).toBeGreaterThan(-1)
-    expect(sports.indexOf('auth.isAuthenticated')).toBeLessThan(sports.indexOf("'/sportsbook/session'"))
+    // The guard returns inside open(), ahead of the request.
+    expect(beforeRequest).toMatch(
+      /if \(!auth\.isAuthenticated\) \{[\s\S]*?showAuthPrompt\.value = true[\s\S]*?return\s*\}/,
+    )
   })
 
-  it('is gated by the feature flag, checked ahead of the request', () => {
+  it('is gated by the feature flag inside open(), ahead of the request and the login check', () => {
     expect(sports).toMatch(/feature_sportsbook|sportsbookEnabled/)
-    expect(sports.indexOf('sportsbookEnabled.value')).toBeLessThan(sports.indexOf("'/sportsbook/session'"))
+    // Off means off: no prompt and no request, so the flag is tested first.
+    expect(beforeRequest).toMatch(/if \(!sportsbookEnabled\.value\) return\n/)
+    expect(beforeRequest.indexOf('sportsbookEnabled.value')).toBeLessThan(
+      beforeRequest.indexOf('auth.isAuthenticated'),
+    )
+  })
+
+  it('blocks the frame from session replay, which would record its one-time src', () => {
+    const frame = sports.match(/<iframe[\s\S]*?\/>/)?.[0] ?? ''
+    expect(frame).toContain(':src="url"')
+    expect(frame).toMatch(/\sdata-ph-block(\s|\/|$)/)
+    // The attribute only helps while the plugin's blockSelector still names it.
+    expect(read('plugins', '02.posthog.client.ts')).toMatch(/blockSelector:[^\n]*\[data-ph-block\]/)
   })
 
   it('offers a retry that asks for a fresh session', () => {

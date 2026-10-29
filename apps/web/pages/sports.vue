@@ -111,12 +111,15 @@ onBeforeUnmount(() => {
       <button v-if="!flagOff" class="sports-btn" @click="retry">Retry</button>
     </div>
 
+    <!-- data-ph-block: session replay serialises an iframe's src, and this one is
+         a one-time session url (02.posthog.client.ts blocks [data-ph-block]). -->
     <iframe
       v-else-if="phase === 'ready' && url"
       :src="url"
       class="sports-frame"
       title="Sportsbook"
       allow="fullscreen"
+      data-ph-block
     />
 
     <div v-else-if="phase === 'signin'" class="sports-state">
