@@ -67,6 +67,52 @@ describe('compose apps can reach the socket', () => {
   }
 })
 
+describe('IGCORE sportsbook env wiring', () => {
+  // Compose forwards only the variables it declares, so a var missing from the
+  // api block is silently unset inside the container however Dokploy is
+  // configured (the Atlas-V lesson). The simulator mints wallet credit and is
+  // therefore declared in the staging file alone.
+  const WINNER_COMPOSE_FILES = ['docker-compose.betbawa.yml', 'docker-compose.betbawa.staging.yml']
+  const ARADA_COMPOSE_FILES = [
+    'docker-compose.aradabingo.yml',
+    'docker-compose.aradabingo.staging.yml',
+    'docker-compose.prod.yml',
+  ]
+
+  for (const file of PROD_COMPOSE_FILES) {
+    it(`IGCORE_SIMULATOR never reaches a production compose file (${file})`, () => {
+      const content = readFileSync(path.join(repoRoot, file), 'utf8')
+      expect(content).not.toMatch(/IGCORE_SIMULATOR/)
+      expect(content).not.toMatch(/IGCORE_SIM_/)
+    })
+  }
+
+  for (const file of WINNER_COMPOSE_FILES) {
+    it(`both Winner compose files forward the IGCORE vars (${file})`, () => {
+      const content = readFileSync(path.join(repoRoot, file), 'utf8')
+      const api = serviceBlock(content, 'api')
+      expect(api).not.toBeNull()
+      expect(api).toMatch(/IGCORE_API_URL:/)
+      expect(api).toMatch(/IGCORE_SECURITY_HASH:/)
+    })
+  }
+
+  it('docker-compose.betbawa.staging.yml declares the simulator vars in the api service', () => {
+    const content = readFileSync(path.join(repoRoot, 'docker-compose.betbawa.staging.yml'), 'utf8')
+    const api = serviceBlock(content, 'api')
+    expect(api).toMatch(/IGCORE_SIMULATOR: \$\{IGCORE_SIMULATOR:-false\}/)
+    expect(api).toMatch(/IGCORE_SIM_PUBLIC_URL: \$\{IGCORE_SIM_PUBLIC_URL:-https:\/\/staging-api\.betbawa\.bet\}/)
+    expect(api).toMatch(/IGCORE_SIM_CALLBACK_URL: \$\{IGCORE_SIM_CALLBACK_URL:-\}/)
+  })
+
+  for (const file of ARADA_COMPOSE_FILES) {
+    it(`Arada compose files carry no IGCORE vars (${file})`, () => {
+      const content = readFileSync(path.join(repoRoot, file), 'utf8')
+      expect(content).not.toMatch(/IGCORE_/)
+    })
+  }
+})
+
 describe('production compose seed safety', () => {
   for (const file of PROD_COMPOSE_FILES) {
     it(`${file} never hardcodes RUN_SEED to true`, () => {
