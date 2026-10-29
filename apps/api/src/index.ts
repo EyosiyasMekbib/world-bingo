@@ -46,6 +46,8 @@ import { deploymentConfig } from './gateways/hub/deployment-config.js'
 import { spokeCallbackRoute } from './routes/hub/spoke-callback.js'
 import { atlasVCallbackRoutes } from './routes/atlasv/callback.js'
 import { igcoreCallbackRoutes } from './routes/igcore/callback.js'
+import { igcoreSimRoutes } from './routes/igcore-sim/index.js'
+import { igcoreConfig } from './gateways/igcore/igcore-config.js'
 import { atlasVSpokeCallbackRoute } from './routes/hub/atlasv-spoke-callback.js'
 import { internalProviderRoute } from './routes/hub/internal-provider.js'
 import gameProviderRoutes from './routes/game-provider/index.js'
@@ -362,6 +364,13 @@ await server.register(aggregatorWalletRoutes, { prefix: '/v1/aggregator/wallet' 
 await server.register(palaceCallbackRoute, { prefix: '/v1/palace/callback' })
 await server.register(atlasVCallbackRoutes, { prefix: '/v1/atlasv/callback' })
 await server.register(igcoreCallbackRoutes, { prefix: '/v1/igcore' })
+// Staging only: plays IGCORE's side and can mint wallet credit, so it is
+// mounted only when IGCORE_SIMULATOR=true, which only the staging compose file
+// declares. Rate-limit exempt through the /v1/igcore prefix.
+if (igcoreConfig().simulator) {
+    server.log.warn('[igcore-sim] SIMULATOR ENABLED — staging only')
+    await server.register(igcoreSimRoutes, { prefix: '/v1/igcore-sim' })
+}
 await server.register(zarecashWebhookRoute, { prefix: '/v1/zarecash/webhook' })
 if (deploymentConfig().role === 'spoke') {
     await server.register(spokeCallbackRoute, { prefix: '/v1/hub/spoke-callback' })
