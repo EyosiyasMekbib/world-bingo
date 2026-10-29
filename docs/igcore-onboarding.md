@@ -12,7 +12,7 @@ Send the staging column first. The production column is for later, after staging
 
 | Field | Staging | Production |
 |---|---|---|
-| Server IP(s) we call from | `72.62.234.120` (to be confirmed, see section 2) | To confirm: run `curl -s https://api.ipify.org` inside the Winner prod api container (section 2) |
+| Server IP(s) we call from | `72.62.234.120` (to be confirmed, see section 2) | To confirm: run `wget -qO- https://api.ipify.org` inside the Winner prod api container (section 2) |
 | Callback URL | `https://staging-api.betbawa.bet/v1/igcore` | `https://api.dash1.games/v1/igcore` |
 | Website URL | `https://staging.betbawa.bet` | `https://winneret.cc` |
 | Currencies | ETB | ETB |
@@ -39,14 +39,16 @@ IGCORE allow-lists the address we call from (`/auth` and `/start-session`). The 
 from is what counts. Confirm it from inside the api container:
 
 ```sh
-curl -s https://api.ipify.org
+wget -qO- https://api.ipify.org
 ```
+
+Use `wget`: the api image is `node:22-alpine`, which has busybox `wget` but no `curl`, and the
+container runs as a non-root user, so `curl` cannot be installed there. (The compose healthcheck
+already depends on `wget`.)
 
 Run it in the staging api container (compose service `api-betbawa-stg`) for the staging column,
 and in the Winner production api container (compose service `api-betbawa`) for the production
-column. Dokploy's container terminal or `docker exec -it <container> sh` both work. If the image
-has no `curl`, `wget -qO- https://api.ipify.org` does the same job (the compose healthcheck already
-depends on `wget`).
+column. Dokploy's container terminal or `docker exec -it <container> sh` both work.
 
 If the staging answer is not `72.62.234.120`, put the answer on the form instead. The production
 address is not known yet and is not assumed to match the staging one: put whatever the production
@@ -54,9 +56,9 @@ container reports on the production column.
 
 ## 3. Env lines to paste into Dokploy
 
-Dokploy's Environment panel is write-only from our side: nobody writes it programmatically, and
-nothing here calls a Dokploy API. Open the panel for the right compose project, append the lines
-below to what is already there (do not replace the existing contents), save, and redeploy.
+Paste these into the Dokploy Environment panel by hand and redeploy; we have no API access to it.
+Open the panel for the right compose project and append the lines below to what is already there
+(do not replace the existing contents).
 
 The compose files already forward every `IGCORE_*` variable with safe defaults, so with nothing
 set the integration is inert: players see "Sports is unavailable right now".
@@ -146,4 +148,4 @@ Optional, with their defaults:
      another player.
    - `[igcore-rollback-shortfall]`: rolling back a result found less real balance than it paid out
      (the player had withdrawn); we took what was there, answered success, and the rest is netted
-     off the ticket's corrected result.
+     off the next result on that ticket.

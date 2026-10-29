@@ -87,13 +87,28 @@ describe('IGCORE sportsbook env wiring', () => {
     })
   }
 
+  // Every IGCORE var the API reads except the three simulator ones.
+  const FORWARDED_IGCORE_VARS = [
+    'IGCORE_API_URL',
+    'IGCORE_API_VERSION',
+    'IGCORE_USERNAME',
+    'IGCORE_PASSWORD',
+    'IGCORE_SECURITY_HASH',
+    'IGCORE_CURRENCY',
+    'IGCORE_DEFAULT_LANG',
+    'IGCORE_MAX_WIN_AMOUNT',
+    'IGCORE_MAX_TICKET_PAYOUT',
+    'IGCORE_CALLBACK_DEBUG',
+  ]
+
   for (const file of WINNER_COMPOSE_FILES) {
     it(`both Winner compose files forward the IGCORE vars (${file})`, () => {
       const content = readFileSync(path.join(repoRoot, file), 'utf8')
       const api = serviceBlock(content, 'api')
       expect(api).not.toBeNull()
-      expect(api).toMatch(/IGCORE_API_URL:/)
-      expect(api).toMatch(/IGCORE_SECURITY_HASH:/)
+      for (const name of FORWARDED_IGCORE_VARS) {
+        expect(api, `${name} missing from the api service in ${file}`).toMatch(new RegExp(`${name}:`))
+      }
     })
   }
 
