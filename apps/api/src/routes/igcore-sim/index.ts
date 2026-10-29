@@ -29,6 +29,7 @@ const TTL_S = 21600
 const TOKEN_PREFIX = 'igcore-sim:token:'
 const SESSION_PREFIX = 'igcore-sim:session:'
 const TICKET_PREFIX = 'igcore-sim:ticket:'
+/** Seeded from the clock before every INCR (see nextTicketId), never left to start at 1. */
 const TICKET_SEQ = 'igcore-sim:ticket-seq'
 /** Longer than the 10 s result budget, so a slow answer shows up as slow rather than as a timeout. */
 const CALLBACK_TIMEOUT_MS = 15_000
@@ -46,7 +47,9 @@ type SimTicket = {
     /** The ticket this one is the remainder of after a partial cashout. */
     fromId: number | null
     status: 'open' | 'settled' | 'cashed'
+    /** The settling result's IGCORE transaction_id and amount, sent again by its rollback. */
     resultTxId?: string
+    payout?: number
 }
 
 const OPS = ['bet', 'settle-win', 'settle-lose', 'cashout', 'rollback-settlement', 'late-bet'] as const
@@ -108,6 +111,25 @@ async function saveTicket(t: SimTicket): Promise<void> {
     await redis.setex(`${TICKET_PREFIX}${t.id}`, TTL_S, JSON.stringify(t))
 }
 
+/**
+ * The next ticket id. The sequence is seeded from the clock first (SET NX,
+ * so it never resets a live one): starting at 1, a Redis flush would reissue
+ * old ids, and resolveTicketRoot would then file new tickets under old roots,
+ * corrupting the per-ticket cap and shortfall sums.
+ */
+async function nextTicketId(): Promise<number> {
+    await redis.set(TICKET_SEQ, String(Date.now()), 'NX')
+    return redis.incr(TICKET_SEQ)
+}
+
+/** Constant-time equality for a credential. False when it is unset, not a string, or a different length. */
+function sameSecret(given: unknown, expected: string): boolean {
+    if (!expected || typeof given !== 'string') return false
+    const a = Buffer.from(given, 'utf8')
+    const b = Buffer.from(expected, 'utf8')
+    return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 /** A finite number within bounds, else null. */
 function numberIn(raw: unknown, min: number, max: number, inclusiveMin = true): number | null {
     if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
@@ -125,10 +147,11 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/1.0.0/auth', async (req) => {
         const cfg = igcoreConfig()
         const body = (req.body ?? {}) as { username?: unknown; password?: unknown }
-        // Unset credentials never match, not even an empty pair.
-        if (!cfg.username || !cfg.password || body.username !== cfg.username || body.password !== cfg.password) {
-            return { error: 'invalid credentials' }
-        }
+        // Both compared every time, so the timing does not tell a right
+        // username from a wrong one. Unset credentials never match, not even an empty pair.
+        const userOk = sameSecret(body.username, cfg.username)
+        const passOk = sameSecret(body.password, cfg.password)
+        if (!userOk || !passOk) return { error: 'invalid credentials' }
         const token = crypto.randomBytes(32).toString('hex')
         await redis.setex(`${TOKEN_PREFIX}${token}`, TTL_S, '1')
         return { token, expires_in: TTL_S }
@@ -152,7 +175,12 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     // ── The book (the iframe page) ────────────────────────────────────────────
-    fastify.get('/book', async (req, reply) => {
+    // Both book routes carry the session id (`s`: in the query here, in the
+    // body below), and it is enough to bet with the session player's wallet.
+    // Fastify's request log writes req.url and the redact paths do not cover
+    // it, so these two routes do not log at all: the session URL must never
+    // reach a log.
+    fastify.get('/book', { logLevel: 'silent' }, async (req, reply) => {
         const q = (req.query ?? {}) as { s?: unknown; lang?: unknown }
         const s = typeof q.s === 'string' ? q.s : ''
         const lang = typeof q.lang === 'string' && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(q.lang) ? q.lang : igcoreConfig().defaultLang
@@ -174,7 +202,7 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     // ── Book buttons: each fires the matching signed callback ─────────────────
-    fastify.post('/book/action', async (req, reply) => {
+    fastify.post('/book/action', { logLevel: 'silent' }, async (req, reply) => {
         const body = (req.body ?? {}) as { s?: unknown; op?: unknown; stake?: unknown; odds?: unknown; ticketId?: unknown; portion?: unknown }
         const op = body.op as Op
         if (!OPS.includes(op)) return reply.status(400).send({ error: 'unknown op' })
@@ -189,7 +217,7 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
             const odds = numberIn(body.odds, 1, 1000)
             if (stake == null || odds == null) return reply.status(400).send({ error: 'stake must be > 0 and odds >= 1' })
 
-            const id = await redis.incr(TICKET_SEQ)
+            const id = await nextTicketId()
             const ticket: SimTicket = { id, ...base, stake: round2(stake), odds, fromId: null, status: 'open' }
             const sentBet = { transaction_id: crypto.randomUUID(), action: 'bet', ...base, amount: ticket.stake, info: ticketInfo(ticket) }
             const betAnswer = await postCallback('transaction', sentBet)
@@ -217,11 +245,11 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
             if (ticket.status !== 'settled' || !ticket.resultTxId) return reply.status(409).send({ error: `ticket is ${ticket.status}, not settled` })
             // A wrong settlement reversed; the corrected result follows (§4.9), so the ticket reopens.
             const sent = {
-                transaction_id: crypto.randomUUID(), action: 'rollback', ...base, amount: 0,
+                transaction_id: crypto.randomUUID(), action: 'rollback', ...base, amount: ticket.payout ?? 0,
                 rollback_transaction_id: ticket.resultTxId, rollback_transaction_action: 'result', info: ticketInfo(ticket),
             }
             const response = await postCallback('transaction-rollback', sent)
-            if (accepted(response)) await saveTicket({ ...ticket, status: 'open', resultTxId: undefined })
+            if (accepted(response)) await saveTicket({ ...ticket, status: 'open', resultTxId: undefined, payout: undefined })
             return { sent, response }
         }
 
@@ -234,13 +262,13 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
             // A partial cashout splits off a remainder ticket that keeps the
             // unsold stake; IGCORE names it in info.newTicket.
             const remainder: SimTicket | null = portion < 1
-                ? { id: await redis.incr(TICKET_SEQ), ...base, stake: round2(ticket.stake * (1 - portion)), odds: ticket.odds, fromId: ticket.id, status: 'open' }
+                ? { id: await nextTicketId(), ...base, stake: round2(ticket.stake * (1 - portion)), odds: ticket.odds, fromId: ticket.id, status: 'open' }
                 : null
             const info = remainder ? { ...ticketInfo(ticket), newTicket: { id: remainder.id, fromId: ticket.id } } : ticketInfo(ticket)
             const sent = { transaction_id: crypto.randomUUID(), action: 'result', ...base, amount: payout, info }
             const response = await postCallback('transaction', sent)
             if (accepted(response)) {
-                await saveTicket({ ...ticket, status: 'cashed', resultTxId: sent.transaction_id })
+                await saveTicket({ ...ticket, status: 'cashed', resultTxId: sent.transaction_id, payout })
                 if (remainder) await saveTicket(remainder)
             }
             return { sent, response }
@@ -250,13 +278,15 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
         const payout = op === 'settle-win' ? round2(ticket.stake * ticket.odds) : 0
         const sent = { transaction_id: crypto.randomUUID(), action: 'result', ...base, amount: payout, info: ticketInfo(ticket) }
         const response = await postCallback('transaction', sent)
-        if (accepted(response)) await saveTicket({ ...ticket, status: 'settled', resultTxId: sent.transaction_id })
+        if (accepted(response)) await saveTicket({ ...ticket, status: 'settled', resultTxId: sent.transaction_id, payout })
         return { sent, response }
     })
 
     // ── §7 checklist against a throwaway player ───────────────────────────────
     fastify.post('/checklist', { preValidation: [fastify.requireAdmin] }, async (req, reply) => {
         const cfg = igcoreConfig()
+        // requireAdmin verified the JWT, so this is the admin who minted the balance below.
+        const adminId = req.user?.id ?? 'unknown'
         if (!cfg.securityHash) return reply.status(503).send({ error: 'IGCORE_SECURITY_HASH is not set: every callback would be rejected' })
 
         // A fresh player per run, so items never inherit another run's tickets.
@@ -274,7 +304,7 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
                 transactions: {
                     create: {
                         type: TransactionType.ADMIN_REAL_ADJUSTMENT, amount: CHECKLIST_START_BALANCE, status: PaymentStatus.APPROVED,
-                        note: 'IGCORE simulator checklist: starting balance',
+                        note: `IGCORE simulator checklist: starting balance, run by admin ${adminId}`,
                         balanceBefore: 0, balanceAfter: CHECKLIST_START_BALANCE, bonusBalanceBefore: 0, bonusBalanceAfter: 0,
                     },
                 },
@@ -295,7 +325,7 @@ export const igcoreSimRoutes: FastifyPluginAsync = async (fastify) => {
         const results = await runIgcoreChecklist(deps)
         const failed = results.filter((r) => !r.pass).length
         const passed = results.length - failed
-        req.log.info({ component: 'igcore-sim', username: user.username, passed, failed }, '[igcore-sim] checklist run')
+        req.log.info({ component: 'igcore-sim', username: user.username, adminId, passed, failed }, '[igcore-sim] checklist run')
         return { passed, failed, results }
     })
 }

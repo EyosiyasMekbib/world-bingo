@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import crypto from 'node:crypto'
 import Fastify from 'fastify'
 import helmet from '@fastify/helmet'
 
@@ -11,6 +12,11 @@ const redisMock = vi.hoisted(() => ({
         return 'OK'
     }),
     del: vi.fn(async (k: string) => (store.delete(k) ? 1 : 0)),
+    set: vi.fn(async (k: string, v: string, mode?: string) => {
+        if (mode === 'NX' && store.has(k)) return null
+        store.set(k, v)
+        return 'OK'
+    }),
     incr: vi.fn(async (k: string) => {
         const n = Number(store.get(k) ?? 0) + 1
         store.set(k, String(n))
@@ -32,8 +38,10 @@ const PLAYER = 'b'.repeat(32)
 
 type App = Awaited<ReturnType<typeof buildApp>>
 
-async function buildApp(opts: { requireAdmin?: (req: any, reply: any) => Promise<void> } = {}) {
-    const app = Fastify()
+async function buildApp(opts: { requireAdmin?: (req: any, reply: any) => Promise<void>; logLines?: string[] } = {}) {
+    const lines = opts.logLines
+    // With logLines, Fastify's own request logging is on (as in index.ts) and every line is captured.
+    const app = lines ? Fastify({ logger: { level: 'trace', stream: { write: (line: string) => void lines.push(line) } } }) : Fastify()
     // Helmet with its defaults, which is what index.ts gets in production, so
     // the /book override is tested against the headers it really has to beat.
     await app.register(helmet)
@@ -58,6 +66,12 @@ async function session(app: App): Promise<string> {
     const t = await token(app)
     const res = await post(app, '/1.0.0/start-session', { user_id: PLAYER, currency: 'ETB', lang: 'en' }, { authorization: `Bearer ${t}` })
     return new URL(res.json().url).searchParams.get('s')!
+}
+
+/** Places a bet through the book and returns its ticket id. */
+async function placeBet(app: App, s: string, stake: number, odds: number): Promise<number> {
+    const res = await post(app, '/book/action', { s, op: 'bet', stake, odds })
+    return res.json().sent.info.ticketId
 }
 
 /** Every callback the simulator POSTed, as IGCORE would have sent it. */
@@ -123,6 +137,24 @@ describe('IGCORE simulator', () => {
             const res = await post(app, '/1.0.0/auth', { username: '', password: '' })
 
             expect(res.json()).toEqual({ error: 'invalid credentials' })
+        })
+
+        it('compares both credentials in constant time and refuses near misses', async () => {
+            const timingSafeEqual = vi.spyOn(crypto, 'timingSafeEqual')
+            const app = await buildApp()
+
+            const sameLength = await post(app, '/1.0.0/auth', { username: 'sim-user', password: 'sim-pasS' })
+            const shorter = await post(app, '/1.0.0/auth', { username: 'sim-user', password: 'sim' })
+            const notAString = await post(app, '/1.0.0/auth', { username: ['sim-user'], password: 'sim-pass' })
+
+            expect(sameLength.json()).toEqual({ error: 'invalid credentials' })
+            expect(shorter.json()).toEqual({ error: 'invalid credentials' })
+            expect(notAString.json()).toEqual({ error: 'invalid credentials' })
+            // Both credentials are compared on every attempt; only a length
+            // mismatch or a non-string skips timingSafeEqual (which would throw):
+            // 2 (same length) + 1 (username of the short one) + 1 (password of the array one).
+            expect(timingSafeEqual).toHaveBeenCalledTimes(4)
+            timingSafeEqual.mockRestore()
         })
 
         it('answers Unauthorized without a token', async () => {
@@ -208,6 +240,24 @@ describe('IGCORE simulator', () => {
             expect(res.body).toContain('book/action')
         })
 
+        it('never writes the session id to the request log', async () => {
+            const lines: string[] = []
+            answerCallbacks()
+            const app = await buildApp({ logLines: lines })
+            const s = await session(app)
+
+            await app.inject({ method: 'GET', url: `/v1/igcore-sim/book?s=${s}&lang=en` })
+            await app.inject({ method: 'GET', url: `/v1/igcore-sim/book?s=${s}-expired&lang=en` }) // the 404 path
+            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
+            await post(app, '/book/action', { s, op: 'explode' }) // the 400 path
+
+            // Request logging is on: the start-session request was logged...
+            expect(lines.some((l) => l.includes('/v1/igcore-sim/1.0.0/start-session'))).toBe(true)
+            // ...but nothing from the book routes, which carry the session id.
+            expect(lines.some((l) => l.includes('/v1/igcore-sim/book'))).toBe(false)
+            expect(lines.join('\n')).not.toContain(s)
+        })
+
         it('answers 404 for an unknown session and never echoes it', async () => {
             const app = await buildApp()
 
@@ -233,10 +283,29 @@ describe('IGCORE simulator', () => {
             expect(cb.url).toBe(`${CALLBACK_URL}/transaction`)
             const raw = (fetchMock.mock.calls[0][1] as { body: string }).body
             expect(cb.hash).toBe(signIgcoreBody(raw, SECRET))
-            expect(cb.body).toMatchObject({ action: 'bet', user_id: PLAYER, currency: 'ETB', amount: 10, info: { ticketId: 1 } })
+            const id = cb.body.info.ticketId
+            expect(cb.body).toMatchObject({ action: 'bet', user_id: PLAYER, currency: 'ETB', amount: 10, info: { ticketId: id } })
             expect(typeof cb.body.transaction_id).toBe('string')
             expect(res.json()).toEqual({ sent: cb.body, response: { status: 200, json: { error: null, transaction_id: 'row-1' } } })
-            expect(JSON.parse(store.get('igcore-sim:ticket:1')!)).toMatchObject({ id: 1, stake: 10, odds: 1.85, status: 'open' })
+            expect(JSON.parse(store.get(`igcore-sim:ticket:${id}`)!)).toMatchObject({ id, stake: 10, odds: 1.85, status: 'open' })
+        })
+
+        it('starts ticket ids from the clock, so an empty or flushed Redis never reissues old ids', async () => {
+            answerCallbacks()
+            const app = await buildApp()
+            const s = await session(app)
+            const startedAt = Date.now()
+
+            const first = await placeBet(app, s, 10, 2)
+            const second = await placeBet(app, s, 10, 2)
+            store.clear() // a Redis flush: sessions, tickets and the sequence are gone
+            const s2 = await session(app)
+            const afterFlush = await placeBet(app, s2, 10, 2)
+
+            expect(first).toBeGreaterThan(startedAt)
+            expect(second).toBe(first + 1)
+            expect(afterFlush).toBeGreaterThan(startedAt)
+            expect(redisMock.set).toHaveBeenCalledWith('igcore-sim:ticket-seq', expect.any(String), 'NX')
         })
 
         it('does not record a ticket whose bet was refused', async () => {
@@ -247,33 +316,33 @@ describe('IGCORE simulator', () => {
             const res = await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
 
             expect(res.json().response).toEqual({ status: 200, json: { error: 'INSUFFICIENT_FUNDS' } })
-            expect(store.has('igcore-sim:ticket:1')).toBe(false)
+            expect(store.has(`igcore-sim:ticket:${res.json().sent.info.ticketId}`)).toBe(false)
         })
 
         it('settles a win for stake × odds and a loss for 0', async () => {
             answerCallbacks()
             const app = await buildApp()
             const s = await session(app)
-            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 1.85 })
-            await post(app, '/book/action', { s, op: 'bet', stake: 5, odds: 3 })
+            const won = await placeBet(app, s, 10, 1.85)
+            const lost = await placeBet(app, s, 5, 3)
 
-            await post(app, '/book/action', { s, op: 'settle-win', ticketId: 1 })
-            await post(app, '/book/action', { s, op: 'settle-lose', ticketId: 2 })
+            await post(app, '/book/action', { s, op: 'settle-win', ticketId: won })
+            await post(app, '/book/action', { s, op: 'settle-lose', ticketId: lost })
 
             expect(callbacks[2].url).toBe(`${CALLBACK_URL}/transaction`)
-            expect(callbacks[2].body).toMatchObject({ action: 'result', amount: 18.5, info: { ticketId: 1 } })
-            expect(callbacks[3].body).toMatchObject({ action: 'result', amount: 0, info: { ticketId: 2 } })
-            expect(JSON.parse(store.get('igcore-sim:ticket:1')!)).toMatchObject({ status: 'settled' })
+            expect(callbacks[2].body).toMatchObject({ action: 'result', amount: 18.5, info: { ticketId: won } })
+            expect(callbacks[3].body).toMatchObject({ action: 'result', amount: 0, info: { ticketId: lost } })
+            expect(JSON.parse(store.get(`igcore-sim:ticket:${won}`)!)).toMatchObject({ status: 'settled', payout: 18.5 })
         })
 
         it('refuses to settle a ticket twice', async () => {
             answerCallbacks()
             const app = await buildApp()
             const s = await session(app)
-            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
-            await post(app, '/book/action', { s, op: 'settle-win', ticketId: 1 })
+            const id = await placeBet(app, s, 10, 2)
+            await post(app, '/book/action', { s, op: 'settle-win', ticketId: id })
 
-            const res = await post(app, '/book/action', { s, op: 'settle-win', ticketId: 1 })
+            const res = await post(app, '/book/action', { s, op: 'settle-win', ticketId: id })
 
             expect(res.statusCode).toBe(409)
             expect(callbacks).toHaveLength(2)
@@ -283,34 +352,39 @@ describe('IGCORE simulator', () => {
             answerCallbacks()
             const app = await buildApp()
             const s = await session(app)
-            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
+            const id = await placeBet(app, s, 10, 2)
 
-            await post(app, '/book/action', { s, op: 'cashout', ticketId: 1, portion: 0.4 })
+            await post(app, '/book/action', { s, op: 'cashout', ticketId: id, portion: 0.4 })
 
-            expect(callbacks[1].body).toMatchObject({ action: 'result', amount: 8, info: { ticketId: 1, newTicket: { id: 2, fromId: 1 } } })
-            expect(JSON.parse(store.get('igcore-sim:ticket:1')!)).toMatchObject({ status: 'cashed' })
-            expect(JSON.parse(store.get('igcore-sim:ticket:2')!)).toMatchObject({ id: 2, stake: 6, odds: 2, fromId: 1, status: 'open' })
+            const rest = callbacks[1].body.info.newTicket.id
+            expect(rest).toBe(id + 1)
+            expect(callbacks[1].body).toMatchObject({ action: 'result', amount: 8, info: { ticketId: id, newTicket: { id: rest, fromId: id } } })
+            expect(JSON.parse(store.get(`igcore-sim:ticket:${id}`)!)).toMatchObject({ status: 'cashed' })
+            expect(JSON.parse(store.get(`igcore-sim:ticket:${rest}`)!)).toMatchObject({ id: rest, stake: 6, odds: 2, fromId: id, status: 'open' })
 
-            await post(app, '/book/action', { s, op: 'settle-win', ticketId: 2 })
+            await post(app, '/book/action', { s, op: 'settle-win', ticketId: rest })
 
-            expect(callbacks[2].body).toMatchObject({ action: 'result', amount: 12, info: { ticketId: 2, ticket: { id: 2, fromId: 1 } } })
+            expect(callbacks[2].body).toMatchObject({ action: 'result', amount: 12, info: { ticketId: rest, ticket: { id: rest, fromId: id } } })
         })
 
-        it('rolls back a settlement and lets the ticket be settled again', async () => {
+        it('rolls back a settlement with its payout and lets the ticket be settled again', async () => {
             answerCallbacks()
             const app = await buildApp()
             const s = await session(app)
-            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
-            await post(app, '/book/action', { s, op: 'settle-win', ticketId: 1 })
+            const id = await placeBet(app, s, 10, 2)
+            await post(app, '/book/action', { s, op: 'settle-win', ticketId: id })
 
-            await post(app, '/book/action', { s, op: 'rollback-settlement', ticketId: 1 })
+            await post(app, '/book/action', { s, op: 'rollback-settlement', ticketId: id })
 
             expect(callbacks[2].url).toBe(`${CALLBACK_URL}/transaction-rollback`)
             expect(callbacks[2].body).toMatchObject({
-                action: 'rollback', user_id: PLAYER, rollback_transaction_id: callbacks[1].body.transaction_id,
-                rollback_transaction_action: 'result', info: { ticketId: 1 },
+                action: 'rollback', user_id: PLAYER, amount: 20, rollback_transaction_id: callbacks[1].body.transaction_id,
+                rollback_transaction_action: 'result', info: { ticketId: id },
             })
-            expect(JSON.parse(store.get('igcore-sim:ticket:1')!)).toMatchObject({ status: 'open' })
+            const reopened = JSON.parse(store.get(`igcore-sim:ticket:${id}`)!)
+            expect(reopened).toMatchObject({ status: 'open' })
+            expect(reopened.payout).toBeUndefined()
+            expect(reopened.resultTxId).toBeUndefined()
         })
 
         it('simulates a late bet: the bet, then its rollback', async () => {
@@ -344,10 +418,11 @@ describe('IGCORE simulator', () => {
             answerCallbacks()
             const app = await buildApp()
             const s = await session(app)
-            await post(app, '/book/action', { s, op: 'bet', stake: 10, odds: 2 })
-            store.set('igcore-sim:ticket:1', JSON.stringify({ ...JSON.parse(store.get('igcore-sim:ticket:1')!), user_id: 'c'.repeat(32) }))
+            const id = await placeBet(app, s, 10, 2)
+            const key = `igcore-sim:ticket:${id}`
+            store.set(key, JSON.stringify({ ...JSON.parse(store.get(key)!), user_id: 'c'.repeat(32) }))
 
-            const res = await post(app, '/book/action', { s, op: 'settle-win', ticketId: 1 })
+            const res = await post(app, '/book/action', { s, op: 'settle-win', ticketId: id })
 
             expect(res.statusCode).toBe(404)
             expect(callbacks).toHaveLength(1)

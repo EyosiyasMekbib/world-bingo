@@ -222,7 +222,9 @@ await server.register(rateLimit, {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
         if (req.url.startsWith('/v1/atlasv/')) return true
-        if (req.url.startsWith('/v1/igcore')) return true
+        // Trailing slash: the callbacks are all /v1/igcore/<endpoint>, and the
+        // staging simulator at /v1/igcore-sim (whose auth can be guessed at) stays throttled.
+        if (req.url.startsWith('/v1/igcore/')) return true
         // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
         // caller could name a whitelisted address and skip the limiter outright.
         const ip = req.ip
@@ -366,7 +368,7 @@ await server.register(atlasVCallbackRoutes, { prefix: '/v1/atlasv/callback' })
 await server.register(igcoreCallbackRoutes, { prefix: '/v1/igcore' })
 // Staging only: plays IGCORE's side and can mint wallet credit, so it is
 // mounted only when IGCORE_SIMULATOR=true, which only the staging compose file
-// declares. Rate-limit exempt through the /v1/igcore prefix.
+// declares. Not rate-limit exempt: the exemption covers only /v1/igcore/.
 if (igcoreConfig().simulator) {
     server.log.warn('[igcore-sim] SIMULATOR ENABLED — staging only')
     await server.register(igcoreSimRoutes, { prefix: '/v1/igcore-sim' })
