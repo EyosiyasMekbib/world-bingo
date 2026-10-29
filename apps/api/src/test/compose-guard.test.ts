@@ -115,7 +115,7 @@ describe('IGCORE sportsbook env wiring', () => {
   it('docker-compose.betbawa.staging.yml declares the simulator vars in the api service', () => {
     const content = readFileSync(path.join(repoRoot, 'docker-compose.betbawa.staging.yml'), 'utf8')
     const api = serviceBlock(content, 'api')
-    expect(api).toMatch(/IGCORE_SIMULATOR: \$\{IGCORE_SIMULATOR:-false\}/)
+    expect(api).toMatch(/IGCORE_SIMULATOR: \$\{IGCORE_SIMULATOR:-true\}/)
     expect(api).toMatch(/IGCORE_SIM_PUBLIC_URL: \$\{IGCORE_SIM_PUBLIC_URL:-https:\/\/staging-api\.betbawa\.bet\}/)
     expect(api).toMatch(/IGCORE_SIM_CALLBACK_URL: \$\{IGCORE_SIM_CALLBACK_URL:-\}/)
   })

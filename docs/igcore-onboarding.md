@@ -67,27 +67,22 @@ set the integration is inert: players see "Sports is unavailable right now".
 
 ### 3a. Simulator mode (Winner staging, before IGCORE answers)
 
-The API mounts its own stand-in IGCORE at `/v1/igcore-sim` and calls itself. Generate the three
-secrets on your own machine and paste the output; never commit them:
+The API mounts its own stand-in IGCORE at `/v1/igcore-sim` and calls itself. **Winner staging
+needs no env for this.** `docker-compose.betbawa.staging.yml` defaults `IGCORE_SIMULATOR` to
+`true`, and in simulator mode the API fills in whatever `IGCORE_*` value is unset:
 
-```sh
-openssl rand -hex 24   # IGCORE_USERNAME
-openssl rand -hex 24   # IGCORE_PASSWORD
-openssl rand -hex 32   # IGCORE_SECURITY_HASH
-```
+| Variable | Simulator-mode default |
+|---|---|
+| `IGCORE_API_URL` | `http://127.0.0.1:8080/v1/igcore-sim` (loopback: the API calls its own simulator) |
+| `IGCORE_USERNAME` | `igcore-sim` |
+| `IGCORE_PASSWORD`, `IGCORE_SECURITY_HASH` | HMAC-SHA256 of the JWT signing key (`JWT_PRIVATE_KEY_BASE64`, else `JWT_PRIVATE_KEY`), one label each; every replica derives the same values, and the key itself never appears in them |
+| `IGCORE_SIM_PUBLIC_URL` | `https://staging-api.betbawa.bet` (from the staging compose file) |
 
-```sh
-IGCORE_SIMULATOR=true
-IGCORE_API_URL=http://127.0.0.1:8080/v1/igcore-sim
-IGCORE_USERNAME=<output of the first openssl command>
-IGCORE_PASSWORD=<output of the second openssl command>
-IGCORE_SECURITY_HASH=<output of the third openssl command>
-IGCORE_SIM_PUBLIC_URL=https://staging-api.betbawa.bet
-```
+Anything set explicitly in Dokploy still wins. To turn the simulator off on staging, set
+`IGCORE_SIMULATOR=false`.
 
-- `IGCORE_API_URL` is loopback inside the api container: the API calls its own simulator. The
-  client appends `/<IGCORE_API_VERSION>/auth` and `/start-session`, which the simulator serves
-  under `/1.0.0/`.
+- The client appends `/<IGCORE_API_VERSION>/auth` and `/start-session` to `IGCORE_API_URL`, which
+  the simulator serves under `/1.0.0/`.
 - `IGCORE_SIM_PUBLIC_URL` is the origin a player's browser uses to reach the simulator's book page.
 - Leave `IGCORE_SIM_CALLBACK_URL` unset. It then defaults to `http://127.0.0.1:8080/v1/igcore`
   (the compose files fix `PORT` at 8080), which is where the simulator posts its signed callbacks.
@@ -107,14 +102,14 @@ IGCORE_PASSWORD=<from IGCORE>
 IGCORE_SECURITY_HASH=<from IGCORE>
 ```
 
-- `IGCORE_SIMULATOR=false` applies to staging only; you may delete the line instead. Production
-  never declares it.
+- `IGCORE_SIMULATOR=false` is required on staging: the staging compose file defaults it to `true`.
+  Production never declares it.
 - `IGCORE_API_URL` is the base URL without the version segment.
 - `IGCORE_API_URL`, `IGCORE_USERNAME`, `IGCORE_PASSWORD` and `IGCORE_SECURITY_HASH` all come from
   IGCORE once they answer the form. Until all four are set the integration stays off, and with no
   `IGCORE_SECURITY_HASH` every callback is rejected.
-- Moving from simulator mode to real IGCORE replaces those four values; do not keep the generated
-  ones.
+- Moving from simulator mode to real IGCORE means setting all four: an unset one would otherwise
+  fall back to its simulator-mode default while `IGCORE_SIMULATOR` is still on.
 
 Optional, with their defaults:
 
@@ -142,8 +137,8 @@ Optional, with their defaults:
    It runs every callback item of IGCORE's go-live checklist (section 7 of their spec) against a throwaway player
    (`igcore-check-<timestamp>`, minted a starting balance, audited as an admin adjustment) and
    returns `{ passed, failed, results }` with balance deltas. The route exists only while
-   `IGCORE_SIMULATOR=true`; without it the path is a 404. `503` means `IGCORE_SECURITY_HASH` is
-   unset. Follow it with one clicked-through bet, win and rollback on `/sports`, checking balances.
+   `IGCORE_SIMULATOR=true`; without it the path is a 404. `503` means no security hash, neither
+   set nor derivable (no JWT signing key). Follow it with one clicked-through bet, win and rollback on `/sports`, checking balances.
 3. **Know the two log tags.** Search the api container logs for them:
    - `[igcore-fraud-flag]`: a callback needs a human look, such as a payout held over a cap (nothing
      credited, IGCORE is asked to retry), a result with no recorded bet, or an id that belongs to

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { createHmac } from 'node:crypto'
 import {
     signIgcoreBody,
     verifyIgcoreSignature,
@@ -129,6 +130,70 @@ describe('IGCORE config', () => {
         const cfg = igcoreConfig()
         expect(cfg.simPublicUrl).toBe('https://pub.example.test')
         expect(cfg.simCallbackUrl).toBe('http://cb.example.test/v1/igcore')
+    })
+
+    describe('simulator mode with no IGCORE_* secrets set', () => {
+        const blankIgcore = () => {
+            for (const name of ['IGCORE_API_URL', 'IGCORE_USERNAME', 'IGCORE_PASSWORD', 'IGCORE_SECURITY_HASH']) {
+                vi.stubEnv(name, '')
+            }
+        }
+        const hmac = (key: string, label: string) => createHmac('sha256', key).update(`igcore-sim:${label}`).digest('hex')
+        const signingKey = (b64: string, raw: string) => {
+            vi.stubEnv('JWT_PRIVATE_KEY_BASE64', b64)
+            vi.stubEnv('JWT_PRIVATE_KEY', raw)
+        }
+
+        it('derives the credentials from the JWT signing key and points the client at the local simulator', () => {
+            blankIgcore()
+            vi.stubEnv('IGCORE_SIMULATOR', 'true')
+            signingKey('c3RhZ2luZy1rZXk=', '')
+            vi.stubEnv('PORT', '9090')
+            const cfg = igcoreConfig()
+            expect(cfg.apiUrl).toBe('http://127.0.0.1:9090/v1/igcore-sim')
+            expect(cfg.username).toBe('igcore-sim')
+            expect(cfg.password).toBe(hmac('c3RhZ2luZy1rZXk=', 'password'))
+            expect(cfg.securityHash).toBe(hmac('c3RhZ2luZy1rZXk=', 'security-hash'))
+            expect(cfg.password).not.toBe(cfg.securityHash)
+            expect(igcoreConfigured(cfg)).toBe(true)
+        })
+
+        it('falls back to the raw signing key, as lib/jwt-keys.ts does', () => {
+            blankIgcore()
+            vi.stubEnv('IGCORE_SIMULATOR', 'true')
+            signingKey('', 'raw-key')
+            expect(igcoreConfig().securityHash).toBe(hmac('raw-key', 'security-hash'))
+        })
+
+        it('derives nothing when the simulator is off', () => {
+            blankIgcore()
+            vi.stubEnv('IGCORE_SIMULATOR', 'false')
+            signingKey('c3RhZ2luZy1rZXk=', '')
+            const cfg = igcoreConfig()
+            expect([cfg.apiUrl, cfg.username, cfg.password, cfg.securityHash]).toEqual(['', '', '', ''])
+            expect(igcoreConfigured(cfg)).toBe(false)
+        })
+
+        it('stays unconfigured without a signing key', () => {
+            blankIgcore()
+            vi.stubEnv('IGCORE_SIMULATOR', 'true')
+            signingKey('', '')
+            const cfg = igcoreConfig()
+            expect(cfg.password).toBe('')
+            expect(cfg.securityHash).toBe('')
+            expect(igcoreConfigured(cfg)).toBe(false)
+        })
+
+        it('lets explicit IGCORE_* values win', () => {
+            vi.stubEnv('IGCORE_SIMULATOR', 'true')
+            signingKey('c3RhZ2luZy1rZXk=', '')
+            vi.stubEnv('IGCORE_API_URL', 'https://igcore.example.test')
+            vi.stubEnv('IGCORE_USERNAME', 'u')
+            vi.stubEnv('IGCORE_PASSWORD', 'p')
+            vi.stubEnv('IGCORE_SECURITY_HASH', 's')
+            const cfg = igcoreConfig()
+            expect([cfg.apiUrl, cfg.username, cfg.password, cfg.securityHash]).toEqual(['https://igcore.example.test', 'u', 'p', 's'])
+        })
     })
 
     it('parses the boolean flags', () => {
