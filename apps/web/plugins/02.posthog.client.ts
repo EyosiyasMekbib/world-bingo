@@ -18,6 +18,7 @@ import {
   buildPersonProps,
   buildSuperProps,
   isStandaloneDisplay,
+  maskReplayNetworkRequest,
   resolveReplayEnabled,
 } from '~/utils/posthog'
 
@@ -44,6 +45,8 @@ export default defineNuxtPlugin((nuxtApp) => {
       maskAllInputs: true,
       maskTextSelector: '[data-ph-mask]',
       blockSelector: 'img[src*="/uploads/"], [data-ph-block]',
+      // Network capture records a frame load's full url, one-time tokens included.
+      maskCapturedNetworkRequestFn: maskReplayNetworkRequest,
     },
   })
 

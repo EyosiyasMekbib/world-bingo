@@ -64,6 +64,15 @@ describe('sports page', () => {
     expect(read('plugins', '02.posthog.client.ts')).toMatch(/blockSelector:[^\n]*\[data-ph-block\]/)
   })
 
+  it('masks frame urls in replay network capture, which records an iframe load in full', () => {
+    const plugin = read('plugins', '02.posthog.client.ts')
+    const recording = plugin.match(/session_recording: \{[\s\S]*?\n {4}\}/)?.[0] ?? ''
+    expect(recording).toContain('maskCapturedNetworkRequestFn: maskReplayNetworkRequest')
+    expect(plugin).toMatch(
+      /import \{[^}]*\bmaskReplayNetworkRequest\b[^}]*\} from '~\/utils\/posthog'/,
+    )
+  })
+
   it('offers a retry that asks for a fresh session', () => {
     expect(sports).toContain('@click="retry"')
     expect(sports).toMatch(/function retry\(\)[\s\S]*?void open\(\)/)

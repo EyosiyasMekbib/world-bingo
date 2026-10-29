@@ -5,6 +5,7 @@ import {
   resolveReplayEnabled,
   isStandaloneDisplay,
   brandSlug,
+  maskReplayNetworkRequest,
 } from './posthog'
 
 describe('buildPersonProps', () => {
@@ -70,6 +71,59 @@ describe('isStandaloneDisplay', () => {
         },
       }),
     ).toBe(false)
+  })
+})
+
+describe('maskReplayNetworkRequest', () => {
+  const entry = (over: Record<string, unknown>) =>
+    ({
+      name: 'https://sports.example.com/iframe?token=abc#frag',
+      entryType: 'resource',
+      startTime: 10,
+      duration: 5,
+      ...over,
+    }) as any
+
+  it.each(['iframe', 'frame'])('strips the query and hash from an %s load', (initiatorType) => {
+    const masked = maskReplayNetworkRequest(entry({ initiatorType }))
+
+    expect(masked).toEqual(entry({ initiatorType, name: 'https://sports.example.com/iframe' }))
+  })
+
+  it('strips a relative or opaque frame url at its query too', () => {
+    expect(
+      maskReplayNetworkRequest(entry({ initiatorType: 'iframe', name: '/play?launch=xyz' })).name,
+    ).toBe('/play')
+    expect(
+      maskReplayNetworkRequest(entry({ initiatorType: 'iframe', name: 'about:blank' })).name,
+    ).toBe('about:blank')
+  })
+
+  it('leaves a fetch entry as it is', () => {
+    const fetch = entry({
+      initiatorType: 'fetch',
+      name: 'https://api.example.com/games?page=2',
+      method: 'GET',
+      requestBody: null,
+      responseBody: '{"games":[1,2,3]}',
+    })
+
+    expect(maskReplayNetworkRequest({ ...fetch })).toEqual(fetch)
+  })
+
+  it('keeps PostHog scrubbing request bodies, which a custom mask function switches off', () => {
+    const masked = maskReplayNetworkRequest(
+      entry({
+        initiatorType: 'fetch',
+        name: 'https://api.example.com/auth/login',
+        requestBody: '{"phone":"0911","password":"hunter2"}',
+        responseBody: '{"phone":"+251911223344"}',
+      }),
+    )
+
+    expect(masked?.name).toBe('https://api.example.com/auth/login')
+    expect(masked?.requestBody).not.toContain('hunter2')
+    expect(masked?.responseBody).not.toContain('911223344')
   })
 })
 
