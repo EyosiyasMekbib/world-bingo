@@ -32,6 +32,7 @@ export function useAppShell() {
   const search = ref('')
 
   const predictionsEnabled = computed(() => flags.value.feature_prediction_market === true)
+  const sportsbookEnabled = computed(() => flags.value.feature_sportsbook === true)
 
   const formattedBalance = computed(() =>
     formatBalance(auth.wallet?.realBalance, auth.wallet?.bonusBalance),
@@ -59,6 +60,7 @@ export function useAppShell() {
     mobileNavOpen,
     search,
     predictionsEnabled,
+    sportsbookEnabled,
     referralsEnabled,
     formattedBalance,
     playerId,

@@ -5,6 +5,7 @@ const {
   showDeposit,
   showWithdrawal,
   predictionsEnabled,
+  sportsbookEnabled,
   referralsEnabled,
   formattedBalance,
   playerId,
@@ -60,6 +61,10 @@ const menuOpen = useState('winner-rail-open', () => false)
     <NuxtLink to="/" class="wn-tab" exact-active-class="wn-tab--active">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></svg>
       <span>Home</span>
+    </NuxtLink>
+    <NuxtLink v-if="sportsbookEnabled" to="/sports" class="wn-tab" active-class="wn-tab--active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m12 8 3.8 2.8-1.45 4.45h-4.7L8.2 10.8 12 8Z" /><path d="M12 8V3.2M15.8 10.8l4.6-1.5M14.35 15.25l2.85 3.9M9.65 15.25l-2.85 3.9M8.2 10.8 3.6 9.3" /></svg>
+      <span>Sports</span>
     </NuxtLink>
     <NuxtLink to="/games" class="wn-tab" exact-active-class="wn-tab--active">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>

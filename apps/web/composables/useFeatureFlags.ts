@@ -27,6 +27,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   feature_referrals: false,
   feature_tournaments: false,
   feature_third_party_games: false,
+  feature_sportsbook: false,
 }
 
 export const useFeatureFlags = () => {
