@@ -32,8 +32,11 @@ const USER_ID = '8b1c0a3e-5f2d-4e7a-9c11-2d3f4a5b6c7d'
 const BARE_ID = '8b1c0a3e5f2d4e7a9c112d3f4a5b6c7d'
 const SESSION_URL = 'https://sports.example.com/iframe?token=abc'
 
-async function buildApp() {
-    const app = Fastify()
+async function buildApp(opts: { logLines?: any[] } = {}) {
+    const { logLines } = opts
+    const app = Fastify(
+        logLines ? { logger: { level: 'warn', stream: { write: (line: string) => { logLines.push(JSON.parse(line)) } } } } : {},
+    )
     // Stub auth: the real decorator lives in index.ts. It only has to put a user on the request.
     app.decorate('authenticate', async (req: any) => {
         req.user = { id: USER_ID }
@@ -222,6 +225,62 @@ describe('POST /sportsbook/session', () => {
 
         expect(res.statusCode).toBe(503)
         expect(startSession).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+        ['a javascript: url', 'javascript:alert(1)', 'javascript:'],
+        ['a data: url', 'data:text/html,<script>alert(1)</script>', 'data:'],
+        ['a string that is not a url', 'not a url at all', null],
+    ])('503 when IGCORE answers %s, logging only the scheme', async (_, url, scheme) => {
+        startSession.mockResolvedValue({ url })
+        const logLines: any[] = []
+        const app = await buildApp({ logLines })
+
+        const res = await session(app, { lang: 'en' })
+
+        expect(res.statusCode).toBe(503)
+        expect(res.json()).toEqual({ code: 'SPORTSBOOK_UNAVAILABLE' })
+        const dump = JSON.stringify(logLines)
+        expect(dump).not.toContain(url)
+        expect(dump).not.toContain('alert(1)')
+        expect(logLines).toEqual([expect.objectContaining({ scheme })])
+    })
+
+    it('503 for an http url while the simulator is off', async () => {
+        vi.stubEnv('IGCORE_SIMULATOR', 'false')
+        startSession.mockResolvedValue({ url: 'http://sports.example.com/iframe?token=abc' })
+        const logLines: any[] = []
+        const app = await buildApp({ logLines })
+
+        const res = await session(app, { lang: 'en' })
+
+        expect(res.statusCode).toBe(503)
+        expect(res.json()).toEqual({ code: 'SPORTSBOOK_UNAVAILABLE' })
+        expect(JSON.stringify(logLines)).not.toContain('token=abc')
+        expect(logLines).toEqual([expect.objectContaining({ scheme: 'http:' })])
+    })
+
+    it('200 for an http url while the simulator is on', async () => {
+        vi.stubEnv('IGCORE_SIMULATOR', 'true')
+        const simUrl = 'http://127.0.0.1:8080/v1/igcore-sim/book?session=abc'
+        startSession.mockResolvedValue({ url: simUrl })
+        const app = await buildApp()
+
+        const res = await session(app, { lang: 'en' })
+
+        expect(res.statusCode).toBe(200)
+        expect(res.json()).toEqual({ url: simUrl })
+    })
+
+    it('checks the scheme of the default-language retry too', async () => {
+        startSession.mockRejectedValueOnce(new IgcoreApiError('invalid params')).mockResolvedValueOnce({ url: 'javascript:alert(1)' })
+        const app = await buildApp()
+
+        const res = await session(app, { lang: 'am' })
+
+        expect(res.statusCode).toBe(503)
+        expect(res.json()).toEqual({ code: 'SPORTSBOOK_UNAVAILABLE' })
+        expect(startSession).toHaveBeenCalledTimes(2)
     })
 
     it('does not retry other IGCORE errors', async () => {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { igcoreConfig } from '../../gateways/igcore/igcore-config.js'
 import { signIgcoreBody, verifyIgcoreSignature } from '../../gateways/igcore/igcore-signature.js'
@@ -31,11 +32,18 @@ export const igcoreCallbackRoutes: FastifyPluginAsync = async (fastify) => {
         const hash = Array.isArray(header) ? header[0] : header
 
         if (!verifyIgcoreSignature(raw, hash, cfg.securityHash)) {
-            // Debug only: this prints a digest of the secret-keyed body, so it
-            // must stay off outside a short diagnosis window.
+            // Debug only. Never the full expected hash or the body: the HMAC of
+            // an attacker-chosen body, logged next to it, is a forged signature.
+            // Prefixes and a plain body digest are enough to tell a wrong secret
+            // from a re-serialised body.
             if (cfg.callbackDebug) {
                 req.log.warn(
-                    { component: 'igcore-callback', endpoint, rawBody: raw.toString('utf8'), receivedHash: hash, expectedHash: cfg.securityHash ? signIgcoreBody(raw, cfg.securityHash) : null },
+                    {
+                        component: 'igcore-callback', endpoint,
+                        expectedHashPrefix: cfg.securityHash ? signIgcoreBody(raw, cfg.securityHash).slice(0, 8) : null,
+                        receivedHashPrefix: typeof hash === 'string' ? hash.slice(0, 8) : null,
+                        bodyLength: raw.length, bodySha256: createHash('sha256').update(raw).digest('hex'),
+                    },
                     '[igcore-callback] signature mismatch',
                 )
             } else {

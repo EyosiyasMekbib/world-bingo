@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import Fastify from 'fastify'
+import { createHash } from 'node:crypto'
 
 vi.mock('../services/igcore-wallet.service.js', () => ({
     IgcoreWalletService: { dispatch: vi.fn() },
@@ -187,7 +188,9 @@ describe('IGCORE callback routes', () => {
         expect(dispatch).not.toHaveBeenCalled()
     })
 
-    it('logs the raw body and expected hash at warn only when callbackDebug is on', async () => {
+    it('with callbackDebug on, logs hash prefixes and a body digest, never the expected hash or the body', async () => {
+        // The full expected hash is the HMAC of an attacker-chosen body: logged
+        // next to that body it lets anyone who reads the logs forge a signature.
         const seen: any[] = []
         const app = Fastify({
             logger: { level: 'warn', stream: { write: (line: string) => { seen.push(JSON.parse(line)) } } },
@@ -195,15 +198,25 @@ describe('IGCORE callback routes', () => {
         const { igcoreCallbackRoutes } = await import('../routes/igcore/callback.js')
         await app.register(igcoreCallbackRoutes, { prefix: '/v1/igcore' })
         const expected = signIgcoreBody(BET, 's')
+        const received = 'f'.repeat(64)
 
-        await post(app as any, '/v1/igcore/transaction', BET, 'f'.repeat(64))
+        await post(app as any, '/v1/igcore/transaction', BET, received)
         expect(JSON.stringify(seen)).not.toContain(expected)
 
         vi.stubEnv('IGCORE_CALLBACK_DEBUG', 'true')
         seen.length = 0
-        await post(app as any, '/v1/igcore/transaction', BET, 'f'.repeat(64))
+        await post(app as any, '/v1/igcore/transaction', BET, received)
         const dump = JSON.stringify(seen)
-        expect(dump).toContain(expected)
-        expect(dump).toContain('c-1')
+        expect(dump).not.toContain(expected)
+        expect(dump).not.toContain(received)
+        expect(dump).not.toContain('c-1')
+        expect(dump).not.toContain('transaction_id')
+        const [line] = seen.filter((l) => l.msg === '[igcore-callback] signature mismatch')
+        expect(line).toMatchObject({
+            expectedHashPrefix: expected.slice(0, 8),
+            receivedHashPrefix: received.slice(0, 8),
+            bodyLength: Buffer.byteLength(BET),
+            bodySha256: createHash('sha256').update(BET).digest('hex'),
+        })
     })
 })

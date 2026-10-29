@@ -44,7 +44,6 @@ export const IGCORE_REJECT = {
     CURRENCY_NOT_SUPPORTED: 'CURRENCY_NOT_SUPPORTED',
     INSUFFICIENT_FUNDS: 'INSUFFICIENT_FUNDS',
     FREEBETS_NOT_ENABLED: 'FREEBETS_NOT_ENABLED',
-    UNKNOWN_ACTION: 'UNKNOWN_ACTION',
 } as const
 
 const PROVIDER_CODE = 'igcore'
@@ -54,6 +53,11 @@ const USER_CACHE_TTL = 3600
 const USER_CACHE_PREFIX = 'tp:user:igcore:'
 /** `rawResponse.held` on a result row whose payout a safety cap is holding. */
 const HELD = 'CAP_EXCEEDED'
+/**
+ * Starts the note of every IGCORE TP_BET ledger row. Transaction has no link
+ * to ThirdPartyTransaction, so this is what scopes a TP_BET lookup to IGCORE.
+ */
+const BET_NOTE = 'IGCORE sports bet: ticket '
 
 type Tx = Prisma.TransactionClient
 type Db = Tx | typeof prisma
@@ -291,11 +295,30 @@ function ownedByAnotherPlayer(row: ThirdPartyTransaction, userId: string): boole
 }
 
 /**
+ * True when the row stored under a bet's or result's transaction_id was
+ * written by another action, as answerRollbackDuplicate checks for
+ * rollbacks. Answering it as a replay would tell IGCORE a stake was taken or
+ * a payout landed when nothing moved. A placeholder rollback is no
+ * collision: it stands in for the original that had not arrived yet.
+ */
+function heldByAnotherAction(row: ThirdPartyTransaction, action: 'bet' | 'result'): boolean {
+    const own = action === 'bet' ? ThirdPartyTxType.BET : ThirdPartyTxType.BET_RESULT
+    if (row.type === own) return false
+    if (row.type === ThirdPartyTxType.ROLLBACK && (row.rawResponse as { placeholder?: unknown } | null)?.placeholder === true) return false
+    getLogger().warn(
+        { component: 'igcore-fraud-flag', transactionId: row.transactionId, rowId: row.id, type: row.type, endpoint: 'transaction', action },
+        `[igcore-fraud-flag] ${action} transaction_id already recorded for another action`,
+    )
+    return true
+}
+
+/**
  * A bet's stored outcome, replayed verbatim: an applied (or since rolled
  * back) stake is success, a refused one repeats its refusal.
  */
 function answerBetDuplicate(row: ThirdPartyTransaction, userId: string): IgcoreOutcome {
     if (ownedByAnotherPlayer(row, userId)) return retry('TRANSACTION_ID_OF_ANOTHER_PLAYER')
+    if (heldByAnotherAction(row, 'bet')) return retry('TRANSACTION_ID_OF_ANOTHER_ACTION')
     if (row.status === ThirdPartyTxStatus.COMPLETED || row.status === ThirdPartyTxStatus.ROLLED_BACK) return ok(row)
     const error = (row.rawResponse as { error?: unknown } | null)?.error
     return typeof error === 'string' ? reject(error) : retry('FAILED_ROW_WITHOUT_ERROR')
@@ -318,6 +341,7 @@ function isHeld(row: ThirdPartyTransaction): boolean {
  */
 function answerResultDuplicate(row: ThirdPartyTransaction, userId: string): IgcoreOutcome {
     if (ownedByAnotherPlayer(row, userId)) return retry('TRANSACTION_ID_OF_ANOTHER_PLAYER')
+    if (heldByAnotherAction(row, 'result')) return retry('TRANSACTION_ID_OF_ANOTHER_ACTION')
     if (row.status === ThirdPartyTxStatus.COMPLETED || row.status === ThirdPartyTxStatus.ROLLED_BACK) return ok(row)
     return retry(isHeld(row) ? HELD : 'FAILED_ROW')
 }
@@ -633,8 +657,10 @@ async function settleRollback(b: IgcoreCallbackBody): Promise<RollbackSettled> {
                 let realDelta = stake
                 let bonusDelta = new Decimal(0)
                 let restoreExpiry: Date | null = null
+                // Scoped to IGCORE's rows: another provider's TP_BET can share
+                // this referenceId, and its split would move bonus back as real.
                 const betTxn = await tx.transaction.findFirst({
-                    where: { userId: user.id, type: TransactionType.TP_BET, referenceId: original.transactionId },
+                    where: { userId: user.id, type: TransactionType.TP_BET, referenceId: original.transactionId, note: { startsWith: BET_NOTE } },
                     select: { bonusBalanceBefore: true, bonusBalanceAfter: true, bonusExpiresAtSpend: true },
                 })
                 if (betTxn) {
@@ -806,7 +832,7 @@ export class IgcoreWalletService {
                     data: {
                         userId: user.id, type: TransactionType.TP_BET, amount: stake,
                         status: PaymentStatus.APPROVED,
-                        note: `IGCORE sports bet: ticket ${betId ?? roundId}`,
+                        note: `${BET_NOTE}${betId ?? roundId}`,
                         referenceId: transactionId,
                         balanceBefore: totalBefore, balanceAfter: totalAfter,
                         bonusBalanceBefore: bonusBefore, bonusBalanceAfter: bonusAfter, bonusExpiresAtSpend,
@@ -912,7 +938,12 @@ export class IgcoreWalletService {
         return settled.outcome
     }
 
-    /** Routes a verified, parsed callback by endpoint and action. Exceptions propagate (the route answers 500). */
+    /**
+     * Routes a verified, parsed callback by endpoint and action. Exceptions
+     * propagate (the route answers 500). Any other pairing is a retry, never
+     * a 200 refusal: for a result or rollback a 200 carrying an error makes
+     * IGCORE drop the callback for good.
+     */
     static async dispatch(endpoint: 'transaction' | 'transaction-rollback', b: IgcoreCallbackBody): Promise<IgcoreOutcome> {
         if (endpoint === 'transaction') {
             if (b.action === 'bet') return IgcoreWalletService.processBet(b)
@@ -921,7 +952,11 @@ export class IgcoreWalletService {
         } else if (endpoint === 'transaction-rollback' && b.action === 'rollback') {
             return IgcoreWalletService.processRollback(b)
         }
-        return reject(IGCORE_REJECT.UNKNOWN_ACTION)
+        getLogger().warn(
+            { component: 'igcore-fraud-flag', endpoint, action: b?.action, transactionId: b?.transaction_id },
+            '[igcore-fraud-flag] callback action unknown or sent to the wrong endpoint; asking IGCORE to retry',
+        )
+        return retry('UNKNOWN_ACTION')
     }
 
     /** Pushes the player's current balances over the socket. Post-commit and best effort: never throws. */

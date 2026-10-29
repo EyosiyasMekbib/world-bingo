@@ -9,6 +9,16 @@ const SUPPORTED_LANGS = ['en', 'am']
 
 const UNAVAILABLE = { code: 'SPORTSBOOK_UNAVAILABLE' }
 
+/** The url's scheme (`https:`), or null when it is not a URL at all. */
+function schemeOf(url: unknown): string | null {
+    if (typeof url !== 'string') return null
+    try {
+        return new URL(url).protocol
+    } catch {
+        return null
+    }
+}
+
 /**
  * Player-facing sportsbook routes, mounted under /sportsbook (see index.ts).
  * The whole sportsbook sits behind the admin flag `feature_sportsbook`.
@@ -42,15 +52,25 @@ const sportsbookRoutes: FastifyPluginAsync = async (fastify) => {
                 typeof body.lang === 'string' && SUPPORTED_LANGS.includes(body.lang) ? body.lang : cfg.defaultLang
             const params = { userId: user.id.replace(/-/g, ''), currency: cfg.currency }
 
+            // The url becomes the iframe src as it is, so only a web page passes:
+            // https, or http while the simulator is on (it is served by this api).
+            // Anything else is unavailable, and the log names the scheme only.
+            const framed = (url: unknown) => {
+                const scheme = schemeOf(url)
+                if (scheme === 'https:' || (scheme === 'http:' && cfg.simulator)) return { url }
+                req.log.warn({ userId: user.id, scheme }, '[igcore] start-session url is not a frameable https page')
+                return reply.status(503).send(UNAVAILABLE)
+            }
+
             try {
                 try {
                     const { url } = await client.startSession({ ...params, lang })
-                    return { url }
+                    return framed(url)
                 } catch (err) {
                     // IGCORE may not offer every language; one retry in the default one.
                     if (err instanceof IgcoreApiError && err.code === 'invalid params' && lang !== cfg.defaultLang) {
                         const { url } = await client.startSession({ ...params, lang: cfg.defaultLang })
-                        return { url }
+                        return framed(url)
                     }
                     throw err
                 }
