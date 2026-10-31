@@ -5,9 +5,10 @@
  * see gateways/telegram/config.ts's WEBHOOK_PATH comment).
  */
 
+import { timingSafeEqual } from 'node:crypto'
 import { FastifyPluginAsync } from 'fastify'
 import redis from '../../lib/redis.js'
-import { webhookSecret } from '../../gateways/telegram/config.js'
+import { isEnabled, webhookSecret } from '../../gateways/telegram/config.js'
 import { supportGroupId } from '../../gateways/telegram/config.js'
 import type { TelegramUpdate } from '../../gateways/telegram/client.js'
 import { handlePlayerMessage } from '../../services/telegram/player-handlers.js'
@@ -49,9 +50,25 @@ export async function processUpdate(update: TelegramUpdate): Promise<void> {
   // check too, which is the belt to this suspenders.
 }
 
+/**
+ * The route is registered on every deployment, armed or not. A blank
+ * TELEGRAM_WEBHOOK_SECRET is the "bot disabled" state (compose hands the
+ * container '' for it), and a plain `header !== secret` let an empty header
+ * through against it: a forged update could link a victim's phone to the
+ * attacker's chat and mint a password reset. So: nothing is accepted unless
+ * the bot is enabled, which requires a non-empty secret, and the comparison
+ * is constant-time.
+ */
+function secretMatches(header: string | string[] | undefined): boolean {
+  if (!isEnabled() || typeof header !== 'string') return false
+  const expected = Buffer.from(webhookSecret())
+  const given = Buffer.from(header)
+  return expected.length > 0 && given.length === expected.length && timingSafeEqual(given, expected)
+}
+
 const telegramWebhookRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post('/', async (req, reply) => {
-    if (req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret()) {
+    if (!secretMatches(req.headers['x-telegram-bot-api-secret-token'])) {
       return reply.status(401).send()
     }
 

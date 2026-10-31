@@ -265,6 +265,19 @@ describe('password reset tokens', () => {
     expect(await mintPasswordResetToken('user-1')).toBeNull()
   })
 
+  it('mints nothing while the bot is disabled', async () => {
+    configMock.isEnabled.mockReturnValueOnce(false)
+    redisMock.incr.mockResolvedValue(1)
+    expect(await mintPasswordResetToken('user-1')).toBeNull()
+    expect(redisMock.set).not.toHaveBeenCalled()
+  })
+
+  it('refuses to consume while the bot is disabled, without burning the token', async () => {
+    configMock.isEnabled.mockReturnValueOnce(false)
+    expect(await consumePasswordResetToken('tok')).toBeNull()
+    expect(redisMock.multi).not.toHaveBeenCalled()
+  })
+
   it('consumes the token to the stored user id exactly once', async () => {
     multiChain.exec.mockResolvedValue([[null, 'user-1'], [null, 1]])
     expect(await consumePasswordResetToken('tok')).toBe('user-1')

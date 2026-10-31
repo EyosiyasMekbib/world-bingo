@@ -192,13 +192,17 @@ export async function matchPhoneToPlayer(rawPhone: string): Promise<PhoneMatchRe
  * password resets are the more sensitive action.
  */
 export async function mintPasswordResetToken(userId: string): Promise<string | null> {
+  if (!isEnabled()) return null
   if (!(await withinRate('tg:pwresetrate:', userId, PWRESET_RATE_LIMIT))) return null
   const token = newToken()
   await redis.set(`${PWRESET_TOKEN_PREFIX}${token}`, userId, 'EX', PWRESET_TOKEN_TTL_SECS)
   return token
 }
 
+/** Refuses while the bot is disabled, so switching it off mid-incident also
+ *  stops every reset link already sent. */
 export async function consumePasswordResetToken(token: string): Promise<string | null> {
+  if (!isEnabled()) return null
   return getdel(`${PWRESET_TOKEN_PREFIX}${token}`)
 }
 

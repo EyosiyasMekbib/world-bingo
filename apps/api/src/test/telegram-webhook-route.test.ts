@@ -4,6 +4,7 @@ const redisMock = vi.hoisted(() => ({ set: vi.fn() }))
 vi.mock('../lib/redis', () => ({ default: redisMock }))
 
 const configMock = vi.hoisted(() => ({
+  isEnabled: vi.fn(() => true),
   webhookSecret: vi.fn(() => 'the-real-secret'),
   supportGroupId: vi.fn(() => '-1001111111111'),
 }))
@@ -111,6 +112,33 @@ describe('POST /v1/telegram/webhook — secret header', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     redisMock.set.mockResolvedValue('OK')
+    configMock.isEnabled.mockReturnValue(true)
+    configMock.webhookSecret.mockReturnValue('the-real-secret')
+  })
+
+  // A blank TELEGRAM_WEBHOOK_SECRET is the "bot disabled" state, and compose
+  // hands the container '' for it. An empty header used to equal that '' and
+  // let a forged update through: link a victim's phone to the attacker's chat,
+  // then mint a password reset for it.
+  it('rejects an empty secret header when the secret is blank (bot disabled)', async () => {
+    configMock.isEnabled.mockReturnValue(false)
+    configMock.webhookSecret.mockReturnValue('')
+    const res = await post({ 'x-telegram-bot-api-secret-token': '' })
+    expect(res.statusCode).toBe(401)
+    await new Promise((r) => setImmediate(r))
+    expect(playerHandlerMock.handlePlayerMessage).not.toHaveBeenCalled()
+    expect(redisMock.set).not.toHaveBeenCalled()
+  })
+
+  it('rejects even the right secret while the bot is disabled', async () => {
+    configMock.isEnabled.mockReturnValue(false)
+    const res = await post({ 'x-telegram-bot-api-secret-token': 'the-real-secret' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('rejects a secret that only shares a prefix with the real one', async () => {
+    const res = await post({ 'x-telegram-bot-api-secret-token': 'the-real-secret-and-more' })
+    expect(res.statusCode).toBe(401)
   })
 
   it('rejects a request with no secret header', async () => {
