@@ -85,6 +85,14 @@ export interface TelegramChat {
   id: number
   type: 'private' | 'group' | 'supergroup' | 'channel'
   title?: string
+  /** Only on getChat's answer: true when the supergroup has Topics on. */
+  is_forum?: boolean
+}
+
+/** The subset of getChatMember's answer the staff-group check reads. */
+export interface TelegramChatMember {
+  status: 'creator' | 'administrator' | 'member' | 'restricted' | 'left' | 'kicked'
+  can_manage_topics?: boolean
 }
 
 /** The subset of Telegram's Update object this bot reads. Anything else on
@@ -234,6 +242,14 @@ export class TelegramClient {
    *  method call — the file is served from a different host path. */
   fileUrl(filePath: string): string {
     return `${API_ROOT}/file/bot${this.token}/${filePath}`
+  }
+
+  async getChat(chatId: string | number): Promise<TelegramChat> {
+    return this.call('getChat', { chat_id: chatId })
+  }
+
+  async getChatMember(chatId: string | number, userId: number): Promise<TelegramChatMember> {
+    return this.call('getChatMember', { chat_id: chatId, user_id: userId })
   }
 
   async createForumTopic(chatId: string | number, name: string): Promise<{ message_thread_id: number }> {
