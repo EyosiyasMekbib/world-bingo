@@ -16,6 +16,7 @@ import { SupportService } from '../support/support.service.js'
 import { afterSupportMessage, afterConversationResolved, afterConversationReopened } from '../support/fanout.js'
 import { writeSupportAudit } from '../support/support-audit.js'
 import { SupportMessageSource } from '@world-bingo/shared-types'
+import { escapeHtml } from './notify.js'
 
 type GroupMessage = NonNullable<TelegramUpdate['message']>
 
@@ -49,9 +50,11 @@ export async function handleStaffGroupMessage(message: GroupMessage): Promise<vo
 
   const staffUser = await prisma.user.findUnique({
     where: { telegramChatId: fromId },
-    select: { id: true, role: true, username: true },
+    select: { id: true, role: true, username: true, accountStatus: true },
   })
-  const isStaff = !!staffUser && STAFF_ROLES.has(staffUser.role)
+  // A suspended clerk who was never removed from the group must not keep
+  // answering players from it.
+  const isStaff = !!staffUser && STAFF_ROLES.has(staffUser.role) && staffUser.accountStatus !== 'SUSPENDED'
   if (isStaff) await touchShift(staffUser.id)
 
   // ── Commands that work anywhere in the group, no topic needed ─────────
@@ -93,7 +96,7 @@ export async function handleStaffGroupMessage(message: GroupMessage): Promise<vo
     try {
       await SupportService.claim(conversation.id, staff.id)
       await writeSupportAudit(staff.id, 'support.claim', conversation.id, { channel: 'telegram' }).catch(() => {})
-      return reply(chatId, `Assigned to ${staff.username ?? 'you'}.`, topicId)
+      return reply(chatId, `Assigned to ${staff.username ? escapeHtml(staff.username) : 'you'}.`, topicId)
     } catch {
       return reply(chatId, 'Could not assign — it may already be assigned or resolved.', topicId)
     }
@@ -167,6 +170,6 @@ async function sendQueueSummary(chatId: string, topicId?: number): Promise<void>
   }
   const lines = items
     .slice(0, QUEUE_PREVIEW_LIMIT)
-    .map((item) => `• ${item.username} — ${item.lastMessagePreview.slice(0, 60)}`)
+    .map((item) => `• ${escapeHtml(item.username ?? '')} — ${escapeHtml(item.lastMessagePreview.slice(0, 60))}`)
   await reply(chatId, `${unassignedCount} unassigned.\n${lines.join('\n')}`, topicId)
 }

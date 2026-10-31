@@ -458,6 +458,17 @@ export class AuthService {
             prisma.refreshToken.create({
                 data: { userId, tokenHash: hashToken(refreshToken), expiresAt, familyId: crypto.randomUUID() },
             }),
+            // Same trail adminResetPassword leaves: this hands out account
+            // access too, and must not happen without one.
+            prisma.auditLog.create({
+                data: {
+                    action: 'user.password_reset_self',
+                    actorId: userId,
+                    actorName: target.username,
+                    target: `user:${userId}`,
+                    detail: { via: 'telegram' },
+                },
+            }),
         ])
 
         void captureEvent(userId, 'password_reset_via_telegram', {})
@@ -514,9 +525,19 @@ export class AuthService {
         const revokedSessions = await prisma.$transaction(async (tx) => {
             // Re-asserts PLAYER in the write itself, so a role change landing
             // between the check above and this update cannot slip through.
+            // A support reset is how a taken-over account is recovered, so the
+            // linked Telegram chat goes too: it may be the one that took it,
+            // and would otherwise keep /status and every push. The player
+            // re-links from the profile page.
             const { count: updated } = await tx.user.updateMany({
                 where: { id: userId, role: 'PLAYER' },
-                data: { passwordHash, mustChangePassword: true, passwordResetAt: new Date() },
+                data: {
+                    passwordHash,
+                    mustChangePassword: true,
+                    passwordResetAt: new Date(),
+                    telegramChatId: null,
+                    telegramLinkedAt: null,
+                },
             })
             if (updated === 0) {
                 throw new PasswordError(403, 'reset_not_allowed', 'Only player accounts can have their password reset')

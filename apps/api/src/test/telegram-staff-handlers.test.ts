@@ -189,4 +189,22 @@ describe('handleStaffGroupMessage', () => {
     expect(supportServiceMock.resolve).toHaveBeenCalledWith('conv-1', 'clerk-1', false)
     expect(fanoutMock.afterConversationResolved).toHaveBeenCalledWith('conv-1')
   })
+
+  it('/queue escapes player-controlled usernames and previews', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'clerk-1', role: 'CLERK', username: 'sara' })
+    supportServiceMock.unassignedCount.mockResolvedValue(1)
+    supportServiceMock.listQueue.mockResolvedValue([
+      { username: '<b>x</b>', lastMessagePreview: '<a href="https://evil">refund</a>' },
+    ])
+    await handleStaffGroupMessage(groupMsg({ text: '/queue' }))
+    const text = clientMock.sendMessagePlain.mock.calls[0][1] as string
+    expect(text).not.toContain('<a ')
+    expect(text).toContain('&lt;b&gt;x&lt;/b&gt;')
+  })
+
+  it('treats a SUSPENDED clerk who is still in the group as not staff', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'clerk-1', role: 'CLERK', username: 'sara', accountStatus: 'SUSPENDED' })
+    await handleStaffGroupMessage(groupMsg({ text: '/onshift' }))
+    expect(shiftMock.goOnShift).not.toHaveBeenCalled()
+  })
 })

@@ -28,6 +28,8 @@ import { openAppeal, AlreadyActiveError } from '../support/appeal.js'
 import { getIo } from '../../lib/socket.js'
 import { uploadFile, validateFile } from '../../lib/storage.js'
 import { SupportMessageSource, STATUS_CATEGORY_LABELS } from '@world-bingo/shared-types'
+import { escapeHtml } from './notify.js'
+import { isEthiopianInternational } from './phone.js'
 
 type PlayerMessage = NonNullable<TelegramUpdate['message']>
 
@@ -104,13 +106,22 @@ export async function handlePlayerMessage(message: PlayerMessage): Promise<void>
     return
   }
 
-  // From here on, every branch is for a LINKED chat — a player using every
-  // command below, or a clerk/admin who linked from the admin app (see
-  // handleStart), for whom only /help and free-text (bridged into the
-  // support topic like any staff reply) make sense. /password explicitly
-  // refuses a non-PLAYER role below; matchPhoneToPlayer's own role filter
-  // means handleSharedContact can never resolve a staff account in the
-  // first place, so no comparable guard is needed there.
+  // From here on, every branch is for a LINKED chat. A clerk/admin links
+  // from the admin app (see handleStart) only so the staff group knows who
+  // they are; staff answer from the group or the admin inbox, never from a
+  // private chat. Every player command and free text is refused for them:
+  // free text would otherwise open a support thread with a clerk as the
+  // PLAYER, and §10 says /password and /logout refuse for staff.
+  // matchPhoneToPlayer's own role filter means a shared contact can never
+  // resolve a staff account either.
+  if (user.role !== 'PLAYER') {
+    await client().sendMessagePlain(
+      chatId,
+      'Staff accounts answer support from the staff group or the admin inbox. This chat is only for linking.',
+    )
+    return
+  }
+
   if (message.contact) {
     // Re-sharing while already linked re-verifies the same account; a
     // mismatch (someone else's forwarded contact) is still rejected inside
@@ -124,14 +135,17 @@ export async function handlePlayerMessage(message: PlayerMessage): Promise<void>
       await sendStatus(chatId, user.id)
       return
     case '/password':
-      if (user.role !== 'PLAYER') {
-        // Same reasoning AuthService.adminResetPassword documents: handing
-        // a staff account a password-reset link with no current-password
-        // check hands it to whoever holds this Telegram chat.
-        await client().sendMessagePlain(chatId, 'Staff accounts are reset by another admin, not through this bot.')
-        return
-      }
-      await sendPasswordLink(chatId, user.id)
+      // Being linked is not proof enough: a link token only shows that
+      // someone held the player's session for a moment (a stolen access
+      // token, "send me your Telegram link"). The reset link goes out only
+      // after the same shared-contact check the logged-out forgot flow uses,
+      // so the Telegram account must carry the account's own phone number.
+      // handleSharedContact sends the link once the contact matches.
+      await client().sendMessage({
+        chatId,
+        text: "To confirm it's you, tap the button below to share your phone number. I'll send the reset link after that.",
+        requestContact: true,
+      })
       return
     case '/logout':
       await client().sendMessagePlain(chatId, 'This signs you out on every device. Send "/logout confirm" to proceed.')
@@ -163,7 +177,7 @@ async function handleStart(chatId: string, text: string): Promise<void> {
     await client().sendMessagePlain(
       chatId,
       user
-        ? `Welcome back${user.firstName ? `, ${user.firstName}` : ''}. Send /help to see what I can do.`
+        ? `Welcome back${user.firstName ? `, ${escapeHtml(user.firstName)}` : ''}. Send /help to see what I can do.`
         : 'Welcome to World Bingo Support. Tap the button below to share your phone number and I can link your account.',
     )
     if (!user) {
@@ -209,17 +223,21 @@ async function handleStart(chatId: string, text: string): Promise<void> {
   )
 
   if (tokenPayload.conversationId) {
-    await postRecentHistory(chatId, tokenPayload.conversationId)
+    await postRecentHistory(chatId, tokenPayload.userId, tokenPayload.conversationId)
   }
 }
 
-async function postRecentHistory(chatId: string, conversationId: string): Promise<void> {
+/** The conversation id rode in on the link token from the client's request
+ *  body, so ownership is checked here, against the player the token was
+ *  minted for, before any of it is posted into this chat. */
+async function postRecentHistory(chatId: string, userId: string, conversationId: string): Promise<void> {
   try {
     const conversation = await SupportService.getById(conversationId)
+    if ((conversation as { userId?: string } | null)?.userId !== userId) return
     const { messages } = await SupportService.withHistory(conversation as never)
     const recent = messages.slice(-5)
     if (recent.length === 0) return
-    const lines = recent.map((m) => `${m.senderRole}: ${m.body}`).join('\n')
+    const lines = recent.map((m) => `${m.senderRole}: ${escapeHtml(m.body)}`).join('\n')
     await client().sendMessagePlain(chatId, `Picking up where you left off:\n\n${lines}`)
   } catch (err) {
     console.error('[TelegramPlayer] posting recent history failed:', (err as Error)?.message)
@@ -232,6 +250,10 @@ async function handleSharedContact(
 ): Promise<void> {
   if (!contact.user_id || String(contact.user_id) !== chatId) {
     await client().sendMessagePlain(chatId, 'Please share your own phone number using the button.')
+    return
+  }
+  if (!isEthiopianInternational(contact.phone_number)) {
+    await client().sendMessagePlain(chatId, 'Only Ethiopian (+251) numbers can be linked to an account.')
     return
   }
 
@@ -336,6 +358,16 @@ async function handleSupportMessage(chatId: string, userId: string, message: Pla
   let attachmentUrl: string | undefined
   let attachmentMime: string | undefined
 
+  if (!body && !message.photo?.length && !message.document) return // e.g. a sticker — nothing to forward
+
+  // Before the photo download and upload below, so a flood of photos is
+  // refused without filling storage.
+  const allowed = await SupportRateLimit.checkMessage(userId)
+  if (!allowed) {
+    await client().sendMessagePlain(chatId, 'Too many messages. Wait a moment.')
+    return
+  }
+
   if (message.photo?.length) {
     try {
       // Largest size is last — Telegram lists photo sizes smallest-first.
@@ -363,13 +395,7 @@ async function handleSupportMessage(chatId: string, userId: string, message: Pla
     return
   }
 
-  if (!body && !attachmentUrl) return // e.g. a sticker or an unsupported update — nothing to forward
-
-  const allowed = await SupportRateLimit.checkMessage(userId)
-  if (!allowed) {
-    await client().sendMessagePlain(chatId, 'Too many messages. Wait a moment.')
-    return
-  }
+  if (!body && !attachmentUrl) return
 
   const conversation = await SupportService.ensureConversationFor(userId)
   const result = await SupportService.addMessage({
@@ -389,8 +415,8 @@ async function handleSupportMessage(chatId: string, userId: string, message: Pla
     if (contact.phone || contact.telegram) {
       const parts = [
         'Nobody is online right now.',
-        contact.phone ? `Call ${contact.phone}.` : null,
-        contact.hours || null,
+        contact.phone ? `Call ${escapeHtml(contact.phone)}.` : null,
+        contact.hours ? escapeHtml(contact.hours) : null,
       ].filter(Boolean)
       await client().sendMessagePlain(chatId, parts.join(' '))
     }

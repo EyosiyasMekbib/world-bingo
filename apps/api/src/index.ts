@@ -221,6 +221,9 @@ await server.register(rateLimit, {
         if (req.url.startsWith('/v1/aggregator/')) return true
         if (req.url.startsWith('/v1/palace/')) return true
         if (req.url.startsWith('/v1/atlasv/')) return true
+        // Every player's Telegram update arrives from a few Telegram IPs, so a
+        // per-IP limit would throttle a busy bot. The secret header is the gate.
+        if (req.url.startsWith('/v1/telegram/')) return true
         // `req.ip` (trusted-hop resolved), never the raw header — otherwise a
         // caller could name a whitelisted address and skip the limiter outright.
         const ip = req.ip

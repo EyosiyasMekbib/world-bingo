@@ -6,6 +6,7 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
     update: vi.fn(),
   },
+  auditLog: { create: vi.fn(() => Promise.resolve({})) },
 }))
 vi.mock('../lib/prisma', () => ({ default: prismaMock }))
 
@@ -179,6 +180,34 @@ describe('linkChatToUser — conflict matrix', () => {
     const result = await linkChatToUser('user-1', 'new-chat')
 
     expect(result).toEqual({ ok: true, relinked: true, previousChatId: 'old-chat' })
+  })
+
+  // §7.2: a link is what pushes and /status ride on, so who linked and
+  // whether it replaced another chat is on the record.
+  it('writes an audit row for a re-link, naming that it replaced a chat', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ telegramChatId: 'old-chat' })
+    prismaMock.user.update.mockResolvedValue({})
+
+    await linkChatToUser('user-1', 'new-chat')
+
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
+      data: { action: 'user.telegram_linked', actorId: 'user-1', target: 'user:user-1', detail: { relinked: true } },
+    })
+  })
+
+  it('a failed audit write does not undo or fail the link', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ telegramChatId: null })
+    prismaMock.user.update.mockResolvedValue({})
+    prismaMock.auditLog.create.mockRejectedValueOnce(new Error('audit down'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await linkChatToUser('user-1', 'chat-1')).toEqual({ ok: true, relinked: false, previousChatId: null })
+  })
+
+  it('writes no audit row for a refused link', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: 'someone-else' })
+    await linkChatToUser('user-1', 'chat-1')
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled()
   })
 
   it('translates a DB-level unique violation (lost race) into CONFLICT rather than throwing', async () => {

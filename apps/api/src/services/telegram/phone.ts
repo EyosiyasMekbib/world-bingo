@@ -44,6 +44,17 @@ export function normalizeEthiopianPhone(raw: string | null | undefined): Canonic
 }
 
 /**
+ * True when a Telegram contact number carries the Ethiopian country code.
+ * Telegram always sends `contact.phone_number` in international form, so a
+ * bare nine digits there is a short foreign number, not a local one, and
+ * normalizeEthiopianPhone's local-form leniency must not apply to it.
+ */
+export function isEthiopianInternational(raw: string | null | undefined): boolean {
+  const digits = (raw ?? '').replace(/[^\d]/g, '')
+  return digits.length === 12 && digits.startsWith('251') && normalizeEthiopianPhone(digits) !== null
+}
+
+/**
  * Every raw form a player could plausibly have typed into the registration
  * field for this canonical number — what AuthService.register stores
  * verbatim, unnormalised. Used to build a `phone IN (...)` match.

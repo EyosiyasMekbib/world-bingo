@@ -183,13 +183,43 @@ describe('handlePlayerMessage — linked player commands', () => {
     expect(linkServiceMock.setNotifyEnabled).toHaveBeenCalledWith('user-1', false)
   })
 
-  it('/password mints and sends a reset link for a linked PLAYER', async () => {
-    linkServiceMock.mintPasswordResetToken.mockResolvedValue('tok456')
+  // A link token proves only that someone held the player's session for a
+  // moment (a stolen access token, "send me your Telegram link"). /password
+  // asks for the same shared-contact proof as the logged-out forgot flow, so
+  // a linked chat alone can never turn into a password reset.
+  it('/password asks for the shared-contact proof and mints nothing yet', async () => {
     await handlePlayerMessage(privateMsg({ text: '/password' }))
+    expect(linkServiceMock.mintPasswordResetToken).not.toHaveBeenCalled()
+    expect(clientMock.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: '555', requestContact: true }),
+    )
+  })
+
+  it('/password then the player\'s own contact sends the reset link', async () => {
+    linkServiceMock.matchPhoneToPlayer.mockResolvedValue({ kind: 'MATCH', userId: 'user-1' })
+    linkServiceMock.linkChatToUser.mockResolvedValue({ ok: true, relinked: false, previousChatId: null })
+    linkServiceMock.mintPasswordResetToken.mockResolvedValue('tok456')
+    await handlePlayerMessage(privateMsg({ contact: { phone_number: '251912345678', user_id: 555 } }))
     expect(linkServiceMock.mintPasswordResetToken).toHaveBeenCalledWith('user-1')
     expect(clientMock.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: '555', buttons: [{ text: 'Set new password', url: 'https://example.com/reset' }] }),
     )
+  })
+
+  it('does not download a photo once the player is over the message limit', async () => {
+    rateLimitMock.SupportRateLimit.checkMessage.mockResolvedValueOnce(false)
+    await handlePlayerMessage(privateMsg({ photo: [{ file_id: 'f1', width: 1, height: 1 }] }))
+    expect(clientMock.getFile).not.toHaveBeenCalled()
+    expect(storageMock.uploadFile).not.toHaveBeenCalled()
+  })
+
+  it('escapes HTML in the contact-fallback line built from admin settings', async () => {
+    supportServiceMock.SupportService.ensureConversationFor.mockResolvedValue({ id: 'conv-1' })
+    supportServiceMock.SupportService.addMessage.mockResolvedValue({ message: { id: 'm1' }, reopened: false, ownerId: 'user-1' })
+    presenceMock.anyAgentOnline.mockResolvedValueOnce(false)
+    supportContactMock.SupportContact.get.mockResolvedValueOnce({ phone: '0911', telegram: '', hours: 'Mon<Fri & weekends' })
+    await handlePlayerMessage(privateMsg({ text: 'hello' }))
+    expect(clientMock.sendMessagePlain).toHaveBeenCalledWith('555', expect.stringContaining('Mon&lt;Fri &amp; weekends'))
   })
 
   it('/appeal on an ACTIVE account replies that there is nothing to appeal, and writes nothing', async () => {
@@ -247,8 +277,76 @@ describe('handlePlayerMessage — a linked STAFF chat', () => {
     expect(clientMock.sendMessagePlain).toHaveBeenCalledWith('555', expect.stringContaining('Staff accounts'))
   })
 
-  it('/logout still works for staff — there is no equivalent risk to gate it on', async () => {
+  // §10, phase 3: "/password and /logout work for linked players and refuse
+  // for staff". Staff answer from the group or the admin inbox; a private
+  // chat with the bot is for linking only.
+  it('/logout refuses for staff and revokes nothing', async () => {
     await handlePlayerMessage(privateMsg({ text: '/logout confirm' }))
-    expect(authServiceMock.AuthService.revokeAllSessions).toHaveBeenCalledWith('clerk-1')
+    expect(authServiceMock.AuthService.revokeAllSessions).not.toHaveBeenCalled()
+    expect(clientMock.sendMessagePlain).toHaveBeenCalledWith('555', expect.stringContaining('Staff'))
+  })
+
+  it('free text from a linked clerk never opens a support thread as a PLAYER', async () => {
+    rateLimitMock.SupportRateLimit.checkMessage.mockResolvedValue(true)
+    supportServiceMock.SupportService.ensureConversationFor.mockResolvedValue({ id: 'conv-1' })
+    supportServiceMock.SupportService.addMessage.mockResolvedValue({ message: { id: 'm1' }, reopened: false, ownerId: 'clerk-1' })
+    await handlePlayerMessage(privateMsg({ text: 'testing the bot' }))
+    expect(supportServiceMock.SupportService.ensureConversationFor).not.toHaveBeenCalled()
+    expect(supportServiceMock.SupportService.addMessage).not.toHaveBeenCalled()
+  })
+
+  it('/status shows a clerk nothing from their wallet', async () => {
+    await handlePlayerMessage(privateMsg({ text: '/status' }))
+    expect(prismaMock.wallet.findUnique).not.toHaveBeenCalled()
+  })
+})
+
+describe('handlePlayerMessage — shared contact number shape', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prismaMock.user.findUnique.mockResolvedValue(null)
+    redisMock.incr.mockResolvedValue(1)
+  })
+
+  // Telegram's contact.phone_number always carries the country code. A bare
+  // nine digits is a foreign number that happens to be short, and must not
+  // be read as an Ethiopian subscriber number.
+  it('refuses a contact number without the 251 country code', async () => {
+    await handlePlayerMessage(privateMsg({ contact: { phone_number: '912345678', user_id: 555 } }))
+    expect(linkServiceMock.matchPhoneToPlayer).not.toHaveBeenCalled()
+  })
+
+  it('accepts the +251 form Telegram sometimes sends', async () => {
+    linkServiceMock.matchPhoneToPlayer.mockResolvedValue({ kind: 'NO_MATCH' })
+    await handlePlayerMessage(privateMsg({ contact: { phone_number: '+251912345678', user_id: 555 } }))
+    expect(linkServiceMock.matchPhoneToPlayer).toHaveBeenCalledWith('+251912345678')
+  })
+})
+
+describe('handlePlayerMessage — /start with a conversation to resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    linkServiceMock.linkChatToUser.mockResolvedValue({ ok: true, relinked: false, previousChatId: null })
+  })
+
+  it('posts no history from a conversation the linking player does not own', async () => {
+    linkServiceMock.consumeLinkToken.mockResolvedValue({ kind: 'player', userId: 'user-1', conversationId: 'conv-x' })
+    supportServiceMock.SupportService.getById.mockResolvedValue({ id: 'conv-x', userId: 'someone-else' })
+    supportServiceMock.SupportService.withHistory.mockResolvedValue({ messages: [{ senderRole: 'PLAYER', body: 'secret' }] })
+    await handlePlayerMessage(privateMsg({ text: '/start tok' }))
+    expect(clientMock.sendMessagePlain).not.toHaveBeenCalledWith('555', expect.stringContaining('secret'))
+  })
+
+  it('escapes message bodies in the resumed history', async () => {
+    linkServiceMock.consumeLinkToken.mockResolvedValue({ kind: 'player', userId: 'user-1', conversationId: 'conv-1' })
+    supportServiceMock.SupportService.getById.mockResolvedValue({ id: 'conv-1', userId: 'user-1' })
+    supportServiceMock.SupportService.withHistory.mockResolvedValue({
+      messages: [{ senderRole: 'PLAYER', body: '<a href="https://evil">tap</a> & go' }],
+    })
+    await handlePlayerMessage(privateMsg({ text: '/start tok' }))
+    expect(clientMock.sendMessagePlain).toHaveBeenCalledWith(
+      '555',
+      expect.stringContaining('&lt;a href="https://evil"&gt;tap&lt;/a&gt; &amp; go'),
+    )
   })
 })

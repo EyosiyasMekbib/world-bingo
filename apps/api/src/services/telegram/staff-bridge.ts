@@ -62,7 +62,7 @@ async function buildTopicHeader(userId: string): Promise<string> {
 
 function messageLine(message: MessageLike): string {
   const label = SENDER_LABEL[message.senderRole] ?? message.senderRole
-  const attachment = message.attachmentUrl ? `\n📎 ${message.attachmentUrl}` : ''
+  const attachment = message.attachmentUrl ? `\n📎 ${escapeHtml(message.attachmentUrl)}` : ''
   return `${label}: ${escapeHtml(message.body)}${attachment}`
 }
 

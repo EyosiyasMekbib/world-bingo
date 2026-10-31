@@ -145,6 +145,14 @@ export async function linkChatToUser(userId: string, chatId: string): Promise<Li
     throw err
   }
 
+  // §7.2. Best-effort, like the CRM audit helper: the link itself grants no
+  // account access (a password reset still needs the shared-contact proof),
+  // so a failed write is logged rather than undoing it. The chat id stays
+  // out of the row.
+  await prisma.auditLog
+    .create({ data: { action: 'user.telegram_linked', actorId: userId, target: `user:${userId}`, detail: { relinked } } })
+    .catch((err: unknown) => console.error('[TelegramLink] audit write failed:', (err as Error)?.message))
+
   return { ok: true, relinked, previousChatId: relinked ? (before!.telegramChatId as string) : null }
 }
 
