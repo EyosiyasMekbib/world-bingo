@@ -84,6 +84,10 @@ const worker = new Worker<TelegramSendJobData>(
       enableReadyCheck: false,
     } as any,
     concurrency: 10,
+    // Telegram allows about 30 messages a second across all chats. A
+    // tournament start notifies every entrant at once; the limiter delays
+    // that burst instead of letting it 429 through the three retries.
+    limiter: { max: 25, duration: 1000 },
   },
 )
 
