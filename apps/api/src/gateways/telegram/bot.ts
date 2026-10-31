@@ -31,8 +31,10 @@ async function registerWebhook(): Promise<number | null> {
   try {
     const client = telegramClient()
     const me = await client.getMe()
-    setBotUsername(me.username)
     await client.setWebhook(url, webhookSecret())
+    // Only now: the username is what deep links and GET /settings/support
+    // advertise, and a bot whose webhook never registered answers nobody.
+    setBotUsername(me.username)
     console.log(`[Telegram] bot @${me.username} webhook registered at ${WEBHOOK_PATH}`)
     return me.id
   } catch (err) {

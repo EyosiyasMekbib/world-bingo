@@ -89,7 +89,10 @@
     </div>
 
     <!-- ── Telegram support bot ──────────────────────────────────────── -->
-    <div class="card">
+    <!-- Hidden until the API reports the bot armed and running: before that,
+         Connect could only fail. A player already linked keeps the card so
+         they can still disconnect. -->
+    <div v-if="supportBot || auth.user?.telegramLinked" class="card">
       <h3 class="card-heading">
         <Icon name="heroicons:paper-airplane" class="card-icon" />
         Support &amp; Notifications
@@ -168,7 +171,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
-import type { UserStatsDto, AccountStatusInfo } from '@world-bingo/shared-types'
+import type { UserStatsDto, AccountStatusInfo, PublicSupportContact } from '@world-bingo/shared-types'
 import { STATUS_CATEGORY_LABELS } from '@world-bingo/shared-types'
 
 const auth = useAuthStore()
@@ -260,8 +263,20 @@ function txAmountClass(type: string): string {
 }
 
 // ── Telegram support bot ─────────────────────────────────────────────────
+const config = useRuntimeConfig()
 const telegramBusy = ref(false)
 const telegramError = ref('')
+/** The bot's @username, '' unless the API has it armed and running. */
+const supportBot = ref('')
+
+async function fetchSupportBot() {
+  try {
+    const contact = await $fetch<PublicSupportContact>(`${config.public.apiBase}/settings/support`, { timeout: 8000 })
+    supportBot.value = contact.bot ?? ''
+  } catch {
+    // The card stays hidden; nothing else on the page depends on it.
+  }
+}
 
 async function connectTelegram() {
   telegramBusy.value = true
@@ -348,6 +363,7 @@ onMounted(() => {
   fetchTransactions()
   fetchStats()
   fetchAccountStatus()
+  fetchSupportBot()
 })
 </script>
 

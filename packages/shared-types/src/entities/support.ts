@@ -61,3 +61,12 @@ export interface SupportContactInfo {
     telegram: string
     hours: string
 }
+
+/** GET /settings/support, the public read of SupportContactInfo. */
+export interface PublicSupportContact extends SupportContactInfo {
+    /** The support bot's @username (no "@") while it is armed and its
+     *  webhook is registered; '' otherwise. The web keys every link into
+     *  the bot on this, never on NUXT_PUBLIC_TELEGRAM_BOT_NAME, which the
+     *  login widget sets whether or not the bot is armed. */
+    bot: string
+}

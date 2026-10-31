@@ -199,7 +199,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~/store/auth'
-import type { SupportContactInfo, TelegramAuthDto } from '@world-bingo/shared-types'
+import type { PublicSupportContact, TelegramAuthDto } from '@world-bingo/shared-types'
 import { validateLoginForm, applyAutofill, type LoginFormError } from '~/utils/auth-form'
 import { describeFailure } from '~/utils/http-failure'
 
@@ -243,7 +243,7 @@ const showWelcomeBack = computed(() => !!auth.user && !auth.isAuthenticated)
 // through the same allowlisted href builders — the values are typed by staff
 // and never trusted straight into an href.
 const showForgot = ref(false)
-const supportContact = ref<SupportContactInfo | null>(null)
+const supportContact = ref<PublicSupportContact | null>(null)
 const supportPhoneHref = computed(() => (supportContact.value?.phone ? telHref(supportContact.value.phone) : null))
 const supportTelegramHref = computed(() =>
   supportContact.value?.telegram ? telegramHref(supportContact.value.telegram) : null,
@@ -254,8 +254,11 @@ const hasSupportChannel = computed(() => hasUsableContactChannel(supportContact.
 // `start=forgot` is a fixed, public payload (see
 // services/telegram/player-handlers.ts's handleStart) — the bot asks the
 // player to share their phone number from there, not a per-visit token.
+// Keyed on the API's `bot`, not NUXT_PUBLIC_TELEGRAM_BOT_NAME: that one is set
+// for the login widget whether or not the support bot is armed, and a link to
+// a bot that never answers is worse than no link.
 const telegramBotHref = computed(() =>
-  config.public.telegramBotName ? `https://t.me/${config.public.telegramBotName}?start=forgot` : null,
+  supportContact.value?.bot ? `https://t.me/${supportContact.value.bot}?start=forgot` : null,
 )
 
 async function toggleForgot() {
@@ -264,7 +267,7 @@ async function toggleForgot() {
   track('forgot_password_opened', {})
   if (hasUsableContactChannel(supportContact.value)) return
   try {
-    supportContact.value = await $fetch<SupportContactInfo>(`${config.public.apiBase}/settings/support`, {
+    supportContact.value = await $fetch<PublicSupportContact>(`${config.public.apiBase}/settings/support`, {
       timeout: 8000,
     })
   } catch {
