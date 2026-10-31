@@ -7,8 +7,57 @@
 > anywhere** — every action is a text command or a URL button (§4's original
 > intent, made explicit in `gateways/telegram/client.ts`'s `SendMessageInput`).
 > That also means `/logout` confirms via `/logout confirm` as literal text,
-> not an inline "yes" button. Everything else here matches the code. Phase 4
-> (AI first line) remains unbuilt, per §10 below.
+> not an inline "yes" button. Phase 4 (AI first line) remains unbuilt, per §10
+> below.
+>
+> **Amendments, 2026-10-31** (finishing pass on `feat/telegram-support-bot`,
+> after merging `main`):
+> - **Compose wiring.** The compose files list the api's environment explicitly
+>   and carried only `TELEGRAM_BOT_TOKEN`, so the bot could not be enabled on
+>   any deployment. All §8 variables are now passed through with `${VAR:-}`.
+> - **Staff-group check (§8, §9).** Built: after the webhook registers, boot
+>   logs the group title or names what is wrong (not a supergroup, Topics off,
+>   bot not an admin, no Manage Topics right, unreachable), and repeats hourly.
+> - **Outbound pacing (§5.4, §7.4).** The worker has a BullMQ limiter of 25
+>   sends a second. It does not read Telegram's `retry_after`: a 429 takes the
+>   queue's default backoff (three attempts, exponential from 1s). Jobs carry
+>   the rendered text, not a `notificationId`.
+> - **Admin broadcasts are not pushed.** `NotificationService.broadcast` (added
+>   on `main` after this spec) writes rows with `createMany` and never passes
+>   through `create`, so a broadcast reaches the in-app bell only.
+> - **Migration** re-dated to `20261031120000_add_telegram_support` so it sorts
+>   after the migrations `main` had already applied in production.
+>
+> **Security review amendments, 2026-10-31.** These change behaviour this doc
+> describes elsewhere; where they disagree, this block is right.
+> - **Webhook refuses everything while the bot is disabled.** A blank secret
+>   used to match an empty `X-Telegram-Bot-Api-Secret-Token` header, so a
+>   forged update could link any phone to an attacker's chat and have the real
+>   bot (the login widget's token) send it a reset link. The route now needs
+>   `isEnabled()` and a constant-time match; reset tokens are neither minted nor
+>   consumed while disabled.
+> - **`/password` needs the shared contact (§5.5).** A linked chat alone no
+>   longer gets a reset link: `/password` asks for the contact, and the link
+>   goes out only when it matches the account's phone, exactly as in §5.2.
+> - **Support resets unlink Telegram.** `adminResetPassword` clears
+>   `telegramChatId`; the player re-links from the profile page.
+> - **Audit (§7.2).** Self-serve resets write `user.password_reset_self` inside
+>   the reset transaction. Links and re-links write `user.telegram_linked` with
+>   `{ relinked }`, best effort, without the chat id.
+> - **Staff in a private chat** get no player commands and no free text: the
+>   bot says to use the group or the admin inbox. `/logout` refuses for staff
+>   (§10). A SUSPENDED clerk still in the group is not treated as staff.
+> - **Shared contacts** must carry the `251` country code.
+> - **Webhook rate limit (§7.4).** `/v1/telegram/` is exempt from the per-IP
+>   global limit, since every update arrives from a few Telegram IPs.
+> - **PostHog** redacts `token` query parameters from every event (`before_send`).
+> - **The web links to the bot only when it is running.** `GET /settings/support`
+>   carries `bot`: the `@username` from `getMe`, or `''` unless the bot is armed
+>   and registered. The login page's forgot-password link and the profile
+>   page's Telegram card key on it (the card also shows for a player already
+>   linked, so they can disconnect). They used `NUXT_PUBLIC_TELEGRAM_BOT_NAME`,
+>   which the login widget sets on every brand, so merging before arming would
+>   have sent players to a bot that never answers.
 >
 > **Scope:** a per-brand Telegram bot that (1) carries support conversations for
 > players and staff and (2) delivers the notifications the platform already
@@ -409,7 +458,7 @@ not new detection.
 | Unlinked chats | `tg:guest:<id>`, five messages per minute, then silence for the minute |
 | Password reset links | three per user per hour |
 | Link tokens | ten per user per hour |
-| Outbound | the queue paces to Telegram's limits and honours `retry_after` |
+| Outbound | the worker's limiter, 25 sends a second; a 429 takes the queue's default backoff (`retry_after` is not read) |
 
 ### 7.5 Account status
 
@@ -427,13 +476,24 @@ shows the status line. Nothing else changes, because the bot performs no restric
 | `TELEGRAM_SUPPORT_GROUP_ID` | api | Staff group chat id; the staff bridge is enabled only when set |
 | `TELEGRAM_SHIFT_HOURS` | api | Default 8 |
 | `TELEGRAM_OPS_TOPIC_ID` | api | Optional; ops alerts are off without it |
+| `ADMIN_BASE_URL` | api | Optional; links the staff topic header to the admin inbox |
 | `NUXT_PUBLIC_TELEGRAM_BOT_NAME` | web | Exists. Used to build `t.me` links |
+
+Every api variable above is passed through by all six compose files with a `${VAR:-}`
+default; `config.ts` treats a blank value as unset.
+
+**One deployment per bot token.** Each deployment that has the secret calls `setWebhook`
+on boot, and Telegram keeps only the last URL. Arming staging and production with the same
+token makes them steal the bot from each other on every deploy. Give staging its own bot,
+or leave its secret blank. Before arming a token that already exists, run `getWebhookInfo`
+on it: if anything else consumes its updates, arming here takes them away.
 
 Boot sequence: if enabled, call `getMe` and `setWebhook` once, log the bot username and
 the group title, and register the queue worker. If Telegram is unreachable at boot the
-API still starts; the bot retries `setWebhook` every minute until it succeeds. On
-`SIGTERM` nothing is unregistered: the webhook belongs to the deployment, not the
-process, and a rolling restart must not drop updates.
+API still starts; the bot retries `setWebhook` every minute until it succeeds. The staff
+group check (§9) then runs once and hourly. On `SIGTERM` nothing is unregistered: the
+webhook belongs to the deployment, not the process, and a rolling restart must not drop
+updates.
 
 ## 9. Failure modes
 
@@ -442,9 +502,10 @@ process, and a rolling restart must not drop updates.
 | Telegram API down | Pushes queue up with backoff; support messages from the web still flow; the widget's presence check falls back to the socket room only |
 | Redis down | Link tokens and dedupe fail closed (link refused, update processed once at most by Telegram's own retry); presence answers "nobody", so the contact fallback shows |
 | Player blocked the bot | `telegramBlockedAt` set; pushes stop; support replies still land in the widget; `/start` clears it |
-| Group id wrong or bot removed from group | Staff bridge disabled with a boot-time and hourly log line; the admin inbox is unaffected |
+| Group id wrong, Topics off, bot removed or not an admin with Manage Topics | A boot-time and hourly log line names the problem (`checkStaffGroup` in `bot.ts`). The bridge is not switched off: topic creation keeps failing per message until the group is fixed. The admin inbox is unaffected |
 | Topic creation fails (rate limit, permissions) | Message is still in the database and the admin inbox; the topic is created on the next player message |
 | Duplicate update delivery | Dropped by the `tg:update` key |
+| Handling an update throws (DB or Telegram error mid-way) | The update is lost and logged. The route acks 200 before handling and the `tg:update` key is claimed first, so neither Telegram nor the key allows a retry. Accepted: the player sees no reply and sends again |
 | Two clerks reply in the same second from inbox and topic | Both messages are written; `claim` is first-writer-wins as today |
 
 ## 10. Phases and acceptance
