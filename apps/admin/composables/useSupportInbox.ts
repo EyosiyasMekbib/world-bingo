@@ -7,6 +7,7 @@ import type {
   SupportMessage,
   SupportQueueItem,
 } from '@world-bingo/shared-types'
+import { SupportMessageSource } from '@world-bingo/shared-types'
 
 /**
  * A transcript row that may not exist on the server yet. `pending` is the
@@ -546,6 +547,10 @@ export const useSupportInbox = () => {
       attachmentUrl: null,
       attachmentMime: null,
       createdAt: new Date().toISOString(),
+      // This bubble only exists because a clerk is typing in the admin
+      // app right now — WEB, whether or not the player they're answering
+      // is linked to Telegram.
+      source: SupportMessageSource.WEB,
       clientMsgId,
       pending: true,
     }

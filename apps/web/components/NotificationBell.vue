@@ -171,6 +171,14 @@ const NOTIF_ICONS: Record<NotificationType, NotifIcon> = {
     tone: TONE.info,
     paths: ['M4.5 10.2 14 6.2v9.6l-9.5-4z', 'M7 14.6 8 20h2.6l-.8-4.4', 'M17 9.6a3 3 0 0 1 0 4.8'],
   },
+  [NotificationType.PREDICTION_SETTLED]: {
+    tone: TONE.success,
+    paths: [RING, 'm8.4 12.2 2.4 2.4 4.8-4.8'],
+  },
+  [NotificationType.PREDICTION_VOIDED]: {
+    tone: TONE.info,
+    paths: [RING, 'M15 12H9.2', 'm11.6 9.4-2.4 2.6 2.4 2.6'],
+  },
   [NotificationType.SUPPORT_REPLY]: {
     tone: TONE.info,
     paths: [

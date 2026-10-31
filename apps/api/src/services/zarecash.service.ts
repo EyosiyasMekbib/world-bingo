@@ -18,6 +18,7 @@ import { ZareCashCheckoutService } from './zarecash-checkout.service.js'
 import { wbWithdrawalsTotal } from '../lib/metrics.js'
 import { getQueue, QUEUE_NAMES } from '../lib/queue.js'
 import { reportError, reportWarning } from '../lib/sentry.js'
+import { postOpsAlert } from './telegram/staff-bridge.js'
 import { captureEvent } from '../lib/posthog'
 import { hoursBetween, withdrawalMethodFromNote } from '../lib/posthog-events'
 
@@ -815,6 +816,9 @@ export class ZareCashService {
             userId: tx?.userId ?? null,
             amount: tx ? Number(tx.amount).toFixed(2) : null,
         })
+        await postOpsAlert(
+            `🚩 Withdrawal ${data.id} on risk hold${tx ? ` — ${Number(tx.amount).toFixed(2)} ETB, tx ${tx.id}` : ''}.`,
+        )
     }
 
     /**
@@ -834,6 +838,14 @@ export class ZareCashService {
             available: data.available ?? null,
             threshold: data.lowFloatThreshold ?? data.threshold ?? null,
         })
+        // One of postOpsAlert's call sites — see docs/telegram-support-bot.md
+        // §6.6. A no-op unless TELEGRAM_SUPPORT_GROUP_ID and
+        // TELEGRAM_OPS_TOPIC_ID are both set.
+        await postOpsAlert(
+            `⚠️ ZareCash float is low. Available: ${data.available ?? '?'}, threshold: ${
+                data.lowFloatThreshold ?? data.threshold ?? '?'
+            }`,
+        )
     }
 
     private static async onWithdrawalQueued(data: Record<string, any>): Promise<void> {

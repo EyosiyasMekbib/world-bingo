@@ -1,6 +1,14 @@
 import { createHash } from 'crypto'
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
-import { LoginSchema, RegisterSchema, RefreshTokenSchema, LogoutSchema, ChangePasswordSchema, TelegramAuthSchema } from '@world-bingo/shared-types'
+import {
+    LoginSchema,
+    RegisterSchema,
+    RefreshTokenSchema,
+    LogoutSchema,
+    ChangePasswordSchema,
+    TelegramAuthSchema,
+    PasswordResetConsumeSchema,
+} from '@world-bingo/shared-types'
 import { AuthController } from '../../controllers'
 import zodToJsonSchema from 'zod-to-json-schema'
 import { rateLimitKey, loginRateLimitKey, registerRateLimitKey } from '../../lib/rate-limit-key'
@@ -257,6 +265,24 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             body: zodToJsonSchema(ChangePasswordSchema),
         },
         handler: AuthController.changePassword,
+    })
+
+    // POST /auth/password-reset/consume — the Telegram bot's forgot-password
+    // link. No auth: the single-use token IS the authentication. Rate
+    // limited by IP on top of the token's own per-user mint budget
+    // (services/telegram/link.service.ts) — this is the route that actually
+    // spends a guessed or leaked token, so it gets the tighter ceiling.
+    fastify.post('/password-reset/consume', {
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 minute',
+            },
+        },
+        schema: {
+            body: zodToJsonSchema(PasswordResetConsumeSchema),
+        },
+        handler: AuthController.consumePasswordReset,
     })
 
     fastify.post('/telegram', {

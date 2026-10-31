@@ -23,6 +23,19 @@ describe('forced password change wiring', () => {
     expect(src).toMatch(/auth\.logout\(/)
   })
 
+  it('the reset-password page exists, uses the auth layout, and posts through the store', () => {
+    expect(existsSync(join(ROOT, 'pages/auth/reset-password.vue'))).toBe(true)
+    const src = read('pages/auth/reset-password.vue')
+    expect(src).toMatch(/definePageMeta\(\s*\{[^}]*layout:\s*'auth'/)
+    expect(src).toMatch(/auth\.consumePasswordReset\(/)
+    expect(src).toMatch(/route\.query\.token/)
+  })
+
+  it('the reset-password route is public — it falls under the /auth/ prefix the global middleware never gates', () => {
+    const src = read('middleware/auth.global.ts')
+    expect(src).toMatch(/publicPrefixes\s*=\s*\[[^\]]*'\/auth\/'/)
+  })
+
   it('the login page offers a "Forgot password?" route to support', () => {
     const src = read('pages/auth/login.vue')
     expect(src).toMatch(/t\('auth\.forgotPassword\.link'\)/)
@@ -43,7 +56,7 @@ describe('password reset strings', () => {
         : [`${prefix}${k}`],
     )
 
-  it.each(['setPassword', 'forgotPassword'])(
+  it.each(['setPassword', 'forgotPassword', 'resetPassword'])(
     'auth.%s exists in both locales with the same keys',
     (group) => {
       const enKeys = leafKeys(en.auth[group] ?? {})
@@ -52,7 +65,7 @@ describe('password reset strings', () => {
     },
   )
 
-  it.each(['setPassword', 'forgotPassword'])('no auth.%s string is left empty', (group) => {
+  it.each(['setPassword', 'forgotPassword', 'resetPassword'])('no auth.%s string is left empty', (group) => {
     for (const locale of [en, am]) {
       for (const key of leafKeys(locale.auth[group])) {
         const value = key.split('.').reduce((o: any, k) => o[k], locale.auth[group])

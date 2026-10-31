@@ -10,7 +10,7 @@ vi.mock('../lib/prisma', () => ({
   default: {
     $transaction: vi.fn(async (fn: any) => fn(tx)),
     user: { findUnique: vi.fn() },
-    accountStatusChange: { findMany: vi.fn().mockResolvedValue([]) },
+    accountStatusChange: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
 }))
 
@@ -215,5 +215,45 @@ describe('the expiry pass', () => {
     expect(reinstate).toHaveBeenCalledWith('c', { reason: 'Restriction expired', actorId: null })
     vi.doUnmock('../services/account-status.service')
     vi.doUnmock('bullmq')
+  })
+})
+
+describe('AccountStatusService.playerView', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns a null category for an ACTIVE account and never queries the history', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue({ accountStatus: 'ACTIVE' })
+
+    const result = await AccountStatusService.playerView(USER)
+
+    expect(result).toEqual({ status: 'ACTIVE', category: null, expiresAt: null })
+    expect(prisma.accountStatusChange.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('returns the category and expiry from the most recent transition INTO the current status', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue({ accountStatus: 'RESTRICTED' })
+    const expiresAt = new Date('2026-01-01T00:00:00.000Z')
+    ;(prisma.accountStatusChange.findFirst as any).mockResolvedValue({ category: 'BONUS_ABUSE', expiresAt })
+
+    const result = await AccountStatusService.playerView(USER)
+
+    expect(result).toEqual({ status: 'RESTRICTED', category: 'BONUS_ABUSE', expiresAt: expiresAt.toISOString() })
+    expect(prisma.accountStatusChange.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER, to: 'RESTRICTED' } }),
+    )
+  })
+
+  it('returns a null category when no transition row exists (a status set before categories were tracked)', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue({ accountStatus: 'SUSPENDED' })
+    ;(prisma.accountStatusChange.findFirst as any).mockResolvedValue(null)
+
+    const result = await AccountStatusService.playerView(USER)
+
+    expect(result).toEqual({ status: 'SUSPENDED', category: null, expiresAt: null })
+  })
+
+  it('throws a 404 for an unknown user', async () => {
+    ;(prisma.user.findUnique as any).mockResolvedValue(null)
+    await expect(AccountStatusService.playerView('nobody')).rejects.toMatchObject({ statusCode: 404 })
   })
 })

@@ -17,6 +17,12 @@ export interface User {
      *  keeps the player on its set-password page until this clears. */
     mustChangePassword?: boolean
     botTotalSpent?: number
+    /** Whether the Telegram support bot is linked. Derived from
+     *  telegramChatId — the raw chat id itself is never sent to the client. */
+    telegramLinked?: boolean
+    /** Player opt-out for Telegram notification pushes. Meaningless when
+     *  telegramLinked is false. */
+    telegramNotifyEnabled?: boolean
     createdAt: Date
     updatedAt: Date
 }

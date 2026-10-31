@@ -18,6 +18,8 @@ const { create } = vi.hoisted(() => ({ create: vi.fn().mockResolvedValue({}) }))
 vi.mock('../services/notification.service', () => ({
   NotificationService: { create, pushWalletUpdate: vi.fn() },
 }))
+const { postOpsAlert } = vi.hoisted(() => ({ postOpsAlert: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../services/telegram/staff-bridge', () => ({ postOpsAlert }))
 
 import prisma from '../lib/prisma'
 import { ZareCashService } from '../services/zarecash.service'
@@ -81,6 +83,7 @@ describe('withdrawal webhook events', () => {
     // But an operator has to know a payout is parked (spec: "raise an admin alert").
     expect(reportWarning).toHaveBeenCalled()
     expect((prisma as any).auditLog.create).toHaveBeenCalled()
+    expect(postOpsAlert).toHaveBeenCalledWith(expect.stringContaining('wd_5'))
   })
 
   it('tolerates a refund replay for an already-rejected withdrawal', async () => {
@@ -100,5 +103,10 @@ describe('withdrawal webhook events', () => {
     expect(create).not.toHaveBeenCalled()
     expect(reportWarning).toHaveBeenCalled()
     expect((prisma as any).auditLog.create).toHaveBeenCalled()
+    // Ops alert, per docs/telegram-support-bot.md §6.6 — a no-op when the
+    // staff bridge isn't configured, but always called so it fires the
+    // instant it is.
+    expect(postOpsAlert).toHaveBeenCalledWith(expect.stringContaining('5000'))
+    expect(postOpsAlert).toHaveBeenCalledWith(expect.stringContaining('100000'))
   })
 })

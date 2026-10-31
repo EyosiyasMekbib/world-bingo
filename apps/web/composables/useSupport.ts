@@ -4,6 +4,7 @@ import type {
   SupportContactInfo,
   SupportMessage,
 } from '@world-bingo/shared-types'
+import { SupportMessageSource } from '@world-bingo/shared-types'
 
 /** How long a thread may sit unanswered before the widget reveals a phone
  *  number. Client-side on purpose: a server sweep would double-fire across
@@ -424,6 +425,10 @@ export const useSupport = () => {
   const messages = useState<SupportMessageView[]>('support_messages', () => [])
   const contact = useState<SupportContactInfo | null>('support_contact', () => null)
   const showContact = useState('support_show_contact', () => false)
+  /** One-time deep link into the Telegram bot for THIS thread, minted
+   *  server-side alongside the contact fallback. Null whenever the bot is
+   *  not configured — the panel simply omits the button. */
+  const telegramLink = useState<string | null>('support_telegram_link', () => null)
   const unread = useState('support_unread', () => 0)
   const error = useState<string | null>('support_error', () => null)
   /** The server code behind `error`, kept so the banner can expire itself on a
@@ -668,13 +673,15 @@ export const useSupport = () => {
       ],
       [
         'support:contact-fallback',
-        (payload: SupportContactInfo) => {
+        (payload: SupportContactInfo & { telegramLink?: string | null }) => {
           const next = { phone: payload.phone, telegram: payload.telegram, hours: payload.hours }
           contact.value = next
+          telegramLink.value = payload.telegramLink ?? null
           // A fallback with nothing to fall back to is worse than none: it
           // paints a heading over an empty box on a brand that has not filled
-          // the support settings in.
-          showContact.value = hasUsableContactChannel(next)
+          // the support settings in. A telegramLink alone is enough to show
+          // the block even with phone/telegram both unconfigured.
+          showContact.value = hasUsableContactChannel(next) || !!telegramLink.value
         },
       ],
       [
@@ -807,6 +814,9 @@ export const useSupport = () => {
       attachmentUrl: attachmentUrl ?? null,
       attachmentMime: attachmentMime ?? null,
       createdAt: new Date().toISOString(),
+      // This bubble only ever exists because the player is typing in the
+      // web widget right now — WEB is not a guess here.
+      source: SupportMessageSource.WEB,
       clientMsgId,
       sendState: 'pending',
     }
@@ -906,6 +916,7 @@ export const useSupport = () => {
     messages,
     contact,
     showContact,
+    telegramLink,
     unread,
     error,
     errorCode,

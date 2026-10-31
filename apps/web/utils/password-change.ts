@@ -1,11 +1,17 @@
 /**
- * Support-assisted password reset, client half.
+ * Password reset, client half. Two independent paths:
  *
- * There is no self-service reset. Support verifies the player, an admin issues
- * a temporary password, and the API flags the account (`mustChangePassword`).
- * Until the player chooses their own password every page sends them to
- * SET_PASSWORD_PATH — except `/auth/*`, which they need to sign in or out.
- * Pure, so the rule is tested without a Nuxt runtime.
+ *  - Support-assisted: support verifies the player, an admin issues a
+ *    temporary password, and the API flags the account
+ *    (`mustChangePassword`). Until the player chooses their own password
+ *    every page sends them to SET_PASSWORD_PATH — except `/auth/*`, which
+ *    they need to sign in or out.
+ *  - Self-serve via the Telegram bot: a one-time link
+ *    (`/auth/reset-password?token=...`) lets a player set a new password
+ *    with no session and no current password to check against — the token
+ *    itself is the credential. See pages/auth/reset-password.vue.
+ *
+ * Pure, so both rules are tested without a Nuxt runtime.
  */
 import { MIN_PASSWORD_LENGTH } from './auth-form'
 
@@ -35,5 +41,18 @@ export function validateSetPasswordForm(form: {
   if (form.newPassword !== form.confirmPassword) return 'mismatch'
   // The server refuses this too; checking here saves the round trip.
   if (form.newPassword === form.currentPassword) return 'same_as_current'
+  return null
+}
+
+export type ResetPasswordFormError = 'new_short' | 'mismatch'
+
+/** Same shape as validateSetPasswordForm, minus the current-password check
+ *  — there is none to check on this path (see the file header). */
+export function validateResetPasswordForm(form: {
+  newPassword: string
+  confirmPassword: string
+}): ResetPasswordFormError | null {
+  if (form.newPassword.length < MIN_PASSWORD_LENGTH) return 'new_short'
+  if (form.newPassword !== form.confirmPassword) return 'mismatch'
   return null
 }

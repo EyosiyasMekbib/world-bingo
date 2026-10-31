@@ -16,6 +16,9 @@ import { NotificationService } from '../services/notification.service.js'
 import { isSafeAttachmentUrl } from '../services/support/attachment-url.js'
 import { writeSupportAudit } from '../services/support/support-audit.js'
 import { ALLOWED_MIME_TYPES } from '../lib/storage.js'
+import { afterSupportMessage, afterConversationResolved, afterConversationReopened } from '../services/support/fanout.js'
+import { mintPlayerLinkToken } from '../services/telegram/link.service.js'
+import { AGENTS_ROOM, anyAgentOnline as sharedAnyAgentOnline } from '../services/support/presence.js'
 
 type SupportSocket = Socket<
   ClientToServerEvents,
@@ -24,7 +27,6 @@ type SupportSocket = Socket<
   SocketData
 >
 
-const AGENTS_ROOM = 'support:agents'
 const STAFF_ROLES = new Set(['CLERK', 'ADMIN', 'SUPER_ADMIN'])
 const ADMIN_ROLES = new Set(['ADMIN', 'SUPER_ADMIN'])
 
@@ -89,28 +91,18 @@ export function registerSupportHandlers(io: any) {
   }
 
   /**
-   * Whether any clerk is actually on shift, anywhere in the cluster.
-   *
-   * Derived from live room membership rather than a Redis set of agent ids.
-   * The set was written on connect and cleared in a `disconnect` handler, so
-   * it only stayed truthful when every socket closed cleanly — and it did not.
-   * `shutdown()` calls `process.exit(0)` as soon as `server.close()` resolves,
-   * which does not wait for each disconnect handler's async Redis write, so a
-   * routine deploy left every clerk marked online forever. `anyOnline()` then
-   * answered true with nobody there, and the escalation fallback — the one
-   * thing that hands a stranded player a phone number — silently never fired
-   * again. A crashed or OOM-killed instance left the same residue permanently.
-   *
-   * `fetchSockets()` goes through the Redis adapter (lib/socket.ts), so it
-   * sees agents on every instance, and it cannot go stale: it reports the
-   * connections that exist right now. Call it through
-   * `anyAgentOnlineWithin` — never directly — so a slow adapter cannot hold
-   * up the caller.
+   * Whether any clerk is actually on shift, anywhere in the cluster: a live
+   * socket in AGENTS_ROOM (see services/support/presence.ts for why that,
+   * not a Redis presence set written on connect, is the source of truth —
+   * `shutdown()` calls `process.exit(0)` before a disconnect handler's async
+   * cleanup would run, which left a Redis-set version permanently stuck
+   * "online" after any deploy) OR a clerk on shift in the staff Telegram
+   * group. Shared with the bot's own unanswered-thread notice
+   * (services/telegram/player-handlers.ts) so both surfaces agree. Call it
+   * through `anyAgentOnlineWithin` — never directly — so a slow Redis
+   * adapter cannot hold up the caller.
    */
-  async function anyAgentOnline(): Promise<boolean> {
-    const agents = await io.in(AGENTS_ROOM).fetchSockets()
-    return agents.length > 0
-  }
+  const anyAgentOnline = () => sharedAnyAgentOnline(io)
 
   /**
    * anyAgentOnline() with a deadline, and the deadline answers `false`.
@@ -406,6 +398,15 @@ export function registerSupportHandlers(io: any) {
           }
         }
 
+        // Telegram side: a PLAYER message mirrors into the staff topic, a
+        // staff/system message forwards to the player's linked chat. Runs
+        // for every message regardless of `staff` — see fanout.ts. Never
+        // allowed to turn a delivered message into a failure the sender
+        // sees, same as the notification block above.
+        await afterSupportMessage({ conversationId, message, ownerId }).catch((err) => {
+          console.error('[support.gateway] post-commit fanout', err)
+        })
+
         try {
           const conversation = await SupportService.getById(conversationId)
           io.to(convRoom(conversationId)).emit('support:status', conversation)
@@ -414,7 +415,10 @@ export function registerSupportHandlers(io: any) {
           // thread that was already OPEN or ASSIGNED leaves every clerk's
           // badge exactly where it was, and this fans out to every clerk on
           // shift once per message.
-          if (reopened) await broadcastQueue(conversationId)
+          if (reopened) {
+            await broadcastQueue(conversationId)
+            await afterConversationReopened(conversationId)
+          }
         } catch (err) {
           console.error('[support.gateway] post-commit', err)
         }
@@ -426,10 +430,16 @@ export function registerSupportHandlers(io: any) {
       const who = actor(socket)
       if (!who) return
 
+      // Hoisted so the second, past-the-commit try block below (fanout,
+      // contact fallback) can see what the first one produced — same reason
+      // support:send hoists `message`/`reopened`/`ownerId` above its try.
+      let systemMessage: Awaited<ReturnType<typeof SupportService.escalate>>['systemMessage'] = null
+
       try {
         await SupportService.assertPlayerOwns(conversationId, who.userId)
-        const { conversation, systemMessage } = await SupportService.escalate(conversationId)
-        io.to(convRoom(conversationId)).emit('support:status', conversation)
+        const result = await SupportService.escalate(conversationId)
+        systemMessage = result.systemMessage
+        io.to(convRoom(conversationId)).emit('support:status', result.conversation)
         // The status line alone changes nothing a player can see while every
         // Phase 1 thread is already OPEN. The acknowledgement is the only
         // visible answer to the button, so it has to reach the room.
@@ -445,11 +455,25 @@ export function registerSupportHandlers(io: any) {
       try {
         await broadcastQueue(conversationId)
 
+        // The acknowledgement line is a SYSTEM message, which fanout treats
+        // as player-facing — this is what forwards it to the player's
+        // Telegram chat too, when they are linked.
+        if (systemMessage) {
+          await afterSupportMessage({ conversationId, message: systemMessage, ownerId: who.userId }).catch(
+            (err) => console.error('[support.gateway] post-commit fanout', err),
+          )
+        }
+
         // Escalating into an empty room must hand over a phone number,
-        // not silence.
+        // not silence. telegramLink lets the SAME thread continue in the
+        // bot — minted here, server-side, so the panel never has to call a
+        // separate route just to get one.
         if (!(await anyAgentOnlineWithin(AGENT_PRESENCE_TIMEOUT_MS))) {
-          const contact = await SupportContact.get()
-          socket.emit('support:contact-fallback', { conversationId, ...contact })
+          const [contact, telegramLink] = await Promise.all([
+            SupportContact.get(),
+            mintPlayerLinkToken(who.userId, conversationId),
+          ])
+          socket.emit('support:contact-fallback', { conversationId, telegramLink, ...contact })
         }
       } catch (err) {
         console.error('[support.gateway] post-commit', err)
@@ -508,6 +532,9 @@ export function registerSupportHandlers(io: any) {
         await writeSupportAudit(who.userId, 'support.resolve', conversationId).catch(() => {})
         io.to(convRoom(conversationId)).emit('support:status', conversation)
         await broadcastQueue(conversationId)
+        await afterConversationResolved(conversationId).catch((err) =>
+          console.error('[support.gateway] post-commit fanout', err),
+        )
       } catch (err) {
         fail(socket, conversationId, err)
       }

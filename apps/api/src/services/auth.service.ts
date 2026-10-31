@@ -6,6 +6,7 @@ import { ReferralService } from './referral.service'
 import { captureEvent } from '../lib/posthog'
 import { personPropsFor } from '../lib/posthog-events'
 import { wbAuthRefreshTotal } from '../lib/metrics'
+import { consumePasswordResetToken } from './telegram/link.service.js'
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 30
 
@@ -50,7 +51,8 @@ export class PasswordError extends Error {
             | 'no_password_login'
             | 'password_not_set'
             | 'current_password_incorrect'
-            | 'password_unchanged',
+            | 'password_unchanged'
+            | 'invalid_token',
         message: string,
     ) {
         super(message)
@@ -91,6 +93,29 @@ export function generateTemporaryPassword(): string {
 /** The two markers bot.service.ts writes — the same test lib/posthog.ts uses. */
 function isBotAccount(user: { username: string | null; passwordHash: string | null }): boolean {
     return user.username?.startsWith('bot_t') === true || user.passwordHash === 'BOT_ACCOUNT'
+}
+
+/**
+ * Strip what a User row must never carry across the wire, whichever method
+ * hands the row back: passwordHash (obviously), and the Telegram support
+ * bot's own bookkeeping — telegramChatId (the bot's send address, of no use
+ * to the client) and telegramBlockedAt (purely operational). telegramLinked
+ * is the wire-safe yes/no every caller actually wants in their place.
+ *
+ * Every method below that returns `user` to a route goes through this —
+ * register, login, refreshToken, me, changePassword,
+ * consumePasswordReset, adminResetPassword's target is untouched (it never
+ * returns the row), telegramAuth. One helper, so linking a Telegram chat
+ * cannot leak into any of them just because they share the same row shape
+ * as /me — which is exactly what happened here: /me was sanitised first,
+ * and the other six were only caught by testing this end to end against a
+ * live server afterwards.
+ */
+function sanitizeUser<
+    T extends { passwordHash: string | null; telegramChatId: string | null; telegramBlockedAt: Date | null },
+>(user: T): Omit<T, 'passwordHash' | 'telegramChatId' | 'telegramBlockedAt'> & { telegramLinked: boolean } {
+    const { passwordHash: _passwordHash, telegramChatId, telegramBlockedAt: _telegramBlockedAt, ...rest } = user
+    return { ...rest, telegramLinked: telegramChatId !== null }
 }
 
 export class AuthService {
@@ -150,8 +175,7 @@ export class AuthService {
             { set: personPropsFor(user, 'phone') },
         )
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 
     static async login(data: LoginDto) {
@@ -199,8 +223,7 @@ export class AuthService {
             signup_method: user.telegramId ? 'telegram' : 'phone',
         })
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 
     /**
@@ -293,8 +316,7 @@ export class AuthService {
             })
             .catch(() => {})
 
-        const { passwordHash: _, ...user } = storedToken.user
-        return { user, refreshToken: newRefreshToken }
+        return { user: sanitizeUser(storedToken.user), refreshToken: newRefreshToken }
     }
 
     static async logout(token: string) {
@@ -317,6 +339,17 @@ export class AuthService {
     }
 
     /**
+     * Revoke every refresh token for a user — "log out everywhere", offered
+     * from the Telegram bot's /logout command for a player on a shared
+     * device. Unlike changePassword and consumePasswordReset this issues no
+     * replacement token: the caller (the bot) is not itself a session, so
+     * there is nothing to keep signed in.
+     */
+    static async revokeAllSessions(userId: string): Promise<void> {
+        await prisma.refreshToken.deleteMany({ where: { userId } })
+    }
+
+    /**
      * The signed-in user's current row, minus the hash. Not the token's own
      * claims: those are frozen when the token is issued and cannot carry a flag
      * such as `mustChangePassword` that changed afterwards.
@@ -324,8 +357,7 @@ export class AuthService {
     static async me(userId: string) {
         const user = await prisma.user.findUnique({ where: { id: userId } })
         if (!user) throw new Error('User not found')
-        const { passwordHash: _, ...result } = user
-        return result
+        return sanitizeUser(user)
     }
 
     static async changePassword(userId: string, data: ChangePasswordDto) {
@@ -375,8 +407,73 @@ export class AuthService {
             }),
         ])
 
-        const { passwordHash: _, ...result } = updated
-        return { message: 'Password changed successfully', user: result, refreshToken }
+        return { message: 'Password changed successfully', user: sanitizeUser(updated), refreshToken }
+    }
+
+    /**
+     * Self-serve recovery via the Telegram bot: the player proved who they
+     * are by sharing a phone Telegram itself verified, or by already being
+     * linked (see services/telegram/link.service.ts), and the bot handed
+     * them this one-time link. No current password is asked for — there is
+     * none to check against, which is the whole point of a "forgot
+     * password" flow — and the token itself, single-use and short-lived, is
+     * what stands in for it.
+     *
+     * Same shape as changePassword: every session is revoked, this device
+     * gets a fresh one, and passwordResetAt is stamped so
+     * WalletService.requestWithdrawal's post-reset hold applies exactly as
+     * it does after a support-assisted reset. Players only, same as
+     * adminResetPassword below — a bot or staff account has no "forgot my
+     * password" story this flow is meant to solve.
+     */
+    static async consumePasswordReset(token: string, newPassword: string) {
+        const userId = await consumePasswordResetToken(token)
+        if (!userId) {
+            throw new PasswordError(400, 'invalid_token', 'This link has expired or was already used')
+        }
+
+        const target = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true, username: true, passwordHash: true },
+        })
+        if (!target || target.role !== 'PLAYER' || isBotAccount(target)) {
+            throw new PasswordError(403, 'reset_not_allowed', 'This account cannot be reset this way')
+        }
+
+        const newPasswordHash = await bcrypt.hash(newPassword, 10)
+        const refreshToken = generateRefreshToken()
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+        const [updated] = await prisma.$transaction([
+            prisma.user.update({
+                where: { id: userId },
+                data: {
+                    passwordHash: newPasswordHash,
+                    mustChangePassword: false,
+                    passwordResetAt: new Date(),
+                },
+            }),
+            prisma.refreshToken.deleteMany({ where: { userId } }),
+            prisma.refreshToken.create({
+                data: { userId, tokenHash: hashToken(refreshToken), expiresAt, familyId: crypto.randomUUID() },
+            }),
+            // Same trail adminResetPassword leaves: this hands out account
+            // access too, and must not happen without one.
+            prisma.auditLog.create({
+                data: {
+                    action: 'user.password_reset_self',
+                    actorId: userId,
+                    actorName: target.username,
+                    target: `user:${userId}`,
+                    detail: { via: 'telegram' },
+                },
+            }),
+        ])
+
+        void captureEvent(userId, 'password_reset_via_telegram', {})
+
+        return { message: 'Password reset — you are signed in', user: sanitizeUser(updated), refreshToken }
     }
 
     /**
@@ -428,9 +525,19 @@ export class AuthService {
         const revokedSessions = await prisma.$transaction(async (tx) => {
             // Re-asserts PLAYER in the write itself, so a role change landing
             // between the check above and this update cannot slip through.
+            // A support reset is how a taken-over account is recovered, so the
+            // linked Telegram chat goes too: it may be the one that took it,
+            // and would otherwise keep /status and every push. The player
+            // re-links from the profile page.
             const { count: updated } = await tx.user.updateMany({
                 where: { id: userId, role: 'PLAYER' },
-                data: { passwordHash, mustChangePassword: true, passwordResetAt: new Date() },
+                data: {
+                    passwordHash,
+                    mustChangePassword: true,
+                    passwordResetAt: new Date(),
+                    telegramChatId: null,
+                    telegramLinkedAt: null,
+                },
             })
             if (updated === 0) {
                 throw new PasswordError(403, 'reset_not_allowed', 'Only player accounts can have their password reset')
@@ -536,8 +643,7 @@ export class AuthService {
             )
         }
 
-        const { passwordHash: _, ...result } = user
-        return { user: result, refreshToken }
+        return { user: sanitizeUser(user), refreshToken }
     }
 }
 

@@ -7,6 +7,7 @@ import type {
   SupportQueueItem,
   SupportSenderRole,
 } from '@world-bingo/shared-types'
+import { SupportMessageSource } from '@world-bingo/shared-types'
 import {
   ConversationNotFoundError,
   ConversationNotOpenError,
@@ -45,6 +46,10 @@ export interface AddMessageInput {
   body: string
   attachmentUrl?: string | null
   attachmentMime?: string | null
+  /** Where the sender typed this. Defaults to WEB — every pre-existing
+   *  caller (the socket gateway, escalate()'s SYSTEM line) is a web-origin
+   *  write and needs no change. The bot's handlers pass TELEGRAM. */
+  source?: SupportMessageSource
 }
 
 export interface AddMessageResult {
@@ -84,6 +89,7 @@ type MessageRow = {
   attachmentUrl: string | null
   attachmentMime: string | null
   createdAt: Date
+  source: string
 }
 
 function toWireConversation(row: ConversationRow): SupportConversation {
@@ -111,6 +117,7 @@ function toWireMessage(row: MessageRow): SupportMessage {
     attachmentUrl: row.attachmentUrl,
     attachmentMime: row.attachmentMime,
     createdAt: row.createdAt.toISOString(),
+    source: row.source as SupportMessageSource,
   }
 }
 
@@ -337,6 +344,7 @@ export class SupportService {
           attachmentUrl: input.attachmentUrl ?? null,
           attachmentMime: input.attachmentMime ?? null,
           createdAt: now,
+          source: (input.source ?? SupportMessageSource.WEB) as never,
         },
       })
 

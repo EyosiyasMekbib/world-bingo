@@ -19,6 +19,7 @@ import {
   buildSuperProps,
   isStandaloneDisplay,
   resolveReplayEnabled,
+  redactUrlSecrets,
 } from '~/utils/posthog'
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -39,6 +40,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     capture_pageview: 'history_change',
     capture_pageleave: true,
     autocapture: false,
+    before_send: redactUrlSecrets,
     disable_session_recording: !resolveReplayEnabled(ph.replay),
     session_recording: {
       maskAllInputs: true,

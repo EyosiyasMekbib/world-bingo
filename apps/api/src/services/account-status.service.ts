@@ -316,4 +316,43 @@ export class AccountStatusService {
             )
         }
     }
+
+    /**
+     * What a PLAYER may see about their own status — the coarse category and
+     * an auto-restore date, never the free-text `reason` a clerk wrote (that
+     * is staff-internal). Used by GET /user/account-status and the bot's
+     * /status and /appeal — both need the same answer to "why, and until
+     * when". ACTIVE always returns a null category: there is nothing to
+     * explain.
+     */
+    static async playerView(userId: string): Promise<{
+        status: AccountStatus
+        category: StatusCategory | null
+        expiresAt: string | null
+    }> {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { accountStatus: true } })
+        if (!user) throw httpError(404, 'User not found')
+        if (user.accountStatus === AccountStatus.ACTIVE) {
+            return { status: AccountStatus.ACTIVE, category: null, expiresAt: null }
+        }
+
+        // Most recent transition INTO the current status — an old RESTRICTED
+        // row from a since-lifted, earlier review must not explain a fresh
+        // SUSPENDED one.
+        const change = await prisma.accountStatusChange.findFirst({
+            where: { userId, to: user.accountStatus },
+            orderBy: { createdAt: 'desc' },
+            select: { category: true, expiresAt: true },
+        })
+
+        return {
+            // Prisma's generated enum and shared-types' AccountStatus are the
+            // same string values under two nominally distinct TS enum types —
+            // same reason every Prisma write elsewhere in this codebase casts
+            // through `as never`.
+            status: user.accountStatus as AccountStatus,
+            category: (change?.category as StatusCategory | null) ?? null,
+            expiresAt: change?.expiresAt?.toISOString() ?? null,
+        }
+    }
 }

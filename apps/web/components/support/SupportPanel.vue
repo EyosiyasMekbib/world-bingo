@@ -4,6 +4,10 @@ const {
   messages,
   contact,
   showContact,
+  // Renamed on destructure: this is the one-time bot deep link for THIS
+  // thread (useSupport.ts), distinct from `telegramLinkHref` below, which
+  // is built from the admin-configured @handle in `contact`.
+  telegramLink: botDeepLink,
   error,
   sending,
   loading,
@@ -52,6 +56,13 @@ const escalateLabel = computed(() =>
 const phoneHref = computed(() => (contact.value?.phone ? telHref(contact.value.phone) : null))
 const telegramLinkHref = computed(() =>
   contact.value?.telegram ? telegramHref(contact.value.telegram) : null,
+)
+// botDeepLink is server-minted (gateways/telegram + services/telegram/link.service.ts
+// build it from Telegram's own getMe() username plus our own generated token),
+// not admin-typed free text — the t.me prefix check below is defence in depth,
+// not the reason it's trusted.
+const botDeepLinkHref = computed(() =>
+  botDeepLink.value?.startsWith('https://t.me/') ? botDeepLink.value : null,
 )
 // A brand that hasn't filled the support settings in answers with three empty
 // strings, which is enough to satisfy `contact != null` and paint a heading
@@ -295,8 +306,11 @@ const onFile = async (event: Event) => {
       New messages ↓
     </button>
 
-    <div v-if="showContact && contact && hasContactChannel" class="sc-contact">
+    <div v-if="showContact && contact && (hasContactChannel || botDeepLinkHref)" class="sc-contact">
       <strong>Need us faster?</strong>
+      <a v-if="botDeepLinkHref" :href="botDeepLinkHref" target="_blank" rel="noopener" class="sc-telegram-bot">
+        Continue on Telegram
+      </a>
       <a v-if="phoneHref" :href="phoneHref">{{ contact.phone }}</a>
       <a v-if="telegramLinkHref" :href="telegramLinkHref" target="_blank" rel="noopener">
         {{ contact.telegram }}

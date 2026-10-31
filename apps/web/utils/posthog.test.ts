@@ -5,6 +5,7 @@ import {
   resolveReplayEnabled,
   isStandaloneDisplay,
   brandSlug,
+  redactUrlSecrets,
 } from './posthog'
 
 describe('buildPersonProps', () => {
@@ -80,5 +81,35 @@ describe('brandSlug', () => {
   it('falls back to the slugged short name', () => {
     expect(brandSlug({ brand: '', shortName: 'Bet Bawa' })).toBe('bet-bawa')
     expect(brandSlug({ brand: null, shortName: 'Arada' })).toBe('arada')
+  })
+})
+
+describe('redactUrlSecrets', () => {
+  // The Telegram bot's password-reset link carries a live single-use token
+  // in ?token=, and PostHog records page URLs on every event.
+  it('redacts a token query parameter from every URL-valued property', () => {
+    const event = {
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://aradabet.games/auth/reset-password?token=abc123&x=1',
+        $referrer: 'https://t.me/?token=zzz',
+        $pathname: '/auth/reset-password',
+      },
+      $set_once: { $initial_current_url: 'https://aradabet.games/auth/reset-password?token=abc123' },
+    }
+    const out = redactUrlSecrets(event)!
+    expect(out.properties.$current_url).toBe('https://aradabet.games/auth/reset-password?token=REDACTED&x=1')
+    expect(out.properties.$referrer).toBe('https://t.me/?token=REDACTED')
+    expect(out.properties.$pathname).toBe('/auth/reset-password')
+    expect(out.$set_once!.$initial_current_url).toBe('https://aradabet.games/auth/reset-password?token=REDACTED')
+  })
+
+  it('leaves PostHog\'s own project token property alone', () => {
+    const out = redactUrlSecrets({ event: 'x', properties: { token: 'phc_project' } })!
+    expect(out.properties.token).toBe('phc_project')
+  })
+
+  it('passes a null event through', () => {
+    expect(redactUrlSecrets(null)).toBeNull()
   })
 })

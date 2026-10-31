@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from 'fastify'
 import prisma from '../../lib/prisma'
 import { SupportContact, buildContactUpdates } from '../../services/support/support-contact'
+import { botUsername, isEnabled } from '../../gateways/telegram/config'
+import type { PublicSupportContact } from '@world-bingo/shared-types'
 
 /** Default feature flags and game settings — seeded on first read if missing */
 const DEFAULTS: Record<string, string> = {
@@ -176,10 +178,13 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Public: GET /settings/support ───────────────────────────────────────
   // No auth — the widget renders these in its footer for signed-out visitors too.
-  fastify.get('/support', async (_req, reply) => {
+  fastify.get('/support', async (_req, reply): Promise<PublicSupportContact> => {
     await ensureDefaults()
     reply.header('Cache-Control', 'public, max-age=60')
-    return SupportContact.get()
+    // `bot` is what the web links to the support bot on — '' until the bot
+    // is armed and boot has registered its webhook (botUsername() is set by
+    // getMe in gateways/telegram/bot.ts).
+    return { ...(await SupportContact.get()), bot: isEnabled() ? (botUsername() ?? '') : '' }
   })
 
   // ── Admin: PUT /settings/support ────────────────────────────────────────

@@ -93,6 +93,31 @@ describe('deposit hooks', () => {
         })
         expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('blurry receipt')
     })
+
+    it('the DEPOSIT_REJECTED notification carries a plain-language next step, not just the reason label', async () => {
+        const tx = await WalletService.initiateDeposit(userId, {
+            amount: 150,
+            transactionId: 'PH-DEP-5',
+            methodCode: 'cbe',
+        } as any)
+        await AdminService.reviewTransaction(
+            tx.id,
+            PaymentStatus.REJECTED,
+            undefined,
+            undefined,
+            undefined,
+            DepositRejectionReason.AMOUNT_MISMATCH,
+        )
+        const notification = await prisma.notification.findFirst({
+            where: { userId, type: 'DEPOSIT_REJECTED' as never },
+            orderBy: { createdAt: 'desc' },
+        })
+        expect(notification?.body).toContain('Amount does not match the receipt')
+        // The label alone tells a player WHAT was wrong; this is what to do
+        // about it — the answer the bot and the app now give instead of
+        // "contact support" for the single most common support question.
+        expect(notification?.body).toContain('Resubmit with the exact amount')
+    })
 })
 
 describe('withdrawal hooks', () => {

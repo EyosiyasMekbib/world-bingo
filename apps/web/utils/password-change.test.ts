@@ -3,6 +3,7 @@ import {
   SET_PASSWORD_PATH,
   passwordChangeRedirect,
   validateSetPasswordForm,
+  validateResetPasswordForm,
 } from './password-change'
 
 // Support resets a forgotten password to a temporary one and the API flags the
@@ -97,5 +98,28 @@ describe('validateSetPasswordForm', () => {
         confirmPassword: 'TEMP2345',
       }),
     ).toBe('same_as_current')
+  })
+})
+
+// The Telegram bot's self-serve reset link — no current password exists on
+// this path, so the form (and this validator) has no field for one.
+describe('validateResetPasswordForm', () => {
+  const valid = { newPassword: 'fresh-one', confirmPassword: 'fresh-one' }
+
+  it('accepts a filled-in form', () => {
+    expect(validateResetPasswordForm(valid)).toBeNull()
+  })
+
+  it('enforces the same 6-character floor as the server', () => {
+    expect(validateResetPasswordForm({ newPassword: '12345', confirmPassword: '12345' })).toBe(
+      'new_short',
+    )
+    expect(
+      validateResetPasswordForm({ newPassword: '123456', confirmPassword: '123456' }),
+    ).toBeNull()
+  })
+
+  it('requires the confirmation to match', () => {
+    expect(validateResetPasswordForm({ ...valid, confirmPassword: 'not-it' })).toBe('mismatch')
   })
 })

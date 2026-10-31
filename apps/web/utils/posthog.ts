@@ -55,3 +55,38 @@ export function brandSlug(input: { brand?: string | null; shortName: string }): 
   if (configured) return configured
   return input.shortName.trim().toLowerCase().replace(/\s+/g, '-')
 }
+
+/** The subset of a posthog-js CaptureResult that redactUrlSecrets touches. */
+interface RedactableEvent {
+  properties: Record<string, unknown>
+  $set?: Record<string, unknown>
+  $set_once?: Record<string, unknown>
+}
+
+const TOKEN_PARAM = /([?&])token=[^&#]*/g
+
+function redactBag(bag: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!bag) return bag
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(bag)) {
+    // `token` itself is PostHog's project key, not a URL.
+    out[key] = key !== 'token' && typeof value === 'string' ? value.replace(TOKEN_PARAM, '$1token=REDACTED') : value
+  }
+  return out
+}
+
+/**
+ * posthog-js `before_send` hook. The Telegram bot's password-reset link
+ * carries a live single-use token in `?token=`, and PostHog records the page
+ * URL ($current_url, $referrer, $initial_current_url) on every event, so the
+ * token would sit in analytics for as long as it is valid.
+ */
+export function redactUrlSecrets<T extends RedactableEvent>(event: T | null): T | null {
+  if (!event) return event
+  return {
+    ...event,
+    properties: redactBag(event.properties)!,
+    $set: redactBag(event.$set),
+    $set_once: redactBag(event.$set_once),
+  }
+}

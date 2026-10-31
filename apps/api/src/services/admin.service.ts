@@ -8,6 +8,7 @@ import {
     AccountStatus,
     DepositRejectionReason,
     DEPOSIT_REJECTION_REASON_LABELS,
+    DEPOSIT_REJECTION_NEXT_STEP,
 } from '@world-bingo/shared-types'
 import { WalletService } from './wallet.service'
 import { NotificationService } from './notification.service'
@@ -407,11 +408,18 @@ export class AdminService {
             rejectionReason === DepositRejectionReason.OTHER
                 ? (note ?? '')
                 : `${DEPOSIT_REJECTION_REASON_LABELS[rejectionReason]}${note ? ` — ${note}` : ''}`
+        // The label says WHAT was wrong; this says what to do about it — the
+        // plain-language guidance the Telegram bot and self-serve flows rely
+        // on instead of "contact support" for the single most common
+        // support question. Reaches the player twice: this in-app row, and
+        // the Telegram push notify.ts renders from the same body (DEPOSIT_
+        // REJECTED is in its pushed-type set).
+        const nextStep = DEPOSIT_REJECTION_NEXT_STEP[rejectionReason]
         await NotificationService.create(
             transaction.userId,
             NotificationType.DEPOSIT_REJECTED,
             'Deposit Rejected',
-            `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB was rejected. Reason: ${reasonText}`,
+            `Your deposit of ${Number(transaction.amount).toFixed(2)} ETB was rejected. Reason: ${reasonText} ${nextStep}`,
             { transactionId, amount: Number(transaction.amount), note, reason: rejectionReason },
         ).catch(() => {})
 
