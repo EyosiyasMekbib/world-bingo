@@ -1,6 +1,6 @@
 import type { BrandTokens } from '../brand'
 
-export const THEME_IDS = ['arada', 'dash5'] as const
+export const THEME_IDS = ['arada', 'winner'] as const
 export type ThemeId = (typeof THEME_IDS)[number]
 
 /** Layout shells a page can ask for. Phase 1 ships two; 'docs' and 'auth' follow later. */

@@ -7,7 +7,7 @@ const ROOTS = [
   join(__dirname, '..', 'components', 'brand'),
   join(__dirname, '..', 'components', 'shells'),
   // The support widget shipped a full amber palette of its own, so switching a
-  // deployment to dash5 turned the whole app green and left the chat amber.
+  // deployment to the green dash theme turned the whole app green and left the chat amber.
   // Guarded here so it cannot drift back.
   join(__dirname, '..', 'components', 'support'),
 ]

@@ -435,8 +435,9 @@ onUnmounted(() => {
   store.resetMarket()
 })
 
+const { name: productName } = useProductName()
 const pageTitle = computed(() =>
-  market.value ? `${market.value.question} — World Bingo` : 'Market — World Bingo',
+  market.value ? `${market.value.question} — ${productName.value}` : `Market — ${productName.value}`,
 )
 useHead({ title: pageTitle })
 </script>

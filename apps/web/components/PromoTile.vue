@@ -185,7 +185,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   box-sizing: border-box;
   border-radius: 12px;
   overflow: hidden;
-  background: #0e1729;
+  background: var(--skin-card-bg, #0e1729);
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
   isolation: isolate;
@@ -209,7 +209,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   z-index: -3;
   background:
     radial-gradient(70% 180% at 6% 50%, var(--glow), transparent 64%),
-    linear-gradient(100deg, #1a2748 0%, #121e36 52%, #0b1223 100%);
+    var(--skin-promo-art, linear-gradient(100deg, #1a2748 0%, #121e36 52%, #0b1223 100%));
 }
 .lattice {
   position: absolute;
@@ -249,7 +249,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 4px 12px rgba(245, 158, 11, 0.24));
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 4px 12px rgba(var(--skin-amber-rgb, 245, 158, 11), 0.24));
 }
 
 .body {
@@ -313,7 +313,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   height: 28px;
   padding: 0 12px;
   border-radius: 7px;
-  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+  background: linear-gradient(180deg, var(--skin-amber-light, #fbbf24), var(--skin-amber, #f59e0b));
   color: #1a1205;
   font-size: 11.5px;
   font-weight: 700;
@@ -321,7 +321,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   text-transform: uppercase;
   white-space: nowrap;
   box-shadow:
-    0 4px 10px rgba(245, 158, 11, 0.32),
+    0 4px 10px rgba(var(--skin-amber-rgb, 245, 158, 11), 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 /* Referral is the one white chip — it points off to a link, not at money. */
@@ -424,7 +424,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   letter-spacing: -3px;
 }
 .tile--wide .metal {
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 5px 14px rgba(245, 158, 11, 0.24));
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 5px 14px rgba(var(--skin-amber-rgb, 245, 158, 11), 0.24));
 }
 .tile--wide .body {
   gap: 12px;
@@ -451,7 +451,7 @@ const imgBox = computed(() => IMG_BOX[props.size])
   border-radius: 8px;
   font-size: 13px;
   box-shadow:
-    0 5px 12px rgba(245, 158, 11, 0.32),
+    0 5px 12px rgba(var(--skin-amber-rgb, 245, 158, 11), 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .tile--wide .chev {

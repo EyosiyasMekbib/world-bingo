@@ -1,11 +1,11 @@
 import type { ThemeDefinition, ThemeId } from './types'
 import { arada } from './arada'
-import { dash5 } from './dash5'
+import { winner } from './winner'
 
 export * from './types'
-export { arada, dash5 }
+export { arada, winner }
 
-export const themes: Record<ThemeId, ThemeDefinition> = { arada, dash5 }
+export const themes: Record<ThemeId, ThemeDefinition> = { arada, winner }
 export const DEFAULT_THEME_ID: ThemeId = 'arada'
 
 /**

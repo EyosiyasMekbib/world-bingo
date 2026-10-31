@@ -256,7 +256,7 @@ useHead({
 .play-page {
   position: fixed;
   inset: 0;
-  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  background: var(--skin-head-bg, linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%));
   /* 55, not 100: all this surface has to cover is the arada sticky header at
      50. At 100 it also covered the support launcher, so the one screen where
      a player most needs to ask a question was the one screen with no way to
@@ -273,7 +273,7 @@ useHead({
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 50% 60% at 70% 50%, rgba(245, 158, 11, 0.06) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 60% at 70% 50%, rgba(var(--skin-amber-rgb, 245, 158, 11), 0.06) 0%, transparent 65%),
     radial-gradient(ellipse 35% 50% at 20% 40%, rgba(6, 182, 212, 0.04) 0%, transparent 60%);
   pointer-events: none;
 }
@@ -285,7 +285,7 @@ useHead({
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: rgba(200, 215, 240, 0.7);
+  color: rgba(var(--skin-cool-rgb, 200, 215, 240), 0.7);
   font-family: 'Nunito', sans-serif;
 }
 
@@ -303,7 +303,7 @@ useHead({
   width: 44px;
   height: 44px;
   border: 2px solid rgba(255, 255, 255, 0.08);
-  border-top-color: #f59e0b;
+  border-top-color: var(--skin-amber, #f59e0b);
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }
@@ -323,7 +323,7 @@ useHead({
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(2, 11, 32, 0.72);
+  background: var(--skin-scrim, rgba(2, 11, 32, 0.72));
   color: rgba(255, 255, 255, 0.85);
   font-size: 13px;
   font-weight: 700;
@@ -339,19 +339,19 @@ useHead({
 }
 
 .float-back:hover {
-  background: rgba(2, 11, 32, 0.88);
+  background: var(--skin-scrim, rgba(2, 11, 32, 0.88));
   color: #fff;
 }
 
 .float-back:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--skin-amber, #f59e0b);
   outline-offset: 2px;
 }
 
 .back-btn {
   margin-top: 8px;
-  background: #f59e0b;
-  color: #0a0f1a;
+  background: var(--skin-amber, #f59e0b);
+  color: var(--skin-on-amber, #0a0f1a);
   font-weight: 800;
   font-size: 14px;
   padding: 10px 28px;
@@ -362,8 +362,8 @@ useHead({
   transition: background 0.15s ease;
 }
 
-.back-btn:hover { background: #fbbf24; }
-.back-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
+.back-btn:hover { background: var(--skin-amber-light, #fbbf24); }
+.back-btn:focus-visible { outline: 2px solid var(--skin-amber, #f59e0b); outline-offset: 2px; }
 
 /* Covers the blank frame until it fires `load` or the player dismisses it
    (the element is unmounted then, not hidden); the float-back (z 10) stays above it. */
@@ -374,14 +374,14 @@ useHead({
   justify-content: center;
   padding: 24px;
   text-align: center;
-  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  background: var(--skin-head-bg, linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%));
 }
 
 .play-state-elapsed {
   margin: 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: rgba(200, 215, 240, 0.5);
+  color: rgba(var(--skin-cool-rgb, 200, 215, 240), 0.5);
 }
 
 .play-state-hint {
@@ -389,7 +389,7 @@ useHead({
   max-width: 300px;
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(200, 215, 240, 0.75);
+  color: rgba(var(--skin-cool-rgb, 200, 215, 240), 0.75);
 }
 
 .play-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
@@ -407,7 +407,7 @@ useHead({
   font-family: 'Nunito', sans-serif;
 }
 
-.ghost-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
+.ghost-btn:focus-visible { outline: 2px solid var(--skin-amber, #f59e0b); outline-offset: 2px; }
 
 @keyframes spin {
   to { transform: rotate(360deg); }

@@ -19,7 +19,7 @@ export interface HeroArtwork {
  *
  * Every brand ships from this one codebase and picks its identity at runtime
  * (`GET /brand` → `themeId`), but artwork has its brand baked into the pixels —
- * a banner announcing dash1.games is simply wrong on arada, not merely
+ * a banner announcing one brand's domain is simply wrong on another, not merely
  * off-palette. So the artwork is keyed by theme rather than shown to everyone.
  *
  * `Record<ThemeId, …>` is deliberate: adding a theme is a type error here until
@@ -30,26 +30,9 @@ export interface HeroArtwork {
  */
 const ARTWORK_BY_THEME: Record<ThemeId, HeroArtwork[]> = {
   arada: [],
-  dash5: [
-    {
-      id: 'multi-bonus',
-      cta: 'Claim Bonus',
-      action: 'deposit',
-      image: { desktop: '/ads/hero/multi-bonus.webp', alt: '500% Multi Bonus' },
-    },
-    {
-      id: 'sport-cashback',
-      cta: 'See Promotions',
-      action: 'promotions',
-      image: { desktop: '/ads/hero/sport-cashback.webp', alt: '1000% Cashback in Sport' },
-    },
-    {
-      id: 'we-are-back',
-      cta: 'Play Now',
-      action: 'games',
-      image: { desktop: '/ads/hero/we-are-back.webp', alt: 'We are back — dash1.games' },
-    },
-  ],
+  // The dash banners were drawn green with dash1.games in the pixels; winner
+  // runs on the coded slides until it has artwork of its own.
+  winner: [],
 }
 
 /**
@@ -59,4 +42,50 @@ const ARTWORK_BY_THEME: Record<ThemeId, HeroArtwork[]> = {
  */
 export function heroArtworkFor(themeId: ThemeId): HeroArtwork[] {
   return ARTWORK_BY_THEME[themeId] ?? []
+}
+
+export interface HeroTone {
+  /** Slide background. */
+  gradient: string
+  /** Watermark colour. */
+  accent: string
+}
+
+/**
+ * Coded-slide colours for brands the stock tones fight. The lobby's slides are
+ * green, blue and amber so they read as different things on arada; on a red
+ * brand that rainbow looks like someone else's site. Keyed by slide id — a
+ * slide with no entry keeps its own tone.
+ */
+const TONES_BY_THEME: Partial<Record<ThemeId, Record<string, HeroTone>>> = {
+  // Black into the brand red, after the reference's cashback banner. Each slide
+  // ends on a different red so the carousel still visibly moves.
+  winner: {
+    predictions: {
+      gradient: 'linear-gradient(105deg,#0a0a0a 0%,#3d070d 48%,#9e0f1a 100%)',
+      accent: '#fff203',
+    },
+    aviator: {
+      gradient: 'linear-gradient(105deg,#0a0a0a 0%,#2b0508 40%,#a3111c 78%,#e62733 100%)',
+      accent: '#fff203',
+    },
+    bingo: {
+      gradient: 'linear-gradient(105deg,#0a0a0a 0%,#45070e 50%,#c41a26 100%)',
+      accent: '#fff203',
+    },
+    bonus: {
+      gradient: 'linear-gradient(105deg,#140203 0%,#6b0b14 45%,#e62733 100%)',
+      accent: '#fff203',
+    },
+    // /games only.
+    tournaments: {
+      gradient: 'linear-gradient(105deg,#0a0a0a 0%,#3a0509 45%,#b3121e 100%)',
+      accent: '#fff203',
+    },
+  },
+}
+
+/** The brand's tone for a coded slide, or undefined to keep the slide's own. */
+export function heroToneFor(themeId: ThemeId, slideId: string): HeroTone | undefined {
+  return TONES_BY_THEME[themeId]?.[slideId]
 }

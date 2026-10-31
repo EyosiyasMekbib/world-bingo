@@ -23,7 +23,7 @@
  *   { traceId, status: "SC_*" }  — no data field
  */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import Fastify from 'fastify'
 import crypto from 'node:crypto'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -1935,3 +1935,71 @@ describe('Task 28 — spend-account-based spend/restore', () => {
     })
 })
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP 11 — Per-round cumulative credit cap
+// ─────────────────────────────────────────────────────────────────────────────
+// WIN and BET_CREDIT credit without taking a stake in the same call, so a
+// provider-side replay with fresh transactionIds would be paid every time (the
+// 2026-10-22 Palace chicken-road loss was exactly that). The cap is lowered to
+// 3 credits per round here so the test stays small; production defaults to 200.
+
+describe('GROUP 11 — Per-round cumulative credit cap', () => {
+    beforeEach(() => {
+        process.env.GASEA_MAX_ROUND_WINS = '3'
+    })
+    afterEach(() => {
+        delete process.env.GASEA_MAX_ROUND_WINS
+    })
+
+    it('11.01 bet_result [WIN] replayed on one round: the 4th credit is refused and the account restricted', async () => {
+        const betId = uid()
+        const roundId = uid()
+        await post('bet', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(),
+            amount: 5, currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE, timestamp: Date.now(),
+        })
+        const win = () => post('bet_result', {
+            traceId: uid(), username: VALID_USER,
+            transactionId: uid(), betId, externalTransactionId: uid(), roundId,
+            betAmount: 5, winAmount: 10,
+            effectiveTurnover: 5, winLoss: 5, jackpotAmount: 0,
+            resultType: 'WIN' as const,
+            isFreespin: 0, isEndRound: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(),
+        })
+
+        for (let i = 0; i < 3; i++) expect((await win()).status).toBe('SC_OK')
+        const refused = await win()
+
+        expect(refused.status).toBe('SC_USER_DISABLED')
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1025) // 1000 - 5 + 3 x 10
+        const user = await prisma.user.findUniqueOrThrow({ where: { id: validUserId } })
+        expect(user.accountStatus).toBe('RESTRICTED')
+    })
+
+    it('11.02 bet_credit replayed on one round: the 4th credit is refused', async () => {
+        const roundId = uid()
+        await post('bet_debit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(),
+            roundId, amount: 20, currency: CURRENCY, gameCode: GAME_CODE, token: TOKEN, timestamp: Date.now(),
+        })
+        const credit = () => post('bet_credit', {
+            traceId: uid(), username: VALID_USER, transactionId: uid(), betId: uid(),
+            roundId, isRefund: 0, amount: 30, betAmount: 20, winAmount: 30,
+            effectiveTurnover: 20, winLoss: 10, jackpotAmount: 0,
+            currency: CURRENCY, token: TOKEN, gameCode: GAME_CODE,
+            betTime: Date.now(), settledTime: Date.now(), timestamp: Date.now(),
+        })
+
+        for (let i = 0; i < 3; i++) expect((await credit()).status).toBe('SC_OK')
+        const refused = await credit()
+
+        expect(refused.status).toBe('SC_USER_DISABLED')
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: validUserId } })
+        expect(new Decimal(wallet.realBalance).toNumber()).toBe(1070) // 1000 - 20 + 3 x 30
+    })
+})

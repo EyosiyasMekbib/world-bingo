@@ -80,13 +80,13 @@ describe('BrandService theme resolution', () => {
 
   it('merges sparse overrides over the active theme palette', async () => {
     ;(prisma.brandSetting.findUnique as any).mockResolvedValue(
-      row({ themeId: 'dash5', tokens: { brandPrimary: '#123456' } }),
+      row({ themeId: 'winner', tokens: { brandPrimary: '#123456' } }),
     )
     const brand = await BrandService.getBrand()
-    expect(brand.themeId).toBe('dash5')
+    expect(brand.themeId).toBe('winner')
     expect(brand.tokens.brandPrimary).toBe('#123456')
-    // untouched key comes from the dash5 palette, not DEFAULT_BRAND
-    expect(brand.tokens.surfaceRaised).toBe('#06262d')
+    // untouched key comes from the winner palette, not DEFAULT_BRAND
+    expect(brand.tokens.surfaceRaised).toBe('#242424')
   })
 
   it('falls back to arada for an unknown stored themeId', async () => {
@@ -101,18 +101,18 @@ describe('BrandService theme resolution', () => {
       row({ tokens: { brandPrimary: '#111111', surfaceBase: '#222222' } }),
     )
     ;(prisma.brandSetting.upsert as any).mockResolvedValue({})
-    await BrandService.updateBrand({ themeId: 'dash5' })
+    await BrandService.updateBrand({ themeId: 'winner' })
     const arg = (prisma.brandSetting.upsert as any).mock.calls[0][0]
-    expect(arg.update.themeId).toBe('dash5')
+    expect(arg.update.themeId).toBe('winner')
     expect(arg.update.tokens).toEqual({})
   })
 
   it('keeps overrides when themeId is unchanged', async () => {
     ;(prisma.brandSetting.findUnique as any).mockResolvedValue(
-      row({ themeId: 'dash5', tokens: { brandPrimary: '#111111' } }),
+      row({ themeId: 'winner', tokens: { brandPrimary: '#111111' } }),
     )
     ;(prisma.brandSetting.upsert as any).mockResolvedValue({})
-    await BrandService.updateBrand({ themeId: 'dash5', displayName: 'Y' })
+    await BrandService.updateBrand({ themeId: 'winner', displayName: 'Y' })
     const arg = (prisma.brandSetting.upsert as any).mock.calls[0][0]
     expect(arg.update.tokens).toEqual({ brandPrimary: '#111111' })
   })
@@ -120,19 +120,19 @@ describe('BrandService theme resolution', () => {
   it('keeps overrides when the caller sends tokens alongside a theme change', async () => {
     ;(prisma.brandSetting.findUnique as any).mockResolvedValue(row())
     ;(prisma.brandSetting.upsert as any).mockResolvedValue({})
-    await BrandService.updateBrand({ themeId: 'dash5', tokens: { brandPrimary: '#abcdef' } })
+    await BrandService.updateBrand({ themeId: 'winner', tokens: { brandPrimary: '#abcdef' } })
     const arg = (prisma.brandSetting.upsert as any).mock.calls[0][0]
     expect(arg.update.tokens).toEqual({ brandPrimary: '#abcdef' })
   })
 
   it('leaves the theme alone on an unrelated partial save', async () => {
     ;(prisma.brandSetting.findUnique as any).mockResolvedValue(
-      row({ themeId: 'dash5', tokens: { brandPrimary: '#111111' } }),
+      row({ themeId: 'winner', tokens: { brandPrimary: '#111111' } }),
     )
     ;(prisma.brandSetting.upsert as any).mockResolvedValue({})
     await BrandService.updateBrand({ displayName: 'Y' })
     const arg = (prisma.brandSetting.upsert as any).mock.calls[0][0]
-    expect(arg.update.themeId).toBe('dash5')
+    expect(arg.update.themeId).toBe('winner')
     expect(arg.update.tokens).toEqual({ brandPrimary: '#111111' })
   })
 })

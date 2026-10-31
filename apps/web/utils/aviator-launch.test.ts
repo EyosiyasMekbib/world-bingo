@@ -30,8 +30,8 @@ describe('Aviator entry points', () => {
 
   it.each([
     'components/shells/arada/RailsShell.vue',
-    'components/shells/dash5/Chrome.vue',
-    'components/shells/dash5/RailsShell.vue',
+    'components/shells/winner/Chrome.vue',
+    'components/shells/winner/Rail.vue',
   ])('%s links its Aviator tab to /aviator, not a category list', (file) => {
     const src = read(file)
     const aviatorLinks =

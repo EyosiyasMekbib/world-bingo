@@ -8,7 +8,7 @@ import { DEFAULT_BRAND, themes } from '../../../packages/shared-types/src/index'
 // The brand fetch therefore happens in the browser and page.route can stub it.
 // On an SSR route the fetch runs inside Nitro and is serialized into the
 // payload, where route interception cannot reach it.
-async function stubBrand(page: Page, themeId: 'arada' | 'dash5', tokens?: Record<string, string>) {
+async function stubBrand(page: Page, themeId: 'arada' | 'winner', tokens?: Record<string, string>) {
   await page.route('**/brand', async (route) => {
     await route.fulfill({
       status: 200,
@@ -31,26 +31,26 @@ test.describe('theme system', () => {
     await expect(page.locator('.ab-shell')).toBeVisible()
   })
 
-  test('dash5 renders three columns at 13px', async ({ page }) => {
+  test('winner renders three columns at 14px', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await stubBrand(page, 'dash5')
+    await stubBrand(page, 'winner')
     await page.goto('/')
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dash5')
-    expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe('13px')
-    await expect(page.locator('.d5-rail')).toBeVisible()
-    await expect(page.locator('.d5-aside')).toBeVisible()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'winner')
+    expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe('14px')
+    await expect(page.locator('.wn-rail')).toBeVisible()
+    await expect(page.locator('.wn-aside')).toBeVisible()
   })
 
-  test('dash5 collapses to one column on mobile', async ({ page }) => {
+  test('winner collapses to one column on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await stubBrand(page, 'dash5')
+    await stubBrand(page, 'winner')
     await page.goto('/')
-    await expect(page.locator('.d5-rail')).toBeHidden()
-    await expect(page.locator('.d5-aside')).toBeHidden()
+    await expect(page.locator('.wn-rail')).toBeHidden()
+    await expect(page.locator('.wn-aside')).toBeHidden()
   })
 
   test('brand colours override the theme palette', async ({ page }) => {
-    await stubBrand(page, 'dash5', { brandPrimary: '#ff00ff' })
+    await stubBrand(page, 'winner', { brandPrimary: '#ff00ff' })
     await page.goto('/')
     const primary = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim(),

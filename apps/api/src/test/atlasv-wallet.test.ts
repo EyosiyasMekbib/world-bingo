@@ -26,6 +26,9 @@ const p = prisma as any
 
 const PLAYER_ID = 'a'.repeat(32)
 
+/** The per-round cap's aggregate for a round with nothing credited on it yet. */
+const emptyRound = () => vi.fn().mockResolvedValue({ _sum: { amount: null, betAmount: null }, _count: 0 })
+
 describe('AtlasVWalletService', () => {
     beforeEach(() => vi.clearAllMocks())
 
@@ -216,6 +219,7 @@ describe('AtlasVWalletService', () => {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
             thirdPartyTransaction: {
+                aggregate: emptyRound(),
                 // Re-read of the original bet happens INSIDE the transaction now
                 // (TOCTOU fix), via tx.thirdPartyTransaction.findUnique.
                 findUnique: vi.fn().mockResolvedValue({ id: 'bet1', type: 'BET', status: 'COMPLETED', betAmount: '10.00', amount: '-10.00', rawResponse: null }),
@@ -304,6 +308,7 @@ describe('AtlasVWalletService', () => {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
             thirdPartyTransaction: {
+                aggregate: emptyRound(),
                 findUnique: vi.fn().mockResolvedValue({ id: 'bet1', type: 'BET', status: 'COMPLETED', betAmount: '10.00', amount: '-10.00', rawResponse: null }),
                 create: vi.fn(),
                 update: vi.fn(),
@@ -359,7 +364,7 @@ describe('AtlasVWalletService', () => {
         const fakeTx = {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '50.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
-            thirdPartyTransaction: { create: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), aggregate: emptyRound() },
             transaction: { create: vi.fn() },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
@@ -380,7 +385,7 @@ describe('AtlasVWalletService', () => {
         const fakeTx = {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '50.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
-            thirdPartyTransaction: { create: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), aggregate: emptyRound() },
             transaction: { create: vi.fn() },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
@@ -417,6 +422,7 @@ describe('AtlasVWalletService', () => {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '90.00', bonusBalance: '0', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
             thirdPartyTransaction: {
+                aggregate: emptyRound(),
                 findUnique: vi.fn().mockResolvedValue({ id: 'bet1', type: 'BET', status: 'COMPLETED', betAmount: '10.00', amount: '-10.00', rawResponse: null }),
                 create: vi.fn(),
                 update: vi.fn(),

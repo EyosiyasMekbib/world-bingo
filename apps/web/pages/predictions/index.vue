@@ -23,6 +23,11 @@ import {
 } from '~/store/prediction'
 import { mockSettledMarkets, mockSettledTotals } from '~/utils/mockSettledMarkets'
 
+useSeoMeta({
+  title: 'Fight Predictions',
+  description: 'Predict fight outcomes on the card and trade your position before the bout starts.',
+})
+
 const { t } = useI18n()
 const store = usePredictionStore()
 const { flags, loaded } = useFeatureFlags()
@@ -185,7 +190,6 @@ onUnmounted(() => {
   ticker = null
 })
 
-useHead({ title: 'Predictions — World Bingo' })
 </script>
 
 <template>

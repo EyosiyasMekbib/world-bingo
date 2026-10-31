@@ -66,8 +66,8 @@ onUnmounted(() => {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: rgba(var(--skin-amber-rgb, 245, 158, 11), 0.08);
+  border: 1px solid rgba(var(--skin-amber-rgb, 245, 158, 11), 0.2);
   margin-top: 0.5rem;
 }
 
@@ -95,7 +95,7 @@ onUnmounted(() => {
   font-family: 'Rajdhani', sans-serif;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #f59e0b;
+  color: var(--skin-amber, #f59e0b);
   line-height: 1.1;
 }
 
@@ -110,7 +110,7 @@ onUnmounted(() => {
 .countdown-progress-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #f59e0b, #d97706);
+  background: linear-gradient(90deg, var(--skin-amber, #f59e0b), var(--skin-amber-dark, #d97706));
   transition: width 0.3s ease;
 }
 
@@ -121,7 +121,7 @@ onUnmounted(() => {
 .countdown-time-inline {
   font-family: 'Rajdhani', sans-serif;
   font-weight: 800;
-  color: #fbbf24;
+  color: var(--skin-amber-light, #fbbf24);
   font-size: inherit;
   line-height: inherit;
 }

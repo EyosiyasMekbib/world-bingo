@@ -116,6 +116,7 @@ export enum NotificationType {
     ACCOUNT_STATUS_CHANGED = 'ACCOUNT_STATUS_CHANGED',
     BONUS_GRANTED = 'BONUS_GRANTED',
     BONUS_EXPIRING = 'BONUS_EXPIRING',
+    ANNOUNCEMENT = 'ANNOUNCEMENT',
 }
 
 export enum TournamentStatus {

@@ -271,6 +271,7 @@
   "promo": {
     "title": "Promotions",
     "subtitle": "Grab the latest bonuses, cashback and rewards on World Bingo.",
+    "subtitleBrand": "Grab the latest bonuses, cashback and rewards on {brand}.",
     "loading": "Loading promotions…",
     "empty": "No active promotions right now. Check back soon!",
     "browse_games": "Browse Games",

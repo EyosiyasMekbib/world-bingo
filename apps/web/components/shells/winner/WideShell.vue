@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import Chrome from './Chrome.vue'
+import Rail from './Rail.vue'
 </script>
 
 <template>
-  <div class="d5-shell">
+  <div class="wn-shell">
     <Chrome />
-    <main class="d5-wide">
+    <!-- Drawer only: the Menu tab still needs somewhere to open on a phone. -->
+    <Rail drawer-only />
+    <main class="wn-wide">
       <slot />
     </main>
-    <footer class="d5-footer">
+    <footer class="wn-footer">
       <p>Responsible Gaming: 18+ only. Gambling can be addictive — play within your limits.</p>
-      <span class="d5-18">18+</span>
+      <span class="wn-18">18+</span>
     </footer>
   </div>
 </template>

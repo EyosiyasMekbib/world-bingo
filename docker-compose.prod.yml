@@ -139,6 +139,9 @@ services:
       NUXT_PUBLIC_POSTHOG_UI_HOST: ${NUXT_PUBLIC_POSTHOG_UI_HOST:-https://eu.posthog.com}
       NUXT_PUBLIC_POSTHOG_REPLAY: ${NUXT_PUBLIC_POSTHOG_REPLAY:-true}
       NUXT_PUBLIC_POSTHOG_BRAND: ${NUXT_PUBLIC_POSTHOG_BRAND:-}
+      # SEO: set to this brand's public web origin (arada: https://aradabet.games).
+      # Only that host is then indexable; empty = any public non-staging host.
+      NUXT_PUBLIC_SEO_SITE_URL: ${NUXT_PUBLIC_SEO_SITE_URL:-}
     depends_on:
       api:
         condition: service_healthy

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { normalizeLobbySearchQuery } from '~/utils/lobby-search'
 
+const { name: productName } = useProductName()
+
 type SearchBingoResult = {
   kind: 'bingo'
   id: string
@@ -103,7 +105,7 @@ watch(
 
 useHead({
   title: computed(() =>
-    query.value ? `Search results for "${query.value}" — World Bingo` : 'Search — World Bingo',
+    query.value ? `Search results for "${query.value}"` : 'Search',
   ),
 })
 </script>
@@ -266,7 +268,7 @@ useHead({
               </div>
               <div class="pg-name">{{ result.gameName }}</div>
               <div class="pg-meta">
-                {{ result.kind === 'bingo' ? 'World Bingo' : `${result.providerName} · ${result.categoryCode}` }}
+                {{ result.kind === 'bingo' ? productName : `${result.providerName} · ${result.categoryCode}` }}
               </div>
             </NuxtLink>
           </div>
@@ -291,7 +293,7 @@ useHead({
 }
 
 .search-hero {
-  background: linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%);
+  background: var(--skin-head-bg, linear-gradient(150deg, #020b20 0%, #061535 55%, #0c2248 100%));
   padding: 20px 0 22px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -334,12 +336,12 @@ useHead({
   font-family: 'Rajdhani', sans-serif;
   font-size: clamp(28px, 4vw, 42px);
   line-height: 1.04;
-  color: #f0f4ff;
+  color: var(--skin-text, #f0f4ff);
 }
 
 .search-sub {
   margin: 8px 0 0;
-  color: rgba(180, 205, 240, 0.65);
+  color: rgba(var(--skin-cool-rgb, 180, 205, 240), 0.65);
   max-width: 640px;
 }
 
@@ -432,7 +434,7 @@ useHead({
 .pg-card {
   border-radius: 8px;
   overflow: hidden;
-  background: rgba(10, 22, 55, 0.7);
+  background: var(--skin-tile-bg, rgba(10, 22, 55, 0.7));
   border: 1px solid rgba(255, 255, 255, 0.06);
   text-decoration: none;
   transition:
@@ -443,12 +445,12 @@ useHead({
 
 .pg-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(245, 158, 11, 0.2);
+  border-color: rgba(var(--skin-amber-rgb, 245, 158, 11), 0.2);
 }
 
 .pg-thumb {
   aspect-ratio: 3 / 4;
-  background: #0d2050;
+  background: var(--skin-thumb-bg, #0d2050);
   position: relative;
   overflow: hidden;
 }
@@ -485,7 +487,7 @@ useHead({
 
 .pg-play {
   background: var(--brand-primary);
-  color: #0a0f1a;
+  color: var(--skin-on-amber, #0a0f1a);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -497,7 +499,7 @@ useHead({
 .pg-name {
   padding: 8px 9px 0;
   font-size: 11px;
-  color: #f0f4ff;
+  color: var(--skin-text, #f0f4ff);
   font-weight: 700;
   line-height: 1.2;
 }

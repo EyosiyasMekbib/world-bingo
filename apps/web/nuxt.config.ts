@@ -125,7 +125,7 @@ export default defineNuxtConfig({
         // Both load unconditionally; the data-theme attribute on <html> (set by
         // plugins/00.brand.ts) selects which block applies. SSR-rendered, so no flash.
         '~/assets/css/themes/arada.css',
-        '~/assets/css/themes/dash5.css',
+        '~/assets/css/themes/winner.css',
     ],
 
     runtimeConfig: {
@@ -155,6 +155,19 @@ export default defineNuxtConfig({
             sentry: {
                 dsn: '',
                 environment: '',
+            },
+            // Search-engine surface (server/plugins/seo-head.ts, robots.txt,
+            // sitemap.xml). Mapped from NUXT_PUBLIC_SEO_SITE_URL etc. Leave
+            // siteUrl empty and any public, non-staging host is indexable;
+            // set it and ONLY that host is (staging/preview clones get
+            // noindex). Site-level copy only — never personal data.
+            seo: {
+                siteUrl: '',
+                siteName: '',
+                description: '',
+                descriptionAm: '',
+                ogImage: '',
+                noindex: false,
             },
             // PostHog product analytics. Auto-mapped from NUXT_PUBLIC_POSTHOG_KEY,
             // NUXT_PUBLIC_POSTHOG_HOST, NUXT_PUBLIC_POSTHOG_UI_HOST,

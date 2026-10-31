@@ -78,7 +78,7 @@ describe('themeId on the brand contract', () => {
   })
 
   it('accepts a known theme id', () => {
-    expect(() => BrandConfigSchema.parse({ ...DEFAULT_BRAND, themeId: 'dash5' })).not.toThrow()
+    expect(() => BrandConfigSchema.parse({ ...DEFAULT_BRAND, themeId: 'winner' })).not.toThrow()
   })
 
   it('rejects an unknown theme id', () => {
@@ -91,7 +91,7 @@ describe('themeId on the brand contract', () => {
   })
 
   it('accepts a themeId-only update payload', () => {
-    expect(() => BrandConfigUpdateSchema.parse({ themeId: 'dash5' })).not.toThrow()
+    expect(() => BrandConfigUpdateSchema.parse({ themeId: 'winner' })).not.toThrow()
   })
 
   it('rejects an unknown themeId in an update payload', () => {

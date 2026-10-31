@@ -158,4 +158,38 @@ describe('NotificationService (T17/T20)', () => {
             expect(limited.length).toBe(3)
         })
     })
+
+    describe('broadcast', () => {
+        it('delivers to every eligible player and skips bots, staff and suspended accounts', async () => {
+            // testUserId (from beforeEach) is an eligible player with a username.
+            const phoneOnly = await prisma.user.create({ data: { phone: '+251900200002' } })
+            const bot = await prisma.user.create({ data: { username: 'bot_t1_0' } })
+            const clerk = await prisma.user.create({ data: { username: 'bc_clerk', role: 'CLERK' } })
+            const suspended = await prisma.user.create({
+                data: { username: 'bc_suspended', accountStatus: 'SUSPENDED' },
+            })
+
+            const result = await NotificationService.broadcast({
+                title: 'Hello',
+                body: 'Everyone',
+                sentById: clerk.id,
+                sentByName: 'bc_clerk',
+            })
+
+            expect(result.recipientCount).toBe(2)
+            const rows = await prisma.notification.findMany({ where: { type: NotificationType.ANNOUNCEMENT } })
+            expect(rows.map((r) => r.userId).sort()).toEqual([testUserId, phoneOnly.id].sort())
+            expect(rows.every((r) => (r.metadata as { broadcastId: string }).broadcastId === result.id)).toBe(true)
+            for (const id of [bot.id, clerk.id, suspended.id]) {
+                expect(rows.some((r) => r.userId === id)).toBe(false)
+            }
+
+            const unread = await NotificationService.getUnread(testUserId)
+            expect(unread[0]).toMatchObject({ title: 'Hello', body: 'Everyone', isRead: false })
+
+            const history = await NotificationService.listBroadcasts()
+            expect(history).toHaveLength(1)
+            expect(history[0]).toMatchObject({ id: result.id, recipientCount: 2, sentByName: 'bc_clerk' })
+        })
+    })
 })

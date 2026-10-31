@@ -257,7 +257,7 @@ describe('PalaceWalletService', () => {
         const fakeTx = {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '1000.00', bonusBalance: '40.00', spendAccount: 'BONUS' }]),
             wallet: { update: vi.fn() },
-            thirdPartyTransaction: { create: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), aggregate: vi.fn().mockResolvedValue({ _sum: { winAmount: null }, _count: 0 }) },
             transaction: { create: vi.fn() },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
@@ -284,7 +284,7 @@ describe('PalaceWalletService', () => {
         const fakeTx = {
             $queryRaw: vi.fn().mockResolvedValue([{ id: 'w1', realBalance: '100.00', bonusBalance: '40.00', spendAccount: 'REAL' }]),
             wallet: { update: vi.fn() },
-            thirdPartyTransaction: { create: vi.fn() },
+            thirdPartyTransaction: { create: vi.fn(), aggregate: vi.fn().mockResolvedValue({ _sum: { winAmount: null }, _count: 0 }) },
             transaction: { create: vi.fn() },
         }
         p.$transaction.mockImplementation((cb: any) => cb(fakeTx))
